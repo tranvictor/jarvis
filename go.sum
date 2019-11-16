@@ -308,6 +308,8 @@ github.com/templexxx/xor v0.0.0-20181023030647-4e92f724b73b/go.mod h1:5XA7W9S6mn
 github.com/tjfoc/gmsm v1.0.1/go.mod h1:XxO4hdhhrzAd+G4CjDqaOkd0hUzmtPR/d3EiBBMn/wc=
 github.com/tranvictor/ethutils v0.0.0-20191115182535-078bee1eb74b h1:2GrDoIl/f2DW5OmJ6siQl368kSyocysVutW2z4WaU2Q=
 github.com/tranvictor/ethutils v0.0.0-20191115182535-078bee1eb74b/go.mod h1:IEIil3W8P2+XuKehf1OITwskieDXy+uEQCktXfeQEd4=
+github.com/tranvictor/ethutils v0.0.0-20191116100841-bbf04a08bc75 h1:ZguELzkZYIUyEEU6C72zbjQ7Zn9/Kp/TzuZbNiubhO4=
+github.com/tranvictor/ethutils v0.0.0-20191116100841-bbf04a08bc75/go.mod h1:uAsPvqhumIXW+8eyD5bW1QnzjyZA2RJqZvWXqv3PjG8=
 github.com/tranvictor/trezoreum v0.0.0-20190323062241-62f3fd382e93/go.mod h1:Nk84tlsSXc1ach4bnQFGlpM0YoU/gc1qyMJiPkq4IDg=
 github.com/tranvictor/trezoreum v0.0.0-20190621101516-b9eccba46a6e h1:ejbxPBauKamA+12+zp4aHZfN3noiywaVVQodUSl7rR4=
 github.com/tranvictor/trezoreum v0.0.0-20190621101516-b9eccba46a6e/go.mod h1:Nk84tlsSXc1ach4bnQFGlpM0YoU/gc1qyMJiPkq4IDg=
@@ -315,6 +317,8 @@ github.com/tranvictor/trezoreum v0.0.0-20191116083339-be0d5ce73876 h1:ysFV1aGBBQ
 github.com/tranvictor/trezoreum v0.0.0-20191116083339-be0d5ce73876/go.mod h1:azqj+7/zsqmhIstovydG3BJD4BkdvF0OB4n2N473IKA=
 github.com/tranvictor/usb v0.0.0-20190615150339-2b84c61e412b h1:AOnZaDFpqBNEbmNi0RDDRiK5PVAH2ka7D786gJ8B3lA=
 github.com/tranvictor/usb v0.0.0-20190615150339-2b84c61e412b/go.mod h1:avOskwPr11/v/D01vrsToADRzvE08l4fsqppspOu9Io=
+github.com/tranvictor/usb v0.0.1-0.20191116100612-889f3c702387 h1:YDjD+0QbRa8cz1Qj7rp/NoMCts1vQVqB9o45ejURhEM=
+github.com/tranvictor/usb v0.0.1-0.20191116100612-889f3c702387/go.mod h1:avOskwPr11/v/D01vrsToADRzvE08l4fsqppspOu9Io=
 github.com/trezor/trezord v1.2.1/go.mod h1:DTzmxqbdyC2g8UVtav8OB4Pby3zNVOuaPTJkTGe8lxI=
 github.com/trezor/trezord-go v2.0.26+incompatible h1:9sgWULO1koAEsF/jphLZ5BNIdaDBN5m2yHn7znDoCR4=
 github.com/trezor/trezord-go v2.0.26+incompatible/go.mod h1:zoHzGaMdFU8PlDEEZsLolIkq7GeyjqB+b3rrnJLHOk4=
