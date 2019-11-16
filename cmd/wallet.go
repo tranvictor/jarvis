@@ -1,0 +1,191 @@
+package cmd
+
+import (
+	// "bufio"
+	"fmt"
+	// "os"
+	// "strings"
+
+	gethaccounts "github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/spf13/cobra"
+	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/trezoreum"
+)
+
+const (
+	TREZOR_BASE_PATH string = "m/44'/60'/0'/0/%d"
+
+	LEDGER_BASE_PATH string = "m/44'/60'/0'/%d"
+)
+
+var walletCmd = &cobra.Command{
+	Use:   "wallet",
+	Short: "Manage your wallets",
+	Long:  ``,
+}
+
+type HW interface {
+	Derive(path gethaccounts.DerivationPath) (common.Address, error)
+}
+
+func handleHW(hw HW, t string) {
+	batch := 0
+	for {
+		accs := []*accounts.AccDesc{}
+		for i := 0; i < 5; i++ {
+			acc := &accounts.AccDesc{
+				Kind: "trezor",
+			}
+			p, err := gethaccounts.ParseDerivationPath(fmt.Sprintf(TREZOR_BASE_PATH, batch*5+i))
+			if err != nil {
+				fmt.Printf("Jarvis: Can't read your trezor to get wallets, %s\n", err)
+				return
+			}
+			w, err := hw.Derive(p)
+			if err != nil {
+				fmt.Printf("Jarvis: Can't read your trezor to get wallets, %s\n", err)
+				return
+			}
+			acc.Derpath = p.String()
+			acc.Address = w.Hex()
+			accs = append(accs, acc)
+		}
+		for i, acc := range accs {
+			fmt.Printf("%d. %s (%s)\n", i, acc.Address, acc.Derpath)
+		}
+		index := promptIndex("Jarvis: Please enter the wallet index you want to add (0, 1, 2, 3, 4, next, back): ", 0, len(accs)-1)
+		if index == NEXT {
+			batch += 1
+		} else if index == BACK {
+			if batch > 0 {
+				batch -= 1
+			} else {
+				fmt.Printf("Jarvis: It can't be back. Continue with path 0\n")
+			}
+		} else {
+			accDesc := accs[index]
+			des := promptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
+			accDesc.Desc = des
+			err := accounts.StoreAccountRecord(*accDesc)
+			if err != nil {
+				fmt.Printf("Jarvis: I couldn't store your wallet info: %s. Abort.\n", err)
+			} else {
+				fmt.Printf("Jarvis: I created `~/.jarvis/%s.json` to store the wallet info.\n", accDesc.Address)
+				fmt.Printf("Jarvis: Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list\n")
+			}
+			return
+		}
+	}
+}
+
+func handleLedger() {
+	fmt.Printf("Jarvis: Sorry Victor planned to teach me how to handle ledger soon. Abort.\n")
+}
+
+func handleTrezor() {
+	trezor, err := trezoreum.NewTrezoreum()
+	if err != nil {
+		fmt.Printf("Jarvis: Can't establish communication channel to your trezor, %s\n", err)
+		return
+	}
+	err = trezor.Unlock()
+	if err != nil {
+		fmt.Printf("Jarvis: Can't unlock your trezor, %s\n", err)
+		return
+	}
+	handleHW(trezor, "trezor")
+}
+
+func handleAddKeystore() {
+	fmt.Printf("Jarvis: Keystore is convenient but not so safe. I recommend you to use it only for unimportant frequent tasks.\n")
+	keystorePath := promptFilePath("Jarvis: Please enter the path to your keystore file: ")
+	accDesc := &accounts.AccDesc{
+		Address: "",
+		Kind:    "keystore",
+		Keypath: keystorePath,
+	}
+	address, err := accounts.VerifyKeystore(keystorePath)
+	if err != nil {
+		fmt.Printf("Jarvis: Keystore path verification failed. %s. Abort.\n", err)
+		return
+	}
+	accDesc.Address = address
+	fmt.Printf("Jarvis: This keystore is with %s\n", address)
+	des := promptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
+	accDesc.Desc = des
+	err = accounts.StoreAccountRecord(*accDesc)
+	if err != nil {
+		fmt.Printf("Jarvis: I couldn't store your wallet info: %s. Abort.\n", err)
+	} else {
+		fmt.Printf("Jarvis: I created `~/.jarvis/%s.json` to store the keystore info. That file contains the path of your keystore file so please don't move your keystore file later.\n", address)
+		fmt.Printf("Jarvis: Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list\n")
+	}
+}
+
+var addWalletCmd = &cobra.Command{
+	Use:   "add",
+	Short: "Add a wallet to jarvis",
+	Run: func(cmd *cobra.Command, args []string) {
+		// 1. type
+		keyType := promptInput("Jarvis: Enter key type (enter either trezor, ledger or keystore):")
+		switch keyType {
+		case "trezor":
+			handleTrezor()
+		case "ledger":
+			handleLedger()
+		case "keystore":
+			handleAddKeystore()
+		default:
+			fmt.Printf("Sorry Victor didn't teach me how to handle this kind of key: %s. Abort.\n", keyType)
+		}
+		// if type is keystore => path to keystore
+		// if type is ledger/trezor => show 10 addresses
+		// 2. chose address index and register wallet address
+	},
+}
+
+var listWalletCmd = &cobra.Command{
+	Use:   "list",
+	Short: "Show all of your wallets",
+	Long:  ``,
+	Run: func(cmd *cobra.Command, args []string) {
+		accs := accounts.GetAccounts()
+		fmt.Printf("Jarvis: You have %d wallets:\n", len(accs))
+		index := 0
+		for addr, acc := range accs {
+			index += 1
+			fmt.Printf("%d. %s: %s (%s)\n", index, addr, acc.Kind, acc.Desc)
+		}
+		fmt.Printf("\nJarvis: If you want to add more wallets to the list, use following command:\n> jarvis wallet add\n")
+		// fmt.Printf("Enter wallet to unlock: ")
+		// reader := bufio.NewReader(os.Stdin)
+		// input, _ := reader.ReadString('\n')
+		// ad, err := accounts.GetAccount(strings.TrimSpace(input))
+		// if err != nil {
+		// 	fmt.Printf("%s\n", err)
+		// 	return
+		// }
+		// _, err = accounts.UnlockAccount(ad, Network)
+		// if err != nil {
+		// 	fmt.Printf("Unlocking failed: %s\n", err)
+		// }
+		// fmt.Printf("Unlocking successfully\n")
+	},
+}
+
+func init() {
+	walletCmd.AddCommand(listWalletCmd)
+	walletCmd.AddCommand(addWalletCmd)
+	rootCmd.AddCommand(walletCmd)
+
+	// Here you will define your flags and configuration settings.
+
+	// Cobra supports Persistent Flags which will work for this command
+	// and all subcommands, e.g.:
+	// txCmd.PersistentFlags().String("foo", "", "A help for foo")
+
+	// Cobra supports local flags which will only run when this command
+	// is called directly, e.g.:
+	// txCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+}
