@@ -105,6 +105,14 @@ func VerboseAddress(addr string) string {
 	return fmt.Sprintf("%s (%s)", addr, addrDesc.Desc)
 }
 
+func GetERC20Decimal(addr string, network string) (int64, error) {
+	reader, err := EthReader(network)
+	if err != nil {
+		return 0, err
+	}
+	return reader.ERC20Decimal(addr)
+}
+
 func GetABI(addr string, network string) (*abi.ABI, error) {
 	cacheKey := fmt.Sprintf("%s_abi", addr)
 	cached, found := cache.GetCache(cacheKey)
