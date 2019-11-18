@@ -49,8 +49,9 @@ Param rules:
 		number according to the token's decimal. In this case, the
 		number can be float.
 
-		For example: 8.8 KNC will be converted to 8800000000000000000 (17
-		zeroes).
+		For example:
+		8.8 KNC => 8800000000000000000 (17 zeroes).
+		10.5 KNC token => 10500000000000000000.
 
 	3. bool
 		bool element must be either "true" or "false" (without quotes), all
@@ -109,7 +110,10 @@ Param rules:
 				fmt.Printf("Your input is not valid: %s\n", err)
 				continue
 			}
-			fmt.Printf("Your input: %s\n", analyzer.ParamAsString(input.Type, inputParam))
+			fmt.Printf(
+				"        Your input: %s\n",
+				indent(8, analyzer.ParamAsString(input.Type, inputParam)),
+			)
 			params = append(params, inputParam)
 			pi++
 		}

@@ -80,6 +80,9 @@ func convertToString(str string) ([]byte, error) {
 func convertToBig(str string) (*big.Int, error) {
 	str = strings.Trim(str, " ")
 	parts := strings.Split(str, " ")
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("invalid int format")
+	}
 	// in case there is no suffix
 	if len(parts) == 1 {
 		if len(str) > 2 && str[0:2] == "0x" {
@@ -91,13 +94,13 @@ func convertToBig(str string) (*big.Int, error) {
 			}
 			return resultBig, nil
 		}
-	}
-	if len(parts) == 2 {
+	} else {
 		floatNum, err := strconv.ParseFloat(parts[0], 64)
 		if err != nil {
 			return nil, err
 		}
-		token, err := convertToAddress(fmt.Sprintf("%s token", parts[1]))
+		tokenName := strings.Join(parts[1:], " ")
+		token, err := convertToAddress(fmt.Sprintf("%s token", tokenName))
 		if err != nil {
 			return nil, err
 		}
@@ -107,7 +110,6 @@ func convertToBig(str string) (*big.Int, error) {
 		}
 		return ethutils.FloatToBigInt(floatNum, decimal), nil
 	}
-	return nil, fmt.Errorf("int, uint must contain at max 1 space")
 }
 
 func convertToBool(str string) (bool, error) {
@@ -181,20 +183,96 @@ func promptArray(input abi.Argument) (interface{}, error) {
 	if len(inpStr) < 2 || inpStr[0] != '[' || inpStr[len(inpStr)-1] != ']' {
 		return nil, fmt.Errorf("input must be wrapped by []")
 	}
-	paramsStr := strings.Split(inpStr[1:len(inpStr)-1], ",")
-	result := []interface{}{}
-	for _, p := range paramsStr {
-		converted, err := convertParamStrToType(input.Name, *input.Type.Elem, p)
-		if err != nil {
-			return nil, err
+	arrayContent := strings.Trim(inpStr[1:len(inpStr)-1], " ")
+	paramsStr := strings.Split(arrayContent, ",")
+
+	switch input.Type.Elem.T {
+	case abi.StringTy: // variable arrays are written at the end of the return bytes
+		result := []string{}
+		if len(arrayContent) == 0 {
+			return result, nil
 		}
-		result = append(result, converted)
+		for _, p := range paramsStr {
+			converted, err := convertParamStrToType(input.Name, *input.Type.Elem, p)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, converted.(string))
+		}
+		return result, nil
+	case abi.IntTy, abi.UintTy:
+		result := []*big.Int{}
+		if len(arrayContent) == 0 {
+			return result, nil
+		}
+		for _, p := range paramsStr {
+			converted, err := convertParamStrToType(input.Name, *input.Type.Elem, p)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, converted.(*big.Int))
+		}
+		return result, nil
+	case abi.BoolTy:
+		result := []bool{}
+		if len(arrayContent) == 0 {
+			return result, nil
+		}
+		for _, p := range paramsStr {
+			converted, err := convertParamStrToType(input.Name, *input.Type.Elem, p)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, converted.(bool))
+		}
+		return result, nil
+	case abi.AddressTy:
+		result := []common.Address{}
+		if len(arrayContent) == 0 {
+			return result, nil
+		}
+		for _, p := range paramsStr {
+			converted, err := convertParamStrToType(input.Name, *input.Type.Elem, p)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, converted.(common.Address))
+		}
+		return result, nil
+	case abi.HashTy:
+		result := []common.Hash{}
+		if len(arrayContent) == 0 {
+			return result, nil
+		}
+		for _, p := range paramsStr {
+			converted, err := convertParamStrToType(input.Name, *input.Type.Elem, p)
+			if err != nil {
+				return nil, err
+			}
+			result = append(result, converted.(common.Hash))
+		}
+		return result, nil
+	case abi.BytesTy:
+		return nil, fmt.Errorf("not supported type: %s", input.Type.Elem)
+	case abi.FixedBytesTy:
+		return nil, fmt.Errorf("not supported type: %s", input.Type.Elem)
+	case abi.FunctionTy:
+		return nil, fmt.Errorf("not supported type: %s", input.Type.Elem)
+	default:
+		return nil, fmt.Errorf("not supported type: %s", input.Type.Elem)
 	}
-	return result, nil
 }
 
 func promptNonArray(input abi.Argument) (interface{}, error) {
 	inpStr := promptInput("")
 	inpStr = strings.Trim(inpStr, " ")
 	return convertParamStrToType(input.Name, input.Type, inpStr)
+}
+
+func indent(nospace int, str string) string {
+	indentation := ""
+	for i := 0; i < nospace; i++ {
+		indentation += " "
+	}
+	return strings.ReplaceAll(str, "\n", fmt.Sprintf("\n%s", indentation))
 }
