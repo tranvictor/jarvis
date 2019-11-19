@@ -14,14 +14,6 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-var GasPrice float64
-var ExtraGasPrice float64
-var GasLimit uint64
-var ExtraGasLimit uint64
-var Nonce uint64
-var From string
-var FromAcc accounts.AccDesc
-
 // currency here is supposed to be either ETH or address of an ERC20 token
 func handleSend(
 	cmd *cobra.Command, args []string,

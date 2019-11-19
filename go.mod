@@ -56,7 +56,7 @@ require (
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/status-im/keycard-go v0.0.0-20191114114615-9d48af884d5b // indirect
-	github.com/tranvictor/ethutils v0.0.0-20191118172736-ea4c04eda492
+	github.com/tranvictor/ethutils v0.0.0-20191119191258-b648045955f3
 	github.com/tranvictor/trezoreum v0.0.0-20191116083339-be0d5ce73876
 	github.com/trezor/trezord-go v2.0.27+incompatible // indirect
 	github.com/tyler-smith/go-bip39 v1.0.2 // indirect

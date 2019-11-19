@@ -4,10 +4,14 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/Songmu/prompter"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/spf13/cobra"
+	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/txanalyzer"
+	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -17,6 +21,49 @@ type Methods []abi.Method
 func (self Methods) Len() int           { return len(self) }
 func (self Methods) Swap(i, j int)      { self[i], self[j] = self[j], self[i] }
 func (self Methods) Less(i, j int) bool { return self[i].Name < self[j].Name }
+
+func promptTxData(contractAddress string) ([]byte, error) {
+	analyzer := txanalyzer.NewAnalyzer()
+	a, err := util.GetABI(contractAddress, Network)
+	if err != nil {
+		return nil, fmt.Errorf("Couldn't get the ABI: %s", err)
+	}
+	fmt.Printf("write functions:\n")
+	methods := []abi.Method{}
+	for _, m := range a.Methods {
+		if !m.Const {
+			methods = append(methods, m)
+		}
+	}
+	sort.Sort(Methods(methods))
+	for i, m := range methods {
+		fmt.Printf("%d. %s\n", i+1, m.Name)
+	}
+	si := promptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods))
+	method := methods[si-1]
+	inputs := method.Inputs
+	params := []interface{}{}
+	pi := 0
+	for {
+		if pi >= len(inputs) {
+			break
+		}
+		input := inputs[pi]
+		fmt.Printf("%d. %s (%s)", pi, input.Name, input.Type.String())
+		inputParam, err := promptParam(input)
+		if err != nil {
+			fmt.Printf("Your input is not valid: %s\n", err)
+			continue
+		}
+		fmt.Printf(
+			"        Your input: %s\n",
+			indent(8, analyzer.ParamAsString(input.Type, inputParam)),
+		)
+		params = append(params, inputParam)
+		pi++
+	}
+	return a.Pack(method.Name, params...)
+}
 
 var composeDataContractCmd = &cobra.Command{
 	Use:   "encode",
@@ -67,57 +114,19 @@ Param rules:
 		hash element must be represented in hex form without quotes.
 
 	6. bytes
-		Not supported yet
+		bytes element must be represented in hex form without quotes. If
+		0x is provided, it will be interpreted as empty bytes array.
 
 	7. fixed length bytes
 		Not supported yet
 	`,
 	Run: func(cmd *cobra.Command, args []string) {
-		analyzer := txanalyzer.NewAnalyzer()
 		contractAddress, err := getContractFromParams(args)
 		if err != nil {
+			fmt.Printf("Couldn't interpret contract address")
 			return
 		}
-		a, err := util.GetABI(contractAddress, Network)
-		if err != nil {
-			fmt.Printf("Couldn't get the ABI: %s\n", err)
-			return
-		}
-		fmt.Printf("write functions:\n")
-		methods := []abi.Method{}
-		for _, m := range a.Methods {
-			if !m.Const {
-				methods = append(methods, m)
-			}
-		}
-		sort.Sort(Methods(methods))
-		for i, m := range methods {
-			fmt.Printf("%d. %s\n", i+1, m.Name)
-		}
-		si := promptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods))
-		method := methods[si-1]
-		inputs := method.Inputs
-		params := []interface{}{}
-		pi := 0
-		for {
-			if pi >= len(inputs) {
-				break
-			}
-			input := inputs[pi]
-			fmt.Printf("%d. %s (%s)", pi, input.Name, input.Type.String())
-			inputParam, err := promptParam(input)
-			if err != nil {
-				fmt.Printf("Your input is not valid: %s\n", err)
-				continue
-			}
-			fmt.Printf(
-				"        Your input: %s\n",
-				indent(8, analyzer.ParamAsString(input.Type, inputParam)),
-			)
-			params = append(params, inputParam)
-			pi++
-		}
-		data, err := a.Pack(method.Name, params...)
+		data, err := promptTxData(contractAddress)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -156,9 +165,140 @@ var contractCmd = &cobra.Command{
 	Long:  ``,
 }
 
+var txContractCmd = &cobra.Command{
+	Use:              "tx",
+	Short:            "do transaction to interact with smart contracts",
+	Long:             ` `,
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+
+		if Value < 0 {
+			return fmt.Errorf("value can't be negative")
+		}
+
+		// process from to get address
+		acc, err := accounts.GetAccount(From)
+		if err != nil {
+			return err
+		} else {
+			FromAcc = acc
+			From = acc.Address
+		}
+
+		To, err = getContractFromParams(args)
+		if err != nil {
+			return fmt.Errorf("can't interpret the contract address")
+		}
+
+		fmt.Printf("Network: %s\n", Network)
+		reader, err := util.EthReader(Network)
+		if err != nil {
+			return err
+		}
+
+		// var GasPrice float64
+		if GasPrice == 0 {
+			GasPrice, err = reader.RecommendedGasPrice()
+			if err != nil {
+				return err
+			}
+		}
+
+		// var Nonce uint64
+		if Nonce == 0 {
+			Nonce, err = reader.GetMinedNonce(From)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		reader, err := util.EthReader(Network)
+		if err != nil {
+			fmt.Printf("Couldn't init eth reader: %s\n", err)
+			return
+		}
+		data, err := promptTxData(To)
+		if err != nil {
+			fmt.Printf("Couldn't pack data: %s\n", err)
+			return
+		}
+		// var GasLimit uint64
+		if GasLimit == 0 {
+			GasLimit, err = reader.EstimateGas(From, To, GasPrice+ExtraGasPrice, Value, data)
+			if err != nil {
+				fmt.Printf("Couldn't estimate gas limit: %s\n", err)
+				return
+			}
+		}
+		tx := ethutils.BuildTx(Nonce, To, Value, GasLimit, GasPrice+ExtraGasPrice, data)
+		err = promptTxConfirmation(From, tx)
+		if err != nil {
+			fmt.Printf("Aborted!\n")
+			return
+		}
+		fmt.Printf("== Unlock your wallet and sign now...\n")
+		account, err := accounts.UnlockAccount(FromAcc, Network)
+		if err != nil {
+			fmt.Printf("Failed: %s\n", err)
+			return
+		}
+		tx, broadcasted, err := account.SignTxAndBroadcast(tx)
+		util.DisplayWaitAnalyze(
+			tx, broadcasted, err, Network,
+		)
+	},
+}
+
+func showTxInfoToConfirm(from string, tx *types.Transaction) error {
+	fmt.Printf("From: %s\n", util.VerboseAddress(from))
+	fmt.Printf("To: %s\n", util.VerboseAddress(tx.To().Hex()))
+	fmt.Printf("Value: %f ETH\n", ethutils.BigToFloat(tx.Value(), 18))
+	fmt.Printf("Nonce: %d\n", tx.Nonce())
+	fmt.Printf("Gas price: %f gwei\n", ethutils.BigToFloat(tx.GasPrice(), 9))
+	fmt.Printf("Gas limit: %d\n", tx.Gas())
+	r, err := util.EthReader(Network)
+	if err != nil {
+		return err
+	}
+	abi, err := r.GetABI(tx.To().Hex())
+	if err != nil {
+		return fmt.Errorf("Getting abi of the contract failed: %s", err)
+	}
+	analyzer := txanalyzer.NewAnalyzer()
+	method, params, err := analyzer.AnalyzeMethodCall(abi, tx.Data())
+	if err != nil {
+		return fmt.Errorf("Can't decode method call: %s", err)
+	}
+	fmt.Printf("Method: %s\n", method)
+	for _, param := range params {
+		fmt.Printf("%s: %s (%s)\n", param.Name, param.Value, param.Type)
+	}
+	return nil
+}
+
+func promptTxConfirmation(from string, tx *types.Transaction) error {
+	fmt.Printf("\n------Confirm tx data before signing------\n")
+	showTxInfoToConfirm(from, tx)
+	if !prompter.YN("\nConfirm?", true) {
+		return fmt.Errorf("Aborted!")
+	}
+	return nil
+}
+
 func init() {
 	contractCmd.AddCommand(composeDataContractCmd)
-	// contractCmd.AddCommand(transactionInfocontractCmd)
+
+	txContractCmd.PersistentFlags().Float64VarP(&GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
+	txContractCmd.PersistentFlags().Float64VarP(&ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
+	txContractCmd.PersistentFlags().Uint64VarP(&GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
+	txContractCmd.PersistentFlags().Uint64VarP(&ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
+	txContractCmd.PersistentFlags().Uint64VarP(&Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
+	txContractCmd.PersistentFlags().StringVarP(&From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
+	txContractCmd.Flags().Float64VarP(&Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
+	txContractCmd.MarkFlagRequired("from")
+	contractCmd.AddCommand(txContractCmd)
 	// contractCmd.AddCommand(govInfocontractCmd)
 	// TODO: add more commands to send or call other contracts
 	rootCmd.AddCommand(contractCmd)

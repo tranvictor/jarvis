@@ -66,7 +66,11 @@ func promptParam(input abi.Argument) (interface{}, error) {
 }
 
 func convertToBytes(str string) ([]byte, error) {
-	return nil, fmt.Errorf("not supported")
+	str = strings.Trim(str, " ")
+	if len(str) == 2 && str == "0x" {
+		return []byte{}, nil
+	}
+	return hexutil.Decode(str)
 }
 
 func convertToString(str string) ([]byte, error) {
@@ -100,6 +104,9 @@ func convertToBig(str string) (*big.Int, error) {
 			return nil, err
 		}
 		tokenName := strings.Join(parts[1:], " ")
+		if strings.ToLower(tokenName) == "eth" {
+			return ethutils.FloatToBigInt(floatNum, 18), nil
+		}
 		token, err := convertToAddress(fmt.Sprintf("%s token", tokenName))
 		if err != nil {
 			return nil, err
@@ -253,13 +260,13 @@ func promptArray(input abi.Argument) (interface{}, error) {
 		}
 		return result, nil
 	case abi.BytesTy:
-		return nil, fmt.Errorf("not supported type: %s", input.Type.Elem)
+		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
 	case abi.FixedBytesTy:
-		return nil, fmt.Errorf("not supported type: %s", input.Type.Elem)
+		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
 	case abi.FunctionTy:
-		return nil, fmt.Errorf("not supported type: %s", input.Type.Elem)
+		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
 	default:
-		return nil, fmt.Errorf("not supported type: %s", input.Type.Elem)
+		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
 	}
 }
 
