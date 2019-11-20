@@ -37,7 +37,7 @@ func getAnalyzer(network string) *txanalyzer.TxAnalyzer {
 func AnalyzeMethodCallAndPrint(abi *abi.ABI, data []byte, network string) {
 	analyzer := getAnalyzer(network)
 
-	methodName, params, err := analyzer.AnalyzeMethodCall(abi, data)
+	methodName, params, gnosisResult, err := analyzer.AnalyzeMethodCall(abi, data)
 	if err != nil {
 		fmt.Printf("Couldn't analyze method call: %s\n", err)
 		return
@@ -46,6 +46,9 @@ func AnalyzeMethodCallAndPrint(abi *abi.ABI, data []byte, network string) {
 	fmt.Printf("  Params:\n")
 	for _, param := range params {
 		fmt.Printf("    %s (%s): %s\n", param.Name, param.Type, param.Value)
+	}
+	if gnosisResult != nil {
+		PrintGnosis(gnosisResult)
 	}
 }
 
@@ -60,6 +63,26 @@ func nameWithColor(name string) string {
 		return Red(name).String()
 	} else {
 		return Green(name).String()
+	}
+}
+
+func PrintGnosis(result *txanalyzer.GnosisResult) {
+	printGnosisToWriter(result, os.Stdout)
+}
+
+func printGnosisToWriter(result *txanalyzer.GnosisResult, writer io.Writer) {
+	if result != nil {
+		fmt.Fprintf(writer, "Gnosis multisig init data:\n")
+		if result.Method == "" {
+			fmt.Fprintf(writer, "Couldn't decode gnosis call method\n")
+			return
+		}
+		fmt.Fprintf(writer, "Contract: %s - %s\n", result.Contract.Address, nameWithColor(result.Contract.Name))
+		fmt.Fprintf(writer, "Method: %s\n", result.Method)
+		fmt.Fprintf(writer, "Params:\n")
+		for _, param := range result.Params {
+			fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, param.Value)
+		}
 	}
 }
 
@@ -108,19 +131,7 @@ func printToStdout(result *txanalyzer.TxResult, writer io.Writer) {
 			fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, param.Value)
 		}
 	}
-	if result.GnosisInit != nil {
-		fmt.Fprintf(writer, "Gnosis multisig init data:\n")
-		if result.GnosisInit.Method == "" {
-			fmt.Fprintf(writer, "Getting ABI and function name failed: %s\n", result.Error)
-			return
-		}
-		fmt.Fprintf(writer, "Contract: %s - %s\n", result.GnosisInit.Contract.Address, nameWithColor(result.GnosisInit.Contract.Name))
-		fmt.Fprintf(writer, "Method: %s\n", result.GnosisInit.Method)
-		fmt.Fprintf(writer, "Params:\n")
-		for _, param := range result.GnosisInit.Params {
-			fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, param.Value)
-		}
-	}
+	printGnosisToWriter(result.GnosisInit, writer)
 	// if result.Error != "" {
 	// 	fmt.Fprintf(writer, "Error during tx analysis: %s\n", result.Error)
 	// }

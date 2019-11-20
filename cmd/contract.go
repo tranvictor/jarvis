@@ -13,6 +13,7 @@ import (
 	"github.com/tranvictor/ethutils/txanalyzer"
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/db"
+	txpkg "github.com/tranvictor/jarvis/tx"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -131,7 +132,7 @@ Param rules:
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
 		}
-		fmt.Printf("Data to sign: %s\n", common.Bytes2Hex(data))
+		fmt.Printf("Data to sign: 0x%s\n", common.Bytes2Hex(data))
 	},
 }
 
@@ -267,7 +268,7 @@ func showTxInfoToConfirm(from string, tx *types.Transaction) error {
 		return fmt.Errorf("Getting abi of the contract failed: %s", err)
 	}
 	analyzer := txanalyzer.NewAnalyzer()
-	method, params, err := analyzer.AnalyzeMethodCall(abi, tx.Data())
+	method, params, gnosisResult, err := analyzer.AnalyzeMethodCall(abi, tx.Data())
 	if err != nil {
 		return fmt.Errorf("Can't decode method call: %s", err)
 	}
@@ -275,6 +276,7 @@ func showTxInfoToConfirm(from string, tx *types.Transaction) error {
 	for _, param := range params {
 		fmt.Printf("%s: %s (%s)\n", param.Name, param.Value, param.Type)
 	}
+	txpkg.PrintGnosis(gnosisResult)
 	return nil
 }
 
