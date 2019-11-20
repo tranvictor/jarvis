@@ -322,6 +322,8 @@ github.com/tranvictor/ethutils v0.0.0-20191119191258-b648045955f3 h1:IUPDUpLDXZb
 github.com/tranvictor/ethutils v0.0.0-20191119191258-b648045955f3/go.mod h1:uAsPvqhumIXW+8eyD5bW1QnzjyZA2RJqZvWXqv3PjG8=
 github.com/tranvictor/ethutils v0.0.0-20191120154458-2cd593d8b0d8 h1:H25tSrDla713lCiUViwb6Wj2KHuSNrclFOafYOqlvSI=
 github.com/tranvictor/ethutils v0.0.0-20191120154458-2cd593d8b0d8/go.mod h1:uAsPvqhumIXW+8eyD5bW1QnzjyZA2RJqZvWXqv3PjG8=
+github.com/tranvictor/ethutils v0.0.0-20191120180147-66f5c8b870a7 h1:xzcAhgS2qUi4gOM+t4BVkY6/vlDq1pw62ppO1aaln04=
+github.com/tranvictor/ethutils v0.0.0-20191120180147-66f5c8b870a7/go.mod h1:uAsPvqhumIXW+8eyD5bW1QnzjyZA2RJqZvWXqv3PjG8=
 github.com/tranvictor/trezoreum v0.0.0-20190323062241-62f3fd382e93/go.mod h1:Nk84tlsSXc1ach4bnQFGlpM0YoU/gc1qyMJiPkq4IDg=
 github.com/tranvictor/trezoreum v0.0.0-20190621101516-b9eccba46a6e h1:ejbxPBauKamA+12+zp4aHZfN3noiywaVVQodUSl7rR4=
 github.com/tranvictor/trezoreum v0.0.0-20190621101516-b9eccba46a6e/go.mod h1:Nk84tlsSXc1ach4bnQFGlpM0YoU/gc1qyMJiPkq4IDg=
