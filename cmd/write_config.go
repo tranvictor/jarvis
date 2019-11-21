@@ -13,3 +13,7 @@ var From string
 var FromAcc accounts.AccDesc
 var To string
 var Value float64
+var MethodIndex uint64
+var PrefillMode bool
+var PrefillStr string
+var PrefillParams []string

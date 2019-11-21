@@ -55,13 +55,13 @@ func promptFilePath(prompter string) string {
 	return promptInput(prompter)
 }
 
-func promptParam(input abi.Argument) (interface{}, error) {
+func promptParam(input abi.Argument, prefill string) (interface{}, error) {
 	t := input.Type
 	switch t.T {
 	case abi.SliceTy, abi.ArrayTy:
-		return promptArray(input)
+		return promptArray(input, prefill)
 	default:
-		return promptNonArray(input)
+		return promptNonArray(input, prefill)
 	}
 }
 
@@ -184,8 +184,13 @@ func convertParamStrToType(name string, t abi.Type, str string) (interface{}, er
 	}
 }
 
-func promptArray(input abi.Argument) (interface{}, error) {
-	inpStr := promptInput("")
+func promptArray(input abi.Argument, prefill string) (interface{}, error) {
+	var inpStr string
+	if prefill == "" {
+		inpStr = promptInput("")
+	} else {
+		inpStr = prefill
+	}
 	inpStr = strings.Trim(inpStr, " ")
 	if len(inpStr) < 2 || inpStr[0] != '[' || inpStr[len(inpStr)-1] != ']' {
 		return nil, fmt.Errorf("input must be wrapped by []")
@@ -270,8 +275,13 @@ func promptArray(input abi.Argument) (interface{}, error) {
 	}
 }
 
-func promptNonArray(input abi.Argument) (interface{}, error) {
-	inpStr := promptInput("")
+func promptNonArray(input abi.Argument, prefill string) (interface{}, error) {
+	var inpStr string
+	if prefill == "" {
+		inpStr = promptInput("")
+	} else {
+		inpStr = prefill
+	}
 	inpStr = strings.Trim(inpStr, " ")
 	return convertParamStrToType(input.Name, input.Type, inpStr)
 }

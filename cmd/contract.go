@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/Songmu/prompter"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -23,13 +24,12 @@ func (self Methods) Len() int           { return len(self) }
 func (self Methods) Swap(i, j int)      { self[i], self[j] = self[j], self[i] }
 func (self Methods) Less(i, j int) bool { return self[i].Name < self[j].Name }
 
-func promptTxData(contractAddress string) ([]byte, error) {
+func promptTxData(contractAddress string, prefills []string) ([]byte, error) {
 	analyzer := txanalyzer.NewAnalyzer()
 	a, err := util.GetABI(contractAddress, Network)
 	if err != nil {
 		return nil, fmt.Errorf("Couldn't get the ABI: %s", err)
 	}
-	fmt.Printf("write functions:\n")
 	methods := []abi.Method{}
 	for _, m := range a.Methods {
 		if !m.Const {
@@ -37,12 +37,20 @@ func promptTxData(contractAddress string) ([]byte, error) {
 		}
 	}
 	sort.Sort(Methods(methods))
-	for i, m := range methods {
-		fmt.Printf("%d. %s\n", i+1, m.Name)
+	if MethodIndex == 0 {
+		fmt.Printf("write functions:\n")
+		for i, m := range methods {
+			fmt.Printf("%d. %s\n", i+1, m.Name)
+		}
+		MethodIndex = uint64(promptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
+	} else if int(MethodIndex) > len(methods) {
+		return nil, fmt.Errorf("The contract doesn't have %d(th) write method.")
 	}
-	si := promptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods))
-	method := methods[si-1]
+	method := methods[MethodIndex-1]
 	inputs := method.Inputs
+	if PrefillMode && len(inputs) != len(prefills) {
+		return nil, fmt.Errorf("You must specify enough params in prefilled mode")
+	}
 	params := []interface{}{}
 	pi := 0
 	for {
@@ -50,8 +58,13 @@ func promptTxData(contractAddress string) ([]byte, error) {
 			break
 		}
 		input := inputs[pi]
-		fmt.Printf("%d. %s (%s)", pi, input.Name, input.Type.String())
-		inputParam, err := promptParam(input)
+		var inputParam interface{}
+		if !PrefillMode || prefills[pi] == "?" {
+			fmt.Printf("%d. %s (%s)", pi, input.Name, input.Type.String())
+			inputParam, err = promptParam(input, "")
+		} else {
+			inputParam, err = promptParam(input, prefills[pi])
+		}
 		if err != nil {
 			fmt.Printf("Your input is not valid: %s\n", err)
 			continue
@@ -127,7 +140,7 @@ Param rules:
 			fmt.Printf("Couldn't interpret contract address")
 			return
 		}
-		data, err := promptTxData(contractAddress)
+		data, err := promptTxData(contractAddress, PrefillParams)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -172,6 +185,14 @@ var txContractCmd = &cobra.Command{
 	Long:             ` `,
 	TraverseChildren: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		PrefillStr = strings.Trim(PrefillStr, " ")
+		if PrefillStr != "" {
+			PrefillMode = true
+			PrefillParams = strings.Split(PrefillStr, "|")
+			for i, _ := range PrefillParams {
+				PrefillParams[i] = strings.Trim(PrefillParams[i], " ")
+			}
+		}
 
 		if Value < 0 {
 			return fmt.Errorf("value can't be negative")
@@ -220,7 +241,7 @@ var txContractCmd = &cobra.Command{
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
 		}
-		data, err := promptTxData(To)
+		data, err := promptTxData(To, PrefillParams)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -298,6 +319,8 @@ func init() {
 	txContractCmd.PersistentFlags().Uint64VarP(&ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
 	txContractCmd.PersistentFlags().Uint64VarP(&Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
 	txContractCmd.PersistentFlags().StringVarP(&From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
+	txContractCmd.PersistentFlags().StringVarP(&PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
+	txContractCmd.PersistentFlags().Uint64VarP(&MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
 	txContractCmd.Flags().Float64VarP(&Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
 	txContractCmd.MarkFlagRequired("from")
 	contractCmd.AddCommand(txContractCmd)
