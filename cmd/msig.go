@@ -292,6 +292,15 @@ func handleApproveOrRevokeMsig(method string, cmd *cobra.Command, args []string)
 		return
 	}
 
+	// var GasLimit uint64
+	if GasLimit == 0 {
+		GasLimit, err = reader.EstimateGas(From, To, GasPrice+ExtraGasPrice, Value, data)
+		if err != nil {
+			fmt.Printf("Couldn't estimate gas limit: %s\n", err)
+			return
+		}
+	}
+
 	tx := ethutils.BuildTx(Nonce, To, Value, GasLimit, GasPrice+ExtraGasPrice, data)
 
 	err = promptTxConfirmation(From, tx)
