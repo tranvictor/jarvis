@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"sort"
-	"strings"
 
 	"github.com/Songmu/prompter"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -161,8 +160,7 @@ func getContractFromParams(args []string) (contractAddress string, err error) {
 		contractName = "Unknown"
 		addresses := util.ScanForAddresses(args[0])
 		if len(addresses) == 0 {
-			fmt.Printf("Couldn't find any address for \"%s\"", args[0])
-			return "", fmt.Errorf("address not found")
+			return "", fmt.Errorf("address not found for \"%s\"", args[0])
 		}
 		contractAddress = addresses[0]
 	} else {
@@ -180,61 +178,11 @@ var contractCmd = &cobra.Command{
 }
 
 var txContractCmd = &cobra.Command{
-	Use:              "tx",
-	Short:            "do transaction to interact with smart contracts",
-	Long:             ` `,
-	TraverseChildren: true,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		PrefillStr = strings.Trim(PrefillStr, " ")
-		if PrefillStr != "" {
-			PrefillMode = true
-			PrefillParams = strings.Split(PrefillStr, "|")
-			for i, _ := range PrefillParams {
-				PrefillParams[i] = strings.Trim(PrefillParams[i], " ")
-			}
-		}
-
-		if Value < 0 {
-			return fmt.Errorf("value can't be negative")
-		}
-
-		// process from to get address
-		acc, err := accounts.GetAccount(From)
-		if err != nil {
-			return err
-		} else {
-			FromAcc = acc
-			From = acc.Address
-		}
-
-		To, err = getContractFromParams(args)
-		if err != nil {
-			return fmt.Errorf("can't interpret the contract address")
-		}
-
-		fmt.Printf("Network: %s\n", Network)
-		reader, err := util.EthReader(Network)
-		if err != nil {
-			return err
-		}
-
-		// var GasPrice float64
-		if GasPrice == 0 {
-			GasPrice, err = reader.RecommendedGasPrice()
-			if err != nil {
-				return err
-			}
-		}
-
-		// var Nonce uint64
-		if Nonce == 0 {
-			Nonce, err = reader.GetMinedNonce(From)
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	},
+	Use:               "tx",
+	Short:             "do transaction to interact with smart contracts",
+	Long:              ` `,
+	TraverseChildren:  true,
+	PersistentPreRunE: CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
 		reader, err := util.EthReader(Network)
 		if err != nil {

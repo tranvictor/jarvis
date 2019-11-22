@@ -2,12 +2,14 @@ package util
 
 import (
 	"fmt"
+	"math/big"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/monitor"
 	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/jarvis/db"
@@ -16,6 +18,21 @@ import (
 )
 
 const ETH_ADDR string = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+
+func ParamToBigInt(param string) (*big.Int, error) {
+	var result *big.Int
+	param = strings.Trim(param, " ")
+	if len(param) > 2 && param[0:2] == "0x" {
+		result = ethutils.HexToBig(param)
+	} else {
+		idInt, err := strconv.Atoi(param)
+		if err != nil {
+			return nil, err
+		}
+		result = big.NewInt(int64(idInt))
+	}
+	return result, nil
+}
 
 // Split value by space, parse the first element to float64 as the amount.
 // Join whats left by space and trim by space, if it is empty, interpret it
@@ -50,7 +67,7 @@ func ScanForTxs(para string) []string {
 }
 
 func ScanForAddresses(para string) []string {
-	re := regexp.MustCompile("(0x)?[0-9a-fA-F]{40}")
+	re := regexp.MustCompile("(0x)?[0-9a-fA-F]{40}[^0-9a-fA-F]")
 	result := re.FindAllString(para, -1)
 	if result == nil {
 		return []string{}
