@@ -12,7 +12,6 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/txanalyzer"
 	"github.com/tranvictor/jarvis/accounts"
-	"github.com/tranvictor/jarvis/db"
 	txpkg "github.com/tranvictor/jarvis/tx"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -134,11 +133,16 @@ Param rules:
 		Not supported yet
 	`,
 	Run: func(cmd *cobra.Command, args []string) {
-		contractAddress, err := getContractFromParams(args)
+		if len(args) < 1 {
+			fmt.Printf("Not enough param. Please provide contract address or its name.\n")
+			return
+		}
+		contractAddress, contractName, err := getAddressFromString(args[0])
 		if err != nil {
 			fmt.Printf("Couldn't interpret contract address")
 			return
 		}
+		fmt.Printf("Contract: %s (%s)\n", contractAddress, contractName)
 		data, err := promptTxData(contractAddress, PrefillParams)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
@@ -146,29 +150,6 @@ Param rules:
 		}
 		fmt.Printf("Data to sign: 0x%s\n", common.Bytes2Hex(data))
 	},
-}
-
-func getContractFromParams(args []string) (contractAddress string, err error) {
-	if len(args) < 1 {
-		fmt.Printf("Please specify contract address\n")
-		return "", fmt.Errorf("not enough params")
-	}
-
-	addrDesc, err := db.GetAddress(args[0])
-	var contractName string
-	if err != nil {
-		contractName = "Unknown"
-		addresses := util.ScanForAddresses(args[0])
-		if len(addresses) == 0 {
-			return "", fmt.Errorf("address not found for \"%s\"", args[0])
-		}
-		contractAddress = addresses[0]
-	} else {
-		contractName = addrDesc.Desc
-		contractAddress = addrDesc.Address
-	}
-	fmt.Printf("Contract: %s (%s)\n", contractAddress, contractName)
-	return contractAddress, nil
 }
 
 var contractCmd = &cobra.Command{

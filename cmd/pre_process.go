@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -24,7 +25,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		return fmt.Errorf("value can't be negative")
 	}
 
-	To, err = getContractFromParams(args)
+	To, _, err = getAddressFromString(args[0])
 	if err != nil {
 		txs := util.ScanForTxs(args[0])
 		if len(txs) == 0 {
@@ -114,4 +115,20 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 	return nil
+}
+
+func getAddressFromString(str string) (addr string, name string, err error) {
+	addrDesc, err := db.GetAddress(str)
+	if err != nil {
+		name = "Unknown"
+		addresses := util.ScanForAddresses(str)
+		if len(addresses) == 0 {
+			return "", "", fmt.Errorf("address not found for \"%s\"", str)
+		}
+		addr = addresses[0]
+	} else {
+		name = addrDesc.Desc
+		addr = addrDesc.Address
+	}
+	return addr, name, nil
 }

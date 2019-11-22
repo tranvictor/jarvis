@@ -14,6 +14,11 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
+var (
+	MsigValue float64
+	MsigTo    string
+)
+
 var summaryMsigCmd = &cobra.Command{
 	Use:   "summary",
 	Short: "Print all txs confirmation and execution status of the multisig",
@@ -341,6 +346,84 @@ var approveMsigCmd = &cobra.Command{
 	},
 }
 
+var initMsigCmd = &cobra.Command{
+	Use:   "init",
+	Short: "Init gnosis transaction",
+	Long:  ``,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		CommonTxPreprocess(cmd, args)
+
+		if MsigValue < 0 {
+			return fmt.Errorf("multisig value can't be negative")
+		}
+
+		var msigToName string
+		MsigTo, msigToName, err = getAddressFromString(MsigTo)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Call to: %s (%s)\n", MsigTo, msigToName)
+		return nil
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		reader, err := util.EthReader(Network)
+		if err != nil {
+			fmt.Printf("Couldn't connect to blockchain.\n")
+			return
+		}
+
+		data, err := promptTxData(MsigTo, PrefillParams)
+		if err != nil {
+			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
+			return
+		}
+
+		a, err := util.GetABI(To, Network)
+		if err != nil {
+			fmt.Printf("Couldn't get the multisig's ABI: %s\n", err)
+			return
+		}
+		txdata, err := a.Pack(
+			"submitTransaction",
+			ethutils.HexToAddress(MsigTo),
+			ethutils.FloatToBigInt(MsigValue, 18),
+			data,
+		)
+		if err != nil {
+			fmt.Printf("Couldn't pack tx data: %s\n", err)
+			return
+		}
+
+		// var GasLimit uint64
+		if GasLimit == 0 {
+			GasLimit, err = reader.EstimateGas(From, To, GasPrice+ExtraGasPrice, Value, txdata)
+			if err != nil {
+				fmt.Printf("Couldn't estimate gas limit: %s\n", err)
+				return
+			}
+		}
+
+		tx := ethutils.BuildTx(Nonce, To, Value, GasLimit, GasPrice+ExtraGasPrice, txdata)
+
+		err = promptTxConfirmation(From, tx)
+		if err != nil {
+			fmt.Printf("Aborted!\n")
+			return
+		}
+
+		fmt.Printf("== Unlock your wallet and sign now...\n")
+		account, err := accounts.UnlockAccount(FromAcc, Network)
+		if err != nil {
+			fmt.Printf("Failed: %s\n", err)
+			return
+		}
+		tx, broadcasted, err := account.SignTxAndBroadcast(tx)
+		util.DisplayWaitAnalyze(
+			tx, broadcasted, err, Network,
+		)
+	},
+}
+
 var msigCmd = &cobra.Command{
 	Use:   "msig",
 	Short: "Gnosis multisig operations",
@@ -352,9 +435,14 @@ func init() {
 	msigCmd.AddCommand(transactionInfoMsigCmd)
 	msigCmd.AddCommand(govInfoMsigCmd)
 
+	initMsigCmd.Flags().Float64VarP(&MsigValue, "msig-value", "l", 0, "Amount of eth to send with the multisig. It is in ETH, not WEI.")
+	initMsigCmd.Flags().StringVarP(&MsigTo, "msig-to", "j", "", "Target address the multisig will interact with. Can be address or name.")
+	initMsigCmd.MarkFlagRequired("msig-to")
+
 	writeCmds := []*cobra.Command{
 		approveMsigCmd,
 		revokeMsigCmd,
+		initMsigCmd,
 	}
 	for _, c := range writeCmds {
 		c.PersistentFlags().Float64VarP(&GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
@@ -368,7 +456,7 @@ func init() {
 
 	msigCmd.AddCommand(approveMsigCmd)
 	msigCmd.AddCommand(revokeMsigCmd)
-	// msigCmd.AddCommand(initMsigCmd)
+	msigCmd.AddCommand(initMsigCmd)
 	rootCmd.AddCommand(msigCmd)
 
 	// Here you will define your flags and configuration settings.
