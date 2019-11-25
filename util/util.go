@@ -72,6 +72,9 @@ func ScanForAddresses(para string) []string {
 	if result == nil {
 		return []string{}
 	}
+	for i := 0; i < len(result); i++ {
+		result[i] = result[i][0:42]
+	}
 	return result
 }
 
