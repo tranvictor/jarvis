@@ -183,7 +183,8 @@ var txContractCmd = &cobra.Command{
 				return
 			}
 		}
-		tx := ethutils.BuildTx(Nonce, To, Value, GasLimit, GasPrice+ExtraGasPrice, data)
+
+		tx := ethutils.BuildTx(Nonce, To, Value, GasLimit+ExtraGasLimit, GasPrice+ExtraGasPrice, data)
 		err = promptTxConfirmation(From, tx)
 		if err != nil {
 			fmt.Printf("Aborted!\n")

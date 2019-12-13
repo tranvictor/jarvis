@@ -306,7 +306,7 @@ func handleApproveOrRevokeMsig(method string, cmd *cobra.Command, args []string)
 		}
 	}
 
-	tx := ethutils.BuildTx(Nonce, To, Value, GasLimit, GasPrice+ExtraGasPrice, data)
+	tx := ethutils.BuildTx(Nonce, To, Value, GasLimit+ExtraGasLimit, GasPrice+ExtraGasPrice, data)
 
 	err = promptTxConfirmation(From, tx)
 	if err != nil {
@@ -403,7 +403,7 @@ var initMsigCmd = &cobra.Command{
 			}
 		}
 
-		tx := ethutils.BuildTx(Nonce, To, Value, GasLimit, GasPrice+ExtraGasPrice, txdata)
+		tx := ethutils.BuildTx(Nonce, To, Value, GasLimit+ExtraGasLimit, GasPrice+ExtraGasPrice, txdata)
 
 		err = promptTxConfirmation(From, tx)
 		if err != nil {

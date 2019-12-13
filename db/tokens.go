@@ -1,6 +1,7 @@
 package db
 
 var TOKENS map[string]string = map[string]string{
+	"0xA4Bdb11dc0a2bEC88d24A3aa1E6Bb17201112eBe": "USDS token",
 	"0x094c875704c14783049DDF8136E298B3a099c446": "PT token",
 	"0x2260fac5e5542a773aa44fbcfedf7c193bc2c599": "WBTC token",
 	"0x4E84E9e5fb0A972628Cf4568c403167EF1D40431": "$FFC token",
