@@ -47,6 +47,8 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
+	fmt.Printf("Interpreted to address: %s\n", util.VerboseAddress(To))
+
 	isGnosisMultisig, err := util.IsGnosisMultisig(To, Network)
 	if err != nil {
 		return err
