@@ -21,3 +21,9 @@ See help with
 ```
 ~/go/bin/jarvis -h
 ```
+
+## Ledger on Ubuntu
+Add the rules and reload udev. More infomation see [here](https://support.ledger.com/hc/en-us/articles/115005165269-Fix-connection-issues)
+```
+wget -q -O - https://raw.githubusercontent.com/LedgerHQ/udev-rules/master/add_udev_rules.sh | sudo bash
+```
