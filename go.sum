@@ -276,6 +276,8 @@ github.com/tranvictor/ethutils v0.0.0-20191227113514-f2e9e31fd44a h1:RXB8CkwejmI
 github.com/tranvictor/ethutils v0.0.0-20191227113514-f2e9e31fd44a/go.mod h1:xXNsVucno8JerXyDSPaz1ugUcNrrhh1e7uwHV3l3tdQ=
 github.com/tranvictor/ethutils v0.0.1 h1:RUkpZh/afuAaR+xIKtC19y+GJRfGbb7PDnDfcRblzfA=
 github.com/tranvictor/ethutils v0.0.1/go.mod h1:xXNsVucno8JerXyDSPaz1ugUcNrrhh1e7uwHV3l3tdQ=
+github.com/tranvictor/ethutils v0.2.0 h1:fCBrNXhRBIEhk85ukcJaIUubl94cCL9a2qKUgS/XqNk=
+github.com/tranvictor/ethutils v0.2.0/go.mod h1:xXNsVucno8JerXyDSPaz1ugUcNrrhh1e7uwHV3l3tdQ=
 github.com/tyler-smith/go-bip39 v1.0.1-0.20181017060643-dbb3b84ba2ef/go.mod h1:sJ5fKU0s6JVwZjjcUEX2zFOnvq0ASQ2K9Zr6cf67kNs=
 github.com/tyler-smith/go-bip39 v1.0.2 h1:+t3w+KwLXO6154GNJY+qUtIxLTmFjfUmpguQT1OlOT8=
 github.com/tyler-smith/go-bip39 v1.0.2/go.mod h1:sJ5fKU0s6JVwZjjcUEX2zFOnvq0ASQ2K9Zr6cf67kNs=
@@ -293,6 +295,8 @@ golang.org/x/crypto v0.0.0-20190404164418-38d8ce5564a5/go.mod h1:WFFai1msRO1wXaE
 golang.org/x/crypto v0.0.0-20190611184440-5c40567a22f8/go.mod h1:yigFU9vqHzYiE8UmvKecakEJjdnWj3jj499lnFckfCI=
 golang.org/x/crypto v0.0.0-20191219195013-becbf705a915 h1:aJ0ex187qoXrJHPo8ZasVTASQB7llQP6YeNzgDALPRk=
 golang.org/x/crypto v0.0.0-20191219195013-becbf705a915/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
+golang.org/x/crypto v0.0.0-20191227163750-53104e6ec876 h1:sKJQZMuxjOAR/Uo2LBfU90onWEf1dF4C+0hPJCc9Mpc=
+golang.org/x/crypto v0.0.0-20191227163750-53104e6ec876/go.mod h1:LzIPMQfyMNhhGPhUkYOs5KpL4U8rLKemX1yGLhDgUto=
 golang.org/x/lint v0.0.0-20190313153728-d0100b6bd8b3/go.mod h1:6SW0HCj/g11FgYtHlgUYUwCkIfeOF89ocIRzGO/8vkc=
 golang.org/x/net v0.0.0-20180906233101-161cd47e91fd/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=
 golang.org/x/net v0.0.0-20181011144130-49bb7cea24b1/go.mod h1:mL1N/T3taQHkDXs73rZJwtUhF3w3ftmwwsq0BUmARs4=

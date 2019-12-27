@@ -104,6 +104,27 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			return nil, err
 		}
 		return fromAcc, nil
+	case "ledger":
+		if network == "mainnet" {
+			fromAcc, err = account.NewLedgerAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "ropsten" {
+			fromAcc, err = account.NewRopstenLedgerAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "tomo" {
+			fromAcc, err = account.NewTomoLedgerAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else {
+			return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten")
+		}
+		if err != nil {
+			fmt.Printf("Creating ledger instance failed: %s\n", err)
+			return nil, err
+		}
+		return fromAcc, nil
 	}
 	return nil, nil
 }

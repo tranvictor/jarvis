@@ -26,9 +26,9 @@ require (
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/status-im/keycard-go v0.0.0-20191114114615-9d48af884d5b // indirect
-	github.com/tranvictor/ethutils v0.0.1
+	github.com/tranvictor/ethutils v0.2.0
 	github.com/tyler-smith/go-bip39 v1.0.2 // indirect
-	golang.org/x/crypto v0.0.0-20191219195013-becbf705a915
+	golang.org/x/crypto v0.0.0-20191227163750-53104e6ec876
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343 // indirect
 	golang.org/x/sys v0.0.0-20191224085550-c709ea063b76 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect

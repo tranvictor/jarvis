@@ -9,6 +9,7 @@ import (
 	gethaccounts "github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
+	"github.com/tranvictor/ethutils/account/ledgereum"
 	"github.com/tranvictor/ethutils/account/trezoreum"
 	"github.com/tranvictor/jarvis/accounts"
 )
@@ -35,16 +36,23 @@ func handleHW(hw HW, t string) {
 		accs := []*accounts.AccDesc{}
 		for i := 0; i < 5; i++ {
 			acc := &accounts.AccDesc{
-				Kind: "trezor",
+				Kind: t,
 			}
-			p, err := gethaccounts.ParseDerivationPath(fmt.Sprintf(TREZOR_BASE_PATH, batch*5+i))
+			var err error
+			var p gethaccounts.DerivationPath
+			switch t {
+			case "ledger":
+				p, err = gethaccounts.ParseDerivationPath(fmt.Sprintf(LEDGER_BASE_PATH, batch*5+i))
+			case "trezor":
+				p, err = gethaccounts.ParseDerivationPath(fmt.Sprintf(TREZOR_BASE_PATH, batch*5+i))
+			}
 			if err != nil {
-				fmt.Printf("Jarvis: Can't read your trezor to get wallets, %s\n", err)
+				fmt.Printf("Jarvis: Can't read your %s to get wallets, %s\n", t, err)
 				return
 			}
 			w, err := hw.Derive(p)
 			if err != nil {
-				fmt.Printf("Jarvis: Can't read your trezor to get wallets, %s\n", err)
+				fmt.Printf("Jarvis: Can't read your %s to get wallets, %s\n", t, err)
 				return
 			}
 			acc.Derpath = p.String()
@@ -80,7 +88,17 @@ func handleHW(hw HW, t string) {
 }
 
 func handleLedger() {
-	fmt.Printf("Jarvis: Sorry Victor planned to teach me how to handle ledger soon. Abort.\n")
+	ledger, err := ledgereum.NewLedgereum()
+	if err != nil {
+		fmt.Printf("Jarvis: Can't establish communication channel to your ledger, %s\n", err)
+		return
+	}
+	err = ledger.Unlock()
+	if err != nil {
+		fmt.Printf("Jarvis: Can't unlock your ledger, %s\n", err)
+		return
+	}
+	handleHW(ledger, "ledger")
 }
 
 func handleTrezor() {
