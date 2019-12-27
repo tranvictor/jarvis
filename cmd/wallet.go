@@ -9,8 +9,8 @@ import (
 	gethaccounts "github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
+	"github.com/tranvictor/ethutils/account/trezoreum"
 	"github.com/tranvictor/jarvis/accounts"
-	"github.com/tranvictor/trezoreum"
 )
 
 const (
