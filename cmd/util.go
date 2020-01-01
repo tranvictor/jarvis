@@ -26,7 +26,7 @@ func promptIndex(prompter string, min, max int) int {
 	for {
 		fmt.Printf("%s: ", prompter)
 		text, _ := reader.ReadString('\n')
-		indexInput := text[0 : len(text)-1]
+		indexInput := strings.Trim(text[0:len(text)-1], "\r\n")
 		if indexInput == "next" {
 			return NEXT
 		} else if indexInput == "back" {
@@ -48,7 +48,7 @@ func promptInput(prompter string) string {
 	reader := bufio.NewReader(os.Stdin)
 	fmt.Printf("%s: ", prompter)
 	text, _ := reader.ReadString('\n')
-	return text[0 : len(text)-1]
+	return strings.Trim(text[0:len(text)-1], "\r\n")
 }
 
 func promptFilePath(prompter string) string {
