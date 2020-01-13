@@ -229,7 +229,7 @@ func getMsigContractFromParams(args []string) (msigAddress string, err error) {
 	return msigAddress, nil
 }
 
-func handleApproveOrRevokeMsig(method string, cmd *cobra.Command, args []string) {
+func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args []string) {
 	reader, err := util.EthReader(Network)
 	if err != nil {
 		fmt.Printf("Couldn't connect to blockchain.\n")
@@ -259,6 +259,10 @@ func handleApproveOrRevokeMsig(method string, cmd *cobra.Command, args []string)
 				return
 			}
 			TxInfo = &txinfo
+		}
+		if TxInfo.Receipt == nil {
+			fmt.Printf("Can't get receipt of the init tx. That tx might still be pending.\n")
+			return
 		}
 		for _, l := range TxInfo.Receipt.Logs {
 			if strings.ToLower(l.Address.Hex()) == strings.ToLower(To) &&
@@ -332,7 +336,17 @@ var revokeMsigCmd = &cobra.Command{
 	Long:              ``,
 	PersistentPreRunE: CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		handleApproveOrRevokeMsig("revokeConfirmation", cmd, args)
+		handleApproveOrRevokeOrExecuteMsig("revokeConfirmation", cmd, args)
+	},
+}
+
+var executeMsigCmd = &cobra.Command{
+	Use:               "execute",
+	Short:             "Execute a confirmed gnosis transaction",
+	Long:              ``,
+	PersistentPreRunE: CommonTxPreprocess,
+	Run: func(cmd *cobra.Command, args []string) {
+		handleApproveOrRevokeOrExecuteMsig("executeTransaction", cmd, args)
 	},
 }
 
@@ -342,7 +356,7 @@ var approveMsigCmd = &cobra.Command{
 	Long:              ``,
 	PersistentPreRunE: CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		handleApproveOrRevokeMsig("confirmTransaction", cmd, args)
+		handleApproveOrRevokeOrExecuteMsig("confirmTransaction", cmd, args)
 	},
 }
 
@@ -445,6 +459,7 @@ func init() {
 		approveMsigCmd,
 		revokeMsigCmd,
 		initMsigCmd,
+		executeMsigCmd,
 	}
 	for _, c := range writeCmds {
 		c.PersistentFlags().Float64VarP(&GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
@@ -459,6 +474,7 @@ func init() {
 	msigCmd.AddCommand(approveMsigCmd)
 	msigCmd.AddCommand(revokeMsigCmd)
 	msigCmd.AddCommand(initMsigCmd)
+	msigCmd.AddCommand(executeMsigCmd)
 	rootCmd.AddCommand(msigCmd)
 
 	// Here you will define your flags and configuration settings.
