@@ -23,7 +23,8 @@ go install github.com/tranvictor/jarvis
 cd jarvis
 go build -v
 ```
-2. Add Jarvis to PATH, and relevant `addresses.json`
+2. Try `./jarvis --help`
+3. Add Jarvis to PATH, and relevant `addresses.json`
 
 
 ## Windows Build
