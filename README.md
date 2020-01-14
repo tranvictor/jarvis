@@ -25,7 +25,7 @@ go build -v
 ```
 2. Add Jarvis to PATH, and relevant `addresses.json`
 
-```
+
 ## Windows Build
 Install mingw-w64 from [here](https://sourceforge.net/projects/mingw-w64/files/Toolchains%20targetting%20Win32/Personal%20Builds/mingw-builds/installer/mingw-w64-install.exe/download)
 Add mingw-64 bin folder to PATH
