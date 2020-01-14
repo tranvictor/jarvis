@@ -7,12 +7,12 @@ import (
 )
 
 const (
-	VERSION string = "0.0.4"
+	VERSION string = "0.0.8"
 )
 
 var versionCmd = &cobra.Command{
 	Use:   "version",
-	Short: "show jarvis version",
+	Short: "Show jarvis version",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("Version: %s\n", VERSION)

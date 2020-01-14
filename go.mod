@@ -2,13 +2,13 @@ module github.com/tranvictor/jarvis
 
 require (
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
-	github.com/VictoriaMetrics/fastcache v1.5.4 // indirect
+	github.com/VictoriaMetrics/fastcache v1.5.7 // indirect
 	github.com/allegro/bigcache v1.2.1 // indirect
-	github.com/aristanetworks/goarista v0.0.0-20191206003309-5d8d36c240c9 // indirect
+	github.com/aristanetworks/goarista v0.0.0-20200211191935-58c705f5cf52 // indirect
 	github.com/btcsuite/btcd v0.20.1-beta // indirect
 	github.com/cespare/cp v1.1.1 // indirect
 	github.com/edsrzf/mmap-go v1.0.0 // indirect
-	github.com/ethereum/go-ethereum v1.9.9
+	github.com/ethereum/go-ethereum v1.9.10
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08 // indirect
 	github.com/go-kit/kit v0.9.0 // indirect
 	github.com/google/uuid v1.1.1 // indirect
@@ -21,16 +21,17 @@ require (
 	github.com/olekukonko/tablewriter v0.0.2 // indirect
 	github.com/onsi/ginkgo v1.10.3 // indirect
 	github.com/onsi/gomega v1.7.1 // indirect
+	github.com/pkg/errors v0.9.1 // indirect
 	github.com/prometheus/tsdb v0.10.0 // indirect
 	github.com/sahilm/fuzzy v0.1.0
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/status-im/keycard-go v0.0.0-20191114114615-9d48af884d5b // indirect
-	github.com/tranvictor/ethutils v0.2.0
+	github.com/tranvictor/ethutils v0.2.3
 	github.com/tyler-smith/go-bip39 v1.0.2 // indirect
-	golang.org/x/crypto v0.0.0-20191227163750-53104e6ec876
+	golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343 // indirect
-	golang.org/x/sys v0.0.0-20191224085550-c709ea063b76 // indirect
+	golang.org/x/sys v0.0.0-20200212091648-12a6c2dcc1e4 // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/olebedev/go-duktape.v3 v3.0.0-20190709231704-1e4459ed25ff // indirect
 	gopkg.in/yaml.v2 v2.2.5 // indirect

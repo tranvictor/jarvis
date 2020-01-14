@@ -12,7 +12,7 @@ import (
 // txCmd represents the tx command
 var whoisCmd = &cobra.Command{
 	Use:   "whois",
-	Short: "show name of one or multiple addresses",
+	Short: "Show name of one or multiple addresses",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		para := strings.Join(args, " ")

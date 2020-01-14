@@ -11,7 +11,7 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
+func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error) {
 	PrefillStr = strings.Trim(PrefillStr, " ")
 	if PrefillStr != "" {
 		PrefillMode = true
@@ -48,6 +48,14 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	fmt.Printf("Interpreted to address: %s\n", util.VerboseAddress(To))
+	return nil
+}
+
+func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
+	err = CommonFunctionCallPreprocess(cmd, args)
+	if err != nil {
+		return err
+	}
 
 	isGnosisMultisig, err := util.IsGnosisMultisig(To, Network)
 	if err != nil {
