@@ -22,16 +22,27 @@ func (self Methods) Len() int           { return len(self) }
 func (self Methods) Swap(i, j int)      { self[i], self[j] = self[j], self[i] }
 func (self Methods) Less(i, j int) bool { return self[i].Name < self[j].Name }
 
-func promptTxData(contractAddress string, prefills []string) ([]byte, error) {
-	analyzer := txanalyzer.NewAnalyzer()
+func promptFunctionCallData(contractAddress string, prefills []string, mode string) (*abi.ABI, *abi.Method, []interface{}, error) {
+	analyzer, err := util.EthAnalyzer(Network)
+	if err != nil {
+		return nil, nil, nil, err
+	}
 	a, err := util.GetABI(contractAddress, Network)
 	if err != nil {
-		return nil, fmt.Errorf("Couldn't get the ABI: %s", err)
+		return nil, nil, nil, fmt.Errorf("Couldn't get the ABI: %s", err)
 	}
 	methods := []abi.Method{}
-	for _, m := range a.Methods {
-		if !m.Const {
-			methods = append(methods, m)
+	if mode == "write" {
+		for _, m := range a.Methods {
+			if !m.Const {
+				methods = append(methods, m)
+			}
+		}
+	} else {
+		for _, m := range a.Methods {
+			if m.Const {
+				methods = append(methods, m)
+			}
 		}
 	}
 	sort.Sort(Methods(methods))
@@ -42,12 +53,12 @@ func promptTxData(contractAddress string, prefills []string) ([]byte, error) {
 		}
 		MethodIndex = uint64(promptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
 	} else if int(MethodIndex) > len(methods) {
-		return nil, fmt.Errorf("The contract doesn't have %d(th) write method.")
+		return nil, nil, nil, fmt.Errorf("The contract doesn't have %d(th) write method.")
 	}
 	method := methods[MethodIndex-1]
 	inputs := method.Inputs
 	if PrefillMode && len(inputs) != len(prefills) {
-		return nil, fmt.Errorf("You must specify enough params in prefilled mode")
+		return nil, nil, nil, fmt.Errorf("You must specify enough params in prefilled mode")
 	}
 	params := []interface{}{}
 	pi := 0
@@ -73,6 +84,14 @@ func promptTxData(contractAddress string, prefills []string) ([]byte, error) {
 		)
 		params = append(params, inputParam)
 		pi++
+	}
+	return a, &method, params, nil
+}
+
+func promptTxData(contractAddress string, prefills []string) ([]byte, error) {
+	a, method, params, err := promptFunctionCallData(contractAddress, prefills, "write")
+	if err != nil {
+		return []byte{}, err
 	}
 	return a.Pack(method.Name, params...)
 }
@@ -203,6 +222,55 @@ var txContractCmd = &cobra.Command{
 	},
 }
 
+var readContractCmd = &cobra.Command{
+	Use:               "read",
+	Short:             "read smart contracts (faster than etherscan)",
+	Long:              ` `,
+	TraverseChildren:  true,
+	PersistentPreRunE: CommonFunctionCallPreprocess,
+	Run: func(cmd *cobra.Command, args []string) {
+		reader, err := util.EthReader(Network)
+		if err != nil {
+			fmt.Printf("Couldn't init eth reader: %s\n", err)
+			return
+		}
+		a, method, params, err := promptFunctionCallData(To, PrefillParams, "read")
+		if err != nil {
+			fmt.Printf("Couldn't get params from users: %s\n", err)
+			return
+		}
+		responseBytes, err := reader.ReadContractToBytes(-1, To, a, method.Name, params...)
+		if err != nil {
+			fmt.Printf("getting response failed: %s\n", err)
+			return
+		}
+		if len(responseBytes) == 0 {
+			fmt.Printf("the function reverts. please double check your params.\n")
+			return
+		}
+		ps, err := method.Outputs.UnpackValues(responseBytes)
+		if err != nil {
+			fmt.Printf("Couldn't unpack response to go types: %s\n", err)
+			return
+		}
+		analyzer, err := util.EthAnalyzer(Network)
+		if err != nil {
+			fmt.Printf("Couldn't init analyzer: %s\n", err)
+			return
+		}
+		fmt.Printf("Output:\n")
+		for i, output := range method.Outputs {
+			fmt.Printf(
+				"%d. %s (%s): %s\n",
+				i+1,
+				output.Name,
+				output.Type.String(),
+				analyzer.ParamAsString(output.Type, ps[i]),
+			)
+		}
+	},
+}
+
 func showTxInfoToConfirm(from string, tx *types.Transaction) error {
 	fmt.Printf("From: %s\n", util.VerboseAddress(from))
 	fmt.Printf("To: %s\n", util.VerboseAddress(tx.To().Hex()))
@@ -210,11 +278,7 @@ func showTxInfoToConfirm(from string, tx *types.Transaction) error {
 	fmt.Printf("Nonce: %d\n", tx.Nonce())
 	fmt.Printf("Gas price: %f gwei\n", ethutils.BigToFloat(tx.GasPrice(), 9))
 	fmt.Printf("Gas limit: %d\n", tx.Gas())
-	r, err := util.EthReader(Network)
-	if err != nil {
-		return err
-	}
-	abi, err := r.GetABI(tx.To().Hex())
+	abi, err := util.GetABI(tx.To().Hex(), Network)
 	if err != nil {
 		return fmt.Errorf("Getting abi of the contract failed: %s", err)
 	}
@@ -254,6 +318,10 @@ func init() {
 	txContractCmd.Flags().Float64VarP(&Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
 	txContractCmd.MarkFlagRequired("from")
 	contractCmd.AddCommand(txContractCmd)
+
+	readContractCmd.PersistentFlags().StringVarP(&PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
+	readContractCmd.PersistentFlags().Uint64VarP(&MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
+	contractCmd.AddCommand(readContractCmd)
 	// contractCmd.AddCommand(govInfocontractCmd)
 	// TODO: add more commands to send or call other contracts
 	rootCmd.AddCommand(contractCmd)
