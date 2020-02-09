@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
+	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/ethutils/txanalyzer"
 	"github.com/tranvictor/jarvis/accounts"
 	txpkg "github.com/tranvictor/jarvis/tx"
@@ -222,6 +223,53 @@ var txContractCmd = &cobra.Command{
 	},
 }
 
+func allZeroParamFunctions(contractAddress string) (*abi.ABI, []abi.Method, error) {
+	a, err := util.GetABI(contractAddress, Network)
+	if err != nil {
+		return nil, nil, fmt.Errorf("Couldn't get the ABI: %s", err)
+	}
+	methods := []abi.Method{}
+	for _, m := range a.Methods {
+		if m.Const && len(m.Inputs) == 0 {
+			methods = append(methods, m)
+		}
+	}
+	sort.Sort(Methods(methods))
+	return a, methods, nil
+}
+
+func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, method *abi.Method, params []interface{}) {
+	responseBytes, err := reader.ReadContractToBytes(-1, To, a, method.Name, params...)
+	if err != nil {
+		fmt.Printf("getting response failed: %s\n", err)
+		return
+	}
+	if len(responseBytes) == 0 {
+		fmt.Printf("the function reverts. please double check your params.\n")
+		return
+	}
+	ps, err := method.Outputs.UnpackValues(responseBytes)
+	if err != nil {
+		fmt.Printf("Couldn't unpack response to go types: %s\n", err)
+		return
+	}
+	analyzer, err := util.EthAnalyzer(Network)
+	if err != nil {
+		fmt.Printf("Couldn't init analyzer: %s\n", err)
+		return
+	}
+	fmt.Printf("Output:\n")
+	for i, output := range method.Outputs {
+		fmt.Printf(
+			"%d. %s (%s): %s\n",
+			i+1,
+			output.Name,
+			output.Type.String(),
+			analyzer.ParamAsString(output.Type, ps[i]),
+		)
+	}
+}
+
 var readContractCmd = &cobra.Command{
 	Use:               "read",
 	Short:             "read smart contracts (faster than etherscan)",
@@ -234,39 +282,25 @@ var readContractCmd = &cobra.Command{
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
 		}
-		a, method, params, err := promptFunctionCallData(To, PrefillParams, "read")
-		if err != nil {
-			fmt.Printf("Couldn't get params from users: %s\n", err)
-			return
-		}
-		responseBytes, err := reader.ReadContractToBytes(-1, To, a, method.Name, params...)
-		if err != nil {
-			fmt.Printf("getting response failed: %s\n", err)
-			return
-		}
-		if len(responseBytes) == 0 {
-			fmt.Printf("the function reverts. please double check your params.\n")
-			return
-		}
-		ps, err := method.Outputs.UnpackValues(responseBytes)
-		if err != nil {
-			fmt.Printf("Couldn't unpack response to go types: %s\n", err)
-			return
-		}
-		analyzer, err := util.EthAnalyzer(Network)
-		if err != nil {
-			fmt.Printf("Couldn't init analyzer: %s\n", err)
-			return
-		}
-		fmt.Printf("Output:\n")
-		for i, output := range method.Outputs {
-			fmt.Printf(
-				"%d. %s (%s): %s\n",
-				i+1,
-				output.Name,
-				output.Type.String(),
-				analyzer.ParamAsString(output.Type, ps[i]),
-			)
+		if AllZeroParamsMethods {
+			a, methods, err := allZeroParamFunctions(To)
+			if err != nil {
+				fmt.Printf("Couldn't get all zero param functions of the contract: %s\n", err)
+				return
+			}
+			for i, _ := range methods {
+				method := methods[i]
+				fmt.Printf("%d. %s\n", i+1, method.Name)
+				handleReadOneFunctionOnContract(reader, a, &method, []interface{}{})
+				fmt.Printf("---------------------------------------------------\n")
+			}
+		} else {
+			a, method, params, err := promptFunctionCallData(To, PrefillParams, "read")
+			if err != nil {
+				fmt.Printf("Couldn't get params from users: %s\n", err)
+				return
+			}
+			handleReadOneFunctionOnContract(reader, a, method, params)
 		}
 	},
 }
@@ -320,7 +354,8 @@ func init() {
 	contractCmd.AddCommand(txContractCmd)
 
 	readContractCmd.PersistentFlags().StringVarP(&PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
-	readContractCmd.PersistentFlags().Uint64VarP(&MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
+	readContractCmd.PersistentFlags().Uint64VarP(&MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1. This param will be IGNORED if -a or --all is true.")
+	readContractCmd.PersistentFlags().BoolVarP(&AllZeroParamsMethods, "all", "a", false, "Read all functions that don't have any params")
 	contractCmd.AddCommand(readContractCmd)
 	// contractCmd.AddCommand(govInfocontractCmd)
 	// TODO: add more commands to send or call other contracts
