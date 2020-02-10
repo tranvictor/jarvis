@@ -11,9 +11,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
-	"github.com/tranvictor/ethutils/txanalyzer"
 	"github.com/tranvictor/jarvis/accounts"
 	txpkg "github.com/tranvictor/jarvis/tx"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
