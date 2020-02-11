@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	. "github.com/logrusorgru/aurora"
-	"github.com/tranvictor/ethutils/txanalyzer"
+	"github.com/tranvictor/jarvis/txanalyzer"
 )
 
 var analyzer *txanalyzer.TxAnalyzer
