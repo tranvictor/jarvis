@@ -12,6 +12,7 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/monitor"
 	"github.com/tranvictor/ethutils/reader"
+	"github.com/tranvictor/ethutils/txanalyzer"
 	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/tx"
 	"github.com/tranvictor/jarvis/util/cache"
@@ -103,6 +104,18 @@ func DisplayWaitAnalyze(t *types.Transaction, broadcasted bool, err error, netwo
 		mo.BlockingWait(t.Hash().Hex())
 		tx.AnalyzeAndPrint(t.Hash().Hex(), network)
 	}
+}
+
+func EthAnalyzer(network string) (*txanalyzer.TxAnalyzer, error) {
+	switch network {
+	case "mainnet":
+		return txanalyzer.NewAnalyzer(), nil
+	case "ropsten":
+		return txanalyzer.NewRopstenAnalyzer(), nil
+	case "tomo":
+		return txanalyzer.NewTomoAnalyzer(), nil
+	}
+	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, tomo.")
 }
 
 func EthReader(network string) (*reader.EthReader, error) {

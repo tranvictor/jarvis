@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/sahilm/fuzzy"
-	"github.com/tranvictor/ethutils/txanalyzer"
+	"github.com/tranvictor/jarvis/txanalyzer"
 )
 
 func getAddressMatches(input string, source FuzzySource) ([]AddressDesc, []int) {
