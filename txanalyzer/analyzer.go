@@ -290,6 +290,13 @@ func (self *TxAnalyzer) SetAddressDatabase(db AddressDatabase) {
 	self.addrdb = db
 }
 
+func NewGenericAnalyzer(r *reader.EthReader) *TxAnalyzer {
+	return &TxAnalyzer{
+		r,
+		NewDefaultAddressDatabase(),
+	}
+}
+
 func NewAnalyzer() *TxAnalyzer {
 	return &TxAnalyzer{
 		reader.NewEthReader(),

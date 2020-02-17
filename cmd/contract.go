@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
@@ -213,13 +214,34 @@ var txContractCmd = &cobra.Command{
 		fmt.Printf("== Unlock your wallet and sign now...\n")
 		account, err := accounts.UnlockAccount(FromAcc, Network)
 		if err != nil {
-			fmt.Printf("Failed: %s\n", err)
+			fmt.Printf("Unlock your wallet failed: %s\n", err)
 			return
 		}
-		tx, broadcasted, err := account.SignTxAndBroadcast(tx)
-		util.DisplayWaitAnalyze(
-			tx, broadcasted, err, Network,
-		)
+
+		if DontBroadcast {
+			signedTx, err := account.SignTx(tx)
+			if err != nil {
+				fmt.Printf("%s", err)
+				return
+			}
+			data, err := rlp.EncodeToBytes(signedTx)
+			if err != nil {
+				fmt.Printf("Couldn't encode the signed tx: %s", err)
+				return
+			}
+			fmt.Printf("Signed tx: %s\n", common.ToHex(data))
+		} else {
+			tx, broadcasted, err := account.SignTxAndBroadcast(tx)
+			if DontWaitToBeMined {
+				util.DisplayBroadcastedTx(
+					tx, broadcasted, err, Network,
+				)
+			} else {
+				util.DisplayWaitAnalyze(
+					tx, broadcasted, err, Network,
+				)
+			}
+		}
 	},
 }
 
@@ -349,6 +371,8 @@ func init() {
 	txContractCmd.PersistentFlags().StringVarP(&From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
 	txContractCmd.PersistentFlags().StringVarP(&PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
 	txContractCmd.PersistentFlags().Uint64VarP(&MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
+	txContractCmd.PersistentFlags().BoolVarP(&DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
+	txContractCmd.PersistentFlags().BoolVarP(&DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	txContractCmd.Flags().Float64VarP(&Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
 	txContractCmd.MarkFlagRequired("from")
 	contractCmd.AddCommand(txContractCmd)
