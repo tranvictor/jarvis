@@ -8,9 +8,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/msig"
-	"github.com/tranvictor/jarvis/tx"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -31,7 +31,7 @@ var summaryMsigCmd = &cobra.Command{
 
 		multisigContract, err := msig.NewMultisigContract(
 			msigAddress,
-			Network,
+			config.Network,
 		)
 		if err != nil {
 			fmt.Printf("Couldn't interact with the contract: %s\n", err)
@@ -93,12 +93,17 @@ func showMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) {
 	fmt.Printf("Sending: %f ETH to %s\n", ethutils.BigToFloat(value, 18), util.VerboseAddress(address))
 	if len(data) != 0 {
 		fmt.Printf("Calling on %s:\n", util.VerboseAddress(address))
-		destAbi, err := util.GetABI(address, Network)
+		destAbi, err := util.GetABI(address, config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't get abi of destination address: %s\n", err)
 			return
 		}
-		tx.AnalyzeMethodCallAndPrint(destAbi, data, Network)
+		analyzer, err := util.EthAnalyzer(config.Network)
+		if err != nil {
+			fmt.Printf("Couldn't analyze tx: %s\n", err)
+			return
+		}
+		util.AnalyzeMethodCallAndPrint(analyzer, destAbi, data, config.Network)
 	}
 
 	fmt.Printf("\nExecuted: %t\n", executed)
@@ -125,7 +130,7 @@ var transactionInfoMsigCmd = &cobra.Command{
 
 		multisigContract, err := msig.NewMultisigContract(
 			msigAddress,
-			Network,
+			config.Network,
 		)
 		if err != nil {
 			fmt.Printf("Couldn't interact with the contract: %s\n", err)
@@ -160,7 +165,7 @@ var govInfoMsigCmd = &cobra.Command{
 
 		multisigContract, err := msig.NewMultisigContract(
 			msigAddress,
-			Network,
+			config.Network,
 		)
 		if err != nil {
 			fmt.Printf("Couldn't interact with the contract: %s\n", err)
@@ -216,7 +221,7 @@ func getMsigContractFromParams(args []string) (msigAddress string, err error) {
 		msigName = addrDesc.Desc
 		msigAddress = addrDesc.Address
 	}
-	isGnosisMultisig, err := util.IsGnosisMultisig(msigAddress, Network)
+	isGnosisMultisig, err := util.IsGnosisMultisig(msigAddress, config.Network)
 	if err != nil {
 		fmt.Printf("Checking failed, %s (%s) is not a contract or it doesn't have verified ABI on etherscan: %s\n", msigAddress, msigName, err)
 		return "", err
@@ -230,7 +235,7 @@ func getMsigContractFromParams(args []string) (msigAddress string, err error) {
 }
 
 func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args []string) {
-	reader, err := util.EthReader(Network)
+	reader, err := util.EthReader(config.Network)
 	if err != nil {
 		fmt.Printf("Couldn't connect to blockchain.\n")
 		return
@@ -238,7 +243,7 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	var txid *big.Int
 
-	if Tx == "" {
+	if config.Tx == "" {
 		txs := util.ScanForTxs(args[1])
 		if len(txs) == 0 {
 			txid, err = util.ParamToBigInt(args[1])
@@ -247,25 +252,25 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 				return
 			}
 		} else {
-			Tx = txs[0]
+			config.Tx = txs[0]
 		}
 	}
 
 	if txid == nil {
-		if TxInfo == nil {
-			txinfo, err := reader.TxInfoFromHash(Tx)
+		if config.TxInfo == nil {
+			txinfo, err := reader.TxInfoFromHash(config.Tx)
 			if err != nil {
 				fmt.Printf("Couldn't get tx info from the blockchain: %s\n", err)
 				return
 			}
-			TxInfo = &txinfo
+			config.TxInfo = &txinfo
 		}
-		if TxInfo.Receipt == nil {
+		if config.TxInfo.Receipt == nil {
 			fmt.Printf("Can't get receipt of the init tx. That tx might still be pending.\n")
 			return
 		}
-		for _, l := range TxInfo.Receipt.Logs {
-			if strings.ToLower(l.Address.Hex()) == strings.ToLower(To) &&
+		for _, l := range config.TxInfo.Receipt.Logs {
+			if strings.ToLower(l.Address.Hex()) == strings.ToLower(config.To) &&
 				l.Topics[0].Hex() == "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51" {
 
 				txid = l.Topics[1].Big()
@@ -279,8 +284,8 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	}
 
 	multisigContract, err := msig.NewMultisigContract(
-		To,
-		Network,
+		config.To,
+		config.Network,
 	)
 	if err != nil {
 		fmt.Printf("Couldn't interact with the contract: %s\n", err)
@@ -290,7 +295,7 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	showMsigTxInfo(multisigContract, txid)
 	// TODO: support multiple txs?
 
-	a, err := util.GetABI(To, Network)
+	a, err := util.GetABI(config.To, config.Network)
 	if err != nil {
 		fmt.Printf("Couldn't get the ABI: %s\n", err)
 		return
@@ -302,31 +307,31 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	}
 
 	// var GasLimit uint64
-	if GasLimit == 0 {
-		GasLimit, err = reader.EstimateGas(From, To, GasPrice+ExtraGasPrice, Value, data)
+	if config.GasLimit == 0 {
+		config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
 		if err != nil {
 			fmt.Printf("Couldn't estimate gas limit: %s\n", err)
 			return
 		}
 	}
 
-	tx := ethutils.BuildTx(Nonce, To, Value, GasLimit+ExtraGasLimit, GasPrice+ExtraGasPrice, data)
+	tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
 
-	err = promptTxConfirmation(From, tx)
+	err = promptTxConfirmation(config.From, tx)
 	if err != nil {
 		fmt.Printf("Aborted!\n")
 		return
 	}
 
 	fmt.Printf("== Unlock your wallet and sign now...\n")
-	account, err := accounts.UnlockAccount(FromAcc, Network)
+	account, err := accounts.UnlockAccount(config.FromAcc, config.Network)
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		return
 	}
 	tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 	util.DisplayWaitAnalyze(
-		tx, broadcasted, err, Network,
+		tx, broadcasted, err, config.Network,
 	)
 }
 
@@ -372,7 +377,7 @@ var initMsigCmd = &cobra.Command{
 		}
 
 		var msigToName string
-		MsigTo, msigToName, err = getAddressFromString(MsigTo)
+		MsigTo, msigToName, err = util.GetAddressFromString(MsigTo)
 		if err != nil {
 			return err
 		}
@@ -380,19 +385,19 @@ var initMsigCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(Network)
+		reader, err := util.EthReader(config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't connect to blockchain.\n")
 			return
 		}
 
-		data, err := promptTxData(MsigTo, PrefillParams)
+		data, err := promptTxData(MsigTo, config.PrefillParams)
 		if err != nil {
 			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
 			return
 		}
 
-		a, err := util.GetABI(To, Network)
+		a, err := util.GetABI(config.To, config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't get the multisig's ABI: %s\n", err)
 			return
@@ -409,31 +414,31 @@ var initMsigCmd = &cobra.Command{
 		}
 
 		// var GasLimit uint64
-		if GasLimit == 0 {
-			GasLimit, err = reader.EstimateGas(From, To, GasPrice+ExtraGasPrice, Value, txdata)
+		if config.GasLimit == 0 {
+			config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, txdata)
 			if err != nil {
 				fmt.Printf("Couldn't estimate gas limit: %s\n", err)
 				return
 			}
 		}
 
-		tx := ethutils.BuildTx(Nonce, To, Value, GasLimit+ExtraGasLimit, GasPrice+ExtraGasPrice, txdata)
+		tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
 
-		err = promptTxConfirmation(From, tx)
+		err = promptTxConfirmation(config.From, tx)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
 			return
 		}
 
 		fmt.Printf("== Unlock your wallet and sign now...\n")
-		account, err := accounts.UnlockAccount(FromAcc, Network)
+		account, err := accounts.UnlockAccount(config.FromAcc, config.Network)
 		if err != nil {
 			fmt.Printf("Failed: %s\n", err)
 			return
 		}
 		tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 		util.DisplayWaitAnalyze(
-			tx, broadcasted, err, Network,
+			tx, broadcasted, err, config.Network,
 		)
 	},
 }
@@ -451,8 +456,8 @@ func init() {
 
 	initMsigCmd.Flags().Float64VarP(&MsigValue, "msig-value", "l", 0, "Amount of eth to send with the multisig. It is in ETH, not WEI.")
 	initMsigCmd.Flags().StringVarP(&MsigTo, "msig-to", "j", "", "Target address the multisig will interact with. Can be address or name.")
-	initMsigCmd.Flags().Uint64VarP(&MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
-	initMsigCmd.Flags().StringVarP(&PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
+	initMsigCmd.Flags().Uint64VarP(&config.MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
+	initMsigCmd.Flags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
 	initMsigCmd.MarkFlagRequired("msig-to")
 
 	writeCmds := []*cobra.Command{
@@ -462,13 +467,13 @@ func init() {
 		executeMsigCmd,
 	}
 	for _, c := range writeCmds {
-		c.PersistentFlags().Float64VarP(&GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
-		c.PersistentFlags().Float64VarP(&ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
-		c.PersistentFlags().Uint64VarP(&GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
-		c.PersistentFlags().Uint64VarP(&ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
-		c.PersistentFlags().Uint64VarP(&Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
-		c.PersistentFlags().StringVarP(&From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
-		c.Flags().Float64VarP(&Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
+		c.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
+		c.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
+		c.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
+		c.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
+		c.PersistentFlags().Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
+		c.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
+		c.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
 	}
 
 	msigCmd.AddCommand(approveMsigCmd)

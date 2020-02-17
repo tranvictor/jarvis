@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tranvictor/jarvis/tx"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -25,9 +25,14 @@ var txCmd = &cobra.Command{
 				fmt.Printf("  %d. %s\n", i, t)
 			}
 			fmt.Printf("\n\n")
+			analyzer, err := util.EthAnalyzer(config.Network)
+			if err != nil {
+				fmt.Printf("Couldn't analyze the txs: %s\n", err)
+				return
+			}
 			for _, t := range txs {
 				fmt.Printf("Analyzing tx: %s...\n", t)
-				tx.AnalyzeAndPrint(t, Network)
+				util.AnalyzeAndPrint(analyzer, t, config.Network)
 				fmt.Printf("----------------------------------------------------------\n")
 			}
 		}

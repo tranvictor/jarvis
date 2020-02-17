@@ -1,9 +1,11 @@
-package cmd
+package config
 
 import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 )
+
+var Network string
 
 var (
 	GasPrice             float64

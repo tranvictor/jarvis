@@ -13,7 +13,7 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/jarvis/accounts"
-	txpkg "github.com/tranvictor/jarvis/tx"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -25,11 +25,11 @@ func (self Methods) Swap(i, j int)      { self[i], self[j] = self[j], self[i] }
 func (self Methods) Less(i, j int) bool { return self[i].Name < self[j].Name }
 
 func promptFunctionCallData(contractAddress string, prefills []string, mode string) (*abi.ABI, *abi.Method, []interface{}, error) {
-	analyzer, err := util.EthAnalyzer(Network)
+	analyzer, err := util.EthAnalyzer(config.Network)
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	a, err := util.GetABI(contractAddress, Network)
+	a, err := util.GetABI(contractAddress, config.Network)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("Couldn't get the ABI: %s", err)
 	}
@@ -48,18 +48,18 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 		}
 	}
 	sort.Sort(Methods(methods))
-	if MethodIndex == 0 {
+	if config.MethodIndex == 0 {
 		fmt.Printf("write functions:\n")
 		for i, m := range methods {
 			fmt.Printf("%d. %s\n", i+1, m.Name)
 		}
-		MethodIndex = uint64(promptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
-	} else if int(MethodIndex) > len(methods) {
+		config.MethodIndex = uint64(promptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
+	} else if int(config.MethodIndex) > len(methods) {
 		return nil, nil, nil, fmt.Errorf("The contract doesn't have %d(th) write method.")
 	}
-	method := methods[MethodIndex-1]
+	method := methods[config.MethodIndex-1]
 	inputs := method.Inputs
-	if PrefillMode && len(inputs) != len(prefills) {
+	if config.PrefillMode && len(inputs) != len(prefills) {
 		return nil, nil, nil, fmt.Errorf("You must specify enough params in prefilled mode")
 	}
 	params := []interface{}{}
@@ -70,7 +70,7 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 		}
 		input := inputs[pi]
 		var inputParam interface{}
-		if !PrefillMode || prefills[pi] == "?" {
+		if !config.PrefillMode || prefills[pi] == "?" {
 			fmt.Printf("%d. %s (%s)", pi, input.Name, input.Type.String())
 			inputParam, err = promptParam(input, "")
 		} else {
@@ -158,13 +158,13 @@ Param rules:
 			fmt.Printf("Not enough param. Please provide contract address or its name.\n")
 			return
 		}
-		contractAddress, contractName, err := getAddressFromString(args[0])
+		contractAddress, contractName, err := util.GetAddressFromString(args[0])
 		if err != nil {
 			fmt.Printf("Couldn't interpret contract address")
 			return
 		}
 		fmt.Printf("Contract: %s (%s)\n", contractAddress, contractName)
-		data, err := promptTxData(contractAddress, PrefillParams)
+		data, err := promptTxData(contractAddress, config.PrefillParams)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -186,39 +186,39 @@ var txContractCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(Network)
+		reader, err := util.EthReader(config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
 		}
-		data, err := promptTxData(To, PrefillParams)
+		data, err := promptTxData(config.To, config.PrefillParams)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
 		}
 		// var GasLimit uint64
-		if GasLimit == 0 {
-			GasLimit, err = reader.EstimateGas(From, To, GasPrice+ExtraGasPrice, Value, data)
+		if config.GasLimit == 0 {
+			config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
 			if err != nil {
 				fmt.Printf("Couldn't estimate gas limit: %s\n", err)
 				return
 			}
 		}
 
-		tx := ethutils.BuildTx(Nonce, To, Value, GasLimit+ExtraGasLimit, GasPrice+ExtraGasPrice, data)
-		err = promptTxConfirmation(From, tx)
+		tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
+		err = promptTxConfirmation(config.From, tx)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
 			return
 		}
 		fmt.Printf("== Unlock your wallet and sign now...\n")
-		account, err := accounts.UnlockAccount(FromAcc, Network)
+		account, err := accounts.UnlockAccount(config.FromAcc, config.Network)
 		if err != nil {
 			fmt.Printf("Unlock your wallet failed: %s\n", err)
 			return
 		}
 
-		if DontBroadcast {
+		if config.DontBroadcast {
 			signedTx, err := account.SignTx(tx)
 			if err != nil {
 				fmt.Printf("%s", err)
@@ -232,13 +232,13 @@ var txContractCmd = &cobra.Command{
 			fmt.Printf("Signed tx: %s\n", common.ToHex(data))
 		} else {
 			tx, broadcasted, err := account.SignTxAndBroadcast(tx)
-			if DontWaitToBeMined {
+			if config.DontWaitToBeMined {
 				util.DisplayBroadcastedTx(
-					tx, broadcasted, err, Network,
+					tx, broadcasted, err, config.Network,
 				)
 			} else {
 				util.DisplayWaitAnalyze(
-					tx, broadcasted, err, Network,
+					tx, broadcasted, err, config.Network,
 				)
 			}
 		}
@@ -246,7 +246,7 @@ var txContractCmd = &cobra.Command{
 }
 
 func allZeroParamFunctions(contractAddress string) (*abi.ABI, []abi.Method, error) {
-	a, err := util.GetABI(contractAddress, Network)
+	a, err := util.GetABI(contractAddress, config.Network)
 	if err != nil {
 		return nil, nil, fmt.Errorf("Couldn't get the ABI: %s", err)
 	}
@@ -261,7 +261,7 @@ func allZeroParamFunctions(contractAddress string) (*abi.ABI, []abi.Method, erro
 }
 
 func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, method *abi.Method, params []interface{}) {
-	responseBytes, err := reader.ReadContractToBytes(-1, To, a, method.Name, params...)
+	responseBytes, err := reader.ReadContractToBytes(-1, config.To, a, method.Name, params...)
 	if err != nil {
 		fmt.Printf("getting response failed: %s\n", err)
 		return
@@ -275,7 +275,7 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, metho
 		fmt.Printf("Couldn't unpack response to go types: %s\n", err)
 		return
 	}
-	analyzer, err := util.EthAnalyzer(Network)
+	analyzer, err := util.EthAnalyzer(config.Network)
 	if err != nil {
 		fmt.Printf("Couldn't init analyzer: %s\n", err)
 		return
@@ -299,13 +299,13 @@ var readContractCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: CommonFunctionCallPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(Network)
+		reader, err := util.EthReader(config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
 		}
-		if AllZeroParamsMethods {
-			a, methods, err := allZeroParamFunctions(To)
+		if config.AllZeroParamsMethods {
+			a, methods, err := allZeroParamFunctions(config.To)
 			if err != nil {
 				fmt.Printf("Couldn't get all zero param functions of the contract: %s\n", err)
 				return
@@ -317,7 +317,7 @@ var readContractCmd = &cobra.Command{
 				fmt.Printf("---------------------------------------------------\n")
 			}
 		} else {
-			a, method, params, err := promptFunctionCallData(To, PrefillParams, "read")
+			a, method, params, err := promptFunctionCallData(config.To, config.PrefillParams, "read")
 			if err != nil {
 				fmt.Printf("Couldn't get params from users: %s\n", err)
 				return
@@ -334,7 +334,7 @@ func showTxInfoToConfirm(from string, tx *types.Transaction) error {
 	fmt.Printf("Nonce: %d\n", tx.Nonce())
 	fmt.Printf("Gas price: %f gwei\n", ethutils.BigToFloat(tx.GasPrice(), 9))
 	fmt.Printf("Gas limit: %d\n", tx.Gas())
-	abi, err := util.GetABI(tx.To().Hex(), Network)
+	abi, err := util.GetABI(tx.To().Hex(), config.Network)
 	if err != nil {
 		return fmt.Errorf("Getting abi of the contract failed: %s", err)
 	}
@@ -347,7 +347,7 @@ func showTxInfoToConfirm(from string, tx *types.Transaction) error {
 	for _, param := range params {
 		fmt.Printf("%s: %s (%s)\n", param.Name, param.Value, param.Type)
 	}
-	txpkg.PrintGnosis(gnosisResult)
+	util.PrintGnosis(gnosisResult)
 	return nil
 }
 
@@ -363,23 +363,23 @@ func promptTxConfirmation(from string, tx *types.Transaction) error {
 func init() {
 	contractCmd.AddCommand(composeDataContractCmd)
 
-	txContractCmd.PersistentFlags().Float64VarP(&GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
-	txContractCmd.PersistentFlags().Float64VarP(&ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
-	txContractCmd.PersistentFlags().Uint64VarP(&GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
-	txContractCmd.PersistentFlags().Uint64VarP(&ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
-	txContractCmd.PersistentFlags().Uint64VarP(&Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
-	txContractCmd.PersistentFlags().StringVarP(&From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
-	txContractCmd.PersistentFlags().StringVarP(&PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
-	txContractCmd.PersistentFlags().Uint64VarP(&MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
-	txContractCmd.PersistentFlags().BoolVarP(&DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
-	txContractCmd.PersistentFlags().BoolVarP(&DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
-	txContractCmd.Flags().Float64VarP(&Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
+	txContractCmd.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
+	txContractCmd.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
+	txContractCmd.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
+	txContractCmd.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
+	txContractCmd.PersistentFlags().Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
+	txContractCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
+	txContractCmd.PersistentFlags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
+	txContractCmd.PersistentFlags().Uint64VarP(&config.MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
+	txContractCmd.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
+	txContractCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
+	txContractCmd.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
 	txContractCmd.MarkFlagRequired("from")
 	contractCmd.AddCommand(txContractCmd)
 
-	readContractCmd.PersistentFlags().StringVarP(&PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
-	readContractCmd.PersistentFlags().Uint64VarP(&MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1. This param will be IGNORED if -a or --all is true.")
-	readContractCmd.PersistentFlags().BoolVarP(&AllZeroParamsMethods, "all", "a", false, "Read all functions that don't have any params")
+	readContractCmd.PersistentFlags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
+	readContractCmd.PersistentFlags().Uint64VarP(&config.MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1. This param will be IGNORED if -a or --all is true.")
+	readContractCmd.PersistentFlags().BoolVarP(&config.AllZeroParamsMethods, "all", "a", false, "Read all functions that don't have any params")
 	contractCmd.AddCommand(readContractCmd)
 	// contractCmd.AddCommand(govInfocontractCmd)
 	// TODO: add more commands to send or call other contracts

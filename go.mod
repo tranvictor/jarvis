@@ -4,7 +4,7 @@ require (
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/VictoriaMetrics/fastcache v1.5.7 // indirect
 	github.com/allegro/bigcache v1.2.1 // indirect
-	github.com/aristanetworks/goarista v0.0.0-20200211191935-58c705f5cf52 // indirect
+	github.com/aristanetworks/goarista v0.0.0-20200214154357-2151774b0d85 // indirect
 	github.com/btcsuite/btcd v0.20.1-beta // indirect
 	github.com/cespare/cp v1.1.1 // indirect
 	github.com/edsrzf/mmap-go v1.0.0 // indirect
@@ -27,7 +27,7 @@ require (
 	github.com/spf13/cobra v0.0.3
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/status-im/keycard-go v0.0.0-20191114114615-9d48af884d5b // indirect
-	github.com/tranvictor/ethutils v0.2.3
+	github.com/tranvictor/ethutils v0.2.4
 	github.com/tyler-smith/go-bip39 v1.0.2 // indirect
 	golang.org/x/crypto v0.0.0-20200214034016-1d94cc7ab1c6
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343 // indirect

@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/tranvictor/ethutils"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -73,12 +74,12 @@ func convertToBytes(str string) ([]byte, error) {
 	return hexutil.Decode(str)
 }
 
-func convertToString(str string) ([]byte, error) {
+func convertToString(str string) (string, error) {
 	str = strings.Trim(str, " ")
 	if len(str) < 2 || str[0] != '"' || str[len(str)-1] != '"' {
-		return nil, fmt.Errorf(`string must be wrapped by ""`)
+		return "", fmt.Errorf(`string must be wrapped by ""`)
 	}
-	return []byte(str), nil
+	return str[1 : len(str)-1], nil
 }
 
 func convertToBig(str string) (*big.Int, error) {
@@ -111,7 +112,7 @@ func convertToBig(str string) (*big.Int, error) {
 		if err != nil {
 			return nil, err
 		}
-		decimal, err := util.GetERC20Decimal(token.Hex(), Network)
+		decimal, err := util.GetERC20Decimal(token.Hex(), config.Network)
 		if err != nil {
 			return nil, err
 		}

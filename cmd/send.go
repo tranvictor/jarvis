@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -26,7 +27,7 @@ func handleSend(
 	tokenAddr string,
 ) {
 	fmt.Printf("== Unlock your wallet and send now...\n")
-	account, err := accounts.UnlockAccount(from, Network)
+	account, err := accounts.UnlockAccount(from, config.Network)
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		os.Exit(126)
@@ -41,14 +42,14 @@ func handleSend(
 	fmt.Printf("token: %s, amount: %f\n", tokenAddr, amount)
 	if tokenAddr == util.ETH_ADDR {
 		t, broadcasted, errors = account.SendETHWithNonceAndPrice(
-			Nonce, GasPrice+ExtraGasPrice,
+			config.Nonce, config.GasPrice+config.ExtraGasPrice,
 			ethutils.FloatToBigInt(amount, 18), to,
 		)
 	} else {
 		t, broadcasted, errors = account.SendERC20(tokenAddr, amount, to)
 	}
 	util.DisplayWaitAnalyze(
-		t, broadcasted, errors, Network,
+		t, broadcasted, errors, config.Network,
 	)
 }
 
@@ -119,12 +120,12 @@ exact addresses start with 0x.`,
 				}
 			}
 			// process from to get address
-			acc, err := accounts.GetAccount(From)
+			acc, err := accounts.GetAccount(config.From)
 			if err != nil {
 				return err
 			} else {
-				FromAcc = acc
-				From = acc.Address
+				config.FromAcc = acc
+				config.From = acc.Address
 			}
 			// process to to get address
 			addr, err := db.GetAddress(to)
@@ -133,22 +134,22 @@ exact addresses start with 0x.`,
 			} else {
 				to = addr.Address
 			}
-			fmt.Printf("Network: %s\n", Network)
-			reader, err := util.EthReader(Network)
+			fmt.Printf("Network: %s\n", config.Network)
+			reader, err := util.EthReader(config.Network)
 			if err != nil {
 				return err
 			}
 			// var GasPrice float64
-			if GasPrice == 0 {
-				GasPrice, err = reader.RecommendedGasPrice()
+			if config.GasPrice == 0 {
+				config.GasPrice, err = reader.RecommendedGasPrice()
 				if err != nil {
 					return err
 				}
 			}
 			// var GasLimit uint64
-			if GasLimit == 0 {
+			if config.GasLimit == 0 {
 				if tokenAddr == util.ETH_ADDR {
-					GasLimit, err = reader.EstimateGas(From, to, GasPrice+ExtraGasPrice, amount, []byte{})
+					config.GasLimit, err = reader.EstimateGas(config.From, to, config.GasPrice+config.ExtraGasPrice, amount, []byte{})
 					if err != nil {
 						return err
 					}
@@ -165,15 +166,15 @@ exact addresses start with 0x.`,
 					if err != nil {
 						return err
 					}
-					GasLimit, err = reader.EstimateGas(From, tokenAddr, GasPrice+ExtraGasPrice, 0, data)
+					config.GasLimit, err = reader.EstimateGas(config.From, tokenAddr, config.GasPrice+config.ExtraGasPrice, 0, data)
 					if err != nil {
 						return err
 					}
 				}
 			}
 			// var Nonce uint64
-			if Nonce == 0 {
-				Nonce, err = reader.GetMinedNonce(From)
+			if config.Nonce == 0 {
+				config.Nonce, err = reader.GetMinedNonce(config.From)
 				if err != nil {
 					return err
 				}
@@ -181,11 +182,11 @@ exact addresses start with 0x.`,
 			err = promptConfirmation(
 				acc,
 				addr,
-				Nonce,
-				GasPrice,
-				ExtraGasPrice,
-				GasLimit,
-				ExtraGasLimit,
+				config.Nonce,
+				config.GasPrice,
+				config.ExtraGasPrice,
+				config.GasLimit,
+				config.ExtraGasLimit,
 				amount,
 				tokenAddr,
 				tokenDesc,
@@ -198,10 +199,10 @@ exact addresses start with 0x.`,
 		Run: func(cmd *cobra.Command, args []string) {
 			handleSend(
 				cmd, args,
-				GasPrice, ExtraGasPrice,
-				GasLimit, ExtraGasLimit,
-				Nonce,
-				FromAcc,
+				config.GasPrice, config.ExtraGasPrice,
+				config.GasLimit, config.ExtraGasLimit,
+				config.Nonce,
+				config.FromAcc,
 				to,
 				amount,
 				tokenAddr,
@@ -209,12 +210,12 @@ exact addresses start with 0x.`,
 		},
 	}
 
-	sendCmd.PersistentFlags().Float64VarP(&GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
-	sendCmd.PersistentFlags().Float64VarP(&ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
-	sendCmd.PersistentFlags().Uint64VarP(&GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
+	sendCmd.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
+	sendCmd.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
+	sendCmd.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
 	// sendCmd.PersistentFlags().Uint64VarP(&ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
-	sendCmd.PersistentFlags().Uint64VarP(&Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
-	sendCmd.PersistentFlags().StringVarP(&From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
+	sendCmd.PersistentFlags().Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
+	sendCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
 	sendCmd.Flags().StringVarP(&to, "to", "t", "", "Account to send eth to. It can be ethereum address or a hint string to look it up in the address database. See jarvis addr for all of the known addresses")
 	sendCmd.Flags().StringVarP(&value, "amount", "v", "0", "Amount of eth to send. It is in eth/token value, not wei/twei. If a float number is passed, it will be interpreted as ETH, otherwise, it must be in the form of `float address` or `float name`. In the later case, `name` will be used to look for the token address. Eg. 0.01, 0.01 knc, 0.01 0xdd974d5c2e2928dea5f71b9825b8b646686bd200 are valid values.")
 	sendCmd.MarkFlagRequired("to")

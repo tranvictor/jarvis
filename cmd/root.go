@@ -25,10 +25,9 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/util"
 )
-
-var Network string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -76,7 +75,7 @@ For more information or support, reach me at https://github.com/tranvictor.`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	rootCmd.PersistentFlags().StringVarP(&Network, "network", "k", "mainnet", "ethereum network. Valid values: \"mainnet\", \"ropsten\", \"tomo\".")
+	rootCmd.PersistentFlags().StringVarP(&config.Network, "network", "k", "mainnet", "ethereum network. Valid values: \"mainnet\", \"ropsten\", \"tomo\".")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
