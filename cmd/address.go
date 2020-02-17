@@ -11,7 +11,7 @@ import (
 // txCmd represents the tx command
 var addressCmd = &cobra.Command{
 	Use:   "addr",
-	Short: "find at max 10 matching addresses",
+	Short: "Find at max 10 matching addresses",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		para := strings.Join(args, " ")

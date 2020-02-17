@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"math/big"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -12,13 +13,18 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/monitor"
 	"github.com/tranvictor/ethutils/reader"
-	"github.com/tranvictor/ethutils/txanalyzer"
 	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/tx"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util/cache"
 )
 
-const ETH_ADDR string = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+const (
+	ETH_ADDR                  string = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	ETHEREUM_MAINNET_NODE_VAR string = "ETHEREUM_MAINNET_NODE"
+	ETHEREUM_ROPSTEN_NODE_VAR string = "ETHEREUM_ROPSTEN_NODE"
+	TOMO_MAINNET_NODE_VAR     string = "TOMO_MAINNET_NODE"
+)
 
 func ParamToBigInt(param string) (*big.Int, error) {
 	var result *big.Int
@@ -93,6 +99,15 @@ func PathToAddress(path string) (string, error) {
 	return result[0], nil
 }
 
+func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, network string) {
+	if !broadcasted {
+		fmt.Printf("couldn't broadcast tx:\n")
+		fmt.Printf("error on nodes: %v\n", err)
+	} else {
+		fmt.Printf("Broadcasted tx: %s\n", t.Hash().Hex())
+	}
+}
+
 func DisplayWaitAnalyze(t *types.Transaction, broadcasted bool, err error, network string) {
 	if !broadcasted {
 		fmt.Printf("couldn't broadcast tx:\n")
@@ -107,25 +122,59 @@ func DisplayWaitAnalyze(t *types.Transaction, broadcasted bool, err error, netwo
 }
 
 func EthAnalyzer(network string) (*txanalyzer.TxAnalyzer, error) {
+	r, err := EthReader(network)
+	if err != nil {
+		return nil, err
+	}
+	return txanalyzer.NewGenericAnalyzer(r), nil
+}
+
+func GetNodes(network string) (map[string]string, error) {
 	switch network {
 	case "mainnet":
-		return txanalyzer.NewAnalyzer(), nil
+		nodes := map[string]string{
+			"mainnet-alchemy": "https://eth-mainnet.alchemyapi.io/jsonrpc/YP5f6eM2wC9c2nwJfB0DC1LObdSY7Qfv",
+			"mainnet-infura":  "https://mainnet.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+		}
+		customNode := strings.Trim(os.Getenv(ETHEREUM_MAINNET_NODE_VAR), " ")
+		if customNode != "" {
+			nodes["custom-node"] = customNode
+		}
+		return nodes, nil
 	case "ropsten":
-		return txanalyzer.NewRopstenAnalyzer(), nil
+		nodes := map[string]string{
+			"ropsten-infura": "https://ropsten.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+		}
+		customNode := strings.Trim(os.Getenv(ETHEREUM_ROPSTEN_NODE_VAR), " ")
+		if customNode != "" {
+			nodes["custom-node"] = customNode
+		}
+		return nodes, nil
 	case "tomo":
-		return txanalyzer.NewTomoAnalyzer(), nil
+		nodes := map[string]string{
+			"mainnet-tomo": "https://rpc.tomochain.com",
+		}
+		customNode := strings.Trim(os.Getenv(TOMO_MAINNET_NODE_VAR), " ")
+		if customNode != "" {
+			nodes["custom-node"] = customNode
+		}
+		return nodes, nil
 	}
 	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, tomo.")
 }
 
 func EthReader(network string) (*reader.EthReader, error) {
+	nodes, err := GetNodes(network)
+	if err != nil {
+		return nil, err
+	}
 	switch network {
 	case "mainnet":
-		return reader.NewEthReader(), nil
+		return reader.NewEthReaderWithCustomNodes(nodes), nil
 	case "ropsten":
-		return reader.NewRopstenReader(), nil
+		return reader.NewRopstenReaderWithCustomNodes(nodes), nil
 	case "tomo":
-		return reader.NewTomoReader(), nil
+		return reader.NewTomoReaderWithCustomNodes(nodes), nil
 	}
 	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, tomo.")
 }

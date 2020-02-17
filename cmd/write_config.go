@@ -22,4 +22,7 @@ var (
 	Tx                   string
 	TxInfo               *ethutils.TxInfo
 	AllZeroParamsMethods bool
+
+	DontBroadcast     bool
+	DontWaitToBeMined bool
 )
