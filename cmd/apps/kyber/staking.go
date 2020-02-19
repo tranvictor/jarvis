@@ -65,6 +65,7 @@ var daoCmd = &cobra.Command{
 		} else {
 			fmt.Printf("Working with Epoch: %d (epoch in the past)\n", Epoch)
 		}
+		fmt.Printf("Staker: %s\n", util.VerboseAddress(config.From))
 		stake, err := dao.GetStake(config.From, Epoch)
 		if err != nil {
 			fmt.Printf("Couldn't get stake of %s at epoch %d: %s\n", config.From, Epoch, err)
@@ -80,6 +81,18 @@ var daoCmd = &cobra.Command{
 			pendingStake := big.NewInt(0).Sub(futureStake, stake)
 			fmt.Printf("Your pending stake (can withdraw without any penalty): %f KNC (%s)\n", ethutils.BigToFloat(pendingStake, 18), pendingStake)
 		}
+		poolMaster, err := dao.GetPoolMaster(config.From, Epoch)
+		if err != nil {
+			fmt.Printf("Couldn't get pool master info of %s at epoch %d: %s\n", config.From, Epoch, err)
+			return
+		}
+		fmt.Printf("Your pool master: %s\n", util.VerboseAddress(poolMaster.Hex()))
+		delegatedStake, err := dao.GetDelegatedStake(config.From, Epoch)
+		if err != nil {
+			fmt.Printf("Couldn't get delegated stake of %s at epoch %d: %s\n", config.From, Epoch, err)
+			return
+		}
+		fmt.Printf("Stake other people delegated to you: %f KNC\n", ethutils.BigToFloat(delegatedStake, 18))
 	},
 }
 
