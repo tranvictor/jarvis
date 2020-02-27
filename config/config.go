@@ -24,6 +24,7 @@ var (
 	Tx                   string
 	TxInfo               *ethutils.TxInfo
 	AllZeroParamsMethods bool
+	AtBlock              int64
 
 	DontBroadcast     bool
 	DontWaitToBeMined bool

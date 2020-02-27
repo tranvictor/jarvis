@@ -13,4 +13,5 @@ var KyberCmd = &cobra.Command{
 
 func init() {
 	KyberCmd.AddCommand(daoCmd)
+	KyberCmd.AddCommand(fprCmd)
 }

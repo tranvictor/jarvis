@@ -260,8 +260,8 @@ func allZeroParamFunctions(contractAddress string) (*abi.ABI, []abi.Method, erro
 	return a, methods, nil
 }
 
-func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, method *abi.Method, params []interface{}) {
-	responseBytes, err := reader.ReadContractToBytes(-1, config.To, a, method.Name, params...)
+func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlock int64, method *abi.Method, params []interface{}) {
+	responseBytes, err := reader.ReadContractToBytes(atBlock, config.To, a, method.Name, params...)
 	if err != nil {
 		fmt.Printf("getting response failed: %s\n", err)
 		return
@@ -313,7 +313,7 @@ var readContractCmd = &cobra.Command{
 			for i, _ := range methods {
 				method := methods[i]
 				fmt.Printf("%d. %s\n", i+1, method.Name)
-				handleReadOneFunctionOnContract(reader, a, &method, []interface{}{})
+				handleReadOneFunctionOnContract(reader, a, config.AtBlock, &method, []interface{}{})
 				fmt.Printf("---------------------------------------------------\n")
 			}
 		} else {
@@ -322,7 +322,7 @@ var readContractCmd = &cobra.Command{
 				fmt.Printf("Couldn't get params from users: %s\n", err)
 				return
 			}
-			handleReadOneFunctionOnContract(reader, a, method, params)
+			handleReadOneFunctionOnContract(reader, a, config.AtBlock, method, params)
 		}
 	},
 }
@@ -380,6 +380,7 @@ func init() {
 	readContractCmd.PersistentFlags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
 	readContractCmd.PersistentFlags().Uint64VarP(&config.MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1. This param will be IGNORED if -a or --all is true.")
 	readContractCmd.PersistentFlags().BoolVarP(&config.AllZeroParamsMethods, "all", "a", false, "Read all functions that don't have any params")
+	readContractCmd.PersistentFlags().Int64VarP(&config.AtBlock, "block", "b", -1, "Specify the block to read at. Default value indicates reading at latest state of the chain.")
 	contractCmd.AddCommand(readContractCmd)
 	// contractCmd.AddCommand(govInfocontractCmd)
 	// TODO: add more commands to send or call other contracts
