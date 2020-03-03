@@ -37,6 +37,7 @@ func (self *FPRReserveContract) QueryQtyStepFunc(token common.Address) (numSellS
 		SellRateQtyStepsY   []*big.Int
 	}
 	res := &qtyFunc{}
+	fmt.Printf("conversion rate contract: %s\n", self.ConversionRateContract.Hex())
 	err = self.reader.ReadContract(
 		res,
 		"0x7FA7599413E53dED64b587cc5a607c384f600C66",
@@ -83,6 +84,7 @@ func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (nu
 		SellRateImbalanceStepsY   []*big.Int
 	}
 	res := &imbFunc{}
+	fmt.Printf("conversion rate contract: %s\n", self.ConversionRateContract.Hex())
 	err = self.reader.ReadContract(
 		res,
 		"0x7FA7599413E53dED64b587cc5a607c384f600C66",
@@ -153,7 +155,7 @@ func (self *FPRReserveContract) DisplayImbalanceStepFunc(token string) error {
 }
 
 func (self *FPRReserveContract) DisplayQtyStepFunc(token string) error {
-	numSellSteps, sellXs, sellYs, numBuySteps, buyXs, buyYs, err := self.QueryImbalanceStepFunc(ethutils.HexToAddress(token))
+	numSellSteps, sellXs, sellYs, numBuySteps, buyXs, buyYs, err := self.QueryQtyStepFunc(ethutils.HexToAddress(token))
 	if err != nil {
 		return err
 	}
