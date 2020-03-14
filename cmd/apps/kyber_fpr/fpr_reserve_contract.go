@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
+	"github.com/tranvictor/jarvis/config"
 )
 
 type FPRReserveContract struct {
@@ -21,10 +22,22 @@ func NewFPRReserveContract(address string, r *reader.EthReader) (*FPRReserveCont
 	if err != nil {
 		return nil, err
 	}
+	fmt.Printf("Conversion rate contract: %s\n", conversionRateContract.Hex())
 
 	return &FPRReserveContract{
 		address, conversionRateContract, r,
 	}, nil
+}
+
+func (self *FPRReserveContract) QueryListedTokens() ([]common.Address, error) {
+	res := []common.Address{}
+	err := self.reader.ReadHistoryContract(
+		config.AtBlock,
+		&res,
+		self.ConversionRateContract.Hex(),
+		"getListedTokens",
+	)
+	return res, err
 }
 
 func (self *FPRReserveContract) QueryQtyStepFunc(token common.Address) (numSellSteps int, sellXs []float64, sellYs []float64, numBuySteps int, buyXs []float64, buyYs []float64, err error) {
@@ -37,8 +50,8 @@ func (self *FPRReserveContract) QueryQtyStepFunc(token common.Address) (numSellS
 		SellRateQtyStepsY   []*big.Int
 	}
 	res := &qtyFunc{}
-	fmt.Printf("conversion rate contract: %s\n", self.ConversionRateContract.Hex())
-	err = self.reader.ReadContract(
+	err = self.reader.ReadHistoryContract(
+		config.AtBlock,
 		res,
 		"0x7FA7599413E53dED64b587cc5a607c384f600C66",
 		"readQtyStepFunctions",
@@ -84,8 +97,8 @@ func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (nu
 		SellRateImbalanceStepsY   []*big.Int
 	}
 	res := &imbFunc{}
-	fmt.Printf("conversion rate contract: %s\n", self.ConversionRateContract.Hex())
-	err = self.reader.ReadContract(
+	err = self.reader.ReadHistoryContract(
+		config.AtBlock,
 		res,
 		"0x7FA7599413E53dED64b587cc5a607c384f600C66",
 		"readImbalanceStepFunctions",
@@ -122,10 +135,12 @@ func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (nu
 }
 
 func (self *FPRReserveContract) DisplayStepFunctionData(token string) error {
+	fmt.Printf("\nImbalance step functions:\n")
 	err := self.DisplayImbalanceStepFunc(token)
 	if err != nil {
 		return err
 	}
+	fmt.Printf("\nQty step functions:\n")
 	return self.DisplayQtyStepFunc(token)
 }
 
@@ -159,18 +174,22 @@ func (self *FPRReserveContract) DisplayQtyStepFunc(token string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("token qty (token)      : ")
+	fmt.Printf("SELL: token qty (token)      : ")
 	for i := 0; i < numSellSteps; i++ {
 		fmt.Printf("%10.2f|", sellXs[i])
 	}
+	fmt.Printf("\n")
+	fmt.Printf("SELL: slippage (%%)           : ")
+	for i := 0; i < numSellSteps; i++ {
+		fmt.Printf("%10.2f|", sellYs[i])
+	}
+	fmt.Printf("\n")
+	fmt.Printf("BUY : token qty (token)      : ")
 	for i := 0; i < numBuySteps; i++ {
 		fmt.Printf("%10.2f|", buyXs[i])
 	}
 	fmt.Printf("\n")
-	fmt.Printf("slippage (%%)           : ")
-	for i := 0; i < numSellSteps; i++ {
-		fmt.Printf("%10.2f|", sellYs[i])
-	}
+	fmt.Printf("BUY : slippage (%%)           : ")
 	for i := 0; i < numBuySteps; i++ {
 		fmt.Printf("%10.2f|", buyYs[i])
 	}

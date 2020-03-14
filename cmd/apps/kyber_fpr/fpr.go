@@ -29,17 +29,39 @@ var KyberFPRCmd = &cobra.Command{
 			return
 		}
 		fmt.Printf("Working on reserve: %s (%s)\n", Reserve, resName)
-		Token, tokenName, err := getAddressFromParams(args, 1)
-		if err != nil {
-			fmt.Printf("Couldn't interpret token address: %s\n", err)
-			return
-		}
-		fmt.Printf("Checking token: %s (%s)\n", Token, tokenName)
 		reserve, err := NewFPRReserveContract(Reserve, reader)
 		if err != nil {
 			fmt.Printf("Couldn't initiate reserve instance: %s\n", err)
 			return
 		}
+		if Token != "" {
+			Token, _, err = util.GetAddressFromString(Token + " token")
+			if err != nil {
+				fmt.Printf("Couldn't interpret token address: %s\n", err)
+				return
+			}
+		} else {
+			tokens, err := reserve.QueryListedTokens()
+			if err != nil {
+				fmt.Printf("Couldn't query listed tokens: %s\n", err)
+				return
+			}
+			if len(tokens) == 0 {
+				fmt.Printf("This FPR reserve doesn't have any listed tokens.\n")
+				return
+			}
+			fmt.Printf("\nListed tokens:\n")
+			for i, token := range tokens {
+				fmt.Printf("%d. %s\n", i, util.VerboseAddress(token.Hex()))
+			}
+			fmt.Printf("\n")
+
+			index := util.PromptIndex("Which token do you want to check? Please enter index", 0, len(tokens)-1)
+
+			Token = tokens[index].Hex()
+		}
+		fmt.Printf("\n")
+		fmt.Printf("Checking on token: %s\n", util.VerboseAddress(Token))
 		err = reserve.DisplayStepFunctionData(Token)
 		if err != nil {
 			fmt.Printf("Displaying step functions failed: %s\n", err)
@@ -49,4 +71,5 @@ var KyberFPRCmd = &cobra.Command{
 
 func init() {
 	KyberFPRCmd.PersistentFlags().Int64VarP(&config.AtBlock, "block", "b", -1, "Specify the block to read at. Default value indicates reading at latest state of the chain.")
+	KyberFPRCmd.PersistentFlags().StringVarP(&Token, "token", "T", "", "Token address or name of the FPR reserve to show information. If it is not specified, jarvis will show the list of listed token and you can select from them.")
 }
