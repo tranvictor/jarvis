@@ -1,4 +1,4 @@
-package kyber
+package kyberfpr
 
 import (
 	"fmt"

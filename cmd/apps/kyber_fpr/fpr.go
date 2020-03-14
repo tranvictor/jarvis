@@ -1,4 +1,4 @@
-package kyber
+package kyberfpr
 
 import (
 	"fmt"
@@ -13,8 +13,8 @@ var (
 	Reserve string
 )
 
-var fprCmd = &cobra.Command{
-	Use:              "fpr",
+var KyberFPRCmd = &cobra.Command{
+	Use:              "kyber-fpr",
 	Short:            "utilities on FPR reserve",
 	TraverseChildren: true,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -48,5 +48,5 @@ var fprCmd = &cobra.Command{
 }
 
 func init() {
-	fprCmd.PersistentFlags().Int64VarP(&config.AtBlock, "block", "b", -1, "Specify the block to read at. Default value indicates reading at latest state of the chain.")
+	KyberFPRCmd.PersistentFlags().Int64VarP(&config.AtBlock, "block", "b", -1, "Specify the block to read at. Default value indicates reading at latest state of the chain.")
 }

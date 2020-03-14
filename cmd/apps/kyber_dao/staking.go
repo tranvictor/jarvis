@@ -1,4 +1,4 @@
-package kyber
+package kyberdao
 
 import (
 	"fmt"
@@ -34,9 +34,9 @@ func Preprocess(cmd *cobra.Command, args []string) (err error) {
 	return fmt.Errorf("'%s' is not support for this app", config.Network)
 }
 
-var daoCmd = &cobra.Command{
-	Use:               "dao",
-	Short:             "Stake and participate in the KyberDAO to get reward",
+var infoCmd = &cobra.Command{
+	Use:               "info",
+	Short:             "Show stake, your reward and current voting campaigns",
 	TraverseChildren:  true,
 	PersistentPreRunE: Preprocess,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -97,8 +97,8 @@ var daoCmd = &cobra.Command{
 }
 
 func init() {
-	daoCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
-	daoCmd.PersistentFlags().Uint64VarP(&Epoch, "epoch", "e", 0, "Epoch to read staking and dao data.")
+	infoCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
+	infoCmd.PersistentFlags().Uint64VarP(&Epoch, "epoch", "e", 0, "Epoch to read staking and dao data.")
 
-	daoCmd.MarkFlagRequired("from")
+	infoCmd.MarkFlagRequired("from")
 }
