@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/tranvictor/ethutils"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -65,6 +66,148 @@ func promptParam(input abi.Argument, prefill string) (interface{}, error) {
 	}
 }
 
+func convertToFixedBytes(str string, size int) (interface{}, error) {
+	str = strings.Trim(str, " ")
+	if len(str) == 2 && str == "0x" {
+		return []byte{}, nil
+	}
+	bytes, err := hexutil.Decode(str)
+	if err != nil {
+		return []byte{}, err
+	}
+	switch size {
+	case 1:
+		res := [1]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 2:
+		res := [2]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 3:
+		res := [3]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 4:
+		res := [4]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 5:
+		res := [5]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 6:
+		res := [6]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 7:
+		res := [7]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 8:
+		res := [8]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 9:
+		res := [9]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 10:
+		res := [10]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 11:
+		res := [11]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 12:
+		res := [12]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 13:
+		res := [13]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 14:
+		res := [14]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 15:
+		res := [15]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 16:
+		res := [16]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 17:
+		res := [17]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 18:
+		res := [18]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 19:
+		res := [19]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 20:
+		res := [20]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 21:
+		res := [21]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 22:
+		res := [22]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 23:
+		res := [23]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 24:
+		res := [24]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 25:
+		res := [25]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 26:
+		res := [26]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 27:
+		res := [27]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 28:
+		res := [28]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 29:
+		res := [29]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 30:
+		res := [30]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 31:
+		res := [31]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	case 32:
+		res := [32]byte{}
+		copy(res[:], bytes)
+		return res, nil
+	}
+	return []byte{}, fmt.Errorf("fixed byte array of size %d is not supported", size)
+}
+
 func convertToBytes(str string) ([]byte, error) {
 	str = strings.Trim(str, " ")
 	if len(str) == 2 && str == "0x" {
@@ -73,12 +216,12 @@ func convertToBytes(str string) ([]byte, error) {
 	return hexutil.Decode(str)
 }
 
-func convertToString(str string) ([]byte, error) {
+func convertToString(str string) (string, error) {
 	str = strings.Trim(str, " ")
 	if len(str) < 2 || str[0] != '"' || str[len(str)-1] != '"' {
-		return nil, fmt.Errorf(`string must be wrapped by ""`)
+		return "", fmt.Errorf(`string must be wrapped by ""`)
 	}
-	return []byte(str), nil
+	return str[1 : len(str)-1], nil
 }
 
 func convertToBig(str string) (*big.Int, error) {
@@ -111,7 +254,7 @@ func convertToBig(str string) (*big.Int, error) {
 		if err != nil {
 			return nil, err
 		}
-		decimal, err := util.GetERC20Decimal(token.Hex(), Network)
+		decimal, err := util.GetERC20Decimal(token.Hex(), config.Network)
 		if err != nil {
 			return nil, err
 		}
@@ -176,7 +319,8 @@ func convertParamStrToType(name string, t abi.Type, str string) (interface{}, er
 	case abi.BytesTy:
 		return convertToBytes(str)
 	case abi.FixedBytesTy:
-		return convertToBytes(str)
+		fmt.Printf("fixed bytes type with size: %d\n", t.Size)
+		return convertToFixedBytes(str, t.Size)
 	case abi.FunctionTy:
 		return convertToBytes(str)
 	default:

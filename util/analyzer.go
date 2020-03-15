@@ -1,4 +1,4 @@
-package tx
+package util
 
 import (
 	"fmt"
@@ -10,33 +10,7 @@ import (
 	"github.com/tranvictor/jarvis/txanalyzer"
 )
 
-var analyzer *txanalyzer.TxAnalyzer
-var ropstenAnalyzer *txanalyzer.TxAnalyzer
-
-func getAnalyzer(network string) *txanalyzer.TxAnalyzer {
-	switch network {
-	case "ropsten":
-		if ropstenAnalyzer == nil {
-			ropstenAnalyzer = txanalyzer.NewRopstenAnalyzer()
-		}
-		return ropstenAnalyzer
-	case "mainnet":
-		if analyzer == nil {
-			analyzer = txanalyzer.NewAnalyzer()
-		}
-		return analyzer
-	case "tomo":
-		if analyzer == nil {
-			analyzer = txanalyzer.NewTomoAnalyzer()
-		}
-		return analyzer
-	}
-	return nil
-}
-
-func AnalyzeMethodCallAndPrint(abi *abi.ABI, data []byte, network string) {
-	analyzer := getAnalyzer(network)
-
+func AnalyzeMethodCallAndPrint(analyzer *txanalyzer.TxAnalyzer, abi *abi.ABI, data []byte, network string) {
 	methodName, params, gnosisResult, err := analyzer.AnalyzeMethodCall(abi, data)
 	if err != nil {
 		fmt.Printf("Couldn't analyze method call: %s\n", err)
@@ -52,8 +26,7 @@ func AnalyzeMethodCallAndPrint(abi *abi.ABI, data []byte, network string) {
 	}
 }
 
-func AnalyzeAndPrint(tx string, network string) {
-	analyzer := getAnalyzer(network)
+func AnalyzeAndPrint(analyzer *txanalyzer.TxAnalyzer, tx string, network string) {
 	result := analyzer.Analyze(tx)
 	printToStdout(result, os.Stdout)
 }
@@ -132,7 +105,4 @@ func printToStdout(result *txanalyzer.TxResult, writer io.Writer) {
 		}
 	}
 	printGnosisToWriter(result.GnosisInit, writer)
-	// if result.Error != "" {
-	// 	fmt.Fprintf(writer, "Error during tx analysis: %s\n", result.Error)
-	// }
 }

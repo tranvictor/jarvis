@@ -7,14 +7,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/tranvictor/ethutils"
+	"github.com/tranvictor/ethutils/broadcaster"
 	"github.com/tranvictor/ethutils/monitor"
 	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/jarvis/db"
-	"github.com/tranvictor/jarvis/tx"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util/cache"
 )
@@ -25,6 +26,37 @@ const (
 	ETHEREUM_ROPSTEN_NODE_VAR string = "ETHEREUM_ROPSTEN_NODE"
 	TOMO_MAINNET_NODE_VAR     string = "TOMO_MAINNET_NODE"
 )
+
+func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Duration {
+	if from >= to {
+		return time.Duration(0)
+	}
+	switch network {
+	case "mainnet":
+		return time.Duration(uint64(time.Second) * (to - from) * 16)
+	case "ropsten":
+		return time.Duration(uint64(time.Second) * (to - from) * 16)
+	case "tomo":
+		return time.Duration(uint64(time.Second) * (to - from) * 3)
+	}
+	panic("unsupported network")
+}
+
+func GetAddressFromString(str string) (addr string, name string, err error) {
+	addrDesc, err := db.GetAddress(str)
+	if err != nil {
+		name = "Unknown"
+		addresses := ScanForAddresses(str)
+		if len(addresses) == 0 {
+			return "", "", fmt.Errorf("address not found for \"%s\"", str)
+		}
+		addr = addresses[0]
+	} else {
+		name = addrDesc.Desc
+		addr = addrDesc.Address
+	}
+	return addr, name, nil
+}
 
 func ParamToBigInt(param string) (*big.Int, error) {
 	var result *big.Int
@@ -115,10 +147,27 @@ func DisplayWaitAnalyze(t *types.Transaction, broadcasted bool, err error, netwo
 	} else {
 		fmt.Printf("Broadcasted tx: %s\n", t.Hash().Hex())
 		fmt.Printf("---------Waiting for the tx to be mined---------\n")
-		mo := monitor.NewTxMonitor()
+		mo, err := EthTxMonitor(network)
+		if err != nil {
+			fmt.Printf("Couldn't monitor the tx: %s\n", err)
+			return
+		}
 		mo.BlockingWait(t.Hash().Hex())
-		tx.AnalyzeAndPrint(t.Hash().Hex(), network)
+		analyzer, err := EthAnalyzer(network)
+		if err != nil {
+			fmt.Printf("Couldn't analyze the tx: %s\n", err)
+			return
+		}
+		AnalyzeAndPrint(analyzer, t.Hash().Hex(), network)
 	}
+}
+
+func EthTxMonitor(network string) (*monitor.TxMonitor, error) {
+	r, err := EthReader(network)
+	if err != nil {
+		return nil, err
+	}
+	return monitor.NewGenericTxMonitor(r), nil
 }
 
 func EthAnalyzer(network string) (*txanalyzer.TxAnalyzer, error) {
@@ -161,6 +210,14 @@ func GetNodes(network string) (map[string]string, error) {
 		return nodes, nil
 	}
 	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, tomo.")
+}
+
+func EthBroadcaster(network string) (*broadcaster.Broadcaster, error) {
+	nodes, err := GetNodes(network)
+	if err != nil {
+		return nil, err
+	}
+	return broadcaster.NewGenericBroadcaster(nodes), nil
 }
 
 func EthReader(network string) (*reader.EthReader, error) {

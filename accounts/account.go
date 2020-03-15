@@ -64,6 +64,16 @@ func StoreAccountRecord(accDesc AccDesc) error {
 func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 	var fromAcc *account.Account
 	var err error
+
+	reader, err := util.EthReader(network)
+	if err != nil {
+		return nil, err
+	}
+	broadcaster, err := util.EthBroadcaster(network)
+	if err != nil {
+		return nil, err
+	}
+
 	switch ad.Kind {
 	case "keystore":
 		fmt.Printf("Using keystore: %s\n", ad.Keypath)
@@ -82,6 +92,8 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			fmt.Printf("Unlocking keystore '%s' failed: %s. Abort!\n", ad.Keypath, err)
 			return nil, err
 		}
+		fromAcc.SetReader(reader)
+		fromAcc.SetBroadcaster(broadcaster)
 		return fromAcc, nil
 	case "trezor":
 		if network == "mainnet" {
@@ -103,6 +115,8 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			fmt.Printf("Creating trezor instance failed: %s\n", err)
 			return nil, err
 		}
+		fromAcc.SetReader(reader)
+		fromAcc.SetBroadcaster(broadcaster)
 		return fromAcc, nil
 	case "ledger":
 		if network == "mainnet" {
@@ -124,6 +138,8 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			fmt.Printf("Creating ledger instance failed: %s\n", err)
 			return nil, err
 		}
+		fromAcc.SetReader(reader)
+		fromAcc.SetBroadcaster(broadcaster)
 		return fromAcc, nil
 	}
 	return nil, nil

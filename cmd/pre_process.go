@@ -6,48 +6,48 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/jarvis/accounts"
-	"github.com/tranvictor/jarvis/db"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/util"
 )
 
 func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error) {
-	PrefillStr = strings.Trim(PrefillStr, " ")
-	if PrefillStr != "" {
-		PrefillMode = true
-		PrefillParams = strings.Split(PrefillStr, "|")
-		for i, _ := range PrefillParams {
-			PrefillParams[i] = strings.Trim(PrefillParams[i], " ")
+	config.PrefillStr = strings.Trim(config.PrefillStr, " ")
+	if config.PrefillStr != "" {
+		config.PrefillMode = true
+		config.PrefillParams = strings.Split(config.PrefillStr, "|")
+		for i, _ := range config.PrefillParams {
+			config.PrefillParams[i] = strings.Trim(config.PrefillParams[i], " ")
 		}
 	}
 
-	if Value < 0 {
+	if config.Value < 0 {
 		return fmt.Errorf("value can't be negative")
 	}
 
-	To, _, err = getAddressFromString(args[0])
+	config.To, _, err = util.GetAddressFromString(args[0])
 	if err != nil {
 		txs := util.ScanForTxs(args[0])
 		if len(txs) == 0 {
 			return fmt.Errorf("can't interpret the contract address")
 		} else {
-			Tx = txs[0]
+			config.Tx = txs[0]
 
-			reader, err := util.EthReader(Network)
+			reader, err := util.EthReader(config.Network)
 			if err != nil {
 				return fmt.Errorf("Couldn't connect to blockchain.\n")
 			}
 
-			txinfo, err := reader.TxInfoFromHash(Tx)
+			txinfo, err := reader.TxInfoFromHash(config.Tx)
 			if err != nil {
 				return fmt.Errorf("Couldn't get tx info from the blockchain: %s\n", err)
 			}
-			TxInfo = &txinfo
-			To = TxInfo.Tx.To().Hex()
+			config.TxInfo = &txinfo
+			config.To = config.TxInfo.Tx.To().Hex()
 		}
 	}
 
-	fmt.Printf("Interpreted to address: %s\n", util.VerboseAddress(To))
+	fmt.Printf("Interpreted to address: %s\n", util.VerboseAddress(config.To))
 	return nil
 }
 
@@ -57,15 +57,15 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	isGnosisMultisig, err := util.IsGnosisMultisig(To, Network)
+	isGnosisMultisig, err := util.IsGnosisMultisig(config.To, config.Network)
 	if err != nil {
 		return err
 	}
 
-	if From == "" && isGnosisMultisig {
+	if config.From == "" && isGnosisMultisig {
 		multisigContract, err := msig.NewMultisigContract(
-			To,
-			Network,
+			config.To,
+			config.Network,
 		)
 		if err != nil {
 			return err
@@ -90,55 +90,39 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		if count != 1 {
 			return fmt.Errorf("You have many wallets that are this multisig signers. Please specify only 1.")
 		}
-		FromAcc = acc
-		From = acc.Address
+		config.FromAcc = acc
+		config.From = acc.Address
 	} else {
 		// process from to get address
-		acc, err := accounts.GetAccount(From)
+		acc, err := accounts.GetAccount(config.From)
 		if err != nil {
 			return err
 		} else {
-			FromAcc = acc
-			From = acc.Address
+			config.FromAcc = acc
+			config.From = acc.Address
 		}
 	}
 
-	fmt.Printf("Network: %s\n", Network)
-	reader, err := util.EthReader(Network)
+	fmt.Printf("Network: %s\n", config.Network)
+	reader, err := util.EthReader(config.Network)
 	if err != nil {
 		return err
 	}
 
 	// var GasPrice float64
-	if GasPrice == 0 {
-		GasPrice, err = reader.RecommendedGasPrice()
+	if config.GasPrice == 0 {
+		config.GasPrice, err = reader.RecommendedGasPrice()
 		if err != nil {
 			return err
 		}
 	}
 
 	// var Nonce uint64
-	if Nonce == 0 {
-		Nonce, err = reader.GetMinedNonce(From)
+	if config.Nonce == 0 {
+		config.Nonce, err = reader.GetMinedNonce(config.From)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
-}
-
-func getAddressFromString(str string) (addr string, name string, err error) {
-	addrDesc, err := db.GetAddress(str)
-	if err != nil {
-		name = "Unknown"
-		addresses := util.ScanForAddresses(str)
-		if len(addresses) == 0 {
-			return "", "", fmt.Errorf("address not found for \"%s\"", str)
-		}
-		addr = addresses[0]
-	} else {
-		name = addrDesc.Desc
-		addr = addrDesc.Address
-	}
-	return addr, name, nil
 }

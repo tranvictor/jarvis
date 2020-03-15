@@ -1,9 +1,11 @@
-package cmd
+package config
 
 import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 )
+
+var Network string
 
 var (
 	GasPrice             float64
@@ -22,6 +24,7 @@ var (
 	Tx                   string
 	TxInfo               *ethutils.TxInfo
 	AllZeroParamsMethods bool
+	AtBlock              int64
 
 	DontBroadcast     bool
 	DontWaitToBeMined bool
