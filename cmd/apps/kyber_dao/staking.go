@@ -13,6 +13,7 @@ import (
 var (
 	StakingContract string
 	DaoContract     string
+	FeeHandler      string
 
 	Epoch        uint64
 	Stake        *big.Int
@@ -27,8 +28,9 @@ func Preprocess(cmd *cobra.Command, args []string) (err error) {
 		DaoContract = ""
 		return fmt.Errorf("'%s' doesn't have kyber staking yet", config.Network)
 	case "ropsten":
-		StakingContract = "0x96356c512488f8aea0751d05953bfb3e20866415"
-		DaoContract = "0xb8af9107daf97cb6bdcedf977644f3cd0b0c8167"
+		StakingContract = "0x4a78660e83b01a3f50196678018fa2efe1932401"
+		DaoContract = "0x3f740889a810b244aff37b88bbbf2c685b848eb1"
+		FeeHandler = "0x99770684ca992b816256d6e92f3b8e3b490514a6"
 		return nil
 	}
 	return fmt.Errorf("'%s' is not support for this app", config.Network)
@@ -50,7 +52,7 @@ var infoCmd = &cobra.Command{
 			fmt.Printf("Couldn't interpret from address: %s\n", err)
 			return
 		}
-		dao := NewKyberDAO(reader, StakingContract, DaoContract)
+		dao := NewKyberDAO(reader, StakingContract, DaoContract, FeeHandler)
 		var isCurrentEpoch bool
 		if Epoch == 0 {
 			Epoch, err = dao.CurrentEpoch()
@@ -93,6 +95,38 @@ var infoCmd = &cobra.Command{
 			return
 		}
 		fmt.Printf("Stake other people delegated to you: %f KNC\n", ethutils.BigToFloat(delegatedStake, 18))
+
+		fmt.Printf("\nYour REWARD (during last 5 epochs):\n")
+		for i := uint64(0); i < 5 && Epoch >= i; i++ {
+			e := Epoch - i
+			reward, totalReward, share, err := dao.GetRewardInfo(config.From, e)
+			if err != nil {
+				fmt.Printf("Couldn't get reward info: %s\n", err)
+				return
+			}
+			fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH)\n", e, ethutils.BigToFloat(reward, 18), share, ethutils.BigToFloat(totalReward, 18))
+		}
+
+		// camIDs, err := dao.GetCampaignIDs(Epoch)
+		camIDs, err := dao.GetCampaignIDs(1)
+		fmt.Printf("\nThere are %d voting campaigns for current epoch:\n", len(camIDs))
+		for _, id := range camIDs {
+			cam, err := dao.GetCampaignDetail(id)
+			if err != nil {
+				fmt.Printf("Couldn't get campaign (%d) details: %s\n", id, err)
+				return
+			}
+			// CampaignType campType, uint startBlock, uint endBlock,
+			// uint totalKNCSupply, uint formulaParams, bytes memory link, uint[] memory options
+			fmt.Printf(
+				"%d - %s - %d -> %d - %s\n",
+				id,
+				cam.Type(),
+				cam.StartBlock.Uint64(),
+				cam.EndBlock.Uint64(),
+				cam.LinkStr(),
+			)
+		}
 	},
 }
 
