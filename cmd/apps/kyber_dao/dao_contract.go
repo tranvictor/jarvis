@@ -22,6 +22,9 @@ func NewKyberDAO(r *reader.EthReader, staking, dao, feeHandler string) *KyberDAO
 func (self *KyberDAO) CurrentEpoch() (uint64, error) {
 	var res *big.Int
 	err := self.reader.ReadContract(&res, self.staking, "getCurrentEpochNumber")
+	if err != nil {
+		return 0, err
+	}
 	return res.Uint64(), err
 }
 
