@@ -1,6 +1,7 @@
 package kyberdao
 
 import (
+	"fmt"
 	"math/big"
 )
 
@@ -35,7 +36,7 @@ func (self *Campaign) Type() string {
 	case 2:
 		return "brr"
 	}
-	return "unsupported type"
+	return "unsupported campaign type"
 }
 
 func (self *Campaign) LinkStr() string {
@@ -43,5 +44,21 @@ func (self *Campaign) LinkStr() string {
 }
 
 func (self *Campaign) VerboseOption(option *big.Int) string {
-	return "not implemented yet"
+	switch self.CampType {
+	case 0:
+		return fmt.Sprintf("%d", option.Uint64())
+	case 1:
+		return fmt.Sprintf("%.2f%%", float64(option.Uint64())/100)
+	case 2:
+		rebateBig := big.NewInt(0).Rsh(option, 128)
+		rebate := float64(rebateBig.Uint64()) / 100
+
+		temp := big.NewInt(0).Lsh(rebateBig, 128)
+		rewardBig := big.NewInt(0).Sub(option, temp)
+		reward := float64(rewardBig.Uint64()) / 100
+
+		burn := 100.0 - rebate - reward
+		return fmt.Sprintf("reward: %.2f%%, rebate: %.2f%%, burn: %.2f%%", reward, rebate, burn)
+	}
+	return "unsupported campaign type"
 }

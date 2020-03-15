@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -25,6 +26,21 @@ const (
 	ETHEREUM_ROPSTEN_NODE_VAR string = "ETHEREUM_ROPSTEN_NODE"
 	TOMO_MAINNET_NODE_VAR     string = "TOMO_MAINNET_NODE"
 )
+
+func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Duration {
+	if from >= to {
+		return time.Duration(0)
+	}
+	switch network {
+	case "mainnet":
+		return time.Duration(uint64(time.Second) * (to - from) * 16)
+	case "ropsten":
+		return time.Duration(uint64(time.Second) * (to - from) * 16)
+	case "tomo":
+		return time.Duration(uint64(time.Second) * (to - from) * 3)
+	}
+	panic("unsupported network")
+}
 
 func GetAddressFromString(str string) (addr string, name string, err error) {
 	addrDesc, err := db.GetAddress(str)

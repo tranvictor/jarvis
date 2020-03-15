@@ -101,6 +101,14 @@ func (self *KyberDAO) GetCampaignDetail(id *big.Int) (*Campaign, error) {
 	return result, err
 }
 
-func (self *KyberDAO) GetVotedOption(s string, camID *big.Int) (*big.Int, error) {
-	return big.NewInt(0), nil
+func (self *KyberDAO) GetVotedOptionID(s string, camID *big.Int) (*big.Int, error) {
+	var result *big.Int
+	err := self.reader.ReadContract(
+		&result,
+		self.dao,
+		"stakerVotedOption",
+		ethutils.HexToAddress(s),
+		camID,
+	)
+	return result, err
 }
