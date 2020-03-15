@@ -116,16 +116,27 @@ var infoCmd = &cobra.Command{
 				fmt.Printf("Couldn't get campaign (%d) details: %s\n", id, err)
 				return
 			}
+			votedOption, err := dao.GetVotedOption(config.From, id)
+			if err != nil {
+				fmt.Printf("Couldn't get voted options for campaign (%d): %s\n", id, err)
+				return
+			}
 			// CampaignType campType, uint startBlock, uint endBlock,
 			// uint totalKNCSupply, uint formulaParams, bytes memory link, uint[] memory options
-			fmt.Printf(
-				"%d - %s - %d -> %d - %s\n",
-				id,
-				cam.Type(),
-				cam.StartBlock.Uint64(),
-				cam.EndBlock.Uint64(),
-				cam.LinkStr(),
-			)
+			fmt.Printf("-- Campaign %d:\n", id)
+			fmt.Printf("   Type %s:\n", cam.Type())
+			fmt.Printf("   Duration: block %d -> %d, %d blocks\n")
+			fmt.Printf("   Time left: %s\n", "not implemented yet")
+			fmt.Printf("   For more information: %s\n", cam.LinkStr())
+			fmt.Printf("   %d Options:", len(cam.Options))
+			for i, op := range cam.Options {
+				if votedOption.Int64() == int64(i+1) {
+					fmt.Printf("    %d. %s (you voted)\n", i, cam.VerboseOption(op))
+				} else {
+					fmt.Printf("    %d. %s\n", i, cam.VerboseOption(op))
+				}
+			}
+			fmt.Printf("\n")
 		}
 	},
 }

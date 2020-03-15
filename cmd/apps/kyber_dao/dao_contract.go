@@ -100,3 +100,7 @@ func (self *KyberDAO) GetCampaignDetail(id *big.Int) (*Campaign, error) {
 	)
 	return result, err
 }
+
+func (self *KyberDAO) GetVotedOption(s string, camID *big.Int) (*big.Int, error) {
+	return big.NewInt(0), nil
+}
