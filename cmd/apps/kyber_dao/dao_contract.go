@@ -101,15 +101,47 @@ func (self *KyberDAO) GetCampaignIDs(e uint64) ([]*big.Int, error) {
 	return result, err
 }
 
-func (self *KyberDAO) GetCampaignDetail(id *big.Int) (*Campaign, error) {
-	result := NewEmptyCampaign()
-	err := self.reader.ReadContract(
+type voteCountResp struct {
+	VoteCounts     []*big.Int
+	TotalVoteCount *big.Int
+}
+
+func (self *KyberDAO) GetCampaignDetail(id *big.Int) (result *Campaign, err error) {
+	result = NewEmptyCampaign()
+	result.ID = big.NewInt(0).Set(id)
+	err = self.reader.ReadContract(
 		result,
 		self.dao,
 		"getCampaignDetails",
 		id,
 	)
-	return result, err
+	if err != nil {
+		return
+	}
+	vcresp := &voteCountResp{[]*big.Int{}, big.NewInt(0)}
+	err = self.reader.ReadContract(
+		vcresp,
+		self.dao,
+		"getCampaignVoteCountData",
+		id,
+	)
+	if err != nil {
+		return
+	}
+	result.OptionPoints = vcresp.VoteCounts
+	result.TotalPoints = vcresp.TotalVoteCount
+	winningOptions := [2]*big.Int{}
+	err = self.reader.ReadContract(
+		&winningOptions,
+		self.dao,
+		"getCampaignWinningOptionAndValue",
+		id,
+	)
+	if err != nil {
+		return
+	}
+	result.WinningOption = winningOptions[0]
+	return
 }
 
 func (self *KyberDAO) GetVotedOptionID(s string, camID *big.Int) (*big.Int, error) {
@@ -189,5 +221,22 @@ func (self *KyberDAO) AllStakeRelatedInfo(s string, e uint64) (info *StakeRelate
 		err = fmt.Errorf("Couldn't get delegated stake of %s at epoch %d: %w", s, info.Epoch, err)
 		return
 	}
+	return
+}
+
+type CampaignRelatedInfo struct {
+	Campaign *Campaign
+	Staker   string
+	VotedID  *big.Int
+}
+
+func (self *KyberDAO) AllCampaignRelatedInfo(s string, camID *big.Int) (info *CampaignRelatedInfo, err error) {
+	info = &CampaignRelatedInfo{
+		Staker: s,
+	}
+	if info.Campaign, err = self.GetCampaignDetail(camID); err != nil {
+		return
+	}
+	info.VotedID, err = self.GetVotedOptionID(s, camID)
 	return
 }

@@ -3,6 +3,7 @@ package kyberdao
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
@@ -16,10 +17,17 @@ var claimCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: Preprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		if Epoch == 0 {
-			cmd.Printf("Please specify epoch number via -e flag. Abort.\n")
+		if len(args) < 1 {
+			cmd.Printf("Please specify epoch number as a param. Abort.\n")
 			return
 		}
+		var err error
+		Epoch, err = strconv.ParseUint(args[0], 10, 64)
+		if err != nil {
+			cmd.Printf("Couldn't convert %s to number. Abort.\n", args[0])
+			return
+		}
+
 		PrintENV()
 
 		reader, err := util.EthReader(config.Network)
@@ -87,6 +95,5 @@ func init() {
 	claimCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
 	claimCmd.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
 	claimCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
-	claimCmd.PersistentFlags().Uint64VarP(&Epoch, "epoch", "e", 0, "Epoch to read staking and dao data.")
 	claimCmd.MarkFlagRequired("from")
 }

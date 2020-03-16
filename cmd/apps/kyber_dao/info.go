@@ -65,45 +65,12 @@ var infoCmd = &cobra.Command{
 		}
 
 		for _, id := range camIDs {
-			cam, err := dao.GetCampaignDetail(id)
+			campaignRelatedInfo, err := dao.AllCampaignRelatedInfo(config.From, id)
 			if err != nil {
-				fmt.Printf("Couldn't get campaign (%d) details: %s\n", id, err)
+				cmd.Printf("Couldn't get data of campaign %d: %s\n", id, err)
 				return
 			}
-			votedID, err := dao.GetVotedOptionID(config.From, id)
-			if err != nil {
-				fmt.Printf("Couldn't get voted options for campaign (%d): %s\n", id, err)
-				return
-			}
-			// CampaignType campType, uint startBlock, uint endBlock,
-			// uint totalKNCSupply, uint formulaParams, bytes memory link, uint[] memory options
-			fmt.Printf("----------------------------------------------------------------------------------------------------\n")
-			fmt.Printf("Campaign ID: %d\n", id)
-			fmt.Printf("Type: %s\n", cam.Type())
-			fmt.Printf("Duration: block %d -> %d, %d blocks\n",
-				cam.StartBlock.Uint64(),
-				cam.EndBlock.Uint64(),
-				cam.EndBlock.Uint64()-cam.StartBlock.Uint64())
-			timeLeft := util.CalculateTimeDurationFromBlock(config.Network, currentBlock, cam.EndBlock.Uint64())
-			if timeLeft == 0 {
-				fmt.Printf("Time left: ENDED\n")
-			} else {
-				fmt.Printf("Time left: %s\n", timeLeft.String())
-			}
-			if len(cam.LinkStr()) == 0 {
-				fmt.Printf("For more information: No link is provided.\n")
-			} else {
-				fmt.Printf("For more information: %s\n", cam.LinkStr())
-			}
-			fmt.Printf("\n%d options to vote:\n", len(cam.Options))
-			for i, op := range cam.Options {
-				if votedID.Int64() == int64(i+1) {
-					fmt.Printf("    %d. %s (you voted)\n", i+1, cam.VerboseOption(op))
-				} else {
-					fmt.Printf("    %d. %s\n", i+1, cam.VerboseOption(op))
-				}
-			}
-			fmt.Printf("\n")
+			PrintCampaignInformation(cmd, campaignRelatedInfo, currentBlock)
 		}
 	},
 }

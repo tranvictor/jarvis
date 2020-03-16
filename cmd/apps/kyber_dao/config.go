@@ -14,7 +14,8 @@ var (
 	FeeHandler      string
 	KNCContract     string
 
-	Epoch uint64
+	Epoch      uint64
+	CampaignID uint64
 )
 
 func Preprocess(cmd *cobra.Command, args []string) (err error) {
