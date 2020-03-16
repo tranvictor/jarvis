@@ -56,7 +56,7 @@ func (self *KyberDAO) GetDelegatedStake(s string, e uint64) (*big.Int, error) {
 	return res, err
 }
 
-func (self *KyberDAO) GetRewardInfo(s string, e uint64) (reward *big.Int, totalReward *big.Int, share float64, err error) {
+func (self *KyberDAO) GetRewardInfo(s string, e uint64) (reward *big.Int, totalReward *big.Int, share float64, isClaimed bool, err error) {
 	var shareBig *big.Int
 	err = self.reader.ReadContract(
 		&shareBig,
@@ -80,6 +80,13 @@ func (self *KyberDAO) GetRewardInfo(s string, e uint64) (reward *big.Int, totalR
 	reward = big.NewInt(0).Mul(totalReward, shareBig)
 	reward = big.NewInt(0).Div(reward, ethutils.FloatToBigInt(1.0, 18))
 	share = ethutils.BigToFloat(shareBig, 18)
+	err = self.reader.ReadContract(
+		&isClaimed,
+		self.dao,
+		"hasClaimedReward",
+		ethutils.HexToAddress(s),
+		big.NewInt(int64(e)),
+	)
 	return
 }
 

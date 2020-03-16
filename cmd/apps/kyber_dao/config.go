@@ -20,7 +20,7 @@ var (
 func Preprocess(cmd *cobra.Command, args []string) (err error) {
 	config.From, _, err = util.GetAddressFromString(config.From)
 	if err != nil {
-		return fmt.Errorf("Couldn't interpret addresss: %w\n", err)
+		return fmt.Errorf("Couldn't interpret addresss. Please double check your -f flag. %w\n", err)
 	}
 
 	switch config.Network {

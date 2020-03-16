@@ -15,4 +15,5 @@ func init() {
 	KyberDAOCmd.AddCommand(infoCmd)
 	KyberDAOCmd.AddCommand(stakeCmd)
 	KyberDAOCmd.AddCommand(withdrawCmd)
+	KyberDAOCmd.AddCommand(claimCmd)
 }

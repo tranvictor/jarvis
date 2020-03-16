@@ -42,12 +42,16 @@ var infoCmd = &cobra.Command{
 		fmt.Printf("\nYour REWARD including your delegators' (during last 5 epochs):\n")
 		for i := uint64(0); i < 5 && Epoch >= i; i++ {
 			e := Epoch - i
-			reward, totalReward, share, err := dao.GetRewardInfo(config.From, e)
+			reward, totalReward, share, isClaimed, err := dao.GetRewardInfo(config.From, e)
 			if err != nil {
 				fmt.Printf("Couldn't get reward info: %s\n", err)
 				return
 			}
-			fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH)\n", e, ethutils.BigToFloat(reward, 18), share, ethutils.BigToFloat(totalReward, 18))
+			if isClaimed {
+				fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH) | CLAIMED\n", e, ethutils.BigToFloat(reward, 18), share, ethutils.BigToFloat(totalReward, 18))
+			} else {
+				fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH)\n", e, ethutils.BigToFloat(reward, 18), share, ethutils.BigToFloat(totalReward, 18))
+			}
 		}
 
 		camIDs, err := dao.GetCampaignIDs(Epoch)
@@ -107,6 +111,4 @@ var infoCmd = &cobra.Command{
 func init() {
 	infoCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
 	infoCmd.PersistentFlags().Uint64VarP(&Epoch, "epoch", "e", 0, "Epoch to read staking and dao data.")
-
-	infoCmd.MarkFlagRequired("from")
 }
