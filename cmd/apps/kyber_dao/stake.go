@@ -11,6 +11,7 @@ import (
 )
 
 var MAX_ALLOWANCE = big.NewInt(0).Lsh(big.NewInt(1), 254)
+var SAFE_ALLOWANCE = big.NewInt(0).Lsh(big.NewInt(1), 200)
 
 var stakeCmd = &cobra.Command{
 	Use:              "stake",
@@ -53,7 +54,7 @@ var stakeCmd = &cobra.Command{
 			return
 		}
 		OldDontWaitToBeMined := config.DontWaitToBeMined
-		if stakeInfo.Allowance.Cmp(MAX_ALLOWANCE) != 0 {
+		if stakeInfo.Allowance.Cmp(SAFE_ALLOWANCE) < 0 {
 			cmd.Printf("\nYou need to give KNC allowance to the staking contract.\n")
 			txCmd, txArgs, err := rootCmd.Find([]string{
 				"contract",
