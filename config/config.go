@@ -26,6 +26,9 @@ var (
 	AllZeroParamsMethods bool
 	AtBlock              int64
 
+	MsigValue float64
+	MsigTo    string
+
 	DontBroadcast     bool
 	DontWaitToBeMined bool
 )

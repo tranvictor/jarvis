@@ -13,10 +13,17 @@ import (
 var MAX_ALLOWANCE = big.NewInt(0).Lsh(big.NewInt(1), 254)
 
 var stakeCmd = &cobra.Command{
-	Use:               "stake",
-	Short:             "Stake your KNC to Kyber DAO to vote and get rewards",
-	TraverseChildren:  true,
-	PersistentPreRunE: Preprocess,
+	Use:              "stake",
+	Short:            "Stake your KNC to Kyber DAO to vote and get rewards",
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		config.From, _, err = util.GetAddressFromString(config.From)
+		if err != nil {
+			return fmt.Errorf("Couldn't interpret addresss. Please double check your -f flag. %w\n", err)
+		}
+
+		return Preprocess(cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		PrintENV()
 

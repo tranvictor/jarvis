@@ -3,10 +3,13 @@ package kyberdao
 import (
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
+	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/util"
 )
 
 type KyberDAO struct {
@@ -239,4 +242,46 @@ func (self *KyberDAO) AllCampaignRelatedInfo(s string, camID *big.Int) (info *Ca
 	}
 	info.VotedID, err = self.GetVotedOptionID(s, camID)
 	return
+}
+
+type TimeRelatedInfo struct {
+	EpochDuration      uint64
+	CurrentBlock       *big.Int
+	CurrentEpoch       uint64
+	TimeUntilNextEpoch time.Duration
+
+	NextEpoch           uint64
+	NextEpochStartBlock *big.Int // the first block that the campaign is active
+	NextEpochEndBlock   *big.Int // the last block that the campaign is active, not the first block that the campaign is ended
+}
+
+func calculateEpoch(cblock *big.Int, start, duration uint64) uint64 {
+	// if (blockNumber < FIRST_EPOCH_START_BLOCK || EPOCH_PERIOD_BLOCKS == 0) { return 0; }
+	// ((blockNumber - FIRST_EPOCH_START_BLOCK) / EPOCH_PERIOD_BLOCKS) + 1;
+	block := cblock.Uint64()
+	if block < start {
+		return 0
+	}
+	return (block-start)/duration + 1
+}
+
+func (self *KyberDAO) AllTimeRelatedInfo() (*TimeRelatedInfo, error) {
+	result := &TimeRelatedInfo{
+		EpochDuration: EpochDuration,
+	}
+	cBlock, err := self.reader.CurrentBlock()
+	if err != nil {
+		return result, err
+	}
+	result.CurrentBlock = big.NewInt(int64(cBlock))
+	result.CurrentEpoch = calculateEpoch(result.CurrentBlock, StartDAOBlock, EpochDuration)
+	result.NextEpoch = result.CurrentEpoch + 1
+	result.NextEpochStartBlock = big.NewInt(int64(StartDAOBlock + (result.NextEpoch-1)*EpochDuration))
+	result.NextEpochEndBlock = big.NewInt(0).Add(result.NextEpochStartBlock, big.NewInt(int64(EpochDuration-1)))
+	result.TimeUntilNextEpoch = util.CalculateTimeDurationFromBlock(
+		config.Network,
+		result.CurrentBlock.Uint64(),
+		result.NextEpochStartBlock.Uint64(),
+	)
+	return result, nil
 }

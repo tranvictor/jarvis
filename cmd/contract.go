@@ -53,7 +53,7 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 		for i, m := range methods {
 			fmt.Printf("%d. %s\n", i+1, m.Name)
 		}
-		config.MethodIndex = uint64(promptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
+		config.MethodIndex = uint64(util.PromptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
 	} else if int(config.MethodIndex) > len(methods) {
 		return nil, nil, nil, fmt.Errorf("The contract doesn't have %d(th) write method.")
 	}
@@ -72,9 +72,9 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 		var inputParam interface{}
 		if !config.PrefillMode || prefills[pi] == "?" {
 			fmt.Printf("%d. %s (%s)", pi, input.Name, input.Type.String())
-			inputParam, err = promptParam(input, "")
+			inputParam, err = util.PromptParam(input, "", config.Network)
 		} else {
-			inputParam, err = promptParam(input, prefills[pi])
+			inputParam, err = util.PromptParam(input, prefills[pi], config.Network)
 		}
 		if err != nil {
 			fmt.Printf("Your input is not valid: %s\n", err)

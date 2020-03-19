@@ -3,8 +3,10 @@ package kyberdao
 import (
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/config"
@@ -16,8 +18,46 @@ func PrintENV() {
 	fmt.Printf("Dao contract: %s\n", DaoContract)
 	fmt.Printf("Staking contract: %s\n", StakingContract)
 	fmt.Printf("FeeHandler contract: %s\n", FeeHandler)
+	fmt.Printf("Campaign creator: %s\n", CampaignCreator)
+	fmt.Printf("Epoch duration: %d\n", EpochDuration)
 	fmt.Printf("KNC: %s\n", KNCContract)
 	fmt.Printf("----------------------------------------------------------------------------------------------------\n")
+}
+
+func optionStr(options []*big.Int) string {
+	opStrs := []string{}
+	for _, o := range options {
+		opStrs = append(opStrs, hexutil.EncodeBig(o))
+	}
+	return fmt.Sprintf("[%s]", strings.Join(opStrs, ","))
+}
+
+func PromptBRROption(prompter string) *big.Int {
+	opStr := util.PromptInputWithValidation(prompter, func(str string) error {
+		parts := strings.Split(str, ",")
+		if len(parts) != 2 {
+			return fmt.Errorf("Please input exactly 2 number in bps separated by a comma")
+		}
+		rebate, err := strconv.ParseUint(strings.Trim(parts[0], " "), 10, 64)
+		if err != nil {
+			return fmt.Errorf("Can't parse %s to number, %w", parts[0], err)
+		}
+		reward, err := strconv.ParseUint(strings.Trim(parts[1], " "), 10, 64)
+		if err != nil {
+			return fmt.Errorf("Can't parse %s to number, %w", parts[1], err)
+		}
+		if rebate+reward > 10000 {
+			return fmt.Errorf("Can't have rebate + reward > 10000 bps")
+		}
+		return nil
+	})
+
+	parts := strings.Split(opStr, ",")
+	rebate, _ := strconv.ParseUint(strings.Trim(parts[0], " "), 10, 64)
+	reward, _ := strconv.ParseUint(strings.Trim(parts[1], " "), 10, 64)
+	rebateBig := big.NewInt(int64(rebate))
+	temp := big.NewInt(0).Lsh(rebateBig, 128)
+	return big.NewInt(0).Add(temp, big.NewInt(int64(reward)))
 }
 
 func PrintCampaignInformation(cmd *cobra.Command, info *CampaignRelatedInfo, currentBlock uint64) {

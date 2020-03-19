@@ -11,10 +11,17 @@ import (
 )
 
 var voteCmd = &cobra.Command{
-	Use:               "vote",
-	Short:             "Vote on a KyberDAO voting campaign",
-	TraverseChildren:  true,
-	PersistentPreRunE: Preprocess,
+	Use:              "vote",
+	Short:            "Vote on a KyberDAO voting campaign",
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		config.From, _, err = util.GetAddressFromString(config.From)
+		if err != nil {
+			return fmt.Errorf("Couldn't interpret addresss. Please double check your -f flag. %w\n", err)
+		}
+
+		return Preprocess(cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			cmd.Printf("Please specify campaign ID number as a param. Abort.\n")

@@ -17,10 +17,22 @@ var (
 )
 
 var infoCmd = &cobra.Command{
-	Use:               "staker-info",
-	Short:             "Show stake, your reward and current voting campaigns",
-	TraverseChildren:  true,
-	PersistentPreRunE: Preprocess,
+	Use:              "staker-info",
+	Short:            "Show stake, your reward and current voting campaigns",
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		if len(args) < 1 {
+			fmt.Errorf("Please specified staker address via param. Abort.\n")
+			return
+		}
+
+		config.From, _, err = util.GetAddressFromString(args[0])
+		if err != nil {
+			return fmt.Errorf("Couldn't interpret addresss. Please double check your -f flag. %w\n", err)
+		}
+
+		return Preprocess(cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		PrintENV()
 		reader, err := util.EthReader(config.Network)
@@ -76,6 +88,5 @@ var infoCmd = &cobra.Command{
 }
 
 func init() {
-	infoCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
 	infoCmd.PersistentFlags().Uint64VarP(&Epoch, "epoch", "e", 0, "Epoch to read staking and dao data.")
 }

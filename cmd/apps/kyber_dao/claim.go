@@ -12,10 +12,17 @@ import (
 )
 
 var claimCmd = &cobra.Command{
-	Use:               "claim-reward",
-	Short:             "Claim your reward from KyberDAO",
-	TraverseChildren:  true,
-	PersistentPreRunE: Preprocess,
+	Use:              "claim-reward",
+	Short:            "Claim your reward from KyberDAO",
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		config.From, _, err = util.GetAddressFromString(config.From)
+		if err != nil {
+			return fmt.Errorf("Couldn't interpret addresss. Please double check your -f flag. %w\n", err)
+		}
+
+		return Preprocess(cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
 			cmd.Printf("Please specify epoch number as a param. Abort.\n")

@@ -1,6 +1,7 @@
 package kyberdao
 
 import (
+	"fmt"
 	"math/big"
 
 	"github.com/spf13/cobra"
@@ -9,10 +10,17 @@ import (
 )
 
 var withdrawCmd = &cobra.Command{
-	Use:               "withdraw",
-	Short:             "Withdraw your KNC from KyberDAO",
-	TraverseChildren:  true,
-	PersistentPreRunE: Preprocess,
+	Use:              "withdraw",
+	Short:            "Withdraw your KNC from KyberDAO",
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		config.From, _, err = util.GetAddressFromString(config.From)
+		if err != nil {
+			return fmt.Errorf("Couldn't interpret addresss. Please double check your -f flag. %w\n", err)
+		}
+
+		return Preprocess(cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		PrintENV()
 

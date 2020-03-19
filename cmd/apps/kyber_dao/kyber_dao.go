@@ -17,4 +17,5 @@ func init() {
 	KyberDAOCmd.AddCommand(withdrawCmd)
 	KyberDAOCmd.AddCommand(claimCmd)
 	KyberDAOCmd.AddCommand(voteCmd)
+	KyberDAOCmd.AddCommand(createCamCmd)
 }
