@@ -149,8 +149,6 @@ var createCamCmd = &cobra.Command{
 		if err != nil {
 			cmd.Printf("Couldn't find tx command: %s\n", err)
 		}
-		_ = txCmd
-		_ = txArgs
 		config.MsigTo = DaoContract
 		config.MethodIndex = 7
 		config.ExtraGasLimit = 500000

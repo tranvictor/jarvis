@@ -347,7 +347,7 @@ func ConvertToBytes(str string) ([]byte, error) {
 	if len(str) == 2 && str == "0x" {
 		return []byte{}, nil
 	}
-	if len(str) > 2 && str[0] == '"' && str[len(str)-1] == '"' {
+	if len(str) >= 2 && str[0] == '"' && str[len(str)-1] == '"' {
 		return []byte(str[1 : len(str)-1]), nil
 	}
 	return hexutil.Decode(str)
