@@ -153,11 +153,13 @@ var createCamCmd = &cobra.Command{
 		config.MethodIndex = 7
 		config.ExtraGasLimit = 500000
 		config.PrefillStr = fmt.Sprintf(
-			// campType|startBlock|endBlock|formula|options|link
-			"%d|%d|%d|%s|%s|\"%s\"",
+			// campType|startBlock|endBlock|min|c|t|options|link
+			"%d|%d|%d|%d|%d|%d|%s|\"%s\"",
 			CampType,
 			startBlockBig,
 			endBlockBig,
+			big.NewInt(0),
+			big.NewInt(0),
 			big.NewInt(0),
 			optionStr(Options),
 			Link,

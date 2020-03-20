@@ -6,31 +6,35 @@ import (
 )
 
 type Campaign struct {
-	CampType       uint8
-	StartBlock     *big.Int
-	EndBlock       *big.Int
-	TotalKNCSupply *big.Int
-	FormulaParams  *big.Int
-	Link           []byte
-	Options        []*big.Int
-	OptionPoints   []*big.Int
-	TotalPoints    *big.Int
-	WinningOption  *big.Int
-	ID             *big.Int
+	CampType                 uint8
+	StartBlock               *big.Int
+	EndBlock                 *big.Int
+	TotalKNCSupply           *big.Int
+	MinPercentageInPrecision *big.Int
+	CInPrecision             *big.Int
+	TInPrecision             *big.Int
+	Link                     []byte
+	Options                  []*big.Int
+	OptionPoints             []*big.Int
+	TotalPoints              *big.Int
+	WinningOption            *big.Int
+	ID                       *big.Int
 }
 
 func NewEmptyCampaign() *Campaign {
 	return &Campaign{
-		CampType:       0,
-		StartBlock:     big.NewInt(0),
-		EndBlock:       big.NewInt(0),
-		TotalKNCSupply: big.NewInt(0),
-		FormulaParams:  big.NewInt(0),
-		Link:           []byte{},
-		Options:        []*big.Int{},
-		OptionPoints:   []*big.Int{},
-		TotalPoints:    big.NewInt(0),
-		WinningOption:  big.NewInt(0),
+		CampType:                 0,
+		StartBlock:               big.NewInt(0),
+		EndBlock:                 big.NewInt(0),
+		TotalKNCSupply:           big.NewInt(0),
+		MinPercentageInPrecision: big.NewInt(0),
+		CInPrecision:             big.NewInt(0),
+		TInPrecision:             big.NewInt(0),
+		Link:                     []byte{},
+		Options:                  []*big.Int{},
+		OptionPoints:             []*big.Int{},
+		TotalPoints:              big.NewInt(0),
+		WinningOption:            big.NewInt(0),
 	}
 }
 

@@ -34,13 +34,13 @@ func Preprocess(cmd *cobra.Command, args []string) (err error) {
 		MinCamDuration = 0
 		return fmt.Errorf("'%s' doesn't have kyber staking yet", config.Network)
 	case "ropsten":
-		StakingContract = "0x4a78660e83b01a3f50196678018fa2efe1932401"
-		DaoContract = "0x3f740889a810b244aff37b88bbbf2c685b848eb1"
-		FeeHandler = "0x99770684ca992b816256d6e92f3b8e3b490514a6"
+		StakingContract = "0x8ba3ecae2ffd1dc9e730e54c9c5481d30a3ca2a3"
+		DaoContract = "0x752f6BEb3E103696842414Be1f3361011167EDa9"
+		FeeHandler = "0x8329e24cb7d85284f32689ef57983c8a7d4b268b"
 		KNCContract = "0x4e470dc7321e84ca96fcaedd0c8abcebbaeb68c6"
 		CampaignCreator = "0xddf05698718ba8ed1c9aba198d38a825a64d69e2"
-		EpochDuration = 1000
-		StartDAOBlock = 7518770
+		EpochDuration = 200
+		StartDAOBlock = 7553600
 		MinCamDuration = 10
 		return nil
 	}
