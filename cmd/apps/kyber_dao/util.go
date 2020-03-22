@@ -62,21 +62,27 @@ func PromptBRROption(prompter string) *big.Int {
 
 func PrintCampaignInformation(cmd *cobra.Command, info *CampaignRelatedInfo, currentBlock uint64) {
 	fmt.Printf("----------------------------------------------------------------------------------------------------\n")
+	fmt.Printf("Current block: %d\n", currentBlock)
 	fmt.Printf("Campaign ID: %d\n", info.Campaign.ID)
 	fmt.Printf("Type: %s\n", info.Campaign.Type())
 	fmt.Printf("Duration: block %d -> %d, %d blocks\n",
 		info.Campaign.StartBlock.Uint64(),
 		info.Campaign.EndBlock.Uint64(),
 		info.Campaign.EndBlock.Uint64()-info.Campaign.StartBlock.Uint64())
-	timeLeft := util.CalculateTimeDurationFromBlock(config.Network, currentBlock, info.Campaign.EndBlock.Uint64())
-	if timeLeft == 0 {
-		fmt.Printf("Time left: ENDED")
-		if !info.Campaign.HasWinningOption() {
-			fmt.Printf(" - No winning option")
-		}
-		fmt.Printf("\n")
+	if currentBlock < info.Campaign.StartBlock.Uint64() {
+		timeLeft := util.CalculateTimeDurationFromBlock(config.Network, currentBlock, info.Campaign.StartBlock.Uint64())
+		fmt.Printf("Start in: %s\n", timeLeft.String())
 	} else {
-		fmt.Printf("Time left: %s\n", timeLeft.String())
+		timeLeft := util.CalculateTimeDurationFromBlock(config.Network, currentBlock, info.Campaign.EndBlock.Uint64())
+		if timeLeft == 0 {
+			fmt.Printf("Time left: ENDED")
+			if !info.Campaign.HasWinningOption() {
+				fmt.Printf(" - No winning option")
+			}
+			fmt.Printf("\n")
+		} else {
+			fmt.Printf("Time left: %s\n", timeLeft.String())
+		}
 	}
 	if len(info.Campaign.LinkStr()) == 0 {
 		fmt.Printf("For more information: No link is provided.\n")
