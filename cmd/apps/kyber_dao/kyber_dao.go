@@ -13,4 +13,9 @@ var KyberDAOCmd = &cobra.Command{
 
 func init() {
 	KyberDAOCmd.AddCommand(infoCmd)
+	KyberDAOCmd.AddCommand(stakeCmd)
+	KyberDAOCmd.AddCommand(withdrawCmd)
+	KyberDAOCmd.AddCommand(claimCmd)
+	KyberDAOCmd.AddCommand(voteCmd)
+	KyberDAOCmd.AddCommand(createCamCmd)
 }

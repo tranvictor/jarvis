@@ -14,11 +14,6 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-var (
-	MsigValue float64
-	MsigTo    string
-)
-
 var summaryMsigCmd = &cobra.Command{
 	Use:   "summary",
 	Short: "Print all txs confirmation and execution status of the multisig",
@@ -372,16 +367,16 @@ var initMsigCmd = &cobra.Command{
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
 		CommonTxPreprocess(cmd, args)
 
-		if MsigValue < 0 {
+		if config.MsigValue < 0 {
 			return fmt.Errorf("multisig value can't be negative")
 		}
 
 		var msigToName string
-		MsigTo, msigToName, err = util.GetAddressFromString(MsigTo)
+		config.MsigTo, msigToName, err = util.GetAddressFromString(config.MsigTo)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Call to: %s (%s)\n", MsigTo, msigToName)
+		fmt.Printf("Call to: %s (%s)\n", config.MsigTo, msigToName)
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
@@ -391,7 +386,7 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 
-		data, err := promptTxData(MsigTo, config.PrefillParams)
+		data, err := promptTxData(config.MsigTo, config.PrefillParams)
 		if err != nil {
 			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
 			return
@@ -404,8 +399,8 @@ var initMsigCmd = &cobra.Command{
 		}
 		txdata, err := a.Pack(
 			"submitTransaction",
-			ethutils.HexToAddress(MsigTo),
-			ethutils.FloatToBigInt(MsigValue, 18),
+			ethutils.HexToAddress(config.MsigTo),
+			ethutils.FloatToBigInt(config.MsigValue, 18),
 			data,
 		)
 		if err != nil {
@@ -454,8 +449,8 @@ func init() {
 	msigCmd.AddCommand(transactionInfoMsigCmd)
 	msigCmd.AddCommand(govInfoMsigCmd)
 
-	initMsigCmd.Flags().Float64VarP(&MsigValue, "msig-value", "l", 0, "Amount of eth to send with the multisig. It is in ETH, not WEI.")
-	initMsigCmd.Flags().StringVarP(&MsigTo, "msig-to", "j", "", "Target address the multisig will interact with. Can be address or name.")
+	initMsigCmd.Flags().Float64VarP(&config.MsigValue, "msig-value", "l", 0, "Amount of eth to send with the multisig. It is in ETH, not WEI.")
+	initMsigCmd.Flags().StringVarP(&config.MsigTo, "msig-to", "j", "", "Target address the multisig will interact with. Can be address or name.")
 	initMsigCmd.Flags().Uint64VarP(&config.MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
 	initMsigCmd.Flags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
 	initMsigCmd.MarkFlagRequired("msig-to")

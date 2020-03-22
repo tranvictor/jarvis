@@ -12,6 +12,7 @@ import (
 	"github.com/tranvictor/ethutils/account/ledgereum"
 	"github.com/tranvictor/ethutils/account/trezoreum"
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/util"
 )
 
 const (
@@ -62,10 +63,10 @@ func handleHW(hw HW, t string) {
 		for i, acc := range accs {
 			fmt.Printf("%d. %s (%s)\n", i, acc.Address, acc.Derpath)
 		}
-		index := promptIndex("Jarvis: Please enter the wallet index you want to add (0, 1, 2, 3, 4, next, back): ", 0, len(accs)-1)
-		if index == NEXT {
+		index := util.PromptIndex("Jarvis: Please enter the wallet index you want to add (0, 1, 2, 3, 4, next, back): ", 0, len(accs)-1)
+		if index == util.NEXT {
 			batch += 1
-		} else if index == BACK {
+		} else if index == util.BACK {
 			if batch > 0 {
 				batch -= 1
 			} else {
@@ -73,7 +74,7 @@ func handleHW(hw HW, t string) {
 			}
 		} else {
 			accDesc := accs[index]
-			des := promptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
+			des := util.PromptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
 			accDesc.Desc = des
 			err := accounts.StoreAccountRecord(*accDesc)
 			if err != nil {
@@ -117,7 +118,7 @@ func handleTrezor() {
 
 func handleAddKeystore() {
 	fmt.Printf("Jarvis: Keystore is convenient but not so safe. I recommend you to use it only for unimportant frequent tasks.\n")
-	keystorePath := promptFilePath("Jarvis: Please enter the path to your keystore file: ")
+	keystorePath := util.PromptFilePath("Jarvis: Please enter the path to your keystore file: ")
 	accDesc := &accounts.AccDesc{
 		Address: "",
 		Kind:    "keystore",
@@ -130,7 +131,7 @@ func handleAddKeystore() {
 	}
 	accDesc.Address = address
 	fmt.Printf("Jarvis: This keystore is with %s\n", address)
-	des := promptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
+	des := util.PromptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
 	accDesc.Desc = des
 	err = accounts.StoreAccountRecord(*accDesc)
 	if err != nil {
@@ -146,7 +147,7 @@ var addWalletCmd = &cobra.Command{
 	Short: "Add a wallet to jarvis",
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. type
-		keyType := promptInput("Jarvis: Enter key type (enter either trezor, ledger or keystore):")
+		keyType := util.PromptInput("Jarvis: Enter key type (enter either trezor, ledger or keystore):")
 		switch keyType {
 		case "trezor":
 			handleTrezor()
