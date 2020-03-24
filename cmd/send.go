@@ -42,11 +42,28 @@ func handleSend(
 	fmt.Printf("token: %s, amount: %f\n", tokenAddr, amount)
 	if tokenAddr == util.ETH_ADDR {
 		t, broadcasted, errors = account.SendETHWithNonceAndPrice(
-			config.Nonce, config.GasPrice+config.ExtraGasPrice,
-			ethutils.FloatToBigInt(amount, 18), to,
+			config.Nonce,
+			config.GasPrice+config.ExtraGasPrice,
+			ethutils.FloatToBigInt(amount, 18),
+			to,
 		)
 	} else {
-		t, broadcasted, errors = account.SendERC20(tokenAddr, amount, to)
+		decimals, err := util.GetERC20Decimal(tokenAddr, config.Network)
+		if err != nil {
+			fmt.Printf("Couldn't get token decimal: %s\n", err)
+			return
+		}
+		amountBig := ethutils.FloatToBigInt(amount, decimals)
+		t, broadcasted, errors = account.CallERC20ContractWithNonceAndPrice(
+			config.Nonce,
+			config.GasPrice+config.ExtraGasPrice,
+			150000,
+			0,
+			tokenAddr,
+			"transfer",
+			ethutils.HexToAddress(to),
+			amountBig,
+		)
 	}
 	util.DisplayWaitAnalyze(
 		t, broadcasted, errors, config.Network,

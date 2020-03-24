@@ -13,20 +13,14 @@ import (
 )
 
 type TxAnalyzer struct {
-	reader *reader.EthReader
-	addrdb AddressDatabase
+	reader  *reader.EthReader
+	Network string
 }
 
 func (self *TxAnalyzer) setBasicTxInfo(txinfo ethutils.TxInfo, result *TxResult) {
-	result.From = AddressResult{
-		Address: txinfo.Tx.Extra.From.Hex(),
-		Name:    self.addrdb.GetName(txinfo.Tx.Extra.From.Hex()),
-	}
+	result.From = txinfo.Tx.Extra.From.Hex()
 	result.Value = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.Tx.Value(), 18))
-	result.To = AddressResult{
-		Address: txinfo.Tx.To().Hex(),
-		Name:    self.addrdb.GetName(txinfo.Tx.To().Hex()),
-	}
+	result.To = txinfo.Tx.To().Hex()
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
@@ -37,11 +31,11 @@ func (self *TxAnalyzer) nonArrayParamAsString(t abi.Type, value interface{}) str
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
 		return fmt.Sprintf("%s", value.(string))
 	case abi.IntTy, abi.UintTy:
-		return fmt.Sprintf("%d (0x%x)", value, value)
+		return fmt.Sprintf("%d", value)
 	case abi.BoolTy:
 		return fmt.Sprintf("%t", value.(bool))
 	case abi.AddressTy:
-		return fmt.Sprintf("%s - (%s)", value.(common.Address).Hex(), self.addrdb.GetName(value.(common.Address).Hex()))
+		return fmt.Sprintf("%s", value.(common.Address).Hex())
 	case abi.HashTy:
 		return fmt.Sprintf("%s", value.(common.Hash).Hex())
 	case abi.BytesTy:
@@ -60,24 +54,24 @@ func (self *TxAnalyzer) nonArrayParamAsString(t abi.Type, value interface{}) str
 	}
 }
 
-func (self *TxAnalyzer) ParamAsString(t abi.Type, value interface{}) string {
+func (self *TxAnalyzer) ParamAsStrings(t abi.Type, value interface{}) []string {
 	switch t.T {
 	case abi.SliceTy:
 		realVal := reflect.ValueOf(value)
-		result := ""
+		result := []string{}
 		for i := 0; i < realVal.Len(); i++ {
-			result += fmt.Sprintf("\n%d. %v", i, self.ParamAsString(*t.Elem, realVal.Index(i).Interface()))
+			result = append(result, self.ParamAsStrings(*t.Elem, realVal.Index(i).Interface())...)
 		}
 		return result
 	case abi.ArrayTy:
 		realVal := reflect.ValueOf(value)
-		result := ""
+		result := []string{}
 		for i := 0; i < realVal.Len(); i++ {
-			result += fmt.Sprintf("\n%d. %v", i, self.ParamAsString(*t.Elem, realVal.Index(i).Interface()))
+			result = append(result, self.ParamAsStrings(*t.Elem, realVal.Index(i).Interface())...)
 		}
 		return result
 	default:
-		return self.nonArrayParamAsString(t, value)
+		return []string{self.nonArrayParamAsString(t, value)}
 	}
 }
 
@@ -91,6 +85,9 @@ func findEventById(a *abi.ABI, topic []byte) (*abi.Event, error) {
 }
 
 func (self *TxAnalyzer) AnalyzeMethodCall(abi *abi.ABI, data []byte) (method string, params []ParamResult, gnosisResult *GnosisResult, err error) {
+	if _, err := abi.MethodById(data); err != nil {
+		abi, _ = ethutils.GetERC20ABI()
+	}
 	m, err := abi.MethodById(data)
 	if err != nil {
 		return "", []ParamResult{}, nil, err
@@ -105,13 +102,18 @@ func (self *TxAnalyzer) AnalyzeMethodCall(abi *abi.ABI, data []byte) (method str
 		params = append(params, ParamResult{
 			Name:  input.Name,
 			Type:  input.Type.String(),
-			Value: self.ParamAsString(input.Type, ps[i]),
+			Value: self.ParamAsStrings(input.Type, ps[i]),
 		})
 	}
 
 	if isGnosisMultisig(m, ps) {
 		// fmt.Printf("    ==> Gnosis Multisig init data:\n")
-		gnosisResult = self.gnosisMultisigInitData(m.Inputs, ps)
+		contract := ps[0].(common.Address)
+		a, err := self.reader.GetABI(contract.Hex())
+		if err != nil {
+			a, _ = ethutils.GetERC20ABI()
+		}
+		gnosisResult = self.gnosisMultisigInitData(a, ps)
 	}
 	return method, params, gnosisResult, nil
 }
@@ -133,7 +135,7 @@ func (self *TxAnalyzer) AnalyzeLog(abi *abi.ABI, l *types.Log) (LogResult, error
 	for j, topic := range l.Topics[1:] {
 		logResult.Topics = append(logResult.Topics, TopicResult{
 			Name:  iArgs[j].Name,
-			Value: topic.Hex(),
+			Value: []string{topic.Hex()},
 		})
 	}
 
@@ -145,15 +147,14 @@ func (self *TxAnalyzer) AnalyzeLog(abi *abi.ABI, l *types.Log) (LogResult, error
 		logResult.Data = append(logResult.Data, ParamResult{
 			Name:  input.Name,
 			Type:  input.Type.String(),
-			Value: self.ParamAsString(input.Type, params[i]),
+			Value: self.ParamAsStrings(input.Type, params[i]),
 		})
 	}
 	return logResult, nil
 }
 
 func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, abi *abi.ABI, result *TxResult) {
-	result.Contract.Address = txinfo.Tx.To().Hex()
-	result.Contract.Name = self.addrdb.GetName(result.Contract.Address)
+	result.Contract = txinfo.Tx.To().Hex()
 	// fmt.Printf("------------------------------------------Contract call info-------------------------------------------------------------\n")
 	data := txinfo.Tx.Data()
 	methodName, params, gnosisResult, err := self.AnalyzeMethodCall(abi, data)
@@ -191,26 +192,26 @@ func isGnosisMultisig(method *abi.Method, params []interface{}) bool {
 	return true
 }
 
-func (self *TxAnalyzer) gnosisMultisigInitData(inputs []abi.Argument, params []interface{}) (result *GnosisResult) {
+func (self *TxAnalyzer) gnosisMultisigInitData(a *abi.ABI, params []interface{}) (result *GnosisResult) {
 	result = &GnosisResult{
-		Contract: AddressResult{},
+		Contract: "",
+		Network:  self.Network,
 		Method:   "",
 		Params:   []ParamResult{},
 		Error:    "",
 	}
+	var err error
 	contract := params[0].(common.Address)
-	// fmt.Printf("    Contract: %s (%s)\n", contract.Hex(), "TODO")
-	result.Contract = AddressResult{
-		Address: contract.Hex(),
-		Name:    self.addrdb.GetName(contract.Hex()),
-	}
+	result.Contract = contract.Hex()
 	data := params[2].([]byte)
-	abi, err := self.reader.GetABI(contract.Hex())
-	if err != nil {
+	if a == nil {
 		result.Error = fmt.Sprintf("Cannot get abi of the contract: %s", err)
 		return result
 	}
-	method, err := abi.MethodById(data)
+	if _, err = a.MethodById(data); err != nil {
+		a, _ = ethutils.GetERC20ABI()
+	}
+	method, err := a.MethodById(data)
 	if err != nil {
 		result.Error = fmt.Sprintf("Cannot get corresponding method from the ABI: %s", err)
 		return result
@@ -227,7 +228,7 @@ func (self *TxAnalyzer) gnosisMultisigInitData(inputs []abi.Argument, params []i
 		result.Params = append(result.Params, ParamResult{
 			Name:  input.Name,
 			Type:  input.Type.String(),
-			Value: self.ParamAsString(input.Type, ps[i]),
+			Value: self.ParamAsStrings(input.Type, ps[i]),
 		})
 		// fmt.Printf("        %s (%s): ", input.Name, input.Type)
 	}
@@ -236,6 +237,7 @@ func (self *TxAnalyzer) gnosisMultisigInitData(inputs []abi.Argument, params []i
 
 func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, abi *abi.ABI, isContract bool) *TxResult {
 	result := NewTxResult()
+	result.Network = self.Network
 	// fmt.Printf("==========================================Transaction info===============================================================\n")
 	// fmt.Printf("tx hash: %s\n", tx)
 	result.Hash = txinfo.Tx.Hash().Hex()
@@ -286,34 +288,30 @@ func (self *TxAnalyzer) Analyze(tx string) *TxResult {
 	}
 }
 
-func (self *TxAnalyzer) SetAddressDatabase(db AddressDatabase) {
-	self.addrdb = db
-}
-
 func NewGenericAnalyzer(r *reader.EthReader) *TxAnalyzer {
 	return &TxAnalyzer{
 		r,
-		NewDefaultAddressDatabase(),
+		"mainnet",
 	}
 }
 
 func NewAnalyzer() *TxAnalyzer {
 	return &TxAnalyzer{
 		reader.NewEthReader(),
-		NewDefaultAddressDatabase(),
+		"mainnet",
 	}
 }
 
 func NewRopstenAnalyzer() *TxAnalyzer {
 	return &TxAnalyzer{
 		reader.NewRopstenReader(),
-		NewDefaultAddressDatabase(),
+		"ropsten",
 	}
 }
 
 func NewTomoAnalyzer() *TxAnalyzer {
 	return &TxAnalyzer{
 		reader.NewTomoReader(),
-		NewDefaultAddressDatabase(),
+		"tomo",
 	}
 }

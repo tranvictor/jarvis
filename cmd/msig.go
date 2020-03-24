@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
@@ -85,14 +86,21 @@ func showMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) {
 		fmt.Printf("Jarvis: Can't get tx info: %s\n", err)
 		return
 	}
-	fmt.Printf("Sending: %f ETH to %s\n", ethutils.BigToFloat(value, 18), util.VerboseAddress(address))
+	fmt.Printf("Sending: %f ETH to %s\n", ethutils.BigToFloat(value, 18), util.VerboseAddress(address, config.Network))
 	if len(data) != 0 {
-		fmt.Printf("Calling on %s:\n", util.VerboseAddress(address))
-		destAbi, err := util.GetABI(address, config.Network)
+		fmt.Printf("Calling on %s:\n", util.VerboseAddress(address, config.Network))
+		var destAbi *abi.ABI
+
+		if config.ForceERC20ABI {
+			destAbi, err = ethutils.GetERC20ABI()
+		} else {
+			destAbi, err = util.GetABI(address, config.Network)
+		}
 		if err != nil {
 			fmt.Printf("Couldn't get abi of destination address: %s\n", err)
 			return
 		}
+
 		analyzer, err := util.EthAnalyzer(config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't analyze tx: %s\n", err)
@@ -290,11 +298,17 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	showMsigTxInfo(multisigContract, txid)
 	// TODO: support multiple txs?
 
-	a, err := util.GetABI(config.To, config.Network)
+	var a *abi.ABI
+	if config.ForceERC20ABI {
+		a, err = ethutils.GetERC20ABI()
+	} else {
+		a, err = util.GetABI(config.To, config.Network)
+	}
 	if err != nil {
 		fmt.Printf("Couldn't get the ABI: %s\n", err)
 		return
 	}
+
 	data, err := a.Pack(method, txid)
 	if err != nil {
 		fmt.Printf("Couldn't pack data: %s\n", err)
@@ -389,14 +403,21 @@ var initMsigCmd = &cobra.Command{
 		data, err := promptTxData(config.MsigTo, config.PrefillParams)
 		if err != nil {
 			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
-			return
+			fmt.Printf("Continue with EMPTY CALLING DATA\n")
+			data = []byte{}
 		}
 
-		a, err := util.GetABI(config.To, config.Network)
+		var a *abi.ABI
+		if config.ForceERC20ABI {
+			a, err = ethutils.GetERC20ABI()
+		} else {
+			a, err = util.GetABI(config.To, config.Network)
+		}
 		if err != nil {
 			fmt.Printf("Couldn't get the multisig's ABI: %s\n", err)
 			return
 		}
+
 		txdata, err := a.Pack(
 			"submitTransaction",
 			ethutils.HexToAddress(config.MsigTo),
@@ -469,6 +490,7 @@ func init() {
 		c.PersistentFlags().Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
 		c.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
 		c.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
+		c.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 	}
 
 	msigCmd.AddCommand(approveMsigCmd)

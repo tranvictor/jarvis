@@ -19,7 +19,7 @@ func AnalyzeMethodCallAndPrint(analyzer *txanalyzer.TxAnalyzer, abi *abi.ABI, da
 	fmt.Printf("  Method: %s\n", methodName)
 	fmt.Printf("  Params:\n")
 	for _, param := range params {
-		fmt.Printf("    %s (%s): %s\n", param.Name, param.Type, param.Value)
+		fmt.Printf("    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value, analyzer.Network))
 	}
 	if gnosisResult != nil {
 		PrintGnosis(gnosisResult)
@@ -45,16 +45,17 @@ func PrintGnosis(result *txanalyzer.GnosisResult) {
 
 func printGnosisToWriter(result *txanalyzer.GnosisResult, writer io.Writer) {
 	if result != nil {
-		fmt.Fprintf(writer, "Gnosis multisig init data:\n")
+		fmt.Fprintf(writer, "\n     __________________________")
+		fmt.Fprintf(writer, "\n     Gnosis multisig init data: ")
 		if result.Method == "" {
 			fmt.Fprintf(writer, "Couldn't decode gnosis call method\n")
 			return
 		}
-		fmt.Fprintf(writer, "Contract: %s - %s\n", result.Contract.Address, nameWithColor(result.Contract.Name))
-		fmt.Fprintf(writer, "Method: %s\n", result.Method)
-		fmt.Fprintf(writer, "Params:\n")
+		fmt.Fprintf(writer, "\n     Contract: %s\n", VerboseAddress(result.Contract, result.Network))
+		fmt.Fprintf(writer, "     Method: %s\n", result.Method)
+		fmt.Fprintf(writer, "     Params:\n")
 		for _, param := range result.Params {
-			fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, param.Value)
+			fmt.Fprintf(writer, "       %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value, result.Network))
 		}
 	}
 }
@@ -66,9 +67,9 @@ func printToStdout(result *txanalyzer.TxResult, writer io.Writer) {
 	} else {
 		fmt.Fprintf(writer, "Mining status: %s\n", Bold(Red(result.Status)))
 	}
-	fmt.Fprintf(writer, "From: %s - (%s)\n", result.From.Address, nameWithColor(result.From.Name))
+	fmt.Fprintf(writer, "From: %s\n", VerboseAddress(result.From, result.Network))
 	fmt.Fprintf(writer, "Value: %s ETH\n", result.Value)
-	fmt.Fprintf(writer, "To: %s - (%s)\n", result.To.Address, nameWithColor(result.To.Name))
+	fmt.Fprintf(writer, "To: %s\n", VerboseAddress(result.To, result.Network))
 	fmt.Fprintf(writer, "Nonce: %s\n", result.Nonce)
 	fmt.Fprintf(writer, "Gas price: %s gwei\n", result.GasPrice)
 	fmt.Fprintf(writer, "Gas limit: %s\n", result.GasLimit)
@@ -87,22 +88,22 @@ func printToStdout(result *txanalyzer.TxResult, writer io.Writer) {
 		fmt.Fprintf(writer, "Getting ABI and function name failed: %s\n", result.Error)
 		return
 	}
-	fmt.Fprintf(writer, "Contract: %s - (%s)\n", result.Contract.Address, nameWithColor(result.Contract.Name))
+	fmt.Fprintf(writer, "\nContract: %s\n", VerboseAddress(result.Contract, result.Network))
 	fmt.Fprintf(writer, "Method: %s\n", result.Method)
 	fmt.Fprintf(writer, "Params:\n")
 	for _, param := range result.Params {
-		fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, param.Value)
+		fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value, result.Network))
 	}
-	fmt.Fprintf(writer, "Event logs:\n")
+	printGnosisToWriter(result.GnosisInit, writer)
+	fmt.Fprintf(writer, "\nEvent logs:\n")
 	for i, l := range result.Logs {
 		fmt.Fprintf(writer, "Log %d: %s\n", i+1, l.Name)
 		for j, topic := range l.Topics {
-			fmt.Fprintf(writer, "    Topic %d - %s: %s\n", j+1, topic.Name, topic.Value)
+			fmt.Fprintf(writer, "    Topic %d - %s: %s\n", j+1, topic.Name, DisplayValues(topic.Value, result.Network))
 		}
 		fmt.Fprintf(writer, "    Data:\n")
 		for _, param := range l.Data {
-			fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, param.Value)
+			fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value, result.Network))
 		}
 	}
-	printGnosisToWriter(result.GnosisInit, writer)
 }

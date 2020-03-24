@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/broadcaster"
@@ -22,6 +24,8 @@ import (
 
 const (
 	ETH_ADDR                  string = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	MAX_ADDR                  string = "0xffffffffffffffffffffffffffffffffffffffff"
+	MIN_ADDR                  string = "0x00000000000000ffffffffffffffffffffffffff"
 	ETHEREUM_MAINNET_NODE_VAR string = "ETHEREUM_MAINNET_NODE"
 	ETHEREUM_ROPSTEN_NODE_VAR string = "ETHEREUM_ROPSTEN_NODE"
 	TOMO_MAINNET_NODE_VAR     string = "TOMO_MAINNET_NODE"
@@ -236,20 +240,157 @@ func EthReader(network string) (*reader.EthReader, error) {
 	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, tomo.")
 }
 
-func VerboseAddress(addr string) string {
+func queryToCheckERC20(addr string, network string) (bool, error) {
+	_, err := GetERC20Decimal(addr, network)
+	if err != nil {
+		if strings.Contains(fmt.Sprintf("%s", err), "abi: attempting to unmarshall an empty string while arguments are expected") {
+			return false, nil
+		} else {
+			return false, err
+		}
+	}
+	return true, nil
+}
+
+func IsERC20(addr string, network string) (bool, error) {
+	if !isRealAddress(addr) {
+		return false, nil
+	}
+
+	cacheKey := fmt.Sprintf("%s_isERC20", addr)
+	isERC20, found := cache.GetBoolCache(cacheKey)
+	if found {
+		return isERC20, nil
+	}
+
+	isERC20, err := queryToCheckERC20(addr, network)
+	if err != nil {
+		return false, err
+	}
+
+	cache.SetBoolCache(
+		cacheKey,
+		isERC20,
+	)
+	return isERC20, nil
+}
+
+func readableNumber(value string) string {
+	digits := []string{}
+	for i, _ := range value {
+		digits = append([]string{string(value[len(value)-1-i])}, digits...)
+		if (i+1)%3 == 0 && i < len(value)-1 {
+			if (i+1)%9 == 0 {
+				digits = append([]string{"‸"}, digits...)
+			} else {
+				digits = append([]string{"￺"}, digits...)
+			}
+		}
+	}
+	return fmt.Sprintf("%s (%s)", value, strings.Join(digits, ""))
+}
+
+func isRealAddress(value string) bool {
+	valueBig, isHex := big.NewInt(0).SetString(value, 0)
+	if !isHex {
+		return false
+	}
+	maxAddrBig, _ := hexutil.DecodeBig(MAX_ADDR)
+	minAddrBig, _ := big.NewInt(0).SetString(MIN_ADDR, 0)
+	if valueBig.Cmp(maxAddrBig) > 0 || valueBig.Cmp(minAddrBig) <= 0 {
+		return false
+	}
+	return true
+}
+
+func verboseValue(value string, network string) string {
+	valueBig, isHex := big.NewInt(0).SetString(value, 0)
+	if !isHex {
+		return value
+	}
+
+	// if it is not a real address
+	if !isRealAddress(value) {
+		// if this is a hex, it is likely to be a byte data so don't display
+		// in readable number
+		if len(value) >= 2 && value[0:2] == "0x" {
+			return value
+		}
+		// otherwise, it is a number then return it in a readable format
+		return readableNumber(value)
+	}
+	return VerboseAddress(common.BigToAddress(valueBig).Hex(), network)
+}
+
+func VerboseValues(values []string, network string) []string {
+	result := []string{}
+	for _, value := range values {
+		result = append(result, verboseValue(value, network))
+	}
+	return result
+}
+
+func DisplayValues(values []string, network string) string {
+	verboseValues := VerboseValues(values, network)
+	if len(verboseValues) == 0 {
+		return ""
+	} else if len(verboseValues) == 1 {
+		return verboseValues[0]
+	} else {
+		parts := []string{}
+		for i, value := range values {
+			parts = append(parts, fmt.Sprintf("%d. %s", i+1, verboseValue(value, network)))
+		}
+		return strings.Join(parts, "\n")
+	}
+}
+
+func VerboseAddress(addr string, network string) string {
+	var decimal int64
+	var erc20Detected bool
+
+	isERC20, err := IsERC20(addr, network)
+	if err == nil && isERC20 {
+		cacheKey := fmt.Sprintf("%s_decimal", addr)
+		decimal, erc20Detected = cache.GetInt64Cache(cacheKey)
+	}
+
 	addrDesc, err := db.GetAddress(addr)
 	if err != nil {
 		return fmt.Sprintf("%s (Unknown)", addr)
 	}
-	return fmt.Sprintf("%s (%s)", addr, addrDesc.Desc)
+
+	if erc20Detected {
+		return fmt.Sprintf("%s (%s)", addr, nameWithColor(fmt.Sprintf("%s - %d", addrDesc.Desc, decimal)))
+	} else {
+		return fmt.Sprintf("%s (%s)", addr, nameWithColor(addrDesc.Desc))
+	}
 }
 
 func GetERC20Decimal(addr string, network string) (int64, error) {
+	cacheKey := fmt.Sprintf("%s_decimal", addr)
+	result, found := cache.GetInt64Cache(cacheKey)
+	if found {
+		return result, nil
+	}
+
 	reader, err := EthReader(network)
 	if err != nil {
 		return 0, err
 	}
-	return reader.ERC20Decimal(addr)
+
+	result, err = reader.ERC20Decimal(addr)
+
+	if err != nil {
+		return 0, err
+	}
+
+	cache.SetInt64Cache(
+		cacheKey,
+		result,
+	)
+
+	return result, nil
 }
 
 func GetABI(addr string, network string) (*abi.ABI, error) {
