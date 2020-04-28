@@ -2,10 +2,12 @@ package cache
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os/user"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -54,6 +56,42 @@ func loadSimpleCache() *simpleCache {
 		return cache
 	}
 	return cache
+}
+
+func GetBoolCache(key string) (bool, bool) {
+	value, found := GetCache(key)
+	if !found {
+		return false, false
+	}
+
+	result, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, false
+	}
+
+	return result, true
+}
+
+func SetBoolCache(key string, value bool) error {
+	return SetCache(key, fmt.Sprintf("%t", value))
+}
+
+func GetInt64Cache(key string) (int64, bool) {
+	value, found := GetCache(key)
+	if !found {
+		return 0, false
+	}
+
+	result, err := strconv.ParseInt(value, 10, 64)
+	if err != nil {
+		return 0, false
+	}
+
+	return result, true
+}
+
+func SetInt64Cache(key string, value int64) error {
+	return SetCache(key, fmt.Sprintf("%d", value))
 }
 
 func GetCache(key string) (string, bool) {

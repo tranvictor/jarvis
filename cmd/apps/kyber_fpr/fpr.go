@@ -52,7 +52,7 @@ var KyberFPRCmd = &cobra.Command{
 			}
 			fmt.Printf("\nListed tokens:\n")
 			for i, token := range tokens {
-				fmt.Printf("%d. %s\n", i, util.VerboseAddress(token.Hex()))
+				fmt.Printf("%d. %s\n", i, util.VerboseAddress(token.Hex(), config.Network))
 			}
 			fmt.Printf("\n")
 
@@ -61,7 +61,7 @@ var KyberFPRCmd = &cobra.Command{
 			Token = tokens[index].Hex()
 		}
 		fmt.Printf("\n")
-		fmt.Printf("Checking on token: %s\n", util.VerboseAddress(Token))
+		fmt.Printf("Checking on token: %s\n", util.VerboseAddress(Token, config.Network))
 		err = reserve.DisplayStepFunctionData(Token)
 		if err != nil {
 			fmt.Printf("Displaying step functions failed: %s\n", err)

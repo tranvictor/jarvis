@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/spf13/cobra"
+	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -18,9 +19,13 @@ var stakeCmd = &cobra.Command{
 	Short:            "Stake your KNC to Kyber DAO to vote and get rewards",
 	TraverseChildren: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		config.From, _, err = util.GetAddressFromString(config.From)
+		// process from to get address
+		acc, err := accounts.GetAccount(config.From)
 		if err != nil {
 			return fmt.Errorf("Couldn't interpret addresss. Please double check your -f flag. %w\n", err)
+		} else {
+			config.FromAcc = acc
+			config.From = acc.Address
 		}
 
 		return Preprocess(cmd, args)

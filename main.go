@@ -20,8 +20,20 @@
 
 package main
 
-import "github.com/tranvictor/jarvis/cmd"
+import (
+	"github.com/tranvictor/jarvis/cmd"
+)
 
 func main() {
+	// f, err := os.Create("cpuprofile")
+	// if err != nil {
+	// 	log.Fatal("could not create CPU profile: ", err)
+	// }
+	// defer f.Close() // error handling omitted for example
+	// if err := pprof.StartCPUProfile(f); err != nil {
+	// 	log.Fatal("could not start CPU profile: ", err)
+	// }
+	// defer pprof.StopCPUProfile()
+
 	cmd.Execute()
 }

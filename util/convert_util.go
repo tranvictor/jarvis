@@ -119,7 +119,8 @@ func ConvertParamStrToType(name string, t abi.Type, str string, network string) 
 	case abi.BoolTy:
 		return ConvertToBool(str)
 	case abi.AddressTy:
-		if strings.ToLower(name) == "token" || strings.ToLower(name) == "asset" {
+		lcName := strings.ToLower(name)
+		if lcName == "token" || lcName == "tokens" || lcName == "asset" {
 			return ConvertToAddress(fmt.Sprintf("%s token", str))
 		}
 		return ConvertToAddress(str)

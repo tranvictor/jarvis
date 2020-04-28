@@ -47,7 +47,7 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 		}
 	}
 
-	fmt.Printf("Interpreted to address: %s\n", util.VerboseAddress(config.To))
+	fmt.Printf("To address: %s\n", util.VerboseAddress(config.To, config.Network))
 	return nil
 }
 
