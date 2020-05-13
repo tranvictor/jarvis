@@ -24,13 +24,13 @@ func (self Methods) Len() int           { return len(self) }
 func (self Methods) Swap(i, j int)      { self[i], self[j] = self[j], self[i] }
 func (self Methods) Less(i, j int) bool { return self[i].Name < self[j].Name }
 
-func promptFunctionCallData(contractAddress string, prefills []string, mode string) (*abi.ABI, *abi.Method, []interface{}, error) {
+func promptFunctionCallData(contractAddress string, prefills []string, mode string, forceERC20ABI bool) (*abi.ABI, *abi.Method, []interface{}, error) {
 	analyzer, err := util.EthAnalyzer(config.Network)
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	var a *abi.ABI
-	if config.ForceERC20ABI {
+	if forceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
 	} else {
 		a, err = util.GetABI(contractAddress, config.Network)
@@ -97,8 +97,8 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 	return a, &method, params, nil
 }
 
-func promptTxData(contractAddress string, prefills []string) ([]byte, error) {
-	a, method, params, err := promptFunctionCallData(contractAddress, prefills, "write")
+func promptTxData(contractAddress string, prefills []string, forceERC20ABI bool) ([]byte, error) {
+	a, method, params, err := promptFunctionCallData(contractAddress, prefills, "write", forceERC20ABI)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -171,7 +171,7 @@ Param rules:
 			return
 		}
 		fmt.Printf("Contract: %s (%s)\n", contractAddress, contractName)
-		data, err := promptTxData(contractAddress, config.PrefillParams)
+		data, err := promptTxData(contractAddress, config.PrefillParams, config.ForceERC20ABI)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -198,7 +198,7 @@ var txContractCmd = &cobra.Command{
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
 		}
-		data, err := promptTxData(config.To, config.PrefillParams)
+		data, err := promptTxData(config.To, config.PrefillParams, config.ForceERC20ABI)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -330,7 +330,7 @@ var readContractCmd = &cobra.Command{
 				fmt.Printf("---------------------------------------------------\n")
 			}
 		} else {
-			a, method, params, err := promptFunctionCallData(config.To, config.PrefillParams, "read")
+			a, method, params, err := promptFunctionCallData(config.To, config.PrefillParams, "read", config.ForceERC20ABI)
 			if err != nil {
 				fmt.Printf("Couldn't get params from users: %s\n", err)
 				return
