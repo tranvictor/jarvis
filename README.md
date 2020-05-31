@@ -18,12 +18,15 @@ GO111MODULE=on /usr/lib/go-1.12/bin/go install github.com/tranvictor/jarvis
 ## MacOS Build
 1. Download and install Go v1.12 [here](https://golang.org/dl/)
 ```
-go get github.com/tranvictor/jarvis
-go install github.com/tranvictor/jarvis
-cd jarvis
-go build -v
+GO111MODULE=on go get github.com/tranvictor/jarvis
+GO111MODULE=on go install github.com/tranvictor/jarvis
 ```
-2. Try `./jarvis --help`
+
+`jarvis` binary file will be placed at `$GOPATH/bin/`
+
+If the installation process returned errors, try to clear Go module cache at `$GOPATH/pkg/mod`
+
+2. Try `$GOPATH/bin/jarvis --help`
 3. Add Jarvis to PATH, and relevant `addresses.json`
 
 
