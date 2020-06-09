@@ -1,7 +1,6 @@
 module github.com/tranvictor/jarvis
 
 require (
-	github.com/DataDog/zstd v1.3.6-0.20190409195224-796139022798 // indirect
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/VictoriaMetrics/fastcache v1.5.7 // indirect
 	github.com/allegro/bigcache v1.2.1 // indirect
@@ -21,7 +20,6 @@ require (
 	github.com/olekukonko/tablewriter v0.0.2 // indirect
 	github.com/onsi/ginkgo v1.10.3 // indirect
 	github.com/onsi/gomega v1.7.1 // indirect
-	github.com/pkg/profile v1.2.1 // indirect
 	github.com/prometheus/tsdb v0.10.0 // indirect
 	github.com/sahilm/fuzzy v0.1.0
 	github.com/spf13/cobra v0.0.3

@@ -1,0 +1,64 @@
+project_name: jarvis
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - <<: &build_defaults
+      binary: bin/jarvis
+      main: ./
+    id: macos
+    goos: [darwin]
+    goarch: [amd64]
+
+  - <<: *build_defaults
+    id: linux
+    goos: [linux]
+    goarch: [386, amd64, arm64]
+
+  - <<: *build_defaults
+    id: windows
+    goos: [windows]
+    goarch: [386, amd64]
+
+archives:
+  - id: nix
+    builds: [macos, linux]
+    <<: &archive_defaults
+      name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    wrap_in_directory: true
+    replacements:
+      darwin: macOS
+    format: tar.gz
+    files:
+      - LICENSE
+  - id: windows
+    builds: [windows]
+    <<: *archive_defaults
+    wrap_in_directory: false
+    format: zip
+    files:
+      - LICENSE
+
+brews:
+  - name: jarvis
+    ids: [nix]
+    github:
+      owner: tranvictor
+      name: homebrew-jarvis
+    skip_upload: auto
+    description: Onchain (EVM compatible) operation made easy
+    homepage: https://github.com/tranvictor/jarvis
+    folder: Formula
+    custom_block: |
+      head do
+        url "https://github.com/tranvictor/jarvis.git"
+        depends_on "go"
+      end
+    install: |
+      system "make", "jarvis"
+      bin.install "jarvis"
+    test: |
+      help_text = shell_output("jarvis -h")
+      assert_includes help_text, "Usage:"
