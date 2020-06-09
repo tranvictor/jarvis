@@ -46,7 +46,7 @@ brews:
     ids: [nix]
     github:
       owner: tranvictor
-      name: homebrew-jarvis
+      name: homebrew-tranvictor
     skip_upload: auto
     description: Onchain (EVM compatible) operation made easy
     homepage: https://github.com/tranvictor/jarvis
