@@ -57,7 +57,7 @@ brews:
         depends_on "go"
       end
     install: |
-      system "make", "jarvis"
+      system "make", "jarvis" if build.head?
       bin.install "jarvis"
     test: |
       help_text = shell_output("jarvis -h")
