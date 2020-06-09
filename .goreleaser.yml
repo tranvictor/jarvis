@@ -58,7 +58,7 @@ brews:
       end
     install: |
       system "make", "jarvis" if build.head?
-      bin.install "jarvis"
+      bin.install "bin/jarvis"
     test: |
       help_text = shell_output("jarvis -h")
       assert_includes help_text, "Usage:"
