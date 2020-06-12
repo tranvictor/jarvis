@@ -400,19 +400,14 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 
-		data, err := promptTxData(config.MsigTo, config.PrefillParams)
+		data, err := promptTxData(config.MsigTo, config.PrefillParams, config.ForceERC20ABI)
 		if err != nil {
 			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
 			fmt.Printf("Continue with EMPTY CALLING DATA\n")
 			data = []byte{}
 		}
 
-		var a *abi.ABI
-		if config.ForceERC20ABI {
-			a, err = ethutils.GetERC20ABI()
-		} else {
-			a, err = util.GetABI(config.To, config.Network)
-		}
+		a, err := util.GetABI(config.To, config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't get the multisig's ABI: %s\n", err)
 			return
