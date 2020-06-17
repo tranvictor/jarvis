@@ -315,6 +315,8 @@ github.com/tranvictor/ethutils v0.3.0 h1:2vVo3hX/32+F4KJv31QNq6sqMItl0vvkQRgUNLv
 github.com/tranvictor/ethutils v0.3.0/go.mod h1:xXNsVucno8JerXyDSPaz1ugUcNrrhh1e7uwHV3l3tdQ=
 github.com/tranvictor/ethutils v0.4.0 h1:YDlZNiPU9y4IVFlNNB/odZul4GIg7rYY/3zUVBkQJLg=
 github.com/tranvictor/ethutils v0.4.0/go.mod h1:rcfXI5voLYuD3JsJN2iz5cO+uoLocP2rrzV82E683kc=
+github.com/tranvictor/ethutils v0.4.1 h1:1q6Qg1jCKP16eK2NbzrEL++QuckPC5V/hndROn4AgxM=
+github.com/tranvictor/ethutils v0.4.1/go.mod h1:rcfXI5voLYuD3JsJN2iz5cO+uoLocP2rrzV82E683kc=
 github.com/tyler-smith/go-bip39 v1.0.1-0.20181017060643-dbb3b84ba2ef/go.mod h1:sJ5fKU0s6JVwZjjcUEX2zFOnvq0ASQ2K9Zr6cf67kNs=
 github.com/tyler-smith/go-bip39 v1.0.2 h1:+t3w+KwLXO6154GNJY+qUtIxLTmFjfUmpguQT1OlOT8=
 github.com/tyler-smith/go-bip39 v1.0.2/go.mod h1:sJ5fKU0s6JVwZjjcUEX2zFOnvq0ASQ2K9Zr6cf67kNs=
