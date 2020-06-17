@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/user"
 	"path"
-	"runtime"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -34,17 +33,9 @@ type tokens []struct {
 	Symbol  string `json:"symbol"`
 }
 
-func registerFromFile(filename string, db *DefaultAddressDatabase) error {
-	_, current, _, ok := runtime.Caller(0)
-	if !ok {
-		return fmt.Errorf("couldn't get filepath of the caller")
-	}
-	content, err := ioutil.ReadFile(path.Join(path.Dir(current), filename))
-	if err != nil {
-		return err
-	}
+func registerTokens(db *DefaultAddressDatabase) error {
 	ts := tokens{}
-	err = json.Unmarshal(content, &ts)
+	err := json.Unmarshal([]byte(tokenJson), &ts)
 	if err != nil {
 		return err
 	}
@@ -110,7 +101,7 @@ func NewDefaultAddressDatabase() *DefaultAddressDatabase {
 		db.Register(addr, name)
 	}
 
-	err := registerFromFile("tokens.json", db)
+	err := registerTokens(db)
 	if err != nil {
 		fmt.Printf("Loading token addresses from file failed: %s\n", err)
 	}

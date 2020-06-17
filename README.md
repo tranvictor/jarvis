@@ -2,8 +2,18 @@
 Ethereum automation made easy to human
 
 ## Installation
+### MacOS via Homebrew
+```bash
+brew install tranvictor/jarvis/jarvis
+```
+or to upgrade jarvis to the latest version
+```bash
+brew upgrade jarvis
+```
 
-## Ubuntu Build
+## Build from source
+
+### Ubuntu Build
 
 ```bash
 sudo add-apt-repository ppa:longsleep/golang-backports
@@ -15,7 +25,7 @@ GO111MODULE=on /usr/lib/go-1.12/bin/go install github.com/tranvictor/jarvis
 
 `jarvis` command will be installed to `~/go/bin`
 
-## MacOS Build
+### MacOS Build
 1. Download and install Go v1.12 [here](https://golang.org/dl/)
 ```
 GO111MODULE=on go get github.com/tranvictor/jarvis
@@ -30,7 +40,7 @@ If the installation process returned errors, try to clear Go module cache at `$G
 3. Add Jarvis to PATH, and relevant `addresses.json`
 
 
-## Windows Build
+### Windows Build
 Install mingw-w64 from [here](https://sourceforge.net/projects/mingw-w64/files/Toolchains%20targetting%20Win32/Personal%20Builds/mingw-builds/installer/mingw-w64-install.exe/download)
 Add mingw-64 bin folder to PATH
 Go to jarvis folder and using following command to build

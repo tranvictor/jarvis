@@ -1,4 +1,6 @@
-[
+package txanalyzer
+
+var tokenJson string = `[
   {
     "address": "0xA4Bdb11dc0a2bEC88d24A3aa1E6Bb17201112eBe",
     "symbol": "USDS"
@@ -4331,4 +4333,4 @@
     "address": "0x23Ccc43365D9dD3882eab88F43d515208f832430",
     "symbol": "MAS"
   }
-]
+]`
