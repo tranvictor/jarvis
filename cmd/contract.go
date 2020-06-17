@@ -41,13 +41,13 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 	methods := []abi.Method{}
 	if mode == "write" {
 		for _, m := range a.Methods {
-			if !m.Const {
+			if !m.IsConstant() {
 				methods = append(methods, m)
 			}
 		}
 	} else {
 		for _, m := range a.Methods {
-			if m.Const {
+			if m.IsConstant() {
 				methods = append(methods, m)
 			}
 		}
@@ -265,7 +265,7 @@ func allZeroParamFunctions(contractAddress string) (*abi.ABI, []abi.Method, erro
 	}
 	methods := []abi.Method{}
 	for _, m := range a.Methods {
-		if m.Const && len(m.Inputs) == 0 {
+		if m.IsConstant() && len(m.Inputs) == 0 {
 			methods = append(methods, m)
 		}
 	}
