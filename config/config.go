@@ -32,4 +32,5 @@ var (
 	DontBroadcast     bool
 	DontWaitToBeMined bool
 	ForceERC20ABI     bool
+	JSONOutputFile    string
 )

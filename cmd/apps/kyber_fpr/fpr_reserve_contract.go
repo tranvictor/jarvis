@@ -87,6 +87,30 @@ func (self *FPRReserveContract) QueryQtyStepFunc(token common.Address) (numSellS
 	return numSellSteps, sellXs, sellYs, numBuySteps, buyXs, buyYs, nil
 }
 
+func (self *FPRReserveContract) GetTokenControlInfo(token string) (*big.Int, *big.Int, *big.Int, error) {
+	result := [3]*big.Int{nil, nil, nil}
+	err := self.reader.ReadHistoryContract(
+		config.AtBlock,
+		&result,
+		self.ConversionRateContract.Hex(),
+		"getTokenControlInfo",
+		ethutils.HexToAddress(token),
+	)
+	return result[0], result[1], result[2], err
+}
+
+func (self *FPRReserveContract) GetBasicInfo(token string) (bool, bool, error) {
+	result := [2]bool{false, false}
+	err := self.reader.ReadHistoryContract(
+		config.AtBlock,
+		&result,
+		self.ConversionRateContract.Hex(),
+		"getTokenBasicData",
+		ethutils.HexToAddress(token),
+	)
+	return result[0], result[1], err
+}
+
 func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (numSellSteps int, sellXs []float64, sellYs []float64, numBuySteps int, buyXs []float64, buyYs []float64, err error) {
 	type imbFunc struct {
 		NumBuyRateImbalanceSteps  *big.Int
