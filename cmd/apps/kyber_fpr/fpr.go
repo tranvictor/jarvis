@@ -65,7 +65,27 @@ var KyberFPRCmd = &cobra.Command{
 		err = reserve.DisplayStepFunctionData(Token)
 		if err != nil {
 			fmt.Printf("Displaying step functions failed: %s\n", err)
+			return
 		}
+		isListed, isEnabled, err := reserve.GetBasicInfo(Token)
+		if err != nil {
+			fmt.Printf("Displaying token basic info failed: %s\n", err)
+			return
+		}
+		fmt.Printf("\n")
+		fmt.Printf(" Listed: %t\n", isListed)
+		fmt.Printf("Enabled: %t\n", isEnabled)
+
+		minimalRecordResolution, maxBlockImb, maxTotalImb, err := reserve.GetTokenControlInfo(Token)
+		if err != nil {
+			fmt.Printf("Displaying token control info failed: %s\n", err)
+			return
+		}
+
+		fmt.Printf("\n")
+		fmt.Printf("Min Resolution: %s\n", util.ReadableNumber(minimalRecordResolution.Text(10)))
+		fmt.Printf("Max Block Imp: %s\n", util.ReadableNumber(maxBlockImb.Text(10)))
+		fmt.Printf("Max Total Imp: %s\n", util.ReadableNumber(maxTotalImb.Text(10)))
 	},
 }
 

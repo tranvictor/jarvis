@@ -275,7 +275,7 @@ func IsERC20(addr string, network string) (bool, error) {
 	return isERC20, nil
 }
 
-func readableNumber(value string) string {
+func ReadableNumber(value string) string {
 	digits := []string{}
 	for i, _ := range value {
 		digits = append([]string{string(value[len(value)-1-i])}, digits...)
@@ -317,7 +317,7 @@ func verboseValue(value string, network string) string {
 			return value
 		}
 		// otherwise, it is a number then return it in a readable format
-		return readableNumber(value)
+		return ReadableNumber(value)
 	}
 	return VerboseAddress(common.BigToAddress(valueBig).Hex(), network)
 }

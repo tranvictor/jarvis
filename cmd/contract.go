@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"sort"
 
 	"github.com/Songmu/prompter"
@@ -187,7 +189,8 @@ var contractCmd = &cobra.Command{
 }
 
 var txContractCmd = &cobra.Command{
-	Use:               "tx",
+	Use:               "tx [tx hashes]",
+	Aliases:           []string{"write"},
 	Short:             "do transaction to interact with smart contracts",
 	Long:              ` `,
 	TraverseChildren:  true,
@@ -273,28 +276,35 @@ func allZeroParamFunctions(contractAddress string) (*abi.ABI, []abi.Method, erro
 	return a, methods, nil
 }
 
-func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlock int64, method *abi.Method, params []interface{}) {
+func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlock int64, method *abi.Method, params []interface{}) (contractReadResult, error) {
 	responseBytes, err := reader.ReadContractToBytes(atBlock, config.To, a, method.Name, params...)
 	if err != nil {
 		fmt.Printf("getting response failed: %s\n", err)
-		return
+		return contractReadResult{}, err
 	}
 	if len(responseBytes) == 0 {
 		fmt.Printf("the function reverts. please double check your params.\n")
-		return
+		return contractReadResult{}, fmt.Errorf("the function reverted")
 	}
 	ps, err := method.Outputs.UnpackValues(responseBytes)
 	if err != nil {
 		fmt.Printf("Couldn't unpack response to go types: %s\n", err)
-		return
+		return contractReadResult{}, err
 	}
 	analyzer, err := util.EthAnalyzer(config.Network)
 	if err != nil {
 		fmt.Printf("Couldn't init analyzer: %s\n", err)
-		return
+		return contractReadResult{}, err
 	}
 	fmt.Printf("Output:\n")
+	result := contractReadResult{}
 	for i, output := range method.Outputs {
+		result = append(result, returnVariable{
+			Name:        output.Name,
+			Values:      analyzer.ParamAsStrings(output.Type, ps[i]),
+			HumanValues: util.VerboseValues(analyzer.ParamAsStrings(output.Type, ps[i]), config.Network),
+		})
+
 		fmt.Printf(
 			"%d. %s (%s): %s\n",
 			i+1,
@@ -302,6 +312,41 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 			output.Type.String(),
 			indent(8, util.VerboseValues(analyzer.ParamAsStrings(output.Type, ps[i]), config.Network)),
 		)
+	}
+	return result, nil
+}
+
+type returnVariable struct {
+	Name        string   `json:"name"`
+	Values      []string `json:"values"`
+	HumanValues []string `json:"human_values"`
+}
+
+type contractReadResult []returnVariable
+
+type contractReadResultJson struct {
+	Result contractReadResult `json:"result"`
+	Error  string             `json:"error"`
+}
+
+func (self *contractReadResultJson) Write(filepath string) {
+	data, _ := json.MarshalIndent(self, "", "  ")
+	err := ioutil.WriteFile(filepath, data, 0644)
+	if err != nil {
+		fmt.Printf("Writing to json file failed: %s\n", err)
+	}
+}
+
+type batchContractReadResultJson struct {
+	Functions []string                 `json:"functions"`
+	Results   []contractReadResultJson `json:"results"`
+}
+
+func (self *batchContractReadResultJson) Write(filepath string) {
+	data, _ := json.MarshalIndent(self, "", "  ")
+	err := ioutil.WriteFile(filepath, data, 0644)
+	if err != nil {
+		fmt.Printf("Writing to json file failed: %s\n", err)
 	}
 }
 
@@ -318,6 +363,15 @@ var readContractCmd = &cobra.Command{
 			return
 		}
 		if config.AllZeroParamsMethods {
+			resultJson := batchContractReadResultJson{
+				Functions: []string{},
+				Results:   []contractReadResultJson{},
+			}
+
+			if config.JSONOutputFile != "" {
+				defer resultJson.Write(config.JSONOutputFile)
+			}
+
 			a, methods, err := allZeroParamFunctions(config.To)
 			if err != nil {
 				fmt.Printf("Couldn't get all zero param functions of the contract: %s\n", err)
@@ -325,17 +379,44 @@ var readContractCmd = &cobra.Command{
 			}
 			for i, _ := range methods {
 				method := methods[i]
+				resultJson.Functions = append(resultJson.Functions, method.Name)
 				fmt.Printf("%d. %s\n", i+1, method.Name)
-				handleReadOneFunctionOnContract(reader, a, config.AtBlock, &method, []interface{}{})
+
+				result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, &method, []interface{}{})
+				if err != nil {
+					resultJson.Results = append(resultJson.Results, contractReadResultJson{
+						Error: fmt.Sprintf("%s", err),
+					})
+				} else {
+					resultJson.Results = append(resultJson.Results, contractReadResultJson{
+						Result: result,
+					})
+				}
 				fmt.Printf("---------------------------------------------------\n")
 			}
 		} else {
+			resultJson := contractReadResultJson{
+				Result: contractReadResult{},
+				Error:  "",
+			}
+
+			if config.JSONOutputFile != "" {
+				defer resultJson.Write(config.JSONOutputFile)
+			}
+
 			a, method, params, err := promptFunctionCallData(config.To, config.PrefillParams, "read", config.ForceERC20ABI)
 			if err != nil {
 				fmt.Printf("Couldn't get params from users: %s\n", err)
+				resultJson.Error = fmt.Sprintf("%s", err)
 				return
 			}
-			handleReadOneFunctionOnContract(reader, a, config.AtBlock, method, params)
+			result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, method, params)
+
+			if err != nil {
+				resultJson.Error = fmt.Sprintf("%s", err)
+			} else {
+				resultJson.Result = result
+			}
 		}
 	},
 }
@@ -408,6 +489,7 @@ func init() {
 	readContractCmd.PersistentFlags().BoolVarP(&config.AllZeroParamsMethods, "all", "a", false, "Read all functions that don't have any params")
 	readContractCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 	readContractCmd.PersistentFlags().Int64VarP(&config.AtBlock, "block", "b", -1, "Specify the block to read at. Default value indicates reading at latest state of the chain.")
+	readContractCmd.PersistentFlags().StringVarP(&config.JSONOutputFile, "json-output", "o", "", "write output of contract read to json file")
 	contractCmd.AddCommand(readContractCmd)
 	// contractCmd.AddCommand(govInfocontractCmd)
 	// TODO: add more commands to send or call other contracts
