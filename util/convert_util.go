@@ -108,6 +108,396 @@ func ConvertToUintOrBig(str string, size int, network string) (interface{}, erro
 	}
 }
 
+func ConvertParamStrToFixedByteType(name string, t abi.Type, strs []string, network string) (interface{}, error) {
+	switch t.Size {
+	case 1:
+		res := [][1]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [1]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 2:
+		res := [][2]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [2]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 3:
+		res := [][3]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [3]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 4:
+		res := [][4]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [4]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 5:
+		res := [][5]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [5]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 6:
+		res := [][6]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [6]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 7:
+		res := [][7]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [7]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 8:
+		res := [][8]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [8]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 9:
+		res := [][9]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [9]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 10:
+		res := [][10]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [10]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 11:
+		res := [][11]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [11]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 12:
+		res := [][12]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [12]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 13:
+		res := [][13]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [13]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 14:
+		res := [][14]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [14]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 15:
+		res := [][15]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [15]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 16:
+		res := [][16]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [16]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 17:
+		res := [][17]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [17]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 18:
+		res := [][18]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [18]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 19:
+		res := [][19]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [19]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 20:
+		res := [][20]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [20]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 21:
+		res := [][21]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [21]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 22:
+		res := [][22]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [22]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 23:
+		res := [][23]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [23]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 24:
+		res := [][24]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [24]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 25:
+		res := [][25]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [25]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 26:
+		res := [][26]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [26]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 27:
+		res := [][27]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [27]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 28:
+		res := [][28]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [28]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 29:
+		res := [][29]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [29]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 30:
+		res := [][30]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [30]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 31:
+		res := [][31]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [31]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	case 32:
+		res := [][32]byte{}
+		for _, str := range strs {
+			tempBytes, err := ConvertToBytes(str)
+			if err != nil {
+				return res, err
+			}
+			realValue := [32]byte{}
+			copy(realValue[:], tempBytes)
+			res = append(res, realValue)
+		}
+		return res, nil
+	}
+	return []byte{}, fmt.Errorf("fixed byte array of size %d is not supported", t.Size)
+}
+
 func ConvertParamStrToType(name string, t abi.Type, str string, network string) (interface{}, error) {
 	switch t.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
@@ -202,11 +592,7 @@ func ConvertToInt(str string, size int) (interface{}, error) {
 }
 
 func ConvertToFixedBytes(str string, size int) (interface{}, error) {
-	str = strings.Trim(str, " ")
-	if len(str) == 2 && str == "0x" {
-		return []byte{}, nil
-	}
-	bytes, err := hexutil.Decode(str)
+	bytes, err := ConvertToBytes(str)
 	if err != nil {
 		return []byte{}, err
 	}

@@ -134,7 +134,12 @@ func PromptArray(input abi.Argument, prefill string, network string) (interface{
 		return nil, fmt.Errorf("input must be wrapped by []")
 	}
 	arrayContent := strings.Trim(inpStr[1:len(inpStr)-1], " ")
-	paramsStr := strings.Split(arrayContent, ",")
+	paramsStr := []string{}
+	for _, p := range strings.Split(arrayContent, ",") {
+		if strings.Trim(p, " ") != "" {
+			paramsStr = append(paramsStr, p)
+		}
+	}
 
 	switch input.Type.Elem.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
@@ -205,7 +210,7 @@ func PromptArray(input abi.Argument, prefill string, network string) (interface{
 	case abi.BytesTy:
 		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
 	case abi.FixedBytesTy:
-		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
+		return ConvertParamStrToFixedByteType(input.Name, *input.Type.Elem, paramsStr, network)
 	case abi.FunctionTy:
 		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
 	default:
