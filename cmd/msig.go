@@ -93,6 +93,8 @@ func showMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) {
 
 		if config.ForceERC20ABI {
 			destAbi, err = ethutils.GetERC20ABI()
+		} else if config.CustomABI != "" {
+			destAbi, err = util.ReadCustomABI(config.CustomABI, config.Network)
 		} else {
 			destAbi, err = util.GetABI(address, config.Network)
 		}
@@ -224,9 +226,14 @@ func getMsigContractFromParams(args []string) (msigAddress string, err error) {
 		msigName = addrDesc.Desc
 		msigAddress = addrDesc.Address
 	}
-	isGnosisMultisig, err := util.IsGnosisMultisig(msigAddress, config.Network)
+	a, err := util.GetABI(msigAddress, config.Network)
 	if err != nil {
-		fmt.Printf("Checking failed, %s (%s) is not a contract or it doesn't have verified ABI on etherscan: %s\n", msigAddress, msigName, err)
+		fmt.Printf("Couldn't get ABI of %s from etherscan\n", msigAddress)
+		return "", err
+	}
+	isGnosisMultisig, err := util.IsGnosisMultisig(a)
+	if err != nil {
+		fmt.Printf("Checking failed, %s (%s) is not a contract\n", msigAddress, msigName)
 		return "", err
 	}
 	if !isGnosisMultisig {
@@ -301,6 +308,8 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	var a *abi.ABI
 	if config.ForceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
+	} else if config.CustomABI != "" {
+		a, err = util.ReadCustomABI(config.CustomABI, config.Network)
 	} else {
 		a, err = util.GetABI(config.To, config.Network)
 	}
@@ -400,7 +409,7 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 
-		data, err := promptTxData(config.MsigTo, config.PrefillParams, config.ForceERC20ABI)
+		data, err := promptTxData(config.MsigTo, config.PrefillParams, config.ForceERC20ABI, config.CustomABI)
 		if err != nil {
 			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
 			fmt.Printf("Continue with EMPTY CALLING DATA\n")
@@ -486,6 +495,7 @@ func init() {
 		c.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
 		c.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
 		c.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
+		c.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
 	}
 
 	msigCmd.AddCommand(approveMsigCmd)

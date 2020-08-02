@@ -97,13 +97,13 @@ func NewDefaultAddressDatabase() *DefaultAddressDatabase {
 		Data: map[common.Address]string{},
 	}
 
-	for addr, name := range data {
-		db.Register(addr, name)
-	}
-
 	err := registerTokens(db)
 	if err != nil {
 		fmt.Printf("Loading token addresses from file failed: %s\n", err)
+	}
+
+	for addr, name := range data {
+		db.Register(addr, name)
 	}
 
 	return db

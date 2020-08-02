@@ -1,8 +1,12 @@
 package util
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"math/big"
+	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -393,6 +397,54 @@ func GetERC20Decimal(addr string, network string) (int64, error) {
 	return result, nil
 }
 
+func isHttpURL(path string) bool {
+	_, err := url.ParseRequestURI(path)
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func ReadCustomABI(pathOrAddress string, network string) (*abi.ABI, error) {
+	if isRealAddress(pathOrAddress) {
+		return GetABI(pathOrAddress, network)
+	} else if isHttpURL(pathOrAddress) {
+		return GetABIFromURL(pathOrAddress)
+	} else {
+		return GetABIFromFile(pathOrAddress)
+	}
+}
+
+func GetABIFromFile(filepath string) (*abi.ABI, error) {
+	abiBytes, err := ioutil.ReadFile(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := abi.JSON(bytes.NewReader(abiBytes))
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
+func GetABIFromURL(url string) (*abi.ABI, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+
+	result, err := abi.JSON(bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+
+	return &result, nil
+}
+
 func GetABI(addr string, network string) (*abi.ABI, error) {
 	cacheKey := fmt.Sprintf("%s_abi", addr)
 	cached, found := cache.GetCache(cacheKey)
@@ -426,13 +478,7 @@ func GetABI(addr string, network string) (*abi.ABI, error) {
 	return &result, nil
 }
 
-func IsGnosisMultisig(addr string, network string) (bool, error) {
-	abi, err := GetABI(addr, network)
-	if err != nil {
-		return false, err
-	}
-	// loosely check by checking a set of method names
-
+func IsGnosisMultisig(a *abi.ABI) (bool, error) {
 	methods := []string{
 		"confirmations",
 		"getTransactionCount",
@@ -445,7 +491,7 @@ func IsGnosisMultisig(addr string, network string) (bool, error) {
 	}
 
 	for _, m := range methods {
-		_, found := abi.Methods[m]
+		_, found := a.Methods[m]
 		if !found {
 			return false, nil
 		}

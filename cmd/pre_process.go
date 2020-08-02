@@ -57,7 +57,18 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	isGnosisMultisig, err := util.IsGnosisMultisig(config.To, config.Network)
+	a, err := util.GetABI(config.To, config.Network)
+	if err != nil {
+		if config.CustomABI != "" {
+			a, err = util.ReadCustomABI(config.CustomABI, config.Network)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	// loosely check by checking a set of method names
+
+	isGnosisMultisig, err := util.IsGnosisMultisig(a)
 	if err != nil {
 		return err
 	}

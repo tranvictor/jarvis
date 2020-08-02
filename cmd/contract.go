@@ -26,7 +26,7 @@ func (self Methods) Len() int           { return len(self) }
 func (self Methods) Swap(i, j int)      { self[i], self[j] = self[j], self[i] }
 func (self Methods) Less(i, j int) bool { return self[i].Name < self[j].Name }
 
-func promptFunctionCallData(contractAddress string, prefills []string, mode string, forceERC20ABI bool) (*abi.ABI, *abi.Method, []interface{}, error) {
+func promptFunctionCallData(contractAddress string, prefills []string, mode string, forceERC20ABI bool, customABI string) (*abi.ABI, *abi.Method, []interface{}, error) {
 	analyzer, err := util.EthAnalyzer(config.Network)
 	if err != nil {
 		return nil, nil, nil, err
@@ -34,6 +34,8 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 	var a *abi.ABI
 	if forceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
+	} else if customABI != "" {
+		a, err = util.ReadCustomABI(customABI, config.Network)
 	} else {
 		a, err = util.GetABI(contractAddress, config.Network)
 	}
@@ -90,9 +92,8 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 			continue
 		}
 		fmt.Printf(
-			"    You entered: %s (type: %T)\n",
+			"    You entered: %s\n",
 			indent(8, util.VerboseValues(analyzer.ParamAsStrings(input.Type, inputParam), config.Network)),
-			inputParam,
 		)
 		params = append(params, inputParam)
 		pi++
@@ -100,8 +101,8 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 	return a, &method, params, nil
 }
 
-func promptTxData(contractAddress string, prefills []string, forceERC20ABI bool) ([]byte, error) {
-	a, method, params, err := promptFunctionCallData(contractAddress, prefills, "write", forceERC20ABI)
+func promptTxData(contractAddress string, prefills []string, forceERC20ABI bool, customABI string) ([]byte, error) {
+	a, method, params, err := promptFunctionCallData(contractAddress, prefills, "write", forceERC20ABI, customABI)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -174,7 +175,7 @@ Param rules:
 			return
 		}
 		fmt.Printf("Contract: %s (%s)\n", contractAddress, contractName)
-		data, err := promptTxData(contractAddress, config.PrefillParams, config.ForceERC20ABI)
+		data, err := promptTxData(contractAddress, config.PrefillParams, config.ForceERC20ABI, config.CustomABI)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -202,7 +203,7 @@ var txContractCmd = &cobra.Command{
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
 		}
-		data, err := promptTxData(config.To, config.PrefillParams, config.ForceERC20ABI)
+		data, err := promptTxData(config.To, config.PrefillParams, config.ForceERC20ABI, config.CustomABI)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -405,7 +406,7 @@ var readContractCmd = &cobra.Command{
 				defer resultJson.Write(config.JSONOutputFile)
 			}
 
-			a, method, params, err := promptFunctionCallData(config.To, config.PrefillParams, "read", config.ForceERC20ABI)
+			a, method, params, err := promptFunctionCallData(config.To, config.PrefillParams, "read", config.ForceERC20ABI, config.CustomABI)
 			if err != nil {
 				fmt.Printf("Couldn't get params from users: %s\n", err)
 				resultJson.Error = fmt.Sprintf("%s", err)
@@ -503,6 +504,7 @@ func init() {
 	txContractCmd.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
 	txContractCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	txContractCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
+	txContractCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
 	txContractCmd.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
 	txContractCmd.MarkFlagRequired("from")
 	contractCmd.AddCommand(txContractCmd)
@@ -513,6 +515,7 @@ func init() {
 	readContractCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 	readContractCmd.PersistentFlags().Int64VarP(&config.AtBlock, "block", "b", -1, "Specify the block to read at. Default value indicates reading at latest state of the chain.")
 	readContractCmd.PersistentFlags().StringVarP(&config.JSONOutputFile, "json-output", "o", "", "write output of contract read to json file")
+	readContractCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
 	contractCmd.AddCommand(readContractCmd)
 	// contractCmd.AddCommand(govInfocontractCmd)
 	// TODO: add more commands to send or call other contracts

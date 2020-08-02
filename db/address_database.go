@@ -58,11 +58,11 @@ func AllAddresses() map[string]string {
 	addrs := txanalyzer.NewDefaultAddressDatabase().Data
 	tokenAddrs := AllTokenAddresses()
 	result := map[string]string{}
+	for addr, desc := range tokenAddrs {
+		result[strings.ToLower(addr)] = desc
+	}
 	for addr, desc := range addrs {
 		result[strings.ToLower(addr.Hex())] = desc
-	}
-	for addr, desc := range tokenAddrs {
-		result[addr] = desc
 	}
 	return result
 }
