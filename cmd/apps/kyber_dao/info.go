@@ -54,27 +54,28 @@ var infoCmd = &cobra.Command{
 		fmt.Printf("\nYour REWARD including your delegators' (during last 5 epochs):\n")
 		for i := uint64(0); i < 5 && Epoch >= i; i++ {
 			e := Epoch - i
-			reward, totalReward, share, isClaimed, err := dao.GetRewardInfo(config.From, e)
+			reward, totalReward, share, isClaimed, err := dao.GetRewardInfo(config.From, e, e == stakeInfo.CurrentEpoch)
 			if err != nil {
 				fmt.Printf("Couldn't get reward info: %s\n", err)
 				return
 			}
 			if isClaimed {
-				fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH) | CLAIMED\n", e, ethutils.BigToFloat(reward, 18), share, ethutils.BigToFloat(totalReward, 18))
+				fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH) | CLAIMED\n", e, ethutils.BigToFloat(reward, 18), share*100, ethutils.BigToFloat(totalReward, 18))
 			} else {
-				fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH)\n", e, ethutils.BigToFloat(reward, 18), share, ethutils.BigToFloat(totalReward, 18))
+				if e >= stakeInfo.CurrentEpoch {
+					fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH) | can't claim yet\n", e, ethutils.BigToFloat(reward, 18), share*100, ethutils.BigToFloat(totalReward, 18))
+				} else {
+					fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH)\n", e, ethutils.BigToFloat(reward, 18), share*100, ethutils.BigToFloat(totalReward, 18))
+				}
 			}
 		}
 
 		camIDs, err := dao.GetCampaignIDs(Epoch)
-		// camIDs, err := dao.GetCampaignIDs(1)
-		fmt.Printf("\nThere are %d voting campaigns for epoch %d:\n", len(camIDs), Epoch)
-
-		currentBlock, err := reader.CurrentBlock()
 		if err != nil {
-			fmt.Printf("Couldn't get current block: %s\n", err)
+			fmt.Printf("Couldn't get list of campaign IDs for epoch %d: %s\n", Epoch, err)
 			return
 		}
+		fmt.Printf("\nThere are %d voting campaigns for epoch %d:\n", len(camIDs), Epoch)
 
 		for _, id := range camIDs {
 			campaignRelatedInfo, err := dao.AllCampaignRelatedInfo(config.From, id)
@@ -82,7 +83,7 @@ var infoCmd = &cobra.Command{
 				cmd.Printf("Couldn't get data of campaign %d: %s\n", id, err)
 				return
 			}
-			PrintCampaignInformation(cmd, campaignRelatedInfo, currentBlock)
+			PrintCampaignInformation(cmd, campaignRelatedInfo)
 		}
 	},
 }

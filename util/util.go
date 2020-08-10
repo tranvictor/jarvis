@@ -33,6 +33,8 @@ const (
 	ETHEREUM_MAINNET_NODE_VAR string = "ETHEREUM_MAINNET_NODE"
 	ETHEREUM_ROPSTEN_NODE_VAR string = "ETHEREUM_ROPSTEN_NODE"
 	TOMO_MAINNET_NODE_VAR     string = "TOMO_MAINNET_NODE"
+	ETHEREUM_KOVAN_NODE_VAR   string = "ETHEREUM_KOVAN_NODE"
+	ETHEREUM_RINKEBY_NODE_VAR string = "ETHEREUM_RINKEBY_NODE"
 )
 
 func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Duration {
@@ -44,6 +46,10 @@ func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Durati
 		return time.Duration(uint64(time.Second) * (to - from) * 16)
 	case "ropsten":
 		return time.Duration(uint64(time.Second) * (to - from) * 16)
+	case "kovan":
+		return time.Duration(uint64(time.Second) * (to - from) * 4)
+	case "rinkeby":
+		return time.Duration(uint64(time.Second) * (to - from) * 15)
 	case "tomo":
 		return time.Duration(uint64(time.Second) * (to - from) * 3)
 	}
@@ -207,6 +213,24 @@ func GetNodes(network string) (map[string]string, error) {
 			nodes["custom-node"] = customNode
 		}
 		return nodes, nil
+	case "kovan":
+		nodes := map[string]string{
+			"kovan-infura": "https://kovan.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+		}
+		customNode := strings.Trim(os.Getenv(ETHEREUM_KOVAN_NODE_VAR), " ")
+		if customNode != "" {
+			nodes["custom-node"] = customNode
+		}
+		return nodes, nil
+	case "rinkeby":
+		nodes := map[string]string{
+			"rinkeby-infura": "https://rinkeby.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+		}
+		customNode := strings.Trim(os.Getenv(ETHEREUM_RINKEBY_NODE_VAR), " ")
+		if customNode != "" {
+			nodes["custom-node"] = customNode
+		}
+		return nodes, nil
 	case "tomo":
 		nodes := map[string]string{
 			"mainnet-tomo": "https://rpc.tomochain.com",
@@ -238,6 +262,10 @@ func EthReader(network string) (*reader.EthReader, error) {
 		return reader.NewEthReaderWithCustomNodes(nodes), nil
 	case "ropsten":
 		return reader.NewRopstenReaderWithCustomNodes(nodes), nil
+	case "kovan":
+		return reader.NewKovanReaderWithCustomNodes(nodes), nil
+	case "rinkeby":
+		return reader.NewRinkebyReaderWithCustomNodes(nodes), nil
 	case "tomo":
 		return reader.NewTomoReaderWithCustomNodes(nodes), nil
 	}

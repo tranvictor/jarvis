@@ -6,9 +6,9 @@ import (
 )
 
 type Campaign struct {
-	CampType                 uint8
-	StartBlock               *big.Int
-	EndBlock                 *big.Int
+	CampaignType             uint8
+	StartTimestamp           *big.Int
+	EndTimestamp             *big.Int
 	TotalKNCSupply           *big.Int
 	MinPercentageInPrecision *big.Int
 	CInPrecision             *big.Int
@@ -23,9 +23,9 @@ type Campaign struct {
 
 func NewEmptyCampaign() *Campaign {
 	return &Campaign{
-		CampType:                 0,
-		StartBlock:               big.NewInt(0),
-		EndBlock:                 big.NewInt(0),
+		CampaignType:             0,
+		StartTimestamp:           big.NewInt(0),
+		EndTimestamp:             big.NewInt(0),
 		TotalKNCSupply:           big.NewInt(0),
 		MinPercentageInPrecision: big.NewInt(0),
 		CInPrecision:             big.NewInt(0),
@@ -39,7 +39,7 @@ func NewEmptyCampaign() *Campaign {
 }
 
 func (self *Campaign) Type() string {
-	switch self.CampType {
+	switch self.CampaignType {
 	case 0:
 		return "general"
 	case 1:
@@ -60,7 +60,7 @@ func (self *Campaign) LinkStr() string {
 
 func (self *Campaign) VerboseOption(option *big.Int, id uint64, votedID *big.Int) string {
 	var result string
-	switch self.CampType {
+	switch self.CampaignType {
 	case 0:
 		result = fmt.Sprintf("%d", option.Uint64())
 	case 1:

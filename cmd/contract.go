@@ -257,11 +257,13 @@ var txContractCmd = &cobra.Command{
 	},
 }
 
-func allZeroParamFunctions(contractAddress string) (*abi.ABI, []abi.Method, error) {
+func allZeroParamFunctions(contractAddress string, customABI string) (*abi.ABI, []abi.Method, error) {
 	var a *abi.ABI
 	var err error
 	if config.ForceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
+	} else if customABI != "" {
+		a, err = util.ReadCustomABI(customABI, config.Network)
 	} else {
 		a, err = util.GetABI(contractAddress, config.Network)
 	}
@@ -374,7 +376,7 @@ var readContractCmd = &cobra.Command{
 				defer resultJson.Write(config.JSONOutputFile)
 			}
 
-			a, methods, err := allZeroParamFunctions(config.To)
+			a, methods, err := allZeroParamFunctions(config.To, config.CustomABI)
 			if err != nil {
 				fmt.Printf("Couldn't get all zero param functions of the contract: %s\n", err)
 				return

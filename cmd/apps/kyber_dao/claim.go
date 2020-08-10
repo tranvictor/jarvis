@@ -56,7 +56,7 @@ var claimCmd = &cobra.Command{
 			return
 		}
 
-		reward, totalReward, share, isClaimed, err := dao.GetRewardInfo(config.From, Epoch)
+		reward, totalReward, share, isClaimed, err := dao.GetRewardInfo(config.From, Epoch, true)
 		if err != nil {
 			cmd.Printf("Couldn't get reward information of %s at epoch %d: %s\n", config.From, Epoch, err)
 			return

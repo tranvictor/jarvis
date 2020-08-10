@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/spf13/cobra"
@@ -19,7 +20,7 @@ func PrintENV() {
 	fmt.Printf("Staking contract: %s\n", StakingContract)
 	fmt.Printf("FeeHandler contract: %s\n", FeeHandler)
 	fmt.Printf("Campaign creator: %s\n", CampaignCreator)
-	fmt.Printf("Epoch duration: %d\n", EpochDuration)
+	fmt.Printf("Epoch duration in seconds: %d\n", EpochDurationInSeconds)
 	fmt.Printf("KNC: %s\n", KNCContract)
 	fmt.Printf("----------------------------------------------------------------------------------------------------\n")
 }
@@ -55,33 +56,37 @@ func PromptBRROption(prompter string) *big.Int {
 	parts := strings.Split(opStr, ",")
 	rebate, _ := strconv.ParseUint(strings.Trim(parts[0], " "), 10, 64)
 	reward, _ := strconv.ParseUint(strings.Trim(parts[1], " "), 10, 64)
+	return EncodeBRROption(rebate, reward)
+}
+
+func EncodeBRROption(rebate, reward uint64) *big.Int {
 	rebateBig := big.NewInt(int64(rebate))
 	temp := big.NewInt(0).Lsh(rebateBig, 128)
 	return big.NewInt(0).Add(temp, big.NewInt(int64(reward)))
 }
 
-func PrintCampaignInformation(cmd *cobra.Command, info *CampaignRelatedInfo, currentBlock uint64) {
+func PrintCampaignInformation(cmd *cobra.Command, info *CampaignRelatedInfo) {
+	timeNowSeconds := uint64(time.Now().Unix())
 	fmt.Printf("----------------------------------------------------------------------------------------------------\n")
-	fmt.Printf("Current block: %d\n", currentBlock)
+	fmt.Printf("Current time: %d\n", timeNowSeconds)
 	fmt.Printf("Campaign ID: %d\n", info.Campaign.ID)
 	fmt.Printf("Type: %s\n", info.Campaign.Type())
-	fmt.Printf("Duration: block %d -> %d, %d blocks\n",
-		info.Campaign.StartBlock.Uint64(),
-		info.Campaign.EndBlock.Uint64(),
-		info.Campaign.EndBlock.Uint64()-info.Campaign.StartBlock.Uint64())
-	if currentBlock < info.Campaign.StartBlock.Uint64() {
-		timeLeft := util.CalculateTimeDurationFromBlock(config.Network, currentBlock, info.Campaign.StartBlock.Uint64())
-		fmt.Printf("Start in: %s\n", timeLeft.String())
+	fmt.Printf("Duration: %d -> %d, %ds\n",
+		info.Campaign.StartTimestamp.Uint64(),
+		info.Campaign.EndTimestamp.Uint64(),
+		info.Campaign.EndTimestamp.Uint64()-info.Campaign.StartTimestamp.Uint64())
+	if timeNowSeconds < info.Campaign.StartTimestamp.Uint64() {
+		fmt.Printf("Start in: %s\n", time.Duration(uint64(time.Second)*(info.Campaign.StartTimestamp.Uint64()-timeNowSeconds)))
 	} else {
-		timeLeft := util.CalculateTimeDurationFromBlock(config.Network, currentBlock, info.Campaign.EndBlock.Uint64())
-		if timeLeft == 0 {
+		timeLeft := int64(info.Campaign.EndTimestamp.Uint64()) - int64(timeNowSeconds)
+		if timeLeft <= 0 {
 			fmt.Printf("Time left: ENDED")
 			if !info.Campaign.HasWinningOption() {
 				fmt.Printf(" - No winning option")
 			}
 			fmt.Printf("\n")
 		} else {
-			fmt.Printf("Time left: %s\n", timeLeft.String())
+			fmt.Printf("Time left: %s\n", time.Duration(uint64(time.Second)*uint64(timeLeft)))
 		}
 	}
 	if len(info.Campaign.LinkStr()) == 0 {
