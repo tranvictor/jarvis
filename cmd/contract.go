@@ -35,7 +35,7 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 	if forceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
 	} else if customABI != "" {
-		a, err = util.ReadCustomABI(customABI, config.Network)
+		a, err = util.ReadCustomABI(contractAddress, customABI, config.Network)
 	} else {
 		a, err = util.GetABI(contractAddress, config.Network)
 	}
@@ -198,6 +198,7 @@ var txContractCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("get here\n")
 		reader, err := util.EthReader(config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
@@ -263,7 +264,7 @@ func allZeroParamFunctions(contractAddress string, customABI string) (*abi.ABI, 
 	if config.ForceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
 	} else if customABI != "" {
-		a, err = util.ReadCustomABI(customABI, config.Network)
+		a, err = util.ReadCustomABI(contractAddress, customABI, config.Network)
 	} else {
 		a, err = util.GetABI(contractAddress, config.Network)
 	}

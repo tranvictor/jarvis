@@ -60,7 +60,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	a, err := util.GetABI(config.To, config.Network)
 	if err != nil {
 		if config.CustomABI != "" {
-			a, err = util.ReadCustomABI(config.CustomABI, config.Network)
+			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network)
 			if err != nil {
 				return err
 			}

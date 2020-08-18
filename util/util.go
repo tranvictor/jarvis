@@ -426,62 +426,84 @@ func GetERC20Decimal(addr string, network string) (int64, error) {
 }
 
 func isHttpURL(path string) bool {
-	_, err := url.ParseRequestURI(path)
+	u, err := url.ParseRequestURI(path)
 	if err != nil {
+		return false
+	}
+	if u.Scheme == "" {
 		return false
 	}
 	return true
 }
 
-func ReadCustomABI(pathOrAddress string, network string) (*abi.ABI, error) {
+func ReadCustomABIString(addr string, pathOrAddress string, network string) (str string, err error) {
 	if isRealAddress(pathOrAddress) {
-		return GetABI(pathOrAddress, network)
+		reader, err := EthReader(network)
+		if err != nil {
+			return "", err
+		}
+		str, err = reader.GetABIString(pathOrAddress)
 	} else if isHttpURL(pathOrAddress) {
-		return GetABIFromURL(pathOrAddress)
-	} else {
-		return GetABIFromFile(pathOrAddress)
+		str, err = GetABIStringFromURL(pathOrAddress)
+	} else if str, err = GetABIStringFromFile(pathOrAddress); err != nil {
+		str = pathOrAddress
+		err = nil
 	}
+
+	return str, err
 }
 
-func GetABIFromFile(filepath string) (*abi.ABI, error) {
+func ReadCustomABI(addr string, pathOrAddress string, network string) (a *abi.ABI, err error) {
+	str, err := ReadCustomABIString(addr, pathOrAddress, network)
+	if err != nil {
+		return nil, err
+	}
+
+	a, err = GetABIFromString(str)
+	if err != nil {
+		return a, err
+	}
+
+	cacheKey := fmt.Sprintf("%s_abi", addr)
+	cache.SetCache(cacheKey, str)
+	fmt.Printf("Stored %s abi to cache.\n", addr)
+	return a, nil
+}
+
+func GetABIStringFromFile(filepath string) (string, error) {
 	abiBytes, err := ioutil.ReadFile(filepath)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := abi.JSON(bytes.NewReader(abiBytes))
-	if err != nil {
-		return nil, err
-	}
-
-	return &result, nil
+	return string(abiBytes), err
 }
 
-func GetABIFromURL(url string) (*abi.ABI, error) {
+func GetABIStringFromURL(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	return string(body), err
+}
 
-	result, err := abi.JSON(bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
+func GetABIFromBytes(abiBytes []byte) (*abi.ABI, error) {
+	result, err := abi.JSON(bytes.NewReader(abiBytes))
+	return &result, err
+}
 
-	return &result, nil
+func GetABIFromString(abiStr string) (*abi.ABI, error) {
+	result, err := abi.JSON(strings.NewReader(abiStr))
+	return &result, err
 }
 
 func GetABI(addr string, network string) (*abi.ABI, error) {
 	cacheKey := fmt.Sprintf("%s_abi", addr)
 	cached, found := cache.GetCache(cacheKey)
 	if found {
-		result, err := abi.JSON(strings.NewReader(cached))
+		result, err := GetABIFromString(cached)
 		if err != nil {
 			return nil, err
 		}
-		return &result, nil
+		return result, nil
 	}
 
 	// not found from cache, getting from etherscan or equivalent websites
@@ -494,7 +516,7 @@ func GetABI(addr string, network string) (*abi.ABI, error) {
 		return nil, err
 	}
 
-	result, err := abi.JSON(strings.NewReader(abiStr))
+	result, err := GetABIFromString(abiStr)
 	if err != nil {
 		return nil, err
 	}
@@ -503,7 +525,8 @@ func GetABI(addr string, network string) (*abi.ABI, error) {
 		cacheKey,
 		abiStr,
 	)
-	return &result, nil
+	fmt.Printf("Stored %s abi to cache.\n", addr)
+	return result, nil
 }
 
 func IsGnosisMultisig(a *abi.ABI) (bool, error) {

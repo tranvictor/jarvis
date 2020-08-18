@@ -94,7 +94,7 @@ func showMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) {
 		if config.ForceERC20ABI {
 			destAbi, err = ethutils.GetERC20ABI()
 		} else if config.CustomABI != "" {
-			destAbi, err = util.ReadCustomABI(config.CustomABI, config.Network)
+			destAbi, err = util.ReadCustomABI(address, config.CustomABI, config.Network)
 		} else {
 			destAbi, err = util.GetABI(address, config.Network)
 		}
@@ -309,7 +309,7 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	if config.ForceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
 	} else if config.CustomABI != "" {
-		a, err = util.ReadCustomABI(config.CustomABI, config.Network)
+		a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network)
 	} else {
 		a, err = util.GetABI(config.To, config.Network)
 	}
