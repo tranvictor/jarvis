@@ -87,7 +87,9 @@ func ParamToBigInt(param string) (*big.Int, error) {
 	return result, nil
 }
 
-// Split value by space, parse the first element to float64 as the amount.
+// Split value by space,
+// if the lowercase of first element is 'all', the amount will be -1, indicating a balance query is needed
+// else, parses the first element to float64 as the amount.
 // Join whats left by space and trim by space, if it is empty, interpret it
 // as ETH.
 // Error will not be nil if it fails to proceed all of above steps.
@@ -101,6 +103,11 @@ func ValueToAmountAndCurrency(value string) (float64, string, error) {
 	if len(currency) == 0 {
 		currency = ETH_ADDR
 	}
+
+	if strings.ToLower(strings.Trim(amountStr, " ")) == "all" {
+		return -1, currency, nil
+	}
+
 	amount, err := strconv.ParseFloat(amountStr, 64)
 	if err != nil {
 		return 0, "", fmt.Errorf(
