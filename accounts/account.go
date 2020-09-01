@@ -83,6 +83,10 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			fromAcc, err = account.NewAccountFromKeystore(ad.Keypath, pwd)
 		} else if network == "ropsten" {
 			fromAcc, err = account.NewRopstenAccountFromKeystore(ad.Keypath, pwd)
+		} else if network == "kovan" {
+			fromAcc, err = account.NewKovanAccountFromKeystore(ad.Keypath, pwd)
+		} else if network == "rinkeby" {
+			fromAcc, err = account.NewRinkebyAccountFromKeystore(ad.Keypath, pwd)
 		} else if network == "tomo" {
 			fromAcc, err = account.NewTomoAccountFromKeystore(ad.Keypath, pwd)
 		} else {
@@ -102,6 +106,14 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			)
 		} else if network == "ropsten" {
 			fromAcc, err = account.NewRopstenTrezorAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "kovan" {
+			fromAcc, err = account.NewKovanTrezorAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "rinkeby" {
+			fromAcc, err = account.NewRinkebyTrezorAccount(
 				ad.Derpath, ad.Address,
 			)
 		} else if network == "tomo" {
@@ -125,6 +137,14 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			)
 		} else if network == "ropsten" {
 			fromAcc, err = account.NewRopstenLedgerAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "kovan" {
+			fromAcc, err = account.NewKovanLedgerAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "rinkeby" {
+			fromAcc, err = account.NewRinkebyLedgerAccount(
 				ad.Derpath, ad.Address,
 			)
 		} else if network == "tomo" {
