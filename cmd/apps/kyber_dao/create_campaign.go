@@ -175,7 +175,7 @@ var createCamCmd = &cobra.Command{
 		if cType == "brr" && KIP2 {
 			startTimestampBig = big.NewInt(int64(timeInfo.NextEpochStartTimestamp))
 			endTimestampBig = big.NewInt(int64(timeInfo.NextEpochStartTimestamp + 10*24*60*60))
-			Options, err = generateBRROptions(dao, timeInfo.CurrentEpoch)
+			Options, err = generateBRROptions(dao, timeInfo.CurrentEpoch-1)
 			if err != nil {
 				fmt.Printf("Couldn't generate new BRR options: %s\n", err)
 			}
@@ -273,6 +273,7 @@ var createCamCmd = &cobra.Command{
 		config.MsigTo = DaoContract
 		config.MethodIndex = 5
 		config.ExtraGasLimit = 500000
+
 		config.PrefillStr = fmt.Sprintf(
 			// campType|startBlock|endBlock|min|c|t|options|link
 			"%d|%d|%d|%d|%d|%d|%s|\"%s\"",
