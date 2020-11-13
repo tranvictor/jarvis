@@ -161,7 +161,7 @@ func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, net
 	}
 }
 
-func DisplayWaitAnalyze(t *types.Transaction, broadcasted bool, err error, network string) {
+func DisplayWaitAnalyze(reader *reader.EthReader, t *types.Transaction, broadcasted bool, err error, network string, forceERC20ABI bool, customABI string) {
 	if !broadcasted {
 		fmt.Printf("couldn't broadcast tx:\n")
 		fmt.Printf("error on nodes: %v\n", err)
@@ -179,7 +179,7 @@ func DisplayWaitAnalyze(t *types.Transaction, broadcasted bool, err error, netwo
 			fmt.Printf("Couldn't analyze the tx: %s\n", err)
 			return
 		}
-		AnalyzeAndPrint(analyzer, t.Hash().Hex(), network)
+		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, forceERC20ABI, customABI)
 	}
 }
 

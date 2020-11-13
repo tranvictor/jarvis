@@ -7,6 +7,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	. "github.com/logrusorgru/aurora"
+	"github.com/tranvictor/ethutils"
+	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/jarvis/txanalyzer"
 )
 
@@ -26,8 +28,53 @@ func AnalyzeMethodCallAndPrint(analyzer *txanalyzer.TxAnalyzer, abi *abi.ABI, da
 	}
 }
 
-func AnalyzeAndPrint(analyzer *txanalyzer.TxAnalyzer, tx string, network string) {
-	result := analyzer.Analyze(tx)
+func AnalyzeAndPrint(
+	reader *reader.EthReader,
+	analyzer *txanalyzer.TxAnalyzer,
+	tx string,
+	network string,
+	forceERC20ABI bool,
+	customABI string) {
+
+	txinfo, err := reader.TxInfoFromHash(tx)
+	if err != nil {
+		fmt.Printf("getting tx info failed: %s", err)
+		return
+	}
+
+	contractAddress := txinfo.Tx.To().Hex()
+
+	code, err := reader.GetCode(contractAddress)
+	if err != nil {
+		fmt.Printf("checking tx type failed: %s", err)
+		return
+	}
+	isContract := len(code) > 0
+
+	var result *txanalyzer.TxResult
+
+	if isContract {
+		var a *abi.ABI
+		var err error
+
+		a, err = GetABI(contractAddress, network)
+		if err != nil {
+			if forceERC20ABI {
+				a, err = ethutils.GetERC20ABI()
+			} else if customABI != "" {
+				fmt.Printf("%s doesn't have abi on etherscan nor jarvis cache, try custom abi passed in the param\n")
+				a, err = ReadCustomABI(contractAddress, customABI, network)
+			}
+		}
+		if err != nil {
+			fmt.Printf("Couldn't get the ABI: %s", err)
+			return
+		}
+		result = analyzer.AnalyzeOffline(&txinfo, a, true)
+	} else {
+		result = analyzer.AnalyzeOffline(&txinfo, nil, false)
+	}
+
 	printToStdout(result, os.Stdout)
 }
 

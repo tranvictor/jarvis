@@ -40,6 +40,12 @@ func handleSend(
 		errors      error
 	)
 
+	reader, err := util.EthReader(config.Network)
+	if err != nil {
+		fmt.Printf("init reader failed: %s\n", err)
+		return
+	}
+
 	if tokenAddr == util.ETH_ADDR {
 		t, broadcasted, errors = account.SendETHWithNonceAndPrice(
 			config.Nonce,
@@ -49,7 +55,6 @@ func handleSend(
 		)
 	} else {
 		if amount == -1 {
-			reader, err := util.EthReader(config.Network)
 			amountWei, err := reader.ERC20Balance(tokenAddr, config.From)
 			if err != nil {
 				fmt.Printf("Couldn't get token balance: %s\n", err)
@@ -85,7 +90,8 @@ func handleSend(
 		}
 	}
 	util.DisplayWaitAnalyze(
-		t, broadcasted, errors, config.Network,
+		reader, t, broadcasted, errors, config.Network,
+		config.ForceERC20ABI, config.CustomABI,
 	)
 }
 

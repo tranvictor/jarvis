@@ -128,6 +128,12 @@ func PrintStakeInformation(cmd *cobra.Command, info *StakeRelatedInfo) {
 	} else {
 		cmd.Printf("Your representative: %s (Contact him to get your reward if you have some)\n", util.VerboseAddress(info.Representative, config.Network))
 	}
+
+	if info.PendingRepresentative == "" {
+		cmd.Printf("Your pending representative: None\n")
+	} else {
+		cmd.Printf("Your pending representative: %s\n", util.VerboseAddress(info.PendingRepresentative, config.Network))
+	}
 	cmd.Printf("Stake other people delegated to you: %f KNC\n", ethutils.BigToFloat(info.DelegatedStake, 18))
 }
 

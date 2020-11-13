@@ -39,6 +39,14 @@ func (self *KyberDAO) GetStake(s string, e uint64) (*big.Int, error) {
 	return res, err
 }
 
+func (self *KyberDAO) GetPendingPoolMaster(s string) (common.Address, error) {
+	var res common.Address
+	err := self.reader.ReadContract(&res, self.staking, "getLatestRepresentative",
+		ethutils.HexToAddress(s),
+	)
+	return res, err
+}
+
 func (self *KyberDAO) GetPoolMaster(s string, e uint64) (common.Address, error) {
 	var res common.Address
 	err := self.reader.ReadContract(&res, self.staking, "getRepresentative",
@@ -170,30 +178,32 @@ func (self *KyberDAO) GetVotedOptionID(s string, camID *big.Int) (*big.Int, erro
 }
 
 type StakeRelatedInfo struct {
-	Staker         string
-	Epoch          uint64
-	CurrentEpoch   uint64
-	Stake          *big.Int
-	Balance        *big.Int
-	Allowance      *big.Int
-	FutureStake    *big.Int
-	PendingStake   *big.Int
-	Representative string
-	DelegatedStake *big.Int
+	Staker                string
+	Epoch                 uint64
+	CurrentEpoch          uint64
+	Stake                 *big.Int
+	Balance               *big.Int
+	Allowance             *big.Int
+	FutureStake           *big.Int
+	PendingStake          *big.Int
+	Representative        string
+	PendingRepresentative string
+	DelegatedStake        *big.Int
 }
 
 func (self *KyberDAO) AllStakeRelatedInfo(s string, e uint64) (info *StakeRelatedInfo, err error) {
 	info = &StakeRelatedInfo{
-		Staker:         s,
-		Epoch:          e,
-		CurrentEpoch:   0,
-		Stake:          nil,
-		Balance:        nil,
-		Allowance:      nil,
-		FutureStake:    nil,
-		PendingStake:   nil,
-		Representative: "",
-		DelegatedStake: nil,
+		Staker:                s,
+		Epoch:                 e,
+		CurrentEpoch:          0,
+		Stake:                 nil,
+		Balance:               nil,
+		Allowance:             nil,
+		FutureStake:           nil,
+		PendingStake:          nil,
+		Representative:        "",
+		PendingRepresentative: "",
+		DelegatedStake:        nil,
 	}
 
 	if info.CurrentEpoch, err = self.CurrentEpoch(); err != nil {
@@ -229,6 +239,16 @@ func (self *KyberDAO) AllStakeRelatedInfo(s string, e uint64) (info *StakeRelate
 		info.Representative = info.Staker
 	} else {
 		info.Representative = poolMaster.Hex()
+	}
+	var pendingPoolMaster common.Address
+	if pendingPoolMaster, err = self.GetPendingPoolMaster(s); err != nil {
+		err = fmt.Errorf("Couldn't get pending representative of %s at epoch %d: %w", s, info.Epoch, err)
+		return
+	}
+	if pendingPoolMaster.Hash().Big().Cmp(big.NewInt(0)) != 0 {
+		if pendingPoolMaster.Hex() != info.Representative {
+			info.PendingRepresentative = pendingPoolMaster.Hex()
+		}
 	}
 	if info.DelegatedStake, err = self.GetDelegatedStake(s, info.Epoch); err != nil {
 		err = fmt.Errorf("Couldn't get delegated stake of %s at epoch %d: %w", s, info.Epoch, err)

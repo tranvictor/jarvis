@@ -349,7 +349,8 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	}
 	tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 	util.DisplayWaitAnalyze(
-		tx, broadcasted, err, config.Network,
+		reader, tx, broadcasted, err, config.Network,
+		config.ForceERC20ABI, config.CustomABI,
 	)
 }
 
@@ -458,7 +459,8 @@ var initMsigCmd = &cobra.Command{
 		}
 		tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 		util.DisplayWaitAnalyze(
-			tx, broadcasted, err, config.Network,
+			reader, tx, broadcasted, err, config.Network,
+			config.ForceERC20ABI, config.CustomABI,
 		)
 	},
 }

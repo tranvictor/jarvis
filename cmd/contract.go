@@ -251,7 +251,8 @@ var txContractCmd = &cobra.Command{
 				)
 			} else {
 				util.DisplayWaitAnalyze(
-					tx, broadcasted, err, config.Network,
+					reader, tx, broadcasted, err, config.Network,
+					config.ForceERC20ABI, config.CustomABI,
 				)
 			}
 		}
@@ -282,7 +283,7 @@ func allZeroParamFunctions(contractAddress string, customABI string) (*abi.ABI, 
 }
 
 func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlock int64, method *abi.Method, params []interface{}) (contractReadResult, error) {
-	responseBytes, err := reader.ReadContractToBytes(atBlock, config.To, a, method.Name, params...)
+	responseBytes, err := reader.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", config.To, a, method.Name, params...)
 	if err != nil {
 		fmt.Printf("getting response failed: %s\n", err)
 		return contractReadResult{}, err
