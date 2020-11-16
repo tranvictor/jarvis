@@ -30,9 +30,23 @@ var txCmd = &cobra.Command{
 				fmt.Printf("Couldn't analyze the txs: %s\n", err)
 				return
 			}
+
+			reader, err := util.EthReader(config.Network)
+			if err != nil {
+				fmt.Printf("Couldn't init eth reader: %s\n", err)
+				return
+			}
+
 			for _, t := range txs {
 				fmt.Printf("Analyzing tx: %s...\n", t)
-				util.AnalyzeAndPrint(analyzer, t, config.Network)
+				util.AnalyzeAndPrint(
+					reader,
+					analyzer,
+					t,
+					config.Network,
+					config.ForceERC20ABI,
+					config.CustomABI,
+				)
 				fmt.Printf("----------------------------------------------------------\n")
 			}
 		}
@@ -40,6 +54,9 @@ var txCmd = &cobra.Command{
 }
 
 func init() {
+	txCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
+	txCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
+
 	rootCmd.AddCommand(txCmd)
 
 	// Here you will define your flags and configuration settings.

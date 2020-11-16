@@ -10,7 +10,6 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -94,7 +93,7 @@ func showMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) {
 		if config.ForceERC20ABI {
 			destAbi, err = ethutils.GetERC20ABI()
 		} else if config.CustomABI != "" {
-			destAbi, err = util.ReadCustomABI(config.CustomABI, config.Network)
+			destAbi, err = util.ReadCustomABI(address, config.CustomABI, config.Network)
 		} else {
 			destAbi, err = util.GetABI(address, config.Network)
 		}
@@ -114,11 +113,11 @@ func showMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) {
 	fmt.Printf("\nExecuted: %t\n", executed)
 	fmt.Printf("Confirmations (among current owners):\n")
 	for i, c := range confirmations {
-		addrDesc, err := db.GetAddress(c)
+		_, name, err := util.GetMatchingAddress(c)
 		if err != nil {
 			fmt.Printf("%d. %s (Unknown)\n", i+1, c)
 		} else {
-			fmt.Printf("%d. %s (%s)\n", i+1, c, addrDesc.Desc)
+			fmt.Printf("%d. %s (%s)\n", i+1, c, name)
 		}
 	}
 }
@@ -184,11 +183,11 @@ var govInfoMsigCmd = &cobra.Command{
 			return
 		}
 		for i, owner := range owners {
-			addrDesc, err := db.GetAddress(owner)
+			_, name, err := util.GetMatchingAddress(owner)
 			if err != nil {
 				fmt.Printf("%d. %s (Unknown)\n", i+1, owner)
 			} else {
-				fmt.Printf("%d. %s (%s)\n", i+1, owner, addrDesc.Desc)
+				fmt.Printf("%d. %s (%s)\n", i+1, owner, name)
 			}
 		}
 		voteRequirement, err := multisigContract.VoteRequirement()
@@ -212,7 +211,7 @@ func getMsigContractFromParams(args []string) (msigAddress string, err error) {
 		return "", fmt.Errorf("not enough params")
 	}
 
-	addrDesc, err := db.GetAddress(args[0])
+	addr, name, err := util.GetMatchingAddress(args[0])
 	var msigName string
 	if err != nil {
 		msigName = "Unknown"
@@ -223,8 +222,8 @@ func getMsigContractFromParams(args []string) (msigAddress string, err error) {
 		}
 		msigAddress = addresses[0]
 	} else {
-		msigName = addrDesc.Desc
-		msigAddress = addrDesc.Address
+		msigName = name
+		msigAddress = addr
 	}
 	a, err := util.GetABI(msigAddress, config.Network)
 	if err != nil {
@@ -309,7 +308,7 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	if config.ForceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
 	} else if config.CustomABI != "" {
-		a, err = util.ReadCustomABI(config.CustomABI, config.Network)
+		a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network)
 	} else {
 		a, err = util.GetABI(config.To, config.Network)
 	}
@@ -349,7 +348,8 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	}
 	tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 	util.DisplayWaitAnalyze(
-		tx, broadcasted, err, config.Network,
+		reader, tx, broadcasted, err, config.Network,
+		config.ForceERC20ABI, config.CustomABI,
 	)
 }
 
@@ -458,7 +458,8 @@ var initMsigCmd = &cobra.Command{
 		}
 		tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 		util.DisplayWaitAnalyze(
-			tx, broadcasted, err, config.Network,
+			reader, tx, broadcasted, err, config.Network,
+			config.ForceERC20ABI, config.CustomABI,
 		)
 	},
 }

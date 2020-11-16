@@ -21,7 +21,8 @@ import (
 	"github.com/tranvictor/ethutils/broadcaster"
 	"github.com/tranvictor/ethutils/monitor"
 	"github.com/tranvictor/ethutils/reader"
-	"github.com/tranvictor/jarvis/db"
+	bleve "github.com/tranvictor/jarvis/bleve"
+	db "github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util/cache"
 )
@@ -33,6 +34,8 @@ const (
 	ETHEREUM_MAINNET_NODE_VAR string = "ETHEREUM_MAINNET_NODE"
 	ETHEREUM_ROPSTEN_NODE_VAR string = "ETHEREUM_ROPSTEN_NODE"
 	TOMO_MAINNET_NODE_VAR     string = "TOMO_MAINNET_NODE"
+	ETHEREUM_KOVAN_NODE_VAR   string = "ETHEREUM_KOVAN_NODE"
+	ETHEREUM_RINKEBY_NODE_VAR string = "ETHEREUM_RINKEBY_NODE"
 )
 
 func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Duration {
@@ -44,14 +47,55 @@ func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Durati
 		return time.Duration(uint64(time.Second) * (to - from) * 16)
 	case "ropsten":
 		return time.Duration(uint64(time.Second) * (to - from) * 16)
+	case "kovan":
+		return time.Duration(uint64(time.Second) * (to - from) * 4)
+	case "rinkeby":
+		return time.Duration(uint64(time.Second) * (to - from) * 15)
 	case "tomo":
 		return time.Duration(uint64(time.Second) * (to - from) * 3)
 	}
 	panic("unsupported network")
 }
 
+func getRelevantAddressesFromDatabases(str string) (addrs []string, names []string, scores []int) {
+	addrDescs1, scores1 := bleve.GetAddresses(str)
+	addrDescs2, scores2 := db.GetAddresses(str)
+	buffer := map[string]bool{}
+	for i, addr := range addrDescs1 {
+		addrs = append(addrs, addr.Address)
+		names = append(names, addr.Desc)
+		scores = append(scores, scores1[i])
+		buffer[strings.ToLower(addr.Address)] = true
+	}
+	for i, addr := range addrDescs2 {
+		if !buffer[strings.ToLower(addr.Address)] {
+			addrs = append(addrs, addr.Address)
+			names = append(names, addr.Desc)
+			scores = append(scores, scores2[i])
+		}
+	}
+	return addrs, names, scores
+}
+
+func getRelevantAddressFromDatabases(str string) (addr string, name string, err error) {
+	addrs, names, _ := getRelevantAddressesFromDatabases(str)
+	if len(addrs) == 0 {
+		return "", "", fmt.Errorf("no address was found for '%s'", str)
+	}
+	return addrs[0], names[0], nil
+}
+
+func GetMatchingAddresses(str string) (addrs []string, names []string, scores []int) {
+	addrs, names, scores = getRelevantAddressesFromDatabases(str)
+	return addrs, names, scores
+}
+
+func GetMatchingAddress(str string) (addr string, name string, err error) {
+	return getRelevantAddressFromDatabases(str)
+}
+
 func GetAddressFromString(str string) (addr string, name string, err error) {
-	addrDesc, err := db.GetAddress(str)
+	addr, name, err = getRelevantAddressFromDatabases(str)
 	if err != nil {
 		name = "Unknown"
 		addresses := ScanForAddresses(str)
@@ -59,9 +103,6 @@ func GetAddressFromString(str string) (addr string, name string, err error) {
 			return "", "", fmt.Errorf("address not found for \"%s\"", str)
 		}
 		addr = addresses[0]
-	} else {
-		name = addrDesc.Desc
-		addr = addrDesc.Address
 	}
 	return addr, name, nil
 }
@@ -81,7 +122,9 @@ func ParamToBigInt(param string) (*big.Int, error) {
 	return result, nil
 }
 
-// Split value by space, parse the first element to float64 as the amount.
+// Split value by space,
+// if the lowercase of first element is 'all', the amount will be -1, indicating a balance query is needed
+// else, parses the first element to float64 as the amount.
 // Join whats left by space and trim by space, if it is empty, interpret it
 // as ETH.
 // Error will not be nil if it fails to proceed all of above steps.
@@ -95,6 +138,11 @@ func ValueToAmountAndCurrency(value string) (float64, string, error) {
 	if len(currency) == 0 {
 		currency = ETH_ADDR
 	}
+
+	if strings.ToLower(strings.Trim(amountStr, " ")) == "all" {
+		return -1, currency, nil
+	}
+
 	amount, err := strconv.ParseFloat(amountStr, 64)
 	if err != nil {
 		return 0, "", fmt.Errorf(
@@ -148,7 +196,7 @@ func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, net
 	}
 }
 
-func DisplayWaitAnalyze(t *types.Transaction, broadcasted bool, err error, network string) {
+func DisplayWaitAnalyze(reader *reader.EthReader, t *types.Transaction, broadcasted bool, err error, network string, forceERC20ABI bool, customABI string) {
 	if !broadcasted {
 		fmt.Printf("couldn't broadcast tx:\n")
 		fmt.Printf("error on nodes: %v\n", err)
@@ -166,7 +214,7 @@ func DisplayWaitAnalyze(t *types.Transaction, broadcasted bool, err error, netwo
 			fmt.Printf("Couldn't analyze the tx: %s\n", err)
 			return
 		}
-		AnalyzeAndPrint(analyzer, t.Hash().Hex(), network)
+		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, forceERC20ABI, customABI)
 	}
 }
 
@@ -207,6 +255,24 @@ func GetNodes(network string) (map[string]string, error) {
 			nodes["custom-node"] = customNode
 		}
 		return nodes, nil
+	case "kovan":
+		nodes := map[string]string{
+			"kovan-infura": "https://kovan.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+		}
+		customNode := strings.Trim(os.Getenv(ETHEREUM_KOVAN_NODE_VAR), " ")
+		if customNode != "" {
+			nodes["custom-node"] = customNode
+		}
+		return nodes, nil
+	case "rinkeby":
+		nodes := map[string]string{
+			"rinkeby-infura": "https://rinkeby.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+		}
+		customNode := strings.Trim(os.Getenv(ETHEREUM_RINKEBY_NODE_VAR), " ")
+		if customNode != "" {
+			nodes["custom-node"] = customNode
+		}
+		return nodes, nil
 	case "tomo":
 		nodes := map[string]string{
 			"mainnet-tomo": "https://rpc.tomochain.com",
@@ -238,6 +304,10 @@ func EthReader(network string) (*reader.EthReader, error) {
 		return reader.NewEthReaderWithCustomNodes(nodes), nil
 	case "ropsten":
 		return reader.NewRopstenReaderWithCustomNodes(nodes), nil
+	case "kovan":
+		return reader.NewKovanReaderWithCustomNodes(nodes), nil
+	case "rinkeby":
+		return reader.NewRinkebyReaderWithCustomNodes(nodes), nil
 	case "tomo":
 		return reader.NewTomoReaderWithCustomNodes(nodes), nil
 	}
@@ -359,15 +429,15 @@ func VerboseAddress(addr string, network string) string {
 		decimal, erc20Detected = cache.GetInt64Cache(cacheKey)
 	}
 
-	addrDesc, err := db.GetAddress(addr)
+	addr, name, err := getRelevantAddressFromDatabases(addr)
 	if err != nil {
 		return fmt.Sprintf("%s (Unknown)", addr)
 	}
 
 	if erc20Detected {
-		return fmt.Sprintf("%s (%s)", addr, nameWithColor(fmt.Sprintf("%s - %d", addrDesc.Desc, decimal)))
+		return fmt.Sprintf("%s (%s)", addr, nameWithColor(fmt.Sprintf("%s - %d", name, decimal)))
 	} else {
-		return fmt.Sprintf("%s (%s)", addr, nameWithColor(addrDesc.Desc))
+		return fmt.Sprintf("%s (%s)", addr, nameWithColor(name))
 	}
 }
 
@@ -398,62 +468,84 @@ func GetERC20Decimal(addr string, network string) (int64, error) {
 }
 
 func isHttpURL(path string) bool {
-	_, err := url.ParseRequestURI(path)
+	u, err := url.ParseRequestURI(path)
 	if err != nil {
+		return false
+	}
+	if u.Scheme == "" {
 		return false
 	}
 	return true
 }
 
-func ReadCustomABI(pathOrAddress string, network string) (*abi.ABI, error) {
+func ReadCustomABIString(addr string, pathOrAddress string, network string) (str string, err error) {
 	if isRealAddress(pathOrAddress) {
-		return GetABI(pathOrAddress, network)
+		reader, err := EthReader(network)
+		if err != nil {
+			return "", err
+		}
+		str, err = reader.GetABIString(pathOrAddress)
 	} else if isHttpURL(pathOrAddress) {
-		return GetABIFromURL(pathOrAddress)
-	} else {
-		return GetABIFromFile(pathOrAddress)
+		str, err = GetABIStringFromURL(pathOrAddress)
+	} else if str, err = GetABIStringFromFile(pathOrAddress); err != nil {
+		str = pathOrAddress
+		err = nil
 	}
+
+	return str, err
 }
 
-func GetABIFromFile(filepath string) (*abi.ABI, error) {
+func ReadCustomABI(addr string, pathOrAddress string, network string) (a *abi.ABI, err error) {
+	str, err := ReadCustomABIString(addr, pathOrAddress, network)
+	if err != nil {
+		return nil, err
+	}
+
+	a, err = GetABIFromString(str)
+	if err != nil {
+		return a, err
+	}
+
+	cacheKey := fmt.Sprintf("%s_abi", addr)
+	cache.SetCache(cacheKey, str)
+	fmt.Printf("Stored %s abi to cache.\n", addr)
+	return a, nil
+}
+
+func GetABIStringFromFile(filepath string) (string, error) {
 	abiBytes, err := ioutil.ReadFile(filepath)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := abi.JSON(bytes.NewReader(abiBytes))
-	if err != nil {
-		return nil, err
-	}
-
-	return &result, nil
+	return string(abiBytes), err
 }
 
-func GetABIFromURL(url string) (*abi.ABI, error) {
+func GetABIStringFromURL(url string) (string, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
+	return string(body), err
+}
 
-	result, err := abi.JSON(bytes.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
+func GetABIFromBytes(abiBytes []byte) (*abi.ABI, error) {
+	result, err := abi.JSON(bytes.NewReader(abiBytes))
+	return &result, err
+}
 
-	return &result, nil
+func GetABIFromString(abiStr string) (*abi.ABI, error) {
+	result, err := abi.JSON(strings.NewReader(abiStr))
+	return &result, err
 }
 
 func GetABI(addr string, network string) (*abi.ABI, error) {
 	cacheKey := fmt.Sprintf("%s_abi", addr)
 	cached, found := cache.GetCache(cacheKey)
 	if found {
-		result, err := abi.JSON(strings.NewReader(cached))
+		result, err := GetABIFromString(cached)
 		if err != nil {
 			return nil, err
 		}
-		return &result, nil
+		return result, nil
 	}
 
 	// not found from cache, getting from etherscan or equivalent websites
@@ -466,7 +558,7 @@ func GetABI(addr string, network string) (*abi.ABI, error) {
 		return nil, err
 	}
 
-	result, err := abi.JSON(strings.NewReader(abiStr))
+	result, err := GetABIFromString(abiStr)
 	if err != nil {
 		return nil, err
 	}
@@ -475,7 +567,8 @@ func GetABI(addr string, network string) (*abi.ABI, error) {
 		cacheKey,
 		abiStr,
 	)
-	return &result, nil
+	fmt.Printf("Stored %s abi to cache.\n", addr)
+	return result, nil
 }
 
 func IsGnosisMultisig(a *abi.ABI) (bool, error) {

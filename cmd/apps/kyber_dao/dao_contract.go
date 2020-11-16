@@ -8,8 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
-	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/util"
 )
 
 type KyberDAO struct {
@@ -41,9 +39,17 @@ func (self *KyberDAO) GetStake(s string, e uint64) (*big.Int, error) {
 	return res, err
 }
 
+func (self *KyberDAO) GetPendingPoolMaster(s string) (common.Address, error) {
+	var res common.Address
+	err := self.reader.ReadContract(&res, self.staking, "getLatestRepresentative",
+		ethutils.HexToAddress(s),
+	)
+	return res, err
+}
+
 func (self *KyberDAO) GetPoolMaster(s string, e uint64) (common.Address, error) {
 	var res common.Address
-	err := self.reader.ReadContract(&res, self.staking, "getDelegatedAddress",
+	err := self.reader.ReadContract(&res, self.staking, "getRepresentative",
 		ethutils.HexToAddress(s),
 		big.NewInt(int64(e)),
 	)
@@ -59,17 +65,29 @@ func (self *KyberDAO) GetDelegatedStake(s string, e uint64) (*big.Int, error) {
 	return res, err
 }
 
-func (self *KyberDAO) GetRewardInfo(s string, e uint64) (reward *big.Int, totalReward *big.Int, share float64, isClaimed bool, err error) {
+func (self *KyberDAO) GetRewardInfo(s string, e uint64, current bool) (reward *big.Int, totalReward *big.Int, share float64, isClaimed bool, err error) {
 	var shareBig *big.Int
-	err = self.reader.ReadContract(
-		&shareBig,
-		self.dao,
-		"getStakerRewardPercentageInPrecision",
-		ethutils.HexToAddress(s),
-		big.NewInt(int64(e)),
-	)
-	if err != nil {
-		return
+	if current {
+		err = self.reader.ReadContract(
+			&shareBig,
+			self.dao,
+			"getCurrentEpochRewardPercentageInPrecision",
+			ethutils.HexToAddress(s),
+		)
+		if err != nil {
+			return
+		}
+	} else {
+		err = self.reader.ReadContract(
+			&shareBig,
+			self.dao,
+			"getPastEpochRewardPercentageInPrecision",
+			ethutils.HexToAddress(s),
+			big.NewInt(int64(e)),
+		)
+		if err != nil {
+			return
+		}
 	}
 	err = self.reader.ReadContract(
 		&totalReward,
@@ -85,7 +103,7 @@ func (self *KyberDAO) GetRewardInfo(s string, e uint64) (reward *big.Int, totalR
 	share = ethutils.BigToFloat(shareBig, 18)
 	err = self.reader.ReadContract(
 		&isClaimed,
-		self.dao,
+		self.feeHandler,
 		"hasClaimedReward",
 		ethutils.HexToAddress(s),
 		big.NewInt(int64(e)),
@@ -98,7 +116,7 @@ func (self *KyberDAO) GetCampaignIDs(e uint64) ([]*big.Int, error) {
 	err := self.reader.ReadContract(
 		&result,
 		self.dao,
-		"getListCampIDs",
+		"getListCampaignIDs",
 		big.NewInt(int64(e)),
 	)
 	return result, err
@@ -160,30 +178,32 @@ func (self *KyberDAO) GetVotedOptionID(s string, camID *big.Int) (*big.Int, erro
 }
 
 type StakeRelatedInfo struct {
-	Staker         string
-	Epoch          uint64
-	CurrentEpoch   uint64
-	Stake          *big.Int
-	Balance        *big.Int
-	Allowance      *big.Int
-	FutureStake    *big.Int
-	PendingStake   *big.Int
-	Representative string
-	DelegatedStake *big.Int
+	Staker                string
+	Epoch                 uint64
+	CurrentEpoch          uint64
+	Stake                 *big.Int
+	Balance               *big.Int
+	Allowance             *big.Int
+	FutureStake           *big.Int
+	PendingStake          *big.Int
+	Representative        string
+	PendingRepresentative string
+	DelegatedStake        *big.Int
 }
 
 func (self *KyberDAO) AllStakeRelatedInfo(s string, e uint64) (info *StakeRelatedInfo, err error) {
 	info = &StakeRelatedInfo{
-		Staker:         s,
-		Epoch:          e,
-		CurrentEpoch:   0,
-		Stake:          nil,
-		Balance:        nil,
-		Allowance:      nil,
-		FutureStake:    nil,
-		PendingStake:   nil,
-		Representative: "",
-		DelegatedStake: nil,
+		Staker:                s,
+		Epoch:                 e,
+		CurrentEpoch:          0,
+		Stake:                 nil,
+		Balance:               nil,
+		Allowance:             nil,
+		FutureStake:           nil,
+		PendingStake:          nil,
+		Representative:        "",
+		PendingRepresentative: "",
+		DelegatedStake:        nil,
 	}
 
 	if info.CurrentEpoch, err = self.CurrentEpoch(); err != nil {
@@ -220,6 +240,16 @@ func (self *KyberDAO) AllStakeRelatedInfo(s string, e uint64) (info *StakeRelate
 	} else {
 		info.Representative = poolMaster.Hex()
 	}
+	var pendingPoolMaster common.Address
+	if pendingPoolMaster, err = self.GetPendingPoolMaster(s); err != nil {
+		err = fmt.Errorf("Couldn't get pending representative of %s at epoch %d: %w", s, info.Epoch, err)
+		return
+	}
+	if pendingPoolMaster.Hash().Big().Cmp(big.NewInt(0)) != 0 {
+		if pendingPoolMaster.Hex() != info.Representative {
+			info.PendingRepresentative = pendingPoolMaster.Hex()
+		}
+	}
 	if info.DelegatedStake, err = self.GetDelegatedStake(s, info.Epoch); err != nil {
 		err = fmt.Errorf("Couldn't get delegated stake of %s at epoch %d: %w", s, info.Epoch, err)
 		return
@@ -245,43 +275,40 @@ func (self *KyberDAO) AllCampaignRelatedInfo(s string, camID *big.Int) (info *Ca
 }
 
 type TimeRelatedInfo struct {
-	EpochDuration      uint64
-	CurrentBlock       *big.Int
-	CurrentEpoch       uint64
-	TimeUntilNextEpoch time.Duration
+	EpochDurationInSeconds uint64
+	CurrentBlock           *big.Int
+	CurrentBlockTimestamp  uint64
+	CurrentEpoch           uint64
+	TimeUntilNextEpoch     time.Duration
 
-	NextEpoch           uint64
-	NextEpochStartBlock *big.Int // the first block that the campaign is active
-	NextEpochEndBlock   *big.Int // the last block that the campaign is active, not the first block that the campaign is ended
+	NextEpoch               uint64
+	NextEpochStartTimestamp uint64
+	NextEpochEndTimestamp   uint64
 }
 
-func calculateEpoch(cblock *big.Int, start, duration uint64) uint64 {
+func calculateEpoch(cblockTimestamp uint64, start, duration uint64) uint64 {
 	// if (blockNumber < FIRST_EPOCH_START_BLOCK || EPOCH_PERIOD_BLOCKS == 0) { return 0; }
 	// ((blockNumber - FIRST_EPOCH_START_BLOCK) / EPOCH_PERIOD_BLOCKS) + 1;
-	block := cblock.Uint64()
-	if block < start {
+	if cblockTimestamp < start {
 		return 0
 	}
-	return (block-start)/duration + 1
+	return (cblockTimestamp-start)/duration + 1
 }
 
 func (self *KyberDAO) AllTimeRelatedInfo() (*TimeRelatedInfo, error) {
 	result := &TimeRelatedInfo{
-		EpochDuration: EpochDuration,
+		EpochDurationInSeconds: EpochDurationInSeconds,
 	}
-	cBlock, err := self.reader.CurrentBlock()
+	cBlockHeader, err := self.reader.HeaderByNumber(-1)
 	if err != nil {
 		return result, err
 	}
-	result.CurrentBlock = big.NewInt(int64(cBlock))
-	result.CurrentEpoch = calculateEpoch(result.CurrentBlock, StartDAOBlock, EpochDuration)
+	result.CurrentBlock = big.NewInt(int64(cBlockHeader.Number.Uint64()))
+	result.CurrentEpoch = calculateEpoch(cBlockHeader.Time, StartDAOTimestamp, EpochDurationInSeconds)
 	result.NextEpoch = result.CurrentEpoch + 1
-	result.NextEpochStartBlock = big.NewInt(int64(StartDAOBlock + (result.NextEpoch-1)*EpochDuration))
-	result.NextEpochEndBlock = big.NewInt(0).Add(result.NextEpochStartBlock, big.NewInt(int64(EpochDuration-1)))
-	result.TimeUntilNextEpoch = util.CalculateTimeDurationFromBlock(
-		config.Network,
-		result.CurrentBlock.Uint64(),
-		result.NextEpochStartBlock.Uint64(),
-	)
+	result.NextEpochStartTimestamp = StartDAOTimestamp + (result.NextEpoch-1)*EpochDurationInSeconds
+	result.NextEpochEndTimestamp = result.NextEpochStartTimestamp + EpochDurationInSeconds
+	result.TimeUntilNextEpoch = time.Duration(
+		uint64(time.Second) * (result.NextEpochStartTimestamp - uint64(time.Now().Unix())))
 	return result, nil
 }

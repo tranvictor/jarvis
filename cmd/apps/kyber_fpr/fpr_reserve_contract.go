@@ -8,6 +8,7 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/util"
 )
 
 type FPRReserveContract struct {
@@ -31,10 +32,15 @@ func NewFPRReserveContract(address string, r *reader.EthReader) (*FPRReserveCont
 
 func (self *FPRReserveContract) QueryListedTokens() ([]common.Address, error) {
 	res := []common.Address{}
-	err := self.reader.ReadHistoryContract(
+	abi, err := util.GetABI(self.ConversionRateContract.Hex(), config.Network)
+	if err != nil {
+		return nil, err
+	}
+	err = self.reader.ReadHistoryContractWithABI(
 		config.AtBlock,
 		&res,
 		self.ConversionRateContract.Hex(),
+		abi,
 		"getListedTokens",
 	)
 	return res, err
@@ -89,10 +95,15 @@ func (self *FPRReserveContract) QueryQtyStepFunc(token common.Address) (numSellS
 
 func (self *FPRReserveContract) GetTokenControlInfo(token string) (*big.Int, *big.Int, *big.Int, error) {
 	result := [3]*big.Int{nil, nil, nil}
-	err := self.reader.ReadHistoryContract(
+	abi, err := util.GetABI(self.ConversionRateContract.Hex(), config.Network)
+	if err != nil {
+		return result[0], result[1], result[2], err
+	}
+	err = self.reader.ReadHistoryContractWithABI(
 		config.AtBlock,
 		&result,
 		self.ConversionRateContract.Hex(),
+		abi,
 		"getTokenControlInfo",
 		ethutils.HexToAddress(token),
 	)
@@ -101,10 +112,15 @@ func (self *FPRReserveContract) GetTokenControlInfo(token string) (*big.Int, *bi
 
 func (self *FPRReserveContract) GetBasicInfo(token string) (bool, bool, error) {
 	result := [2]bool{false, false}
-	err := self.reader.ReadHistoryContract(
+	abi, err := util.GetABI(self.ConversionRateContract.Hex(), config.Network)
+	if err != nil {
+		return result[0], result[1], err
+	}
+	err = self.reader.ReadHistoryContractWithABI(
 		config.AtBlock,
 		&result,
 		self.ConversionRateContract.Hex(),
+		abi,
 		"getTokenBasicData",
 		ethutils.HexToAddress(token),
 	)

@@ -20,11 +20,11 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-type Methods []abi.Method
+type orderedMethods []abi.Method
 
-func (self Methods) Len() int           { return len(self) }
-func (self Methods) Swap(i, j int)      { self[i], self[j] = self[j], self[i] }
-func (self Methods) Less(i, j int) bool { return self[i].Name < self[j].Name }
+func (m orderedMethods) Len() int           { return len(m) }
+func (m orderedMethods) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
+func (m orderedMethods) Less(i, j int) bool { return m[i].Name < m[j].Name }
 
 func promptFunctionCallData(contractAddress string, prefills []string, mode string, forceERC20ABI bool, customABI string) (*abi.ABI, *abi.Method, []interface{}, error) {
 	analyzer, err := util.EthAnalyzer(config.Network)
@@ -35,7 +35,7 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 	if forceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
 	} else if customABI != "" {
-		a, err = util.ReadCustomABI(customABI, config.Network)
+		a, err = util.ReadCustomABI(contractAddress, customABI, config.Network)
 	} else {
 		a, err = util.GetABI(contractAddress, config.Network)
 	}
@@ -56,7 +56,7 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 			}
 		}
 	}
-	sort.Sort(Methods(methods))
+	sort.Sort(orderedMethods(methods))
 	if config.MethodIndex == 0 {
 		fmt.Printf("write functions:\n")
 		for i, m := range methods {
@@ -64,7 +64,7 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 		}
 		config.MethodIndex = uint64(util.PromptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
 	} else if int(config.MethodIndex) > len(methods) {
-		return nil, nil, nil, fmt.Errorf("The contract doesn't have %d(th) write method.", config.MethodIndex)
+		return nil, nil, nil, fmt.Errorf("the contract doesn't have %d(th) write method", config.MethodIndex)
 	}
 	method := methods[config.MethodIndex-1]
 	fmt.Printf("\nMethod: %s\n", method.Name)
@@ -198,6 +198,7 @@ var txContractCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("get here\n")
 		reader, err := util.EthReader(config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
@@ -250,18 +251,21 @@ var txContractCmd = &cobra.Command{
 				)
 			} else {
 				util.DisplayWaitAnalyze(
-					tx, broadcasted, err, config.Network,
+					reader, tx, broadcasted, err, config.Network,
+					config.ForceERC20ABI, config.CustomABI,
 				)
 			}
 		}
 	},
 }
 
-func allZeroParamFunctions(contractAddress string) (*abi.ABI, []abi.Method, error) {
+func allZeroParamFunctions(contractAddress string, customABI string) (*abi.ABI, []abi.Method, error) {
 	var a *abi.ABI
 	var err error
 	if config.ForceERC20ABI {
 		a, err = ethutils.GetERC20ABI()
+	} else if customABI != "" {
+		a, err = util.ReadCustomABI(contractAddress, customABI, config.Network)
 	} else {
 		a, err = util.GetABI(contractAddress, config.Network)
 	}
@@ -274,12 +278,12 @@ func allZeroParamFunctions(contractAddress string) (*abi.ABI, []abi.Method, erro
 			methods = append(methods, m)
 		}
 	}
-	sort.Sort(Methods(methods))
+	sort.Sort(orderedMethods(methods))
 	return a, methods, nil
 }
 
 func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlock int64, method *abi.Method, params []interface{}) (contractReadResult, error) {
-	responseBytes, err := reader.ReadContractToBytes(atBlock, config.To, a, method.Name, params...)
+	responseBytes, err := reader.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", config.To, a, method.Name, params...)
 	if err != nil {
 		fmt.Printf("getting response failed: %s\n", err)
 		return contractReadResult{}, err
@@ -326,26 +330,26 @@ type returnVariable struct {
 
 type contractReadResult []returnVariable
 
-type contractReadResultJson struct {
+type contractReadResultJSON struct {
 	Result contractReadResult `json:"result"`
 	Error  string             `json:"error"`
 }
 
-func (self *contractReadResultJson) Write(filepath string) {
-	data, _ := json.MarshalIndent(self, "", "  ")
+func (c *contractReadResultJSON) Write(filepath string) {
+	data, _ := json.MarshalIndent(c, "", "  ")
 	err := ioutil.WriteFile(filepath, data, 0644)
 	if err != nil {
 		fmt.Printf("Writing to json file failed: %s\n", err)
 	}
 }
 
-type batchContractReadResultJson struct {
+type batchcontractReadResultJSON struct {
 	Functions []string                 `json:"functions"`
-	Results   []contractReadResultJson `json:"results"`
+	Results   []contractReadResultJSON `json:"results"`
 }
 
-func (self *batchContractReadResultJson) Write(filepath string) {
-	data, _ := json.MarshalIndent(self, "", "  ")
+func (b *batchcontractReadResultJSON) Write(filepath string) {
+	data, _ := json.MarshalIndent(b, "", "  ")
 	err := ioutil.WriteFile(filepath, data, 0644)
 	if err != nil {
 		fmt.Printf("Writing to json file failed: %s\n", err)
@@ -365,59 +369,59 @@ var readContractCmd = &cobra.Command{
 			return
 		}
 		if config.AllZeroParamsMethods {
-			resultJson := batchContractReadResultJson{
+			resultJSON := batchcontractReadResultJSON{
 				Functions: []string{},
-				Results:   []contractReadResultJson{},
+				Results:   []contractReadResultJSON{},
 			}
 
 			if config.JSONOutputFile != "" {
-				defer resultJson.Write(config.JSONOutputFile)
+				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			a, methods, err := allZeroParamFunctions(config.To)
+			a, methods, err := allZeroParamFunctions(config.To, config.CustomABI)
 			if err != nil {
 				fmt.Printf("Couldn't get all zero param functions of the contract: %s\n", err)
 				return
 			}
-			for i, _ := range methods {
+			for i := range methods {
 				method := methods[i]
-				resultJson.Functions = append(resultJson.Functions, method.Name)
+				resultJSON.Functions = append(resultJSON.Functions, method.Name)
 				fmt.Printf("%d. %s\n", i+1, method.Name)
 
 				result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, &method, []interface{}{})
 				if err != nil {
-					resultJson.Results = append(resultJson.Results, contractReadResultJson{
+					resultJSON.Results = append(resultJSON.Results, contractReadResultJSON{
 						Error: fmt.Sprintf("%s", err),
 					})
 				} else {
-					resultJson.Results = append(resultJson.Results, contractReadResultJson{
+					resultJSON.Results = append(resultJSON.Results, contractReadResultJSON{
 						Result: result,
 					})
 				}
 				fmt.Printf("---------------------------------------------------\n")
 			}
 		} else {
-			resultJson := contractReadResultJson{
+			resultJSON := contractReadResultJSON{
 				Result: contractReadResult{},
 				Error:  "",
 			}
 
 			if config.JSONOutputFile != "" {
-				defer resultJson.Write(config.JSONOutputFile)
+				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
 			a, method, params, err := promptFunctionCallData(config.To, config.PrefillParams, "read", config.ForceERC20ABI, config.CustomABI)
 			if err != nil {
 				fmt.Printf("Couldn't get params from users: %s\n", err)
-				resultJson.Error = fmt.Sprintf("%s", err)
+				resultJSON.Error = fmt.Sprintf("%s", err)
 				return
 			}
 			result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, method, params)
 
 			if err != nil {
-				resultJson.Error = fmt.Sprintf("%s", err)
+				resultJSON.Error = fmt.Sprintf("%s", err)
 			} else {
-				resultJson.Result = result
+				resultJSON.Result = result
 			}
 		}
 	},
@@ -463,7 +467,7 @@ func promptTxConfirmation(from string, tx *types.Transaction) error {
 	fmt.Printf("\n------Confirm tx data before signing------\n")
 	showTxInfoToConfirm(from, tx)
 	if !prompter.YN("\nConfirm?", true) {
-		return fmt.Errorf("Aborted!")
+		return fmt.Errorf("user aborted")
 	}
 	return nil
 }

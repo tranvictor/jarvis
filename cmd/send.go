@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"math/big"
 	"os"
 	"strings"
 
@@ -11,7 +12,6 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -39,7 +39,12 @@ func handleSend(
 		errors      error
 	)
 
-	fmt.Printf("token: %s, amount: %f\n", tokenAddr, amount)
+	reader, err := util.EthReader(config.Network)
+	if err != nil {
+		fmt.Printf("init reader failed: %s\n", err)
+		return
+	}
+
 	if tokenAddr == util.ETH_ADDR {
 		t, broadcasted, errors = account.SendETHWithNonceAndPrice(
 			config.Nonce,
@@ -48,42 +53,67 @@ func handleSend(
 			to,
 		)
 	} else {
-		decimals, err := util.GetERC20Decimal(tokenAddr, config.Network)
-		if err != nil {
-			fmt.Printf("Couldn't get token decimal: %s\n", err)
-			return
+		if amount == -1 {
+			amountWei, err := reader.ERC20Balance(tokenAddr, config.From)
+			if err != nil {
+				fmt.Printf("Couldn't get token balance: %s\n", err)
+				return
+			}
+			t, broadcasted, errors = account.CallERC20ContractWithNonceAndPrice(
+				config.Nonce,
+				config.GasPrice+config.ExtraGasPrice,
+				150000,
+				0,
+				tokenAddr,
+				"transfer",
+				ethutils.HexToAddress(to),
+				amountWei,
+			)
+		} else {
+			decimals, err := util.GetERC20Decimal(tokenAddr, config.Network)
+			if err != nil {
+				fmt.Printf("Couldn't get token decimal: %s\n", err)
+				return
+			}
+			amountBig := ethutils.FloatToBigInt(amount, decimals)
+			t, broadcasted, errors = account.CallERC20ContractWithNonceAndPrice(
+				config.Nonce,
+				config.GasPrice+config.ExtraGasPrice,
+				150000,
+				0,
+				tokenAddr,
+				"transfer",
+				ethutils.HexToAddress(to),
+				amountBig,
+			)
 		}
-		amountBig := ethutils.FloatToBigInt(amount, decimals)
-		t, broadcasted, errors = account.CallERC20ContractWithNonceAndPrice(
-			config.Nonce,
-			config.GasPrice+config.ExtraGasPrice,
-			150000,
-			0,
-			tokenAddr,
-			"transfer",
-			ethutils.HexToAddress(to),
-			amountBig,
-		)
 	}
 	util.DisplayWaitAnalyze(
-		t, broadcasted, errors, config.Network,
+		reader, t, broadcasted, errors, config.Network,
+		config.ForceERC20ABI, config.CustomABI,
 	)
 }
 
 func promptConfirmation(
 	from accounts.AccDesc,
-	to db.AddressDesc,
+	toAddr string,
+	toName string,
 	nonce uint64,
 	gasPrice float64,
 	extraGasPrice float64,
 	gasLimit uint64,
 	extraGasLimit uint64,
 	amount float64,
+	amountWei *big.Int,
 	tokenAddr string,
 	tokenDesc string) error {
 	fmt.Printf("From: %s - %s\n", from.Address, from.Desc)
-	fmt.Printf("To: %s - %s\n", to.Address, to.Desc)
-	fmt.Printf("Value: %f %s(%s)\n", amount, tokenDesc, tokenAddr)
+	fmt.Printf("To: %s - %s\n", toAddr, toName)
+	if amountWei != nil {
+		fmt.Printf("Value: %s %s wei(%s)\n", amountWei.Text(10), tokenDesc, tokenAddr)
+	} else {
+		fmt.Printf("Value: %f %s(%s)\n", amount, tokenDesc, tokenAddr)
+	}
 	fmt.Printf("Nonce: %d\n", nonce)
 	fmt.Printf("Gas price: %f gwei\n", gasPrice+extraGasPrice)
 	fmt.Printf("Gas limit: %d\n", gasLimit+extraGasLimit)
@@ -111,6 +141,8 @@ exact addresses start with 0x.`,
 		TraverseChildren: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 
+			var amountWei *big.Int
+
 			amount, currency, err = util.ValueToAmountAndCurrency(value)
 			if err != nil {
 				return err
@@ -123,7 +155,7 @@ exact addresses start with 0x.`,
 				tokenAddr = util.ETH_ADDR
 				tokenDesc = "ETH"
 			} else {
-				addrDesc, err := db.GetTokenAddress(currency)
+				addr, name, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
 				if err != nil {
 					if util.IsAddress(currency) {
 						tokenAddr = currency
@@ -132,10 +164,13 @@ exact addresses start with 0x.`,
 						return err
 					}
 				} else {
-					tokenAddr = addrDesc.Address
-					tokenDesc = addrDesc.Desc
+					tokenAddr = addr
+					tokenDesc = name
 				}
 			}
+
+			fmt.Printf("Currency addr: %s\n", tokenAddr)
+			fmt.Printf("Currency desc: %s\n", tokenDesc)
 			// process from to get address
 			acc, err := accounts.GetAccount(config.From)
 			if err != nil {
@@ -145,11 +180,11 @@ exact addresses start with 0x.`,
 				config.From = acc.Address
 			}
 			// process to to get address
-			addr, err := db.GetAddress(to)
+			toAddr, toName, err := util.GetMatchingAddress(to)
 			if err != nil {
 				return err
 			} else {
-				to = addr.Address
+				to = toAddr
 			}
 			fmt.Printf("Network: %s\n", config.Network)
 			reader, err := util.EthReader(config.Network)
@@ -171,17 +206,34 @@ exact addresses start with 0x.`,
 						return err
 					}
 				} else {
-					decimals, err := reader.ERC20Decimal(tokenAddr)
-					if err != nil {
-						return err
-					}
-					data, err := ethutils.PackERC20Data(
-						"transfer",
-						ethutils.HexToAddress(to),
-						ethutils.FloatToBigInt(amount, decimals),
-					)
-					if err != nil {
-						return err
+					var data []byte
+
+					if amount == -1 {
+						amountWei, err = reader.ERC20Balance(tokenAddr, config.From)
+						if err != nil {
+							return err
+						}
+						data, err = ethutils.PackERC20Data(
+							"transfer",
+							ethutils.HexToAddress(to),
+							amountWei,
+						)
+						if err != nil {
+							return err
+						}
+					} else {
+						decimals, err := reader.ERC20Decimal(tokenAddr)
+						if err != nil {
+							return err
+						}
+						data, err = ethutils.PackERC20Data(
+							"transfer",
+							ethutils.HexToAddress(to),
+							ethutils.FloatToBigInt(amount, decimals),
+						)
+						if err != nil {
+							return err
+						}
 					}
 					config.GasLimit, err = reader.EstimateGas(config.From, tokenAddr, config.GasPrice+config.ExtraGasPrice, 0, data)
 					if err != nil {
@@ -198,13 +250,15 @@ exact addresses start with 0x.`,
 			}
 			err = promptConfirmation(
 				acc,
-				addr,
+				toAddr,
+				toName,
 				config.Nonce,
 				config.GasPrice,
 				config.ExtraGasPrice,
 				config.GasLimit,
 				config.ExtraGasLimit,
 				amount,
+				amountWei,
 				tokenAddr,
 				tokenDesc,
 			)
@@ -234,7 +288,7 @@ exact addresses start with 0x.`,
 	sendCmd.PersistentFlags().Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
 	sendCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
 	sendCmd.Flags().StringVarP(&to, "to", "t", "", "Account to send eth to. It can be ethereum address or a hint string to look it up in the address database. See jarvis addr for all of the known addresses")
-	sendCmd.Flags().StringVarP(&value, "amount", "v", "0", "Amount of eth to send. It is in eth/token value, not wei/twei. If a float number is passed, it will be interpreted as ETH, otherwise, it must be in the form of `float address` or `float name`. In the later case, `name` will be used to look for the token address. Eg. 0.01, 0.01 knc, 0.01 0xdd974d5c2e2928dea5f71b9825b8b646686bd200 are valid values.")
+	sendCmd.Flags().StringVarP(&value, "amount", "v", "0", "Amount of eth to send. It is in eth/token value, not wei/twei. If a float number is passed, it will be interpreted as ETH, otherwise, it must be in the form of `float|ALL address` or `float|ALL name`. In the later case, `name` will be used to look for the token address. Eg. 0.01, 0.01 knc, 0.01 0xdd974d5c2e2928dea5f71b9825b8b646686bd200, ALL KNC are valid values.")
 	sendCmd.MarkFlagRequired("to")
 	sendCmd.MarkFlagRequired("amount")
 

@@ -47,12 +47,6 @@ var voteCmd = &cobra.Command{
 			return
 		}
 
-		currentBlock, err := reader.CurrentBlock()
-		if err != nil {
-			fmt.Printf("Couldn't get current block: %s\n", err)
-			return
-		}
-
 		dao := NewKyberDAO(reader, StakingContract, DaoContract, FeeHandler)
 		campaignRelatedInfo, err := dao.AllCampaignRelatedInfo(config.From, big.NewInt(int64(CampaignID)))
 		if err != nil {
@@ -60,7 +54,7 @@ var voteCmd = &cobra.Command{
 			return
 		}
 
-		PrintCampaignInformation(cmd, campaignRelatedInfo, currentBlock)
+		PrintCampaignInformation(cmd, campaignRelatedInfo)
 
 		rootCmd := cmd.Root()
 		txCmd, txArgs, err := rootCmd.Find([]string{

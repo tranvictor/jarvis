@@ -258,6 +258,29 @@ func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, abi *abi.ABI, is
 	return result
 }
 
+func (self *TxAnalyzer) AnalyzeWithABI(tx string, a *abi.ABI) *TxResult {
+	txinfo, err := self.reader.TxInfoFromHash(tx)
+	if err != nil {
+		return &TxResult{
+			Error: fmt.Sprintf("getting tx info failed: %s", err),
+		}
+	}
+
+	code, err := self.reader.GetCode(txinfo.Tx.To().Hex())
+	if err != nil {
+		return &TxResult{
+			Error: fmt.Sprintf("checking tx type failed: %s", err),
+		}
+	}
+	isContract := len(code) > 0
+
+	if isContract {
+		return self.AnalyzeOffline(&txinfo, a, true)
+	} else {
+		return self.AnalyzeOffline(&txinfo, nil, false)
+	}
+}
+
 // print all info on the tx
 func (self *TxAnalyzer) Analyze(tx string) *TxResult {
 	txinfo, err := self.reader.TxInfoFromHash(tx)

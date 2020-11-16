@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -21,12 +20,12 @@ var whoisCmd = &cobra.Command{
 			fmt.Printf("Couldn't find any addresses in the params\n")
 		} else {
 			for _, address := range addresses {
-				addr, err := db.GetAddress(address)
+				addr, name, err := util.GetMatchingAddress(address)
 				if err != nil {
-					fmt.Printf("%s: %s\n", address, "not found")
+					fmt.Printf("%s: %s\n", addr, "not found")
 					continue
 				}
-				fmt.Printf("%s: %s\n", address, addr.Desc)
+				fmt.Printf("%s: %s\n", addr, name)
 			}
 		}
 	},

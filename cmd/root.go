@@ -66,6 +66,8 @@ For more information or support, reach me at https://github.com/tranvictor.`,
 		util.ETHEREUM_MAINNET_NODE_VAR,
 		util.ETHEREUM_ROPSTEN_NODE_VAR,
 		util.TOMO_MAINNET_NODE_VAR,
+		util.ETHEREUM_KOVAN_NODE_VAR,
+		util.ETHEREUM_RINKEBY_NODE_VAR,
 	),
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
@@ -75,7 +77,7 @@ For more information or support, reach me at https://github.com/tranvictor.`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	rootCmd.PersistentFlags().StringVarP(&config.Network, "network", "k", "mainnet", "ethereum network. Valid values: \"mainnet\", \"ropsten\", \"tomo\".")
+	rootCmd.PersistentFlags().StringVarP(&config.Network, "network", "k", "mainnet", "ethereum network. Valid values: \"mainnet\", \"ropsten\", \"kovan\", \"rinkeby\", \"tomo\".")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
