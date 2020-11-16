@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tranvictor/jarvis/db"
+	"github.com/tranvictor/jarvis/util"
 )
 
 // txCmd represents the tx command
@@ -15,11 +15,11 @@ var addressCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		para := strings.Join(args, " ")
-		addrs, scores := db.GetAddresses(para)
-		fmt.Printf("%12s  Addresses\n", "Scores")
+		addrs, names, _ := util.GetMatchingAddresses(para)
+		fmt.Printf("Addresses\n")
 		fmt.Printf("-----------------------\n")
 		for i, addr := range addrs {
-			fmt.Printf("%12d  %s: %s\n", scores[i], addr.Address, addr.Desc)
+			fmt.Printf("%s: %s\n", addr, names[i])
 		}
 	},
 }

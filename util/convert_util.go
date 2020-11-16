@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/tranvictor/ethutils"
-	"github.com/tranvictor/jarvis/db"
 )
 
 func ConvertToBig(str string, network string) (*big.Int, error) {
@@ -74,11 +73,11 @@ func ConvertToAddress(str string) (common.Address, error) {
 		}
 		return ethutils.HexToAddress(addresses[0]), nil
 	} else {
-		addr, err := db.GetAddress(str)
+		addr, _, err := GetMatchingAddress(str)
 		if err != nil {
 			return common.Address{}, fmt.Errorf("address alias not found")
 		}
-		return ethutils.HexToAddress(addr.Address), nil
+		return ethutils.HexToAddress(addr), nil
 	}
 }
 

@@ -12,7 +12,6 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -97,7 +96,8 @@ func handleSend(
 
 func promptConfirmation(
 	from accounts.AccDesc,
-	to db.AddressDesc,
+	toAddr string,
+	toName string,
 	nonce uint64,
 	gasPrice float64,
 	extraGasPrice float64,
@@ -108,7 +108,7 @@ func promptConfirmation(
 	tokenAddr string,
 	tokenDesc string) error {
 	fmt.Printf("From: %s - %s\n", from.Address, from.Desc)
-	fmt.Printf("To: %s - %s\n", to.Address, to.Desc)
+	fmt.Printf("To: %s - %s\n", toAddr, toName)
 	if amountWei != nil {
 		fmt.Printf("Value: %s %s wei(%s)\n", amountWei.Text(10), tokenDesc, tokenAddr)
 	} else {
@@ -155,7 +155,7 @@ exact addresses start with 0x.`,
 				tokenAddr = util.ETH_ADDR
 				tokenDesc = "ETH"
 			} else {
-				addrDesc, err := db.GetTokenAddress(currency)
+				addr, name, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
 				if err != nil {
 					if util.IsAddress(currency) {
 						tokenAddr = currency
@@ -164,10 +164,13 @@ exact addresses start with 0x.`,
 						return err
 					}
 				} else {
-					tokenAddr = addrDesc.Address
-					tokenDesc = addrDesc.Desc
+					tokenAddr = addr
+					tokenDesc = name
 				}
 			}
+
+			fmt.Printf("Currency addr: %s\n", tokenAddr)
+			fmt.Printf("Currency desc: %s\n", tokenDesc)
 			// process from to get address
 			acc, err := accounts.GetAccount(config.From)
 			if err != nil {
@@ -177,11 +180,11 @@ exact addresses start with 0x.`,
 				config.From = acc.Address
 			}
 			// process to to get address
-			addr, err := db.GetAddress(to)
+			toAddr, toName, err := util.GetMatchingAddress(to)
 			if err != nil {
 				return err
 			} else {
-				to = addr.Address
+				to = toAddr
 			}
 			fmt.Printf("Network: %s\n", config.Network)
 			reader, err := util.EthReader(config.Network)
@@ -247,7 +250,8 @@ exact addresses start with 0x.`,
 			}
 			err = promptConfirmation(
 				acc,
-				addr,
+				toAddr,
+				toName,
 				config.Nonce,
 				config.GasPrice,
 				config.ExtraGasPrice,

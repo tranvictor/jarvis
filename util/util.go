@@ -21,7 +21,8 @@ import (
 	"github.com/tranvictor/ethutils/broadcaster"
 	"github.com/tranvictor/ethutils/monitor"
 	"github.com/tranvictor/ethutils/reader"
-	"github.com/tranvictor/jarvis/db"
+	bleve "github.com/tranvictor/jarvis/bleve"
+	db "github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util/cache"
 )
@@ -56,8 +57,45 @@ func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Durati
 	panic("unsupported network")
 }
 
+func getRelevantAddressesFromDatabases(str string) (addrs []string, names []string, scores []int) {
+	addrDescs1, scores1 := bleve.GetAddresses(str)
+	addrDescs2, scores2 := db.GetAddresses(str)
+	buffer := map[string]bool{}
+	for i, addr := range addrDescs1 {
+		addrs = append(addrs, addr.Address)
+		names = append(names, addr.Desc)
+		scores = append(scores, scores1[i])
+		buffer[strings.ToLower(addr.Address)] = true
+	}
+	for i, addr := range addrDescs2 {
+		if !buffer[strings.ToLower(addr.Address)] {
+			addrs = append(addrs, addr.Address)
+			names = append(names, addr.Desc)
+			scores = append(scores, scores2[i])
+		}
+	}
+	return addrs, names, scores
+}
+
+func getRelevantAddressFromDatabases(str string) (addr string, name string, err error) {
+	addrs, names, _ := getRelevantAddressesFromDatabases(str)
+	if len(addrs) == 0 {
+		return "", "", fmt.Errorf("no address was found for '%s'", str)
+	}
+	return addrs[0], names[0], nil
+}
+
+func GetMatchingAddresses(str string) (addrs []string, names []string, scores []int) {
+	addrs, names, scores = getRelevantAddressesFromDatabases(str)
+	return addrs, names, scores
+}
+
+func GetMatchingAddress(str string) (addr string, name string, err error) {
+	return getRelevantAddressFromDatabases(str)
+}
+
 func GetAddressFromString(str string) (addr string, name string, err error) {
-	addrDesc, err := db.GetAddress(str)
+	addr, name, err = getRelevantAddressFromDatabases(str)
 	if err != nil {
 		name = "Unknown"
 		addresses := ScanForAddresses(str)
@@ -65,9 +103,6 @@ func GetAddressFromString(str string) (addr string, name string, err error) {
 			return "", "", fmt.Errorf("address not found for \"%s\"", str)
 		}
 		addr = addresses[0]
-	} else {
-		name = addrDesc.Desc
-		addr = addrDesc.Address
 	}
 	return addr, name, nil
 }
@@ -394,15 +429,15 @@ func VerboseAddress(addr string, network string) string {
 		decimal, erc20Detected = cache.GetInt64Cache(cacheKey)
 	}
 
-	addrDesc, err := db.GetAddress(addr)
+	addr, name, err := getRelevantAddressFromDatabases(addr)
 	if err != nil {
 		return fmt.Sprintf("%s (Unknown)", addr)
 	}
 
 	if erc20Detected {
-		return fmt.Sprintf("%s (%s)", addr, nameWithColor(fmt.Sprintf("%s - %d", addrDesc.Desc, decimal)))
+		return fmt.Sprintf("%s (%s)", addr, nameWithColor(fmt.Sprintf("%s - %d", name, decimal)))
 	} else {
-		return fmt.Sprintf("%s (%s)", addr, nameWithColor(addrDesc.Desc))
+		return fmt.Sprintf("%s (%s)", addr, nameWithColor(name))
 	}
 }
 
