@@ -429,7 +429,7 @@ func VerboseAddress(addr string, network string) string {
 		decimal, erc20Detected = cache.GetInt64Cache(cacheKey)
 	}
 
-	addr, name, err := getRelevantAddressFromDatabases(addr)
+	addr, name, err := GetAddressFromString(addr)
 	if err != nil {
 		return fmt.Sprintf("%s (Unknown)", addr)
 	}

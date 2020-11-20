@@ -9,6 +9,7 @@ import (
 	"github.com/Songmu/prompter"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
@@ -242,7 +243,7 @@ var txContractCmd = &cobra.Command{
 				fmt.Printf("Couldn't encode the signed tx: %s", err)
 				return
 			}
-			fmt.Printf("Signed tx: %s\n", common.ToHex(data))
+			fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
 		} else {
 			tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 			if config.DontWaitToBeMined {
