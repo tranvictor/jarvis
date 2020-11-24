@@ -347,10 +347,16 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		return
 	}
 	tx, broadcasted, err := account.SignTxAndBroadcast(tx)
-	util.DisplayWaitAnalyze(
-		reader, tx, broadcasted, err, config.Network,
-		config.ForceERC20ABI, config.CustomABI,
-	)
+	if config.DontWaitToBeMined {
+		util.DisplayBroadcastedTx(
+			tx, broadcasted, err, config.Network,
+		)
+	} else {
+		util.DisplayWaitAnalyze(
+			reader, tx, broadcasted, err, config.Network,
+			config.ForceERC20ABI, config.CustomABI,
+		)
+	}
 }
 
 var revokeMsigCmd = &cobra.Command{
@@ -457,10 +463,16 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 		tx, broadcasted, err := account.SignTxAndBroadcast(tx)
-		util.DisplayWaitAnalyze(
-			reader, tx, broadcasted, err, config.Network,
-			config.ForceERC20ABI, config.CustomABI,
-		)
+		if config.DontWaitToBeMined {
+			util.DisplayBroadcastedTx(
+				tx, broadcasted, err, config.Network,
+			)
+		} else {
+			util.DisplayWaitAnalyze(
+				reader, tx, broadcasted, err, config.Network,
+				config.ForceERC20ABI, config.CustomABI,
+			)
+		}
 	},
 }
 
@@ -497,6 +509,7 @@ func init() {
 		c.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
 		c.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 		c.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
+		c.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	}
 
 	msigCmd.AddCommand(approveMsigCmd)
