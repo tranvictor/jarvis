@@ -57,6 +57,16 @@ func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Durati
 	panic("unsupported network")
 }
 
+func GetExactAddressFromDatabases(str string) (addrs []string, names []string, scores []int) {
+	addrDescs1, scores1 := bleve.GetAddresses(str)
+	for i, addr := range addrDescs1 {
+		addrs = append(addrs, addr.Address)
+		names = append(names, addr.Desc)
+		scores = append(scores, scores1[i])
+	}
+	return addrs, names, scores
+}
+
 func getRelevantAddressesFromDatabases(str string) (addrs []string, names []string, scores []int) {
 	addrDescs1, scores1 := bleve.GetAddresses(str)
 	addrDescs2, scores2 := db.GetAddresses(str)

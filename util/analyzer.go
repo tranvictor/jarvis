@@ -78,11 +78,19 @@ func AnalyzeAndPrint(
 	printToStdout(result, os.Stdout)
 }
 
+func AlertColor(str string) string {
+	return Red(str).String()
+}
+
+func InfoColor(str string) string {
+	return Green(str).String()
+}
+
 func nameWithColor(name string) string {
 	if name == "unknown" {
-		return Red(name).String()
+		return AlertColor(name)
 	} else {
-		return Green(name).String()
+		return InfoColor(name)
 	}
 }
 
@@ -110,23 +118,31 @@ func printGnosisToWriter(result *txanalyzer.GnosisResult, writer io.Writer) {
 func printToStdout(result *txanalyzer.TxResult, writer io.Writer) {
 	fmt.Fprintf(writer, "Tx hash: %s\n", result.Hash)
 	if result.Status == "done" {
-		fmt.Fprintf(writer, "Mining status: %s\n", Green(result.Status))
+		fmt.Fprintf(writer, "Mining status: %s\n", InfoColor(result.Status))
 	} else {
-		fmt.Fprintf(writer, "Mining status: %s\n", Bold(Red(result.Status)))
+		fmt.Fprintf(writer, "Mining status: %s\n", AlertColor(result.Status))
 	}
-	fmt.Fprintf(writer, "From: %s\n", VerboseAddress(result.From, result.Network))
+	fmt.Fprintf(
+		writer,
+		"From: %s ==> %s\n",
+		VerboseAddress(result.From, result.Network),
+		VerboseAddress(result.To, result.Network),
+	)
 	fmt.Fprintf(writer, "Value: %s ETH\n", result.Value)
-	fmt.Fprintf(writer, "To: %s\n", VerboseAddress(result.To, result.Network))
-	fmt.Fprintf(writer, "Nonce: %s\n", result.Nonce)
-	fmt.Fprintf(writer, "Gas price: %s gwei\n", result.GasPrice)
-	fmt.Fprintf(writer, "Gas limit: %s\n", result.GasLimit)
+	fmt.Fprintf(
+		writer,
+		"Nonce: %s  |  Gas: %s gwei (%s gas, %s ETH)\n",
+		result.Nonce,
+		result.GasPrice,
+		result.GasUsed,
+		result.GasCost,
+	)
 
 	if result.TxType == "" {
 		fmt.Fprintf(writer, "Checking tx type failed: %s\n", result.Error)
 		return
 	}
 
-	fmt.Fprintf(writer, "Tx type: %s\n", result.TxType)
 	if result.TxType == "normal" {
 		return
 	}

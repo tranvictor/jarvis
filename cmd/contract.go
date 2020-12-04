@@ -6,18 +6,15 @@ import (
 	"io/ioutil"
 	"sort"
 
-	"github.com/Songmu/prompter"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -68,7 +65,8 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 		return nil, nil, nil, fmt.Errorf("the contract doesn't have %d(th) write method", config.MethodIndex)
 	}
 	method := methods[config.MethodIndex-1]
-	fmt.Printf("\nMethod: %s\n", method.Name)
+	fmt.Printf("\nContract: %s\n", util.VerboseAddress(config.To, config.Network))
+	fmt.Printf("Method: %s\n", method.Name)
 	inputs := method.Inputs
 	if config.PrefillMode && len(inputs) != len(prefills) {
 		return nil, nil, nil, fmt.Errorf("You must specify enough params in prefilled mode")
@@ -82,20 +80,30 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 		}
 		input := inputs[pi]
 		var inputParam interface{}
+		fmt.Printf("%d. %s (%s)", pi+1, input.Name, input.Type.String())
 		if !config.PrefillMode || prefills[pi] == "?" {
-			fmt.Printf("%d. %s (%s)", pi, input.Name, input.Type.String())
 			inputParam, err = util.PromptParam(input, "", config.Network)
+			if err != nil {
+				fmt.Printf("Your input is not valid: %s\n", err)
+				continue
+			}
+
+			fmt.Printf(
+				"    You entered: %s\n",
+				indent(8, util.VerboseValues(analyzer.ParamAsStrings(input.Type, inputParam), config.Network)),
+			)
 		} else {
 			inputParam, err = util.PromptParam(input, prefills[pi], config.Network)
+			if err != nil {
+				fmt.Printf("Your input is not valid: %s\n", err)
+				continue
+			}
+
+			fmt.Printf(
+				": %s\n",
+				indent(8, util.VerboseValues(analyzer.ParamAsStrings(input.Type, inputParam), config.Network)),
+			)
 		}
-		if err != nil {
-			fmt.Printf("Your input is not valid: %s\n", err)
-			continue
-		}
-		fmt.Printf(
-			"    You entered: %s\n",
-			indent(8, util.VerboseValues(analyzer.ParamAsStrings(input.Type, inputParam), config.Network)),
-		)
 		params = append(params, inputParam)
 		pi++
 	}
@@ -199,7 +207,6 @@ var txContractCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("get here\n")
 		reader, err := util.EthReader(config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
@@ -426,51 +433,6 @@ var readContractCmd = &cobra.Command{
 			}
 		}
 	},
-}
-
-func showTxInfoToConfirm(from string, tx *types.Transaction) error {
-	fmt.Printf("From: %s\n", util.VerboseAddress(from, config.Network))
-	fmt.Printf("To: %s\n", util.VerboseAddress(tx.To().Hex(), config.Network))
-	fmt.Printf("Value: %f ETH\n", ethutils.BigToFloat(tx.Value(), 18))
-	fmt.Printf("Nonce: %d\n", tx.Nonce())
-	fmt.Printf("Gas price: %f gwei\n", ethutils.BigToFloat(tx.GasPrice(), 9))
-	fmt.Printf("Gas limit: %d\n", tx.Gas())
-	var a *abi.ABI
-	var err error
-	if config.ForceERC20ABI {
-		a, err = ethutils.GetERC20ABI()
-	} else {
-		a, err = util.GetABI(tx.To().Hex(), config.Network)
-	}
-	if err != nil {
-		return fmt.Errorf("Getting abi of the contract failed: %s", err)
-	}
-	analyzer := txanalyzer.NewAnalyzer()
-	method, params, gnosisResult, err := analyzer.AnalyzeMethodCall(a, tx.Data())
-	if err != nil {
-		return fmt.Errorf("Can't decode method call: %s", err)
-	}
-	fmt.Printf("\nContract: %s\n", util.VerboseAddress(tx.To().Hex(), config.Network))
-	fmt.Printf("Method: %s\n", method)
-	for _, param := range params {
-		fmt.Printf(
-			" . %s (%s): %s\n",
-			param.Name,
-			param.Type,
-			util.DisplayValues(param.Value, config.Network),
-		)
-	}
-	util.PrintGnosis(gnosisResult)
-	return nil
-}
-
-func promptTxConfirmation(from string, tx *types.Transaction) error {
-	fmt.Printf("\n------Confirm tx data before signing------\n")
-	showTxInfoToConfirm(from, tx)
-	if !prompter.YN("\nConfirm?", true) {
-		return fmt.Errorf("user aborted")
-	}
-	return nil
 }
 
 // var cloneContractCmd = &cobra.Command{

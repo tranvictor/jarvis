@@ -35,6 +35,8 @@ type TxResult struct {
 	Nonce    string
 	GasPrice string
 	GasLimit string
+	GasUsed  string
+	GasCost  string
 	TxType   string
 
 	Contract string
@@ -59,6 +61,8 @@ func NewTxResult() *TxResult {
 		Nonce:      "",
 		GasPrice:   "",
 		GasLimit:   "",
+		GasUsed:    "",
+		GasCost:    "",
 		TxType:     "",
 		Contract:   "",
 		Method:     "",

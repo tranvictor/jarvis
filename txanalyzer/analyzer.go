@@ -24,6 +24,8 @@ func (self *TxAnalyzer) setBasicTxInfo(txinfo ethutils.TxInfo, result *TxResult)
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
+	result.GasUsed = fmt.Sprintf("%d", txinfo.Receipt.GasUsed)
+	result.GasCost = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.GasCost(), 18))
 }
 
 func (self *TxAnalyzer) nonArrayParamAsString(t abi.Type, value interface{}) string {
