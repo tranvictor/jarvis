@@ -14,7 +14,9 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/jarvis/accounts"
+	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -25,7 +27,7 @@ func (m orderedMethods) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
 func (m orderedMethods) Less(i, j int) bool { return m[i].Name < m[j].Name }
 
 func promptFunctionCallData(contractAddress string, prefills []string, mode string, forceERC20ABI bool, customABI string) (*abi.ABI, *abi.Method, []interface{}, error) {
-	analyzer, err := util.EthAnalyzer(config.Network)
+	analyzer, err := txanalyzer.EthAnalyzer(config.Network)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -65,7 +67,7 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 		return nil, nil, nil, fmt.Errorf("the contract doesn't have %d(th) write method", config.MethodIndex)
 	}
 	method := methods[config.MethodIndex-1]
-	fmt.Printf("\nContract: %s\n", util.VerboseAddress(config.To, config.Network))
+	fmt.Printf("\nContract: %s\n", VerboseAddress(util.GetJarvisAddress(config.To, config.Network)))
 	fmt.Printf("Method: %s\n", method.Name)
 	inputs := method.Inputs
 	if config.PrefillMode && len(inputs) != len(prefills) {
@@ -90,7 +92,7 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 
 			fmt.Printf(
 				"    You entered: %s\n",
-				indent(8, util.VerboseValues(analyzer.ParamAsStrings(input.Type, inputParam), config.Network)),
+				indent(8, VerboseValues(analyzer.ParamAsJarvisValues(input.Type, inputParam))),
 			)
 		} else {
 			inputParam, err = util.PromptParam(input, prefills[pi], config.Network)
@@ -101,7 +103,7 @@ func promptFunctionCallData(contractAddress string, prefills []string, mode stri
 
 			fmt.Printf(
 				": %s\n",
-				indent(8, util.VerboseValues(analyzer.ParamAsStrings(input.Type, inputParam), config.Network)),
+				indent(8, VerboseValues(analyzer.ParamAsJarvisValues(input.Type, inputParam))),
 			)
 		}
 		params = append(params, inputParam)
@@ -212,6 +214,9 @@ var txContractCmd = &cobra.Command{
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
 		}
+
+		analyzer := txanalyzer.NewGenericAnalyzer(reader)
+
 		data, err := promptTxData(config.To, config.PrefillParams, config.ForceERC20ABI, config.CustomABI)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
@@ -227,7 +232,14 @@ var txContractCmd = &cobra.Command{
 		}
 
 		tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
-		err = promptTxConfirmation(config.From, tx)
+		err = util.PromptTxConfirmation(
+			analyzer,
+			util.GetJarvisAddress(config.From, config.Network),
+			util.GetJarvisAddress(config.To, config.Network),
+			tx,
+			config.Network,
+			config.ForceERC20ABI,
+		)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
 			return
@@ -259,7 +271,7 @@ var txContractCmd = &cobra.Command{
 				)
 			} else {
 				util.DisplayWaitAnalyze(
-					reader, tx, broadcasted, err, config.Network,
+					reader, analyzer, tx, broadcasted, err, config.Network,
 					config.ForceERC20ABI, config.CustomABI,
 				)
 			}
@@ -305,7 +317,7 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 		fmt.Printf("Couldn't unpack response to go types: %s\n", err)
 		return contractReadResult{}, err
 	}
-	analyzer, err := util.EthAnalyzer(config.Network)
+	analyzer, err := txanalyzer.EthAnalyzer(config.Network)
 	if err != nil {
 		fmt.Printf("Couldn't init analyzer: %s\n", err)
 		return contractReadResult{}, err
@@ -313,10 +325,15 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 	fmt.Printf("Output:\n")
 	result := contractReadResult{}
 	for i, output := range method.Outputs {
+		values := analyzer.ParamAsJarvisValues(output.Type, ps[i])
+		valueStrs := []string{}
+		for _, v := range values {
+			valueStrs = append(valueStrs, v.Value)
+		}
 		result = append(result, returnVariable{
 			Name:        output.Name,
-			Values:      analyzer.ParamAsStrings(output.Type, ps[i]),
-			HumanValues: util.VerboseValues(analyzer.ParamAsStrings(output.Type, ps[i]), config.Network),
+			Values:      valueStrs,
+			HumanValues: VerboseValues(values),
 		})
 
 		fmt.Printf(
@@ -324,7 +341,7 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 			i+1,
 			output.Name,
 			output.Type.String(),
-			indent(8, util.VerboseValues(analyzer.ParamAsStrings(output.Type, ps[i]), config.Network)),
+			indent(8, VerboseValues(values)),
 		)
 	}
 	return result, nil

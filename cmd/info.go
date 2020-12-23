@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -25,17 +26,14 @@ var txCmd = &cobra.Command{
 				fmt.Printf("  %d. %s\n", i, t)
 			}
 			fmt.Printf("\n\n")
-			analyzer, err := util.EthAnalyzer(config.Network)
-			if err != nil {
-				fmt.Printf("Couldn't analyze the txs: %s\n", err)
-				return
-			}
 
 			reader, err := util.EthReader(config.Network)
 			if err != nil {
 				fmt.Printf("Couldn't init eth reader: %s\n", err)
 				return
 			}
+
+			analyzer := txanalyzer.NewGenericAnalyzer(reader)
 
 			for _, t := range txs {
 				fmt.Printf("Analyzing tx: %s...\n", t)

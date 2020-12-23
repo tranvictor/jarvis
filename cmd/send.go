@@ -12,6 +12,7 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -44,6 +45,8 @@ func handleSend(
 		fmt.Printf("init reader failed: %s\n", err)
 		return
 	}
+
+	analyzer := txanalyzer.NewGenericAnalyzer(reader)
 
 	if tokenAddr == util.ETH_ADDR {
 		t, broadcasted, errors = account.SendETHWithNonceAndPrice(
@@ -89,7 +92,7 @@ func handleSend(
 		}
 	}
 	util.DisplayWaitAnalyze(
-		reader, t, broadcasted, errors, config.Network,
+		reader, analyzer, t, broadcasted, errors, config.Network,
 		config.ForceERC20ABI, config.CustomABI,
 	)
 }

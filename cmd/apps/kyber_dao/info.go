@@ -52,7 +52,7 @@ var infoCmd = &cobra.Command{
 		PrintStakeInformation(cmd, stakeInfo)
 
 		fmt.Printf("\nYour REWARD including your delegators' (during last 5 epochs):\n")
-		for i := uint64(0); i < 5 && Epoch >= i; i++ {
+		for i := uint64(0); i < 12 && Epoch >= i; i++ {
 			e := Epoch - i
 			reward, totalReward, share, isClaimed, err := dao.GetRewardInfo(config.From, e, e == stakeInfo.CurrentEpoch)
 			if err != nil {

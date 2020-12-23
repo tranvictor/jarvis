@@ -8,8 +8,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Songmu/prompter"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/tranvictor/ethutils"
+	. "github.com/tranvictor/jarvis/common"
 )
 
 const (
@@ -227,4 +231,91 @@ func PromptNonArray(input abi.Argument, prefill string, network string) (interfa
 	}
 	inpStr = strings.Trim(inpStr, " ")
 	return ConvertParamStrToType(input.Name, input.Type, inpStr, network)
+}
+
+func PromptTxConfirmation(analyzer TxAnalyzer, from Address, to Address, tx *types.Transaction, network string, forceERC20ABI bool) error {
+	fmt.Printf("\n========== Confirm tx data before signing ==========\n\n")
+	showTxInfoToConfirm(analyzer, from, to, tx, network, forceERC20ABI)
+	if !prompter.YN("\nConfirm?", true) {
+		return fmt.Errorf("user aborted")
+	}
+	return nil
+}
+
+func indent(nospace int, strs []string) string {
+	if len(strs) == 0 {
+		return ""
+	}
+
+	if len(strs) == 1 {
+		return strs[0]
+	}
+
+	indentation := ""
+	for i := 0; i < nospace; i++ {
+		indentation += " "
+	}
+	result := ""
+	for i, str := range strs {
+		result += fmt.Sprintf("\n%s%d. %s", indentation, i, str)
+	}
+	result += "\n"
+	return result
+}
+
+func showTxInfoToConfirm(
+	analyzer TxAnalyzer,
+	from Address,
+	to Address,
+	tx *types.Transaction,
+	network string,
+	forceERC20ABI bool) error {
+	fmt.Printf(
+		"From: %s ==> %s\n",
+		VerboseAddress(from),
+		VerboseAddress(to),
+	)
+
+	sendingETH := ethutils.BigToFloat(tx.Value(), 18)
+	if sendingETH > 0 {
+		fmt.Printf("Value: %s\n", InfoColor(fmt.Sprintf("%f ETH", sendingETH)))
+	}
+
+	fmt.Printf(
+		"Nonce: %d  |  Gas: %.2f gwei (%d gas, %f ETH)\n",
+		tx.Nonce(),
+		ethutils.BigToFloat(tx.GasPrice(), 9),
+		tx.Gas(),
+		ethutils.BigToFloat(
+			big.NewInt(0).Mul(big.NewInt(int64(tx.Gas())), tx.GasPrice()),
+			18,
+		),
+	)
+	var a *abi.ABI
+	var err error
+	if forceERC20ABI {
+		a, err = ethutils.GetERC20ABI()
+	} else {
+		a, err = GetABI(tx.To().Hex(), network)
+	}
+	if err != nil {
+		return fmt.Errorf("Getting abi of the contract failed: %s", err)
+	}
+	// analyzer := txanalyzer.NewAnalyzer()
+	method, params, gnosisResult, err := analyzer.AnalyzeMethodCall(a, tx.Data())
+	if err != nil {
+		return fmt.Errorf("Can't decode method call: %s", err)
+	}
+	fmt.Printf("\nContract: %s\n", VerboseAddress(to))
+	fmt.Printf("Method: %s\n", method)
+	for _, param := range params {
+		fmt.Printf(
+			" . %s (%s): %s\n",
+			param.Name,
+			param.Type,
+			DisplayValues(param.Value),
+		)
+	}
+	PrintGnosis(gnosisResult)
+	return nil
 }

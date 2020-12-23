@@ -10,7 +10,17 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
+	. "github.com/tranvictor/jarvis/common"
+	"github.com/tranvictor/jarvis/util"
 )
+
+func EthAnalyzer(network string) (*TxAnalyzer, error) {
+	r, err := util.EthReader(network)
+	if err != nil {
+		return nil, err
+	}
+	return NewGenericAnalyzer(r), nil
+}
 
 type TxAnalyzer struct {
 	reader  *reader.EthReader
@@ -18,9 +28,9 @@ type TxAnalyzer struct {
 }
 
 func (self *TxAnalyzer) setBasicTxInfo(txinfo ethutils.TxInfo, result *TxResult) {
-	result.From = txinfo.Tx.Extra.From.Hex()
+	result.From = util.GetJarvisAddress(txinfo.Tx.Extra.From.Hex(), self.Network)
 	result.Value = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.Tx.Value(), 18))
-	result.To = txinfo.Tx.To().Hex()
+	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
@@ -28,52 +38,54 @@ func (self *TxAnalyzer) setBasicTxInfo(txinfo ethutils.TxInfo, result *TxResult)
 	result.GasCost = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.GasCost(), 18))
 }
 
-func (self *TxAnalyzer) nonArrayParamAsString(t abi.Type, value interface{}) string {
+func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}) Value {
+	valueStr := ""
 	switch t.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
-		return fmt.Sprintf("%s", value.(string))
+		valueStr = fmt.Sprintf("%s", value.(string))
 	case abi.IntTy, abi.UintTy:
-		return fmt.Sprintf("%d", value)
+		valueStr = fmt.Sprintf("%d", value)
 	case abi.BoolTy:
-		return fmt.Sprintf("%t", value.(bool))
+		valueStr = fmt.Sprintf("%t", value.(bool))
 	case abi.AddressTy:
-		return fmt.Sprintf("%s", value.(common.Address).Hex())
+		valueStr = fmt.Sprintf("%s", value.(common.Address).Hex())
 	case abi.HashTy:
-		return fmt.Sprintf("%s", value.(common.Hash).Hex())
+		valueStr = fmt.Sprintf("%s", value.(common.Hash).Hex())
 	case abi.BytesTy:
-		return fmt.Sprintf("0x%s", common.Bytes2Hex(value.([]byte)))
+		valueStr = fmt.Sprintf("0x%s", common.Bytes2Hex(value.([]byte)))
 	case abi.FixedBytesTy:
 		word := []byte{}
 		for i := 0; i < int(reflect.TypeOf(value).Size()); i++ {
 			word = append(word, byte(0))
 		}
 		reflect.Copy(reflect.ValueOf(word), reflect.ValueOf(value))
-		return fmt.Sprintf("0x%s", common.Bytes2Hex(word))
+		valueStr = fmt.Sprintf("0x%s", common.Bytes2Hex(word))
 	case abi.FunctionTy:
-		return fmt.Sprintf("0x%s", common.Bytes2Hex(value.([]byte)))
+		valueStr = fmt.Sprintf("0x%s", common.Bytes2Hex(value.([]byte)))
 	default:
-		return fmt.Sprintf("%v", value)
+		valueStr = fmt.Sprintf("%v", value)
 	}
+	return util.GetJarvisValue(valueStr, self.Network)
 }
 
-func (self *TxAnalyzer) ParamAsStrings(t abi.Type, value interface{}) []string {
+func (self *TxAnalyzer) ParamAsJarvisValues(t abi.Type, value interface{}) []Value {
 	switch t.T {
 	case abi.SliceTy:
 		realVal := reflect.ValueOf(value)
-		result := []string{}
+		result := []Value{}
 		for i := 0; i < realVal.Len(); i++ {
-			result = append(result, self.ParamAsStrings(*t.Elem, realVal.Index(i).Interface())...)
+			result = append(result, self.ParamAsJarvisValues(*t.Elem, realVal.Index(i).Interface())...)
 		}
 		return result
 	case abi.ArrayTy:
 		realVal := reflect.ValueOf(value)
-		result := []string{}
+		result := []Value{}
 		for i := 0; i < realVal.Len(); i++ {
-			result = append(result, self.ParamAsStrings(*t.Elem, realVal.Index(i).Interface())...)
+			result = append(result, self.ParamAsJarvisValues(*t.Elem, realVal.Index(i).Interface())...)
 		}
 		return result
 	default:
-		return []string{self.nonArrayParamAsString(t, value)}
+		return []Value{self.nonArrayParamAsJarvisValue(t, value)}
 	}
 }
 
@@ -104,14 +116,14 @@ func (self *TxAnalyzer) AnalyzeMethodCall(abi *abi.ABI, data []byte) (method str
 		params = append(params, ParamResult{
 			Name:  input.Name,
 			Type:  input.Type.String(),
-			Value: self.ParamAsStrings(input.Type, ps[i]),
+			Value: self.ParamAsJarvisValues(input.Type, ps[i]),
 		})
 	}
 
 	if isGnosisMultisig(m, ps) {
 		// fmt.Printf("    ==> Gnosis Multisig init data:\n")
 		contract := ps[0].(common.Address)
-		a, err := self.reader.GetABI(contract.Hex())
+		a, err := util.GetABI(contract.Hex(), self.Network)
 		if err != nil {
 			a, _ = ethutils.GetERC20ABI()
 		}
@@ -137,7 +149,7 @@ func (self *TxAnalyzer) AnalyzeLog(abi *abi.ABI, l *types.Log) (LogResult, error
 	for j, topic := range l.Topics[1:] {
 		logResult.Topics = append(logResult.Topics, TopicResult{
 			Name:  iArgs[j].Name,
-			Value: []string{topic.Hex()},
+			Value: []Value{util.GetJarvisValue(topic.Hex(), self.Network)},
 		})
 	}
 
@@ -149,14 +161,14 @@ func (self *TxAnalyzer) AnalyzeLog(abi *abi.ABI, l *types.Log) (LogResult, error
 		logResult.Data = append(logResult.Data, ParamResult{
 			Name:  input.Name,
 			Type:  input.Type.String(),
-			Value: self.ParamAsStrings(input.Type, params[i]),
+			Value: self.ParamAsJarvisValues(input.Type, params[i]),
 		})
 	}
 	return logResult, nil
 }
 
 func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, abi *abi.ABI, result *TxResult) {
-	result.Contract = txinfo.Tx.To().Hex()
+	result.Contract = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
 	// fmt.Printf("------------------------------------------Contract call info-------------------------------------------------------------\n")
 	data := txinfo.Tx.Data()
 	methodName, params, gnosisResult, err := self.AnalyzeMethodCall(abi, data)
@@ -196,7 +208,7 @@ func isGnosisMultisig(method *abi.Method, params []interface{}) bool {
 
 func (self *TxAnalyzer) gnosisMultisigInitData(a *abi.ABI, params []interface{}) (result *GnosisResult) {
 	result = &GnosisResult{
-		Contract: "",
+		Contract: Address{},
 		Network:  self.Network,
 		Method:   "",
 		Params:   []ParamResult{},
@@ -204,7 +216,7 @@ func (self *TxAnalyzer) gnosisMultisigInitData(a *abi.ABI, params []interface{})
 	}
 	var err error
 	contract := params[0].(common.Address)
-	result.Contract = contract.Hex()
+	result.Contract = util.GetJarvisAddress(contract.Hex(), self.Network)
 	data := params[2].([]byte)
 	if a == nil {
 		result.Error = fmt.Sprintf("Cannot get abi of the contract: %s", err)
@@ -230,7 +242,7 @@ func (self *TxAnalyzer) gnosisMultisigInitData(a *abi.ABI, params []interface{})
 		result.Params = append(result.Params, ParamResult{
 			Name:  input.Name,
 			Type:  input.Type.String(),
-			Value: self.ParamAsStrings(input.Type, ps[i]),
+			Value: self.ParamAsJarvisValues(input.Type, ps[i]),
 		})
 		// fmt.Printf("        %s (%s): ", input.Name, input.Type)
 	}

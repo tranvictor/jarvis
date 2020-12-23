@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -52,7 +53,7 @@ var KyberFPRCmd = &cobra.Command{
 			}
 			fmt.Printf("\nListed tokens:\n")
 			for i, token := range tokens {
-				fmt.Printf("%d. %s\n", i, util.VerboseAddress(token.Hex(), config.Network))
+				fmt.Printf("%d. %s\n", i, VerboseAddress(util.GetJarvisAddress(token.Hex(), config.Network)))
 			}
 			fmt.Printf("\n")
 
@@ -61,7 +62,7 @@ var KyberFPRCmd = &cobra.Command{
 			Token = tokens[index].Hex()
 		}
 		fmt.Printf("\n")
-		fmt.Printf("Checking on token: %s\n", util.VerboseAddress(Token, config.Network))
+		fmt.Printf("Checking on token: %s\n", VerboseAddress(util.GetJarvisAddress(Token, config.Network)))
 		err = reserve.DisplayStepFunctionData(Token)
 		if err != nil {
 			fmt.Printf("Displaying step functions failed: %s\n", err)
@@ -83,9 +84,9 @@ var KyberFPRCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\n")
-		fmt.Printf("Min Resolution: %s\n", util.ReadableNumber(minimalRecordResolution.Text(10)))
-		fmt.Printf("Max Block Imp: %s\n", util.ReadableNumber(maxBlockImb.Text(10)))
-		fmt.Printf("Max Total Imp: %s\n", util.ReadableNumber(maxTotalImb.Text(10)))
+		fmt.Printf("Min Resolution: %s\n", ReadableNumber(minimalRecordResolution.Text(10)))
+		fmt.Printf("Max Block Imp: %s\n", ReadableNumber(maxBlockImb.Text(10)))
+		fmt.Printf("Max Total Imp: %s\n", ReadableNumber(maxTotalImb.Text(10)))
 	},
 }
 

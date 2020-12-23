@@ -22,8 +22,8 @@ import (
 	"github.com/tranvictor/ethutils/monitor"
 	"github.com/tranvictor/ethutils/reader"
 	bleve "github.com/tranvictor/jarvis/bleve"
+	. "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
-	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util/cache"
 )
 
@@ -206,7 +206,7 @@ func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, net
 	}
 }
 
-func DisplayWaitAnalyze(reader *reader.EthReader, t *types.Transaction, broadcasted bool, err error, network string, forceERC20ABI bool, customABI string) {
+func DisplayWaitAnalyze(reader *reader.EthReader, analyzer TxAnalyzer, t *types.Transaction, broadcasted bool, err error, network string, forceERC20ABI bool, customABI string) {
 	if !broadcasted {
 		fmt.Printf("couldn't broadcast tx:\n")
 		fmt.Printf("error on nodes: %v\n", err)
@@ -219,13 +219,74 @@ func DisplayWaitAnalyze(reader *reader.EthReader, t *types.Transaction, broadcas
 			return
 		}
 		mo.BlockingWait(t.Hash().Hex())
-		analyzer, err := EthAnalyzer(network)
-		if err != nil {
-			fmt.Printf("Couldn't analyze the tx: %s\n", err)
-			return
-		}
 		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, forceERC20ABI, customABI)
 	}
+}
+
+func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, abi *abi.ABI, data []byte, network string) {
+	methodName, params, gnosisResult, err := analyzer.AnalyzeMethodCall(abi, data)
+	if err != nil {
+		fmt.Printf("Couldn't analyze method call: %s\n", err)
+		return
+	}
+	fmt.Printf("  Method: %s\n", methodName)
+	fmt.Printf("  Params:\n")
+	for _, param := range params {
+		fmt.Printf("    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
+	}
+	if gnosisResult != nil {
+		PrintGnosis(gnosisResult)
+	}
+}
+
+func AnalyzeAndPrint(
+	reader *reader.EthReader,
+	analyzer TxAnalyzer,
+	tx string,
+	network string,
+	forceERC20ABI bool,
+	customABI string) {
+
+	txinfo, err := reader.TxInfoFromHash(tx)
+	if err != nil {
+		fmt.Printf("getting tx info failed: %s", err)
+		return
+	}
+
+	contractAddress := txinfo.Tx.To().Hex()
+
+	code, err := reader.GetCode(contractAddress)
+	if err != nil {
+		fmt.Printf("checking tx type failed: %s", err)
+		return
+	}
+	isContract := len(code) > 0
+
+	var result *TxResult
+
+	if isContract {
+		var a *abi.ABI
+		var err error
+
+		a, err = GetABI(contractAddress, network)
+		if err != nil {
+			if forceERC20ABI {
+				a, err = ethutils.GetERC20ABI()
+			} else if customABI != "" {
+				fmt.Printf("%s doesn't have abi on etherscan nor jarvis cache, try custom abi passed in the param\n")
+				a, err = ReadCustomABI(contractAddress, customABI, network)
+			}
+		}
+		if err != nil {
+			fmt.Printf("Couldn't get the ABI: %s", err)
+			return
+		}
+		result = analyzer.AnalyzeOffline(&txinfo, a, true)
+	} else {
+		result = analyzer.AnalyzeOffline(&txinfo, nil, false)
+	}
+
+	PrintTxDetails(result, os.Stdout)
 }
 
 func EthTxMonitor(network string) (*monitor.TxMonitor, error) {
@@ -234,14 +295,6 @@ func EthTxMonitor(network string) (*monitor.TxMonitor, error) {
 		return nil, err
 	}
 	return monitor.NewGenericTxMonitor(r), nil
-}
-
-func EthAnalyzer(network string) (*txanalyzer.TxAnalyzer, error) {
-	r, err := EthReader(network)
-	if err != nil {
-		return nil, err
-	}
-	return txanalyzer.NewGenericAnalyzer(r), nil
 }
 
 func GetNodes(network string) (map[string]string, error) {
@@ -359,20 +412,20 @@ func IsERC20(addr string, network string) (bool, error) {
 	return isERC20, nil
 }
 
-func ReadableNumber(value string) string {
-	digits := []string{}
-	for i, _ := range value {
-		digits = append([]string{string(value[len(value)-1-i])}, digits...)
-		if (i+1)%3 == 0 && i < len(value)-1 {
-			if (i+1)%9 == 0 {
-				digits = append([]string{"‸"}, digits...)
-			} else {
-				digits = append([]string{"￺"}, digits...)
-			}
-		}
-	}
-	return fmt.Sprintf("%s (%s)", value, strings.Join(digits, ""))
-}
+// func ReadableNumber(value string) string {
+// 	digits := []string{}
+// 	for i, _ := range value {
+// 		digits = append([]string{string(value[len(value)-1-i])}, digits...)
+// 		if (i+1)%3 == 0 && i < len(value)-1 {
+// 			if (i+1)%9 == 0 {
+// 				digits = append([]string{"‸"}, digits...)
+// 			} else {
+// 				digits = append([]string{"￺"}, digits...)
+// 			}
+// 		}
+// 	}
+// 	return fmt.Sprintf("%s (%s)", value, strings.Join(digits, ""))
+// }
 
 func isRealAddress(value string) bool {
 	valueBig, isHex := big.NewInt(0).SetString(value, 0)
@@ -387,49 +440,26 @@ func isRealAddress(value string) bool {
 	return true
 }
 
-func verboseValue(value string, network string) string {
+func GetJarvisValue(value string, network string) Value {
 	valueBig, isHex := big.NewInt(0).SetString(value, 0)
 	if !isHex {
-		return value
+		return Value{value, "string", nil}
 	}
 
 	// if it is not a real address
 	if !isRealAddress(value) {
-		// if this is a hex, it is likely to be a byte data so don't display
-		// in readable number
-		if len(value) >= 2 && value[0:2] == "0x" {
-			return value
-		}
-		// otherwise, it is a number then return it in a readable format
-		return ReadableNumber(value)
+		return Value{value, "bytes", nil}
 	}
-	return VerboseAddress(common.BigToAddress(valueBig).Hex(), network)
-}
 
-func VerboseValues(values []string, network string) []string {
-	result := []string{}
-	for _, value := range values {
-		result = append(result, verboseValue(value, network))
-	}
-	return result
-}
-
-func DisplayValues(values []string, network string) string {
-	verboseValues := VerboseValues(values, network)
-	if len(verboseValues) == 0 {
-		return ""
-	} else if len(verboseValues) == 1 {
-		return verboseValues[0]
-	} else {
-		parts := []string{}
-		for i, value := range values {
-			parts = append(parts, fmt.Sprintf("%d. %s", i+1, verboseValue(value, network)))
-		}
-		return strings.Join(parts, "\n")
+	addr := GetJarvisAddress(common.BigToAddress(valueBig).Hex(), network)
+	return Value{
+		common.BigToAddress(valueBig).Hex(),
+		"address",
+		&addr,
 	}
 }
 
-func VerboseAddress(addr string, network string) string {
+func GetJarvisAddress(addr string, network string) Address {
 	var decimal int64
 	var erc20Detected bool
 
@@ -441,13 +471,23 @@ func VerboseAddress(addr string, network string) string {
 
 	addr, name, err := GetAddressFromString(addr)
 	if err != nil {
-		return fmt.Sprintf("%s (Unknown)", addr)
+		return Address{
+			Address: addr,
+			Desc:    "Unknown",
+		}
 	}
 
 	if erc20Detected {
-		return fmt.Sprintf("%s (%s)", addr, nameWithColor(fmt.Sprintf("%s - %d", name, decimal)))
+		return Address{
+			Address: addr,
+			Desc:    name,
+			Decimal: decimal,
+		}
 	} else {
-		return fmt.Sprintf("%s (%s)", addr, nameWithColor(name))
+		return Address{
+			Address: addr,
+			Desc:    name,
+		}
 	}
 }
 

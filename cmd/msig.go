@@ -9,8 +9,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
+	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -85,9 +87,14 @@ func showMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) {
 		fmt.Printf("Jarvis: Can't get tx info: %s\n", err)
 		return
 	}
-	fmt.Printf("Sending: %f ETH to %s\n", ethutils.BigToFloat(value, 18), util.VerboseAddress(address, config.Network))
+	fmt.Printf(
+		"Sending: %f ETH to %s\n",
+		ethutils.BigToFloat(value, 18),
+		VerboseAddress(util.GetJarvisAddress(address, config.Network)),
+	)
+
 	if len(data) != 0 {
-		fmt.Printf("Calling on %s:\n", util.VerboseAddress(address, config.Network))
+		fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, config.Network)))
 		var destAbi *abi.ABI
 
 		if config.ForceERC20ABI {
@@ -102,7 +109,7 @@ func showMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) {
 			return
 		}
 
-		analyzer, err := util.EthAnalyzer(config.Network)
+		analyzer, err := txanalyzer.EthAnalyzer(config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't analyze tx: %s\n", err)
 			return
@@ -250,6 +257,8 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		return
 	}
 
+	analyzer := txanalyzer.NewGenericAnalyzer(reader)
+
 	var txid *big.Int
 
 	if config.Tx == "" {
@@ -334,7 +343,14 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
 
-	err = promptTxConfirmation(config.From, tx)
+	err = util.PromptTxConfirmation(
+		analyzer,
+		util.GetJarvisAddress(config.From, config.Network),
+		util.GetJarvisAddress(config.To, config.Network),
+		tx,
+		config.Network,
+		config.ForceERC20ABI,
+	)
 	if err != nil {
 		fmt.Printf("Aborted!\n")
 		return
@@ -353,7 +369,7 @@ func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		)
 	} else {
 		util.DisplayWaitAnalyze(
-			reader, tx, broadcasted, err, config.Network,
+			reader, analyzer, tx, broadcasted, err, config.Network,
 			config.ForceERC20ABI, config.CustomABI,
 		)
 	}
@@ -415,6 +431,8 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 
+		analyzer := txanalyzer.NewGenericAnalyzer(reader)
+
 		data, err := promptTxData(config.MsigTo, config.PrefillParams, config.ForceERC20ABI, config.CustomABI)
 		if err != nil {
 			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
@@ -450,7 +468,14 @@ var initMsigCmd = &cobra.Command{
 
 		tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
 
-		err = promptTxConfirmation(config.From, tx)
+		err = util.PromptTxConfirmation(
+			analyzer,
+			util.GetJarvisAddress(config.From, config.Network),
+			util.GetJarvisAddress(config.To, config.Network),
+			tx,
+			config.Network,
+			config.ForceERC20ABI,
+		)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
 			return
@@ -469,7 +494,7 @@ var initMsigCmd = &cobra.Command{
 			)
 		} else {
 			util.DisplayWaitAnalyze(
-				reader, tx, broadcasted, err, config.Network,
+				reader, analyzer, tx, broadcasted, err, config.Network,
 				config.ForceERC20ABI, config.CustomABI,
 			)
 		}

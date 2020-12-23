@@ -1,14 +1,26 @@
-package txanalyzer
+package common
+
+type Address struct {
+	Address string
+	Desc    string
+	Decimal int64
+}
+
+type Value struct {
+	Value   string
+	Type    string
+	Address *Address
+}
 
 type ParamResult struct {
 	Name  string
 	Type  string
-	Value []string
+	Value []Value
 }
 
 type TopicResult struct {
 	Name  string
-	Value []string
+	Value []Value
 }
 
 type LogResult struct {
@@ -18,7 +30,7 @@ type LogResult struct {
 }
 
 type GnosisResult struct {
-	Contract string
+	Contract Address
 	Network  string
 	Method   string
 	Params   []ParamResult
@@ -29,9 +41,9 @@ type TxResult struct {
 	Hash     string
 	Network  string
 	Status   string
-	From     string
+	From     Address
 	Value    string
-	To       string
+	To       Address
 	Nonce    string
 	GasPrice string
 	GasLimit string
@@ -39,7 +51,7 @@ type TxResult struct {
 	GasCost  string
 	TxType   string
 
-	Contract string
+	Contract Address
 	Method   string
 	Params   []ParamResult
 	Logs     []LogResult
@@ -55,16 +67,16 @@ func NewTxResult() *TxResult {
 		Hash:       "",
 		Network:    "mainnet",
 		Status:     "",
-		From:       "",
+		From:       Address{},
 		Value:      "",
-		To:         "",
+		To:         Address{},
 		Nonce:      "",
 		GasPrice:   "",
 		GasLimit:   "",
 		GasUsed:    "",
 		GasCost:    "",
 		TxType:     "",
-		Contract:   "",
+		Contract:   Address{},
 		Method:     "",
 		Params:     []ParamResult{},
 		Logs:       []LogResult{},
