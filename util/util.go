@@ -530,11 +530,7 @@ func isHttpURL(path string) bool {
 
 func ReadCustomABIString(addr string, pathOrAddress string, network string) (str string, err error) {
 	if isRealAddress(pathOrAddress) {
-		reader, err := EthReader(network)
-		if err != nil {
-			return "", err
-		}
-		str, err = reader.GetABIString(pathOrAddress)
+		return GetABIString(pathOrAddress, network)
 	} else if isHttpURL(pathOrAddress) {
 		str, err = GetABIStringFromURL(pathOrAddress)
 	} else if str, err = GetABIStringFromFile(pathOrAddress); err != nil {
@@ -587,23 +583,33 @@ func GetABIFromString(abiStr string) (*abi.ABI, error) {
 	return &result, err
 }
 
-func GetABI(addr string, network string) (*abi.ABI, error) {
+func GetABIString(addr string, network string) (string, error) {
 	cacheKey := fmt.Sprintf("%s_abi", addr)
 	cached, found := cache.GetCache(cacheKey)
 	if found {
-		result, err := GetABIFromString(cached)
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
+		return cached, nil
 	}
 
 	// not found from cache, getting from etherscan or equivalent websites
 	reader, err := EthReader(network)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	abiStr, err := reader.GetABIString(addr)
+	if err != nil {
+		return "", err
+	}
+
+	cache.SetCache(
+		cacheKey,
+		abiStr,
+	)
+	fmt.Printf("Stored %s abi to cache.\n", addr)
+	return abiStr, nil
+}
+
+func GetABI(addr string, network string) (*abi.ABI, error) {
+	abiStr, err := GetABIString(addr, network)
 	if err != nil {
 		return nil, err
 	}
@@ -613,11 +619,6 @@ func GetABI(addr string, network string) (*abi.ABI, error) {
 		return nil, err
 	}
 
-	cache.SetCache(
-		cacheKey,
-		abiStr,
-	)
-	fmt.Printf("Stored %s abi to cache.\n", addr)
 	return result, nil
 }
 
