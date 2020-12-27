@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -117,6 +118,14 @@ func GetAddressFromString(str string) (addr string, name string, err error) {
 	return addr, name, nil
 }
 
+func StringToBigInt(str string) (*big.Int, error) {
+	result, success := big.NewInt(0).SetString(str, 10)
+	if !success {
+		return nil, fmt.Errorf("parsed %s to big int failed", str)
+	}
+	return result, nil
+}
+
 func ParamToBigInt(param string) (*big.Int, error) {
 	var result *big.Int
 	param = strings.Trim(param, " ")
@@ -223,13 +232,13 @@ func DisplayWaitAnalyze(reader *reader.EthReader, analyzer TxAnalyzer, t *types.
 	}
 }
 
-func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, abi *abi.ABI, data []byte, network string) {
-	methodName, params, gnosisResult, err := analyzer.AnalyzeMethodCall(abi, data)
+func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, abi *abi.ABI, data []byte, network string) (method string, params []ParamResult, gnosisResult *GnosisResult, err error) {
+	method, params, gnosisResult, err = analyzer.AnalyzeMethodCall(abi, data)
 	if err != nil {
 		fmt.Printf("Couldn't analyze method call: %s\n", err)
 		return
 	}
-	fmt.Printf("  Method: %s\n", methodName)
+	fmt.Printf("  Method: %s\n", method)
 	fmt.Printf("  Params:\n")
 	for _, param := range params {
 		fmt.Printf("    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
@@ -237,6 +246,7 @@ func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, abi *abi.ABI, data []byte, n
 	if gnosisResult != nil {
 		PrintGnosis(gnosisResult)
 	}
+	return
 }
 
 func AnalyzeAndPrint(
@@ -245,12 +255,12 @@ func AnalyzeAndPrint(
 	tx string,
 	network string,
 	forceERC20ABI bool,
-	customABI string) {
+	customABI string) *TxResult {
 
 	txinfo, err := reader.TxInfoFromHash(tx)
 	if err != nil {
 		fmt.Printf("getting tx info failed: %s", err)
-		return
+		return nil
 	}
 
 	contractAddress := txinfo.Tx.To().Hex()
@@ -258,7 +268,7 @@ func AnalyzeAndPrint(
 	code, err := reader.GetCode(contractAddress)
 	if err != nil {
 		fmt.Printf("checking tx type failed: %s", err)
-		return
+		return nil
 	}
 	isContract := len(code) > 0
 
@@ -279,7 +289,7 @@ func AnalyzeAndPrint(
 		}
 		if err != nil {
 			fmt.Printf("Couldn't get the ABI: %s", err)
-			return
+			return nil
 		}
 		result = analyzer.AnalyzeOffline(&txinfo, a, true)
 	} else {
@@ -287,6 +297,7 @@ func AnalyzeAndPrint(
 	}
 
 	PrintTxDetails(result, os.Stdout)
+	return result
 }
 
 func EthTxMonitor(network string) (*monitor.TxMonitor, error) {
@@ -539,6 +550,23 @@ func ReadCustomABIString(addr string, pathOrAddress string, network string) (str
 	}
 
 	return str, err
+}
+
+type coingeckopriceresponse map[string]map[string]float64
+
+func GetCoinGeckoRateInUSD(token string) (float64, error) {
+	resp, err := http.Get(fmt.Sprintf("https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=%s&vs_currencies=USD&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false", token))
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	priceres := coingeckopriceresponse{}
+	err = json.Unmarshal(body, &priceres)
+	if err != nil {
+		return 0, err
+	}
+	return priceres[strings.ToLower(token)]["usd"], nil
 }
 
 func ReadCustomABI(addr string, pathOrAddress string, network string) (a *abi.ABI, err error) {

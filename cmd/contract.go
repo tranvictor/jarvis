@@ -14,6 +14,7 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/jarvis/accounts"
+	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/txanalyzer"
@@ -207,7 +208,7 @@ var txContractCmd = &cobra.Command{
 	Short:             "do transaction to interact with smart contracts",
 	Long:              ` `,
 	TraverseChildren:  true,
-	PersistentPreRunE: CommonTxPreprocess,
+	PersistentPreRunE: cmdutil.CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
 		reader, err := util.EthReader(config.Network)
 		if err != nil {
@@ -386,7 +387,7 @@ var readContractCmd = &cobra.Command{
 	Short:             "read smart contracts (faster than etherscan)",
 	Long:              ` `,
 	TraverseChildren:  true,
-	PersistentPreRunE: CommonFunctionCallPreprocess,
+	PersistentPreRunE: cmdutil.CommonFunctionCallPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
 		reader, err := util.EthReader(config.Network)
 		if err != nil {

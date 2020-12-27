@@ -1,5 +1,11 @@
 package common
 
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+)
+
 type Address struct {
 	Address string
 	Desc    string
@@ -35,6 +41,16 @@ type GnosisResult struct {
 	Method   string
 	Params   []ParamResult
 	Error    string
+}
+
+type TxResults map[string]*TxResult
+
+func (tr *TxResults) Write(filepath string) {
+	data, _ := json.MarshalIndent(tr, "", "  ")
+	err := ioutil.WriteFile(filepath, data, 0644)
+	if err != nil {
+		fmt.Printf("Writing to json file failed: %s\n", err)
+	}
 }
 
 type TxResult struct {

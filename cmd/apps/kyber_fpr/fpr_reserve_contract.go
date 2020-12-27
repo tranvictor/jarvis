@@ -176,12 +176,12 @@ func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (nu
 
 func (self *FPRReserveContract) DisplayStepFunctionData(token string) error {
 	fmt.Printf("\nImbalance step functions:\n")
-	err := self.DisplayImbalanceStepFunc(token)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("\nQty step functions:\n")
-	return self.DisplayQtyStepFunc(token)
+	return self.DisplayImbalanceStepFunc(token)
+	// if err != nil {
+	// 	return err
+	// }
+	// fmt.Printf("\nQty step functions:\n")
+	// return self.DisplayQtyStepFunc(token)
 }
 
 func (self *FPRReserveContract) DisplayImbalanceStepFunc(token string) error {

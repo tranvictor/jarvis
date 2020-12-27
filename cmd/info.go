@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
@@ -35,9 +36,15 @@ var txCmd = &cobra.Command{
 
 			analyzer := txanalyzer.NewGenericAnalyzer(reader)
 
+			results := TxResults{}
+
+			if config.JSONOutputFile != "" {
+				defer results.Write(config.JSONOutputFile)
+			}
+
 			for _, t := range txs {
 				fmt.Printf("Analyzing tx: %s...\n", t)
-				util.AnalyzeAndPrint(
+				r := util.AnalyzeAndPrint(
 					reader,
 					analyzer,
 					t,
@@ -45,6 +52,7 @@ var txCmd = &cobra.Command{
 					config.ForceERC20ABI,
 					config.CustomABI,
 				)
+				results[t] = r
 				fmt.Printf("----------------------------------------------------------\n")
 			}
 		}
@@ -54,6 +62,7 @@ var txCmd = &cobra.Command{
 func init() {
 	txCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 	txCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
+	txCmd.PersistentFlags().StringVarP(&config.JSONOutputFile, "json-output", "o", "", "write output of contract read to json file")
 
 	rootCmd.AddCommand(txCmd)
 
