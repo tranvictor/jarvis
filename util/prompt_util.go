@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -233,9 +234,23 @@ func PromptNonArray(input abi.Argument, prefill string, network string) (interfa
 	return ConvertParamStrToType(input.Name, input.Type, inpStr, network)
 }
 
-func PromptTxConfirmation(analyzer TxAnalyzer, from Address, to Address, tx *types.Transaction, network string, forceERC20ABI bool) error {
+func PromptTxConfirmation(
+	analyzer TxAnalyzer,
+	from Address,
+	to Address,
+	tx *types.Transaction,
+	a *abi.ABI,
+	customABIs map[string]*abi.ABI,
+	network string,
+) error {
 	fmt.Printf("\n========== Confirm tx data before signing ==========\n\n")
-	showTxInfoToConfirm(analyzer, from, to, tx, network, forceERC20ABI)
+	err := showTxInfoToConfirm(
+		analyzer, from, to, tx, a, customABIs, network,
+	)
+	if err != nil {
+		fmt.Printf("%s\n", err)
+		return err
+	}
 	if !prompter.YN("\nConfirm?", true) {
 		return fmt.Errorf("user aborted")
 	}
@@ -263,13 +278,127 @@ func indent(nospace int, strs []string) string {
 	return result
 }
 
+func PromptTxData(
+	analyzer TxAnalyzer,
+	contractAddress string,
+	methodIndex uint64,
+	prefills []string,
+	prefillMode bool,
+	a *abi.ABI,
+	customABIs map[string]*abi.ABI,
+	network string) ([]byte, error) {
+	method, params, err := PromptFunctionCallData(
+		analyzer,
+		contractAddress,
+		methodIndex,
+		prefills,
+		prefillMode,
+		"write",
+		a,
+		customABIs,
+		network)
+	if err != nil {
+		return []byte{}, err
+	}
+	return a.Pack(method.Name, params...)
+}
+
+type orderedMethods []abi.Method
+
+func (m orderedMethods) Len() int           { return len(m) }
+func (m orderedMethods) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
+func (m orderedMethods) Less(i, j int) bool { return m[i].Name < m[j].Name }
+
+func PromptFunctionCallData(
+	analyzer TxAnalyzer,
+	contractAddress string,
+	methodIndex uint64,
+	prefills []string,
+	prefillMode bool,
+	mode string,
+	a *abi.ABI,
+	customABIs map[string]*abi.ABI,
+	network string) (method *abi.Method, params []interface{}, err error) {
+
+	methods := []abi.Method{}
+	if mode == "write" {
+		for _, m := range a.Methods {
+			if !m.IsConstant() {
+				methods = append(methods, m)
+			}
+		}
+	} else {
+		for _, m := range a.Methods {
+			if m.IsConstant() {
+				methods = append(methods, m)
+			}
+		}
+	}
+	sort.Sort(orderedMethods(methods))
+	if methodIndex == 0 {
+		fmt.Printf("write functions:\n")
+		for i, m := range methods {
+			fmt.Printf("%d. %s\n", i+1, m.Name)
+		}
+		methodIndex = uint64(PromptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
+	} else if int(methodIndex) > len(methods) {
+		return nil, nil, fmt.Errorf("the contract doesn't have %d(th) write method", methodIndex)
+	}
+	method = &methods[methodIndex-1]
+	fmt.Printf("\nContract: %s\n", VerboseAddress(GetJarvisAddress(contractAddress, network)))
+	fmt.Printf("Method: %s\n", method.Name)
+	inputs := method.Inputs
+	if prefillMode && len(inputs) != len(prefills) {
+		return nil, nil, fmt.Errorf("You must specify enough params in prefilled mode")
+	}
+	fmt.Printf("Input:\n")
+	params = []interface{}{}
+	pi := 0
+	for {
+		if pi >= len(inputs) {
+			break
+		}
+		input := inputs[pi]
+		var inputParam interface{}
+		fmt.Printf("%d. %s (%s)", pi+1, input.Name, input.Type.String())
+		if !prefillMode || prefills[pi] == "?" {
+			inputParam, err = PromptParam(input, "", network)
+			if err != nil {
+				fmt.Printf("Your input is not valid: %s\n", err)
+				continue
+			}
+
+			fmt.Printf(
+				"    You entered: %s\n",
+				indent(8, VerboseValues(analyzer.ParamAsJarvisValues(input.Type, inputParam))),
+			)
+		} else {
+			inputParam, err = PromptParam(input, prefills[pi], network)
+			if err != nil {
+				fmt.Printf("Your input is not valid: %s\n", err)
+				continue
+			}
+
+			fmt.Printf(
+				": %s\n",
+				indent(8, VerboseValues(analyzer.ParamAsJarvisValues(input.Type, inputParam))),
+			)
+		}
+		params = append(params, inputParam)
+		pi++
+	}
+	return method, params, nil
+}
+
 func showTxInfoToConfirm(
 	analyzer TxAnalyzer,
 	from Address,
 	to Address,
 	tx *types.Transaction,
+	a *abi.ABI,
+	customABIs map[string]*abi.ABI,
 	network string,
-	forceERC20ABI bool) error {
+) error {
 	fmt.Printf(
 		"From: %s ==> %s\n",
 		VerboseAddress(from),
@@ -291,18 +420,8 @@ func showTxInfoToConfirm(
 			18,
 		),
 	)
-	var a *abi.ABI
-	var err error
-	if forceERC20ABI {
-		a, err = ethutils.GetERC20ABI()
-	} else {
-		a, err = GetABI(tx.To().Hex(), network)
-	}
-	if err != nil {
-		return fmt.Errorf("Getting abi of the contract failed: %s", err)
-	}
-	// analyzer := txanalyzer.NewAnalyzer()
-	method, params, gnosisResult, err := analyzer.AnalyzeMethodCall(a, tx.Data())
+
+	method, params, gnosisResult, err := analyzer.AnalyzeMethodCall(a, tx.Data(), customABIs)
 	if err != nil {
 		return fmt.Errorf("Can't decode method call: %s", err)
 	}

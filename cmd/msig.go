@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
@@ -259,20 +260,35 @@ var initMsigCmd = &cobra.Command{
 
 		analyzer := txanalyzer.NewGenericAnalyzer(reader)
 
-		data, err := promptTxData(config.MsigTo, config.PrefillParams, config.ForceERC20ABI, config.CustomABI)
+		a, err := util.ConfigToABI(config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network)
+		if err != nil {
+			fmt.Printf("Couldn't get abi for %s: %s\n", config.MsigTo, err)
+			return
+		}
+
+		data, err := util.PromptTxData(
+			analyzer,
+			config.MsigTo,
+			config.MethodIndex,
+			config.PrefillParams,
+			config.PrefillMode,
+			a,
+			nil,
+			config.Network,
+		)
 		if err != nil {
 			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
 			fmt.Printf("Continue with EMPTY CALLING DATA\n")
 			data = []byte{}
 		}
 
-		a, err := util.GetABI(config.To, config.Network)
+		msigABI, err := util.GetABI(config.To, config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't get the multisig's ABI: %s\n", err)
 			return
 		}
 
-		txdata, err := a.Pack(
+		txdata, err := msigABI.Pack(
 			"submitTransaction",
 			ethutils.HexToAddress(config.MsigTo),
 			ethutils.FloatToBigInt(config.MsigValue, 18),
@@ -294,13 +310,17 @@ var initMsigCmd = &cobra.Command{
 
 		tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
 
+		customABIs := map[string]*abi.ABI{
+			strings.ToLower(config.MsigTo): a,
+		}
 		err = util.PromptTxConfirmation(
 			analyzer,
 			util.GetJarvisAddress(config.From, config.Network),
 			util.GetJarvisAddress(config.To, config.Network),
 			tx,
+			msigABI,
+			customABIs,
 			config.Network,
-			config.ForceERC20ABI,
 		)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
@@ -321,7 +341,7 @@ var initMsigCmd = &cobra.Command{
 		} else {
 			util.DisplayWaitAnalyze(
 				reader, analyzer, tx, broadcasted, err, config.Network,
-				config.ForceERC20ABI, config.CustomABI,
+				msigABI, customABIs,
 			)
 		}
 	},

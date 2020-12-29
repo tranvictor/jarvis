@@ -7,6 +7,7 @@ import (
 )
 
 type TxAnalyzer interface {
-	AnalyzeMethodCall(abi *abi.ABI, data []byte) (method string, params []ParamResult, gnosisResult *GnosisResult, err error)
-	AnalyzeOffline(txinfo *ethutils.TxInfo, abi *abi.ABI, isContract bool) *TxResult
+	AnalyzeMethodCall(abi *abi.ABI, data []byte, customABIs map[string]*abi.ABI) (method string, params []ParamResult, gnosisResult *GnosisResult, err error)
+	AnalyzeOffline(txinfo *ethutils.TxInfo, a *abi.ABI, customABIs map[string]*abi.ABI, isContract bool) *TxResult
+	ParamAsJarvisValues(t abi.Type, value interface{}) []Value
 }

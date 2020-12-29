@@ -36,11 +36,12 @@ type LogResult struct {
 }
 
 type GnosisResult struct {
-	Contract Address
-	Network  string
-	Method   string
-	Params   []ParamResult
-	Error    string
+	Contract   Address
+	Network    string
+	Method     string
+	Params     []ParamResult
+	GnosisInit *GnosisResult
+	Error      string
 }
 
 type TxResults map[string]*TxResult

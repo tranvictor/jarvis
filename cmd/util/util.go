@@ -5,7 +5,6 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
@@ -30,15 +29,8 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 
 	if len(data) != 0 {
 		fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, config.Network)))
-		var destAbi *abi.ABI
 
-		if config.ForceERC20ABI {
-			destAbi, err = ethutils.GetERC20ABI()
-		} else if config.CustomABI != "" {
-			destAbi, err = util.ReadCustomABI(address, config.CustomABI, config.Network)
-		} else {
-			destAbi, err = util.GetABI(address, config.Network)
-		}
+		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't get abi of destination address: %s\n", err)
 			return
@@ -49,7 +41,7 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 			fmt.Printf("Couldn't analyze tx: %s\n", err)
 			return
 		}
-		method, params, gnosisResult, msigErr = util.AnalyzeMethodCallAndPrint(analyzer, destAbi, data, config.Network)
+		method, params, gnosisResult, msigErr = util.AnalyzeMethodCallAndPrint(analyzer, destAbi, data, nil, config.Network)
 	} else {
 		msigErr = fmt.Errorf("no contract call in tx data")
 	}
@@ -136,16 +128,9 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	}
 	// TODO: support multiple txs?
 
-	var a *abi.ABI
-	if config.ForceERC20ABI {
-		a, err = ethutils.GetERC20ABI()
-	} else if config.CustomABI != "" {
-		a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network)
-	} else {
-		a, err = util.GetABI(config.To, config.Network)
-	}
+	a, err := util.GetABI(config.To, config.Network)
 	if err != nil {
-		fmt.Printf("Couldn't get the ABI: %s\n", err)
+		fmt.Printf("Couldn't get the ABI for %s: %s\n", config.To, err)
 		return
 	}
 
@@ -171,8 +156,9 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		util.GetJarvisAddress(config.From, config.Network),
 		util.GetJarvisAddress(config.To, config.Network),
 		tx,
+		a,
+		nil,
 		config.Network,
-		config.ForceERC20ABI,
 	)
 	if err != nil {
 		fmt.Printf("Aborted!\n")
@@ -193,7 +179,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	} else {
 		util.DisplayWaitAnalyze(
 			reader, analyzer, tx, broadcasted, err, config.Network,
-			config.ForceERC20ABI, config.CustomABI,
+			a, nil,
 		)
 	}
 }

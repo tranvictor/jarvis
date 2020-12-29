@@ -91,9 +91,15 @@ func handleSend(
 			)
 		}
 	}
+
+	a, err := ethutils.GetERC20ABI()
+	if err != nil {
+		fmt.Printf("Couldn't get erc20 abi: %s\n", err)
+		return
+	}
 	util.DisplayWaitAnalyze(
 		reader, analyzer, t, broadcasted, errors, config.Network,
-		config.ForceERC20ABI, config.CustomABI,
+		a, nil,
 	)
 }
 

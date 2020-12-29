@@ -44,6 +44,7 @@ var txCmd = &cobra.Command{
 
 			for _, t := range txs {
 				fmt.Printf("Analyzing tx: %s...\n", t)
+
 				r := util.AnalyzeAndPrint(
 					reader,
 					analyzer,
@@ -51,6 +52,8 @@ var txCmd = &cobra.Command{
 					config.Network,
 					config.ForceERC20ABI,
 					config.CustomABI,
+					nil,
+					nil,
 				)
 				results[t] = r
 				fmt.Printf("----------------------------------------------------------\n")

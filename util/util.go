@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -215,7 +216,15 @@ func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, net
 	}
 }
 
-func DisplayWaitAnalyze(reader *reader.EthReader, analyzer TxAnalyzer, t *types.Transaction, broadcasted bool, err error, network string, forceERC20ABI bool, customABI string) {
+func DisplayWaitAnalyze(
+	reader *reader.EthReader,
+	analyzer TxAnalyzer,
+	t *types.Transaction,
+	broadcasted bool,
+	err error,
+	network string,
+	a *abi.ABI,
+	customABIs map[string]*abi.ABI) {
 	if !broadcasted {
 		fmt.Printf("couldn't broadcast tx:\n")
 		fmt.Printf("error on nodes: %v\n", err)
@@ -228,12 +237,12 @@ func DisplayWaitAnalyze(reader *reader.EthReader, analyzer TxAnalyzer, t *types.
 			return
 		}
 		mo.BlockingWait(t.Hash().Hex())
-		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, forceERC20ABI, customABI)
+		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, false, "", a, customABIs)
 	}
 }
 
-func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, abi *abi.ABI, data []byte, network string) (method string, params []ParamResult, gnosisResult *GnosisResult, err error) {
-	method, params, gnosisResult, err = analyzer.AnalyzeMethodCall(abi, data)
+func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, abi *abi.ABI, data []byte, customABIs map[string]*abi.ABI, network string) (method string, params []ParamResult, gnosisResult *GnosisResult, err error) {
+	method, params, gnosisResult, err = analyzer.AnalyzeMethodCall(abi, data, customABIs)
 	if err != nil {
 		fmt.Printf("Couldn't analyze method call: %s\n", err)
 		return
@@ -255,7 +264,9 @@ func AnalyzeAndPrint(
 	tx string,
 	network string,
 	forceERC20ABI bool,
-	customABI string) *TxResult {
+	customABI string,
+	a *abi.ABI,
+	customABIs map[string]*abi.ABI) *TxResult {
 
 	txinfo, err := reader.TxInfoFromHash(tx)
 	if err != nil {
@@ -275,25 +286,16 @@ func AnalyzeAndPrint(
 	var result *TxResult
 
 	if isContract {
-		var a *abi.ABI
-		var err error
-
-		a, err = GetABI(contractAddress, network)
-		if err != nil {
-			if forceERC20ABI {
-				a, err = ethutils.GetERC20ABI()
-			} else if customABI != "" {
-				fmt.Printf("%s doesn't have abi on etherscan nor jarvis cache, try custom abi passed in the param\n")
-				a, err = ReadCustomABI(contractAddress, customABI, network)
+		if a == nil {
+			a, err = ConfigToABI(contractAddress, forceERC20ABI, customABI, network)
+			if err != nil {
+				fmt.Printf("Couldn't get abi for %s: %s\n", contractAddress, err)
+				return nil
 			}
 		}
-		if err != nil {
-			fmt.Printf("Couldn't get the ABI: %s", err)
-			return nil
-		}
-		result = analyzer.AnalyzeOffline(&txinfo, a, true)
+		result = analyzer.AnalyzeOffline(&txinfo, a, customABIs, true)
 	} else {
-		result = analyzer.AnalyzeOffline(&txinfo, nil, false)
+		result = analyzer.AnalyzeOffline(&txinfo, nil, nil, false)
 	}
 
 	PrintTxDetails(result, os.Stdout)
@@ -636,6 +638,16 @@ func GetABIString(addr string, network string) (string, error) {
 	return abiStr, nil
 }
 
+func ConfigToABI(address string, forceERC20ABI bool, customABI string, network string) (*abi.ABI, error) {
+	if forceERC20ABI {
+		return ethutils.GetERC20ABI()
+	}
+	if customABI != "" {
+		return ReadCustomABI(address, customABI, network)
+	}
+	return GetABI(address, network)
+}
+
 func GetABI(addr string, network string) (*abi.ABI, error) {
 	abiStr, err := GetABIString(addr, network)
 	if err != nil {
@@ -669,4 +681,15 @@ func IsGnosisMultisig(a *abi.ABI) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func AllZeroParamFunctions(a *abi.ABI) []abi.Method {
+	methods := []abi.Method{}
+	for _, m := range a.Methods {
+		if m.IsConstant() && len(m.Inputs) == 0 {
+			methods = append(methods, m)
+		}
+	}
+	sort.Sort(orderedMethods(methods))
+	return methods
 }

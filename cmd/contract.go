@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"sort"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,106 +19,6 @@ import (
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
-
-type orderedMethods []abi.Method
-
-func (m orderedMethods) Len() int           { return len(m) }
-func (m orderedMethods) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
-func (m orderedMethods) Less(i, j int) bool { return m[i].Name < m[j].Name }
-
-func promptFunctionCallData(contractAddress string, prefills []string, mode string, forceERC20ABI bool, customABI string) (*abi.ABI, *abi.Method, []interface{}, error) {
-	analyzer, err := txanalyzer.EthAnalyzer(config.Network)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	var a *abi.ABI
-	if forceERC20ABI {
-		a, err = ethutils.GetERC20ABI()
-	} else if customABI != "" {
-		a, err = util.ReadCustomABI(contractAddress, customABI, config.Network)
-	} else {
-		a, err = util.GetABI(contractAddress, config.Network)
-	}
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("Couldn't get the ABI: %s", err)
-	}
-	methods := []abi.Method{}
-	if mode == "write" {
-		for _, m := range a.Methods {
-			if !m.IsConstant() {
-				methods = append(methods, m)
-			}
-		}
-	} else {
-		for _, m := range a.Methods {
-			if m.IsConstant() {
-				methods = append(methods, m)
-			}
-		}
-	}
-	sort.Sort(orderedMethods(methods))
-	if config.MethodIndex == 0 {
-		fmt.Printf("write functions:\n")
-		for i, m := range methods {
-			fmt.Printf("%d. %s\n", i+1, m.Name)
-		}
-		config.MethodIndex = uint64(util.PromptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
-	} else if int(config.MethodIndex) > len(methods) {
-		return nil, nil, nil, fmt.Errorf("the contract doesn't have %d(th) write method", config.MethodIndex)
-	}
-	method := methods[config.MethodIndex-1]
-	fmt.Printf("\nContract: %s\n", VerboseAddress(util.GetJarvisAddress(config.To, config.Network)))
-	fmt.Printf("Method: %s\n", method.Name)
-	inputs := method.Inputs
-	if config.PrefillMode && len(inputs) != len(prefills) {
-		return nil, nil, nil, fmt.Errorf("You must specify enough params in prefilled mode")
-	}
-	fmt.Printf("Input:\n")
-	params := []interface{}{}
-	pi := 0
-	for {
-		if pi >= len(inputs) {
-			break
-		}
-		input := inputs[pi]
-		var inputParam interface{}
-		fmt.Printf("%d. %s (%s)", pi+1, input.Name, input.Type.String())
-		if !config.PrefillMode || prefills[pi] == "?" {
-			inputParam, err = util.PromptParam(input, "", config.Network)
-			if err != nil {
-				fmt.Printf("Your input is not valid: %s\n", err)
-				continue
-			}
-
-			fmt.Printf(
-				"    You entered: %s\n",
-				indent(8, VerboseValues(analyzer.ParamAsJarvisValues(input.Type, inputParam))),
-			)
-		} else {
-			inputParam, err = util.PromptParam(input, prefills[pi], config.Network)
-			if err != nil {
-				fmt.Printf("Your input is not valid: %s\n", err)
-				continue
-			}
-
-			fmt.Printf(
-				": %s\n",
-				indent(8, VerboseValues(analyzer.ParamAsJarvisValues(input.Type, inputParam))),
-			)
-		}
-		params = append(params, inputParam)
-		pi++
-	}
-	return a, &method, params, nil
-}
-
-func promptTxData(contractAddress string, prefills []string, forceERC20ABI bool, customABI string) ([]byte, error) {
-	a, method, params, err := promptFunctionCallData(contractAddress, prefills, "write", forceERC20ABI, customABI)
-	if err != nil {
-		return []byte{}, err
-	}
-	return a.Pack(method.Name, params...)
-}
 
 var composeDataContractCmd = &cobra.Command{
 	Use:   "encode",
@@ -187,7 +86,31 @@ Param rules:
 			return
 		}
 		fmt.Printf("Contract: %s (%s)\n", contractAddress, contractName)
-		data, err := promptTxData(contractAddress, config.PrefillParams, config.ForceERC20ABI, config.CustomABI)
+
+		reader, err := util.EthReader(config.Network)
+		if err != nil {
+			fmt.Printf("Couldn't connect to blockchain.\n")
+			return
+		}
+
+		analyzer := txanalyzer.NewGenericAnalyzer(reader)
+
+		a, err := util.ConfigToABI(contractAddress, config.ForceERC20ABI, config.CustomABI, config.Network)
+		if err != nil {
+			fmt.Printf("Couldn't get abi for %s: %s\n", contractAddress, err)
+			return
+		}
+
+		data, err := util.PromptTxData(
+			analyzer,
+			contractAddress,
+			config.MethodIndex,
+			config.PrefillParams,
+			config.PrefillMode,
+			a,
+			nil,
+			config.Network,
+		)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -218,7 +141,22 @@ var txContractCmd = &cobra.Command{
 
 		analyzer := txanalyzer.NewGenericAnalyzer(reader)
 
-		data, err := promptTxData(config.To, config.PrefillParams, config.ForceERC20ABI, config.CustomABI)
+		a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network)
+		if err != nil {
+			fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
+			return
+		}
+
+		data, err := util.PromptTxData(
+			analyzer,
+			config.To,
+			config.MethodIndex,
+			config.PrefillParams,
+			config.PrefillMode,
+			a,
+			nil,
+			config.Network,
+		)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
@@ -238,8 +176,9 @@ var txContractCmd = &cobra.Command{
 			util.GetJarvisAddress(config.From, config.Network),
 			util.GetJarvisAddress(config.To, config.Network),
 			tx,
+			a,
+			nil,
 			config.Network,
-			config.ForceERC20ABI,
 		)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
@@ -273,34 +212,11 @@ var txContractCmd = &cobra.Command{
 			} else {
 				util.DisplayWaitAnalyze(
 					reader, analyzer, tx, broadcasted, err, config.Network,
-					config.ForceERC20ABI, config.CustomABI,
+					a, nil,
 				)
 			}
 		}
 	},
-}
-
-func allZeroParamFunctions(contractAddress string, customABI string) (*abi.ABI, []abi.Method, error) {
-	var a *abi.ABI
-	var err error
-	if config.ForceERC20ABI {
-		a, err = ethutils.GetERC20ABI()
-	} else if customABI != "" {
-		a, err = util.ReadCustomABI(contractAddress, customABI, config.Network)
-	} else {
-		a, err = util.GetABI(contractAddress, config.Network)
-	}
-	if err != nil {
-		return nil, nil, fmt.Errorf("Couldn't get the ABI: %s", err)
-	}
-	methods := []abi.Method{}
-	for _, m := range a.Methods {
-		if m.IsConstant() && len(m.Inputs) == 0 {
-			methods = append(methods, m)
-		}
-	}
-	sort.Sort(orderedMethods(methods))
-	return a, methods, nil
 }
 
 func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlock int64, method *abi.Method, params []interface{}) (contractReadResult, error) {
@@ -404,11 +320,13 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			a, methods, err := allZeroParamFunctions(config.To, config.CustomABI)
+			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network)
 			if err != nil {
-				fmt.Printf("Couldn't get all zero param functions of the contract: %s\n", err)
+				fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
 				return
 			}
+
+			methods := util.AllZeroParamFunctions(a)
 			for i := range methods {
 				method := methods[i]
 				resultJSON.Functions = append(resultJSON.Functions, method.Name)
@@ -436,7 +354,25 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			a, method, params, err := promptFunctionCallData(config.To, config.PrefillParams, "read", config.ForceERC20ABI, config.CustomABI)
+			analyzer := txanalyzer.NewGenericAnalyzer(reader)
+
+			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network)
+			if err != nil {
+				fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
+				return
+			}
+
+			method, params, err := util.PromptFunctionCallData(
+				analyzer,
+				config.To,
+				config.MethodIndex,
+				config.PrefillParams,
+				config.PrefillMode,
+				"read",
+				a,
+				nil,
+				config.Network,
+			)
 			if err != nil {
 				fmt.Printf("Couldn't get params from users: %s\n", err)
 				resultJSON.Error = fmt.Sprintf("%s", err)

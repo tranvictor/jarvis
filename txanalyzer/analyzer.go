@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -98,11 +99,14 @@ func findEventById(a *abi.ABI, topic []byte) (*abi.Event, error) {
 	return nil, fmt.Errorf("no event with id: %#x", topic)
 }
 
-func (self *TxAnalyzer) AnalyzeMethodCall(abi *abi.ABI, data []byte) (method string, params []ParamResult, gnosisResult *GnosisResult, err error) {
-	if _, err := abi.MethodById(data); err != nil {
-		abi, _ = ethutils.GetERC20ABI()
+func (self *TxAnalyzer) AnalyzeMethodCall(a *abi.ABI, data []byte, customABIs map[string]*abi.ABI) (method string, params []ParamResult, gnosisResult *GnosisResult, err error) {
+	if customABIs == nil {
+		customABIs = map[string]*abi.ABI{}
 	}
-	m, err := abi.MethodById(data)
+	if _, err := a.MethodById(data); err != nil {
+		a, _ = ethutils.GetERC20ABI()
+	}
+	m, err := a.MethodById(data)
 	if err != nil {
 		return "", []ParamResult{}, nil, err
 	}
@@ -123,22 +127,29 @@ func (self *TxAnalyzer) AnalyzeMethodCall(abi *abi.ABI, data []byte) (method str
 	if isGnosisMultisig(m, ps) {
 		// fmt.Printf("    ==> Gnosis Multisig init data:\n")
 		contract := ps[0].(common.Address)
-		a, err := util.GetABI(contract.Hex(), self.Network)
-		if err != nil {
-			a, _ = ethutils.GetERC20ABI()
+		a := customABIs[strings.ToLower(contract.Hex())]
+		if a == nil {
+			a, err = util.GetABI(contract.Hex(), self.Network)
+			if err != nil {
+				a, _ = ethutils.GetERC20ABI()
+			}
 		}
-		gnosisResult = self.gnosisMultisigInitData(a, ps)
+		gnosisResult = self.gnosisMultisigInitData(a, ps, customABIs)
 	}
 	return method, params, gnosisResult, nil
 }
 
-func (self *TxAnalyzer) AnalyzeLog(abi *abi.ABI, l *types.Log) (LogResult, error) {
+func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log) (LogResult, error) {
 	logResult := LogResult{
 		Name:   "",
 		Topics: []TopicResult{},
 		Data:   []ParamResult{},
 	}
 
+	abi := customABIs[strings.ToLower(l.Address.Hex())]
+	if abi == nil {
+		return logResult, fmt.Errorf("abi not found for %s", l.Address.Hex())
+	}
 	event, err := findEventById(abi, l.Topics[0].Bytes())
 	if err != nil {
 		return logResult, err
@@ -167,11 +178,11 @@ func (self *TxAnalyzer) AnalyzeLog(abi *abi.ABI, l *types.Log) (LogResult, error
 	return logResult, nil
 }
 
-func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, abi *abi.ABI, result *TxResult) {
+func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, a *abi.ABI, customABIs map[string]*abi.ABI, result *TxResult) {
 	result.Contract = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
 	// fmt.Printf("------------------------------------------Contract call info-------------------------------------------------------------\n")
 	data := txinfo.Tx.Data()
-	methodName, params, gnosisResult, err := self.AnalyzeMethodCall(abi, data)
+	methodName, params, gnosisResult, err := self.AnalyzeMethodCall(a, data, customABIs)
 	if err != nil {
 		result.Error = fmt.Sprintf("Cannot analyze the method call: %s", err)
 		return
@@ -182,7 +193,7 @@ func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, abi *abi.ABI, 
 
 	logs := txinfo.Receipt.Logs
 	for _, l := range logs {
-		logResult, err := self.AnalyzeLog(abi, l)
+		logResult, err := self.AnalyzeLog(customABIs, l)
 		if err != nil {
 			result.Error += fmt.Sprintf("%s", err)
 		}
@@ -206,13 +217,14 @@ func isGnosisMultisig(method *abi.Method, params []interface{}) bool {
 	return true
 }
 
-func (self *TxAnalyzer) gnosisMultisigInitData(a *abi.ABI, params []interface{}) (result *GnosisResult) {
+func (self *TxAnalyzer) gnosisMultisigInitData(a *abi.ABI, params []interface{}, customABIs map[string]*abi.ABI) (result *GnosisResult) {
 	result = &GnosisResult{
-		Contract: Address{},
-		Network:  self.Network,
-		Method:   "",
-		Params:   []ParamResult{},
-		Error:    "",
+		Contract:   Address{},
+		Network:    self.Network,
+		Method:     "",
+		Params:     []ParamResult{},
+		GnosisInit: nil,
+		Error:      "",
 	}
 	var err error
 	contract := params[0].(common.Address)
@@ -246,10 +258,23 @@ func (self *TxAnalyzer) gnosisMultisigInitData(a *abi.ABI, params []interface{})
 		})
 		// fmt.Printf("        %s (%s): ", input.Name, input.Type)
 	}
+
+	if isGnosisMultisig(method, ps) {
+		// fmt.Printf("    ==> Gnosis Multisig init data:\n")
+		contract := ps[0].(common.Address)
+		a := customABIs[strings.ToLower(contract.Hex())]
+		if a == nil {
+			a, err = util.GetABI(contract.Hex(), self.Network)
+			if err != nil {
+				a, _ = ethutils.GetERC20ABI()
+			}
+		}
+		result.GnosisInit = self.gnosisMultisigInitData(a, ps, customABIs)
+	}
 	return result
 }
 
-func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, abi *abi.ABI, isContract bool) *TxResult {
+func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, a *abi.ABI, customABIs map[string]*abi.ABI, isContract bool) *TxResult {
 	result := NewTxResult()
 	result.Network = self.Network
 	// fmt.Printf("==========================================Transaction info===============================================================\n")
@@ -265,64 +290,11 @@ func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, abi *abi.ABI, is
 		} else {
 			// fmt.Printf("tx type: contract call\n")
 			result.TxType = "contract call"
-			self.analyzeContractTx(*txinfo, abi, result)
+			self.analyzeContractTx(*txinfo, a, customABIs, result)
 		}
 	}
 	// fmt.Printf("=========================================================================================================================\n")
 	return result
-}
-
-func (self *TxAnalyzer) AnalyzeWithABI(tx string, a *abi.ABI) *TxResult {
-	txinfo, err := self.reader.TxInfoFromHash(tx)
-	if err != nil {
-		return &TxResult{
-			Error: fmt.Sprintf("getting tx info failed: %s", err),
-		}
-	}
-
-	code, err := self.reader.GetCode(txinfo.Tx.To().Hex())
-	if err != nil {
-		return &TxResult{
-			Error: fmt.Sprintf("checking tx type failed: %s", err),
-		}
-	}
-	isContract := len(code) > 0
-
-	if isContract {
-		return self.AnalyzeOffline(&txinfo, a, true)
-	} else {
-		return self.AnalyzeOffline(&txinfo, nil, false)
-	}
-}
-
-// print all info on the tx
-func (self *TxAnalyzer) Analyze(tx string) *TxResult {
-	txinfo, err := self.reader.TxInfoFromHash(tx)
-	if err != nil {
-		return &TxResult{
-			Error: fmt.Sprintf("getting tx info failed: %s", err),
-		}
-	}
-
-	code, err := self.reader.GetCode(txinfo.Tx.To().Hex())
-	if err != nil {
-		return &TxResult{
-			Error: fmt.Sprintf("checking tx type failed: %s", err),
-		}
-	}
-	isContract := len(code) > 0
-
-	if isContract {
-		abi, err := self.reader.GetABI(txinfo.Tx.To().Hex())
-		if err != nil {
-			return &TxResult{
-				Error: fmt.Sprintf("Cannot get abi of the contract: %s", err),
-			}
-		}
-		return self.AnalyzeOffline(&txinfo, abi, true)
-	} else {
-		return self.AnalyzeOffline(&txinfo, nil, false)
-	}
 }
 
 func NewGenericAnalyzer(r *reader.EthReader) *TxAnalyzer {
