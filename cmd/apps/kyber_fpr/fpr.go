@@ -86,6 +86,11 @@ var KyberFPRCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\n")
+		decimal, err := util.GetERC20Decimal(Token, config.Network)
+		if err != nil {
+			fmt.Printf("Getting decimal failed: %s\n", err)
+			return
+		}
 		price, err := util.GetCoinGeckoRateInUSD(Token)
 		if err != nil {
 			fmt.Printf("Getting price failed: %s\n", err)
@@ -95,17 +100,17 @@ var KyberFPRCmd = &cobra.Command{
 		fmt.Printf(
 			"Min Resolution: %s (%f USD)\n",
 			ReadableNumber(minimalRecordResolution.Text(10)),
-			ethutils.BigToFloat(minimalRecordResolution, 18)*price,
+			ethutils.BigToFloat(minimalRecordResolution, decimal)*price,
 		)
 		fmt.Printf(
 			"Max Block Imp: %s (%f USD)\n",
 			ReadableNumber(maxBlockImb.Text(10)),
-			ethutils.BigToFloat(maxBlockImb, 18)*price,
+			ethutils.BigToFloat(maxBlockImb, decimal)*price,
 		)
 		fmt.Printf(
 			"Max Total Imp: %s (%f USD)\n",
 			ReadableNumber(maxTotalImb.Text(10)),
-			ethutils.BigToFloat(maxTotalImb, 18)*price,
+			ethutils.BigToFloat(maxTotalImb, decimal)*price,
 		)
 	},
 }

@@ -293,9 +293,9 @@ func AnalyzeAndPrint(
 				return nil
 			}
 		}
-		result = analyzer.AnalyzeOffline(&txinfo, a, customABIs, true)
+		result = analyzer.AnalyzeOffline(&txinfo, a, customABIs, true, network)
 	} else {
-		result = analyzer.AnalyzeOffline(&txinfo, nil, nil, false)
+		result = analyzer.AnalyzeOffline(&txinfo, nil, nil, false, network)
 	}
 
 	PrintTxDetails(result, os.Stdout)

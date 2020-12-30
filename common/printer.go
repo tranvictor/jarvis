@@ -98,6 +98,10 @@ func verboseValue(value Value) string {
 		return VerboseAddress(*value.Address)
 	}
 
+	if value.Type == "string" {
+		return value.Value
+	}
+
 	// if this is a hex, it is likely to be a byte data so don't display
 	// in readable number
 	if len(value.Value) >= 2 && value.Value[0:2] == "0x" {

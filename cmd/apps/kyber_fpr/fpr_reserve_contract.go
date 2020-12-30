@@ -11,6 +11,8 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
+const RATE_WRAPPER_CONTRACT = "0x3F0d4A4363d08Cd625285965832C4BA53b5A718A"
+
 type FPRReserveContract struct {
 	Address                string
 	ConversionRateContract *common.Address
@@ -59,7 +61,7 @@ func (self *FPRReserveContract) QueryQtyStepFunc(token common.Address) (numSellS
 	err = self.reader.ReadHistoryContract(
 		config.AtBlock,
 		res,
-		"0x7FA7599413E53dED64b587cc5a607c384f600C66",
+		RATE_WRAPPER_CONTRACT,
 		"readQtyStepFunctions",
 		self.ConversionRateContract,
 		token,
@@ -127,32 +129,36 @@ func (self *FPRReserveContract) GetBasicInfo(token string) (bool, bool, error) {
 	return result[0], result[1], err
 }
 
-func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (numSellSteps int, sellXs []float64, sellYs []float64, numBuySteps int, buyXs []float64, buyYs []float64, err error) {
+func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (numSellStepsX int, sellXs []float64, numSellStepsY int, sellYs []float64, numBuyStepsX int, buyXs []float64, numBuyStepsY int, buyYs []float64, err error) {
 	type imbFunc struct {
-		NumBuyRateImbalanceSteps  *big.Int
-		BuyRateImbalanceStepsX    []*big.Int
-		BuyRateImbalanceStepsY    []*big.Int
-		NumSellRateImbalanceSteps *big.Int
-		SellRateImbalanceStepsX   []*big.Int
-		SellRateImbalanceStepsY   []*big.Int
+		NumBuyRateImbalanceStepsX  *big.Int
+		BuyRateImbalanceStepsX     []*big.Int
+		NumBuyRateImbalanceStepsY  *big.Int
+		BuyRateImbalanceStepsY     []*big.Int
+		NumSellRateImbalanceStepsX *big.Int
+		SellRateImbalanceStepsX    []*big.Int
+		NumSellRateImbalanceStepsY *big.Int
+		SellRateImbalanceStepsY    []*big.Int
 	}
 	res := &imbFunc{}
 	err = self.reader.ReadHistoryContract(
 		config.AtBlock,
 		res,
-		"0x7FA7599413E53dED64b587cc5a607c384f600C66",
+		RATE_WRAPPER_CONTRACT,
 		"readImbalanceStepFunctions",
 		self.ConversionRateContract,
 		token,
 	)
 	if err != nil {
-		return 0, []float64{}, []float64{}, 0, []float64{}, []float64{}, err
+		return 0, []float64{}, 0, []float64{}, 0, []float64{}, 0, []float64{}, err
 	}
-	numSellSteps = int(res.NumSellRateImbalanceSteps.Int64())
-	numBuySteps = int(res.NumBuyRateImbalanceSteps.Int64())
+	numSellStepsX = int(res.NumSellRateImbalanceStepsX.Int64())
+	numSellStepsY = int(res.NumSellRateImbalanceStepsY.Int64())
+	numBuyStepsX = int(res.NumBuyRateImbalanceStepsX.Int64())
+	numBuyStepsY = int(res.NumBuyRateImbalanceStepsY.Int64())
 	decimal, err := self.reader.ERC20Decimal(token.Hex())
 	if err != nil {
-		return 0, []float64{}, []float64{}, 0, []float64{}, []float64{}, err
+		return 0, []float64{}, 0, []float64{}, 0, []float64{}, 0, []float64{}, err
 	}
 	sellXs = []float64{}
 	for _, x := range res.SellRateImbalanceStepsX {
@@ -171,7 +177,7 @@ func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (nu
 	for _, y := range res.BuyRateImbalanceStepsY {
 		buyYs = append(buyYs, ethutils.BigToFloat(y, 2))
 	}
-	return numSellSteps, sellXs, sellYs, numBuySteps, buyXs, buyYs, nil
+	return numSellStepsX, sellXs, numSellStepsY, sellYs, numBuyStepsX, buyXs, numBuyStepsY, buyYs, nil
 }
 
 func (self *FPRReserveContract) DisplayStepFunctionData(token string) error {
@@ -185,25 +191,28 @@ func (self *FPRReserveContract) DisplayStepFunctionData(token string) error {
 }
 
 func (self *FPRReserveContract) DisplayImbalanceStepFunc(token string) error {
-	numSellSteps, sellXs, sellYs, numBuySteps, buyXs, buyYs, err := self.QueryImbalanceStepFunc(ethutils.HexToAddress(token))
+	numSellStepsX, sellXs, numSellStepsY, sellYs, numBuyStepsX, buyXs, numBuyStepsY, buyYs, err := self.QueryImbalanceStepFunc(ethutils.HexToAddress(token))
 	if err != nil {
 		return err
 	}
 	// 	fmt.Printf("token qty (token)      : ")
-	fmt.Printf("token imbalance (token): ")
-	for i := 0; i < numSellSteps; i++ {
-		fmt.Printf("%10.2f|", sellXs[i])
+	fmt.Printf("imb  :  ")
+	fmt.Printf("%5s|", "-INF")
+	for i := 0; i < numSellStepsX; i++ {
+		fmt.Printf("%10.1f|", sellXs[i])
 	}
-	for i := 0; i < numBuySteps; i++ {
-		fmt.Printf("%10.2f|", buyXs[i])
+	fmt.Printf("%10.1f|", 0.0)
+	for i := 0; i < numBuyStepsX; i++ {
+		fmt.Printf("%10.1f|", buyXs[i])
 	}
+	fmt.Printf("%10s", "+INF")
 	fmt.Printf("\n")
-	fmt.Printf("slippage (%%)           : ")
-	for i := 0; i < numSellSteps; i++ {
-		fmt.Printf("%10.2f|", sellYs[i])
+	fmt.Printf("y (%%): ")
+	for i := 0; i < numSellStepsY; i++ {
+		fmt.Printf("%11.2f", sellYs[i])
 	}
-	for i := 0; i < numBuySteps; i++ {
-		fmt.Printf("%10.2f|", buyYs[i])
+	for i := 0; i < numBuyStepsY; i++ {
+		fmt.Printf("%11.2f", buyYs[i])
 	}
 	fmt.Printf("\n")
 	return nil

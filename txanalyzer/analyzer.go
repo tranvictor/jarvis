@@ -139,16 +139,21 @@ func (self *TxAnalyzer) AnalyzeMethodCall(a *abi.ABI, data []byte, customABIs ma
 	return method, params, gnosisResult, nil
 }
 
-func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log) (LogResult, error) {
+func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log, network string) (LogResult, error) {
 	logResult := LogResult{
 		Name:   "",
 		Topics: []TopicResult{},
 		Data:   []ParamResult{},
 	}
 
+	var err error
+
 	abi := customABIs[strings.ToLower(l.Address.Hex())]
 	if abi == nil {
-		return logResult, fmt.Errorf("abi not found for %s", l.Address.Hex())
+		abi, err = util.GetABI(l.Address.Hex(), network)
+		if err != nil {
+			return logResult, fmt.Errorf("getting abi for %s failed: %s", l.Address.Hex(), err)
+		}
 	}
 	event, err := findEventById(abi, l.Topics[0].Bytes())
 	if err != nil {
@@ -178,7 +183,7 @@ func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log)
 	return logResult, nil
 }
 
-func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, a *abi.ABI, customABIs map[string]*abi.ABI, result *TxResult) {
+func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, a *abi.ABI, customABIs map[string]*abi.ABI, result *TxResult, network string) {
 	result.Contract = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
 	// fmt.Printf("------------------------------------------Contract call info-------------------------------------------------------------\n")
 	data := txinfo.Tx.Data()
@@ -193,7 +198,7 @@ func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, a *abi.ABI, cu
 
 	logs := txinfo.Receipt.Logs
 	for _, l := range logs {
-		logResult, err := self.AnalyzeLog(customABIs, l)
+		logResult, err := self.AnalyzeLog(customABIs, l, network)
 		if err != nil {
 			result.Error += fmt.Sprintf("%s", err)
 		}
@@ -274,7 +279,7 @@ func (self *TxAnalyzer) gnosisMultisigInitData(a *abi.ABI, params []interface{},
 	return result
 }
 
-func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, a *abi.ABI, customABIs map[string]*abi.ABI, isContract bool) *TxResult {
+func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, a *abi.ABI, customABIs map[string]*abi.ABI, isContract bool, network string) *TxResult {
 	result := NewTxResult()
 	result.Network = self.Network
 	// fmt.Printf("==========================================Transaction info===============================================================\n")
@@ -290,7 +295,7 @@ func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, a *abi.ABI, cust
 		} else {
 			// fmt.Printf("tx type: contract call\n")
 			result.TxType = "contract call"
-			self.analyzeContractTx(*txinfo, a, customABIs, result)
+			self.analyzeContractTx(*txinfo, a, customABIs, result, network)
 		}
 	}
 	// fmt.Printf("=========================================================================================================================\n")
