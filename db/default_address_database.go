@@ -1,4 +1,4 @@
-package txanalyzer
+package db
 
 import (
 	"encoding/json"
@@ -34,13 +34,9 @@ type tokens []struct {
 }
 
 func registerTokens(db *DefaultAddressDatabase) error {
-	ts := tokens{}
-	err := json.Unmarshal([]byte(tokenJson), &ts)
-	if err != nil {
-		return err
-	}
-	for _, t := range ts {
-		db.Register(t.Address, t.Symbol)
+	tokens := AllTokenAddresses()
+	for addr, symbol := range tokens {
+		db.Register(addr, symbol)
 	}
 	return nil
 }

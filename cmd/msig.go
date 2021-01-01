@@ -9,8 +9,10 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
+	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -79,49 +81,6 @@ var summaryMsigCmd = &cobra.Command{
 	},
 }
 
-func showMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) {
-	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
-	if err != nil {
-		fmt.Printf("Jarvis: Can't get tx info: %s\n", err)
-		return
-	}
-	fmt.Printf("Sending: %f ETH to %s\n", ethutils.BigToFloat(value, 18), util.VerboseAddress(address, config.Network))
-	if len(data) != 0 {
-		fmt.Printf("Calling on %s:\n", util.VerboseAddress(address, config.Network))
-		var destAbi *abi.ABI
-
-		if config.ForceERC20ABI {
-			destAbi, err = ethutils.GetERC20ABI()
-		} else if config.CustomABI != "" {
-			destAbi, err = util.ReadCustomABI(address, config.CustomABI, config.Network)
-		} else {
-			destAbi, err = util.GetABI(address, config.Network)
-		}
-		if err != nil {
-			fmt.Printf("Couldn't get abi of destination address: %s\n", err)
-			return
-		}
-
-		analyzer, err := util.EthAnalyzer(config.Network)
-		if err != nil {
-			fmt.Printf("Couldn't analyze tx: %s\n", err)
-			return
-		}
-		util.AnalyzeMethodCallAndPrint(analyzer, destAbi, data, config.Network)
-	}
-
-	fmt.Printf("\nExecuted: %t\n", executed)
-	fmt.Printf("Confirmations (among current owners):\n")
-	for i, c := range confirmations {
-		_, name, err := util.GetMatchingAddress(c)
-		if err != nil {
-			fmt.Printf("%d. %s (Unknown)\n", i+1, c)
-		} else {
-			fmt.Printf("%d. %s (%s)\n", i+1, c, name)
-		}
-	}
-}
-
 var transactionInfoMsigCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Print all information about a multisig init",
@@ -153,7 +112,7 @@ var transactionInfoMsigCmd = &cobra.Command{
 			return
 		}
 
-		showMsigTxInfo(multisigContract, txid)
+		cmdutil.AnalyzeAndShowMsigTxInfo(multisigContract, txid)
 	},
 }
 
@@ -243,123 +202,13 @@ func getMsigContractFromParams(args []string) (msigAddress string, err error) {
 	return msigAddress, nil
 }
 
-func handleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args []string) {
-	reader, err := util.EthReader(config.Network)
-	if err != nil {
-		fmt.Printf("Couldn't connect to blockchain.\n")
-		return
-	}
-
-	var txid *big.Int
-
-	if config.Tx == "" {
-		txs := util.ScanForTxs(args[1])
-		if len(txs) == 0 {
-			txid, err = util.ParamToBigInt(args[1])
-			if err != nil {
-				fmt.Printf("Invalid second param. It must be either init tx hash or tx id.\n")
-				return
-			}
-		} else {
-			config.Tx = txs[0]
-		}
-	}
-
-	if txid == nil {
-		if config.TxInfo == nil {
-			txinfo, err := reader.TxInfoFromHash(config.Tx)
-			if err != nil {
-				fmt.Printf("Couldn't get tx info from the blockchain: %s\n", err)
-				return
-			}
-			config.TxInfo = &txinfo
-		}
-		if config.TxInfo.Receipt == nil {
-			fmt.Printf("Can't get receipt of the init tx. That tx might still be pending.\n")
-			return
-		}
-		for _, l := range config.TxInfo.Receipt.Logs {
-			if strings.ToLower(l.Address.Hex()) == strings.ToLower(config.To) &&
-				l.Topics[0].Hex() == "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51" {
-
-				txid = l.Topics[1].Big()
-				break
-			}
-		}
-		if txid == nil {
-			fmt.Printf("The provided tx hash is not a gnosis multisig init tx or with a different multisig.\n")
-			return
-		}
-	}
-
-	multisigContract, err := msig.NewMultisigContract(
-		config.To,
-		config.Network,
-	)
-	if err != nil {
-		fmt.Printf("Couldn't interact with the contract: %s\n", err)
-		return
-	}
-
-	showMsigTxInfo(multisigContract, txid)
-	// TODO: support multiple txs?
-
-	var a *abi.ABI
-	if config.ForceERC20ABI {
-		a, err = ethutils.GetERC20ABI()
-	} else if config.CustomABI != "" {
-		a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network)
-	} else {
-		a, err = util.GetABI(config.To, config.Network)
-	}
-	if err != nil {
-		fmt.Printf("Couldn't get the ABI: %s\n", err)
-		return
-	}
-
-	data, err := a.Pack(method, txid)
-	if err != nil {
-		fmt.Printf("Couldn't pack data: %s\n", err)
-		return
-	}
-
-	// var GasLimit uint64
-	if config.GasLimit == 0 {
-		config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
-		if err != nil {
-			fmt.Printf("Couldn't estimate gas limit: %s\n", err)
-			return
-		}
-	}
-
-	tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
-
-	err = promptTxConfirmation(config.From, tx)
-	if err != nil {
-		fmt.Printf("Aborted!\n")
-		return
-	}
-
-	fmt.Printf("== Unlock your wallet and sign now...\n")
-	account, err := accounts.UnlockAccount(config.FromAcc, config.Network)
-	if err != nil {
-		fmt.Printf("Failed: %s\n", err)
-		return
-	}
-	tx, broadcasted, err := account.SignTxAndBroadcast(tx)
-	util.DisplayWaitAnalyze(
-		reader, tx, broadcasted, err, config.Network,
-		config.ForceERC20ABI, config.CustomABI,
-	)
-}
-
 var revokeMsigCmd = &cobra.Command{
 	Use:               "revoke",
 	Short:             "Revoke gnosis transaction",
 	Long:              ``,
-	PersistentPreRunE: CommonTxPreprocess,
+	PersistentPreRunE: cmdutil.CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		handleApproveOrRevokeOrExecuteMsig("revokeConfirmation", cmd, args)
+		cmdutil.HandleApproveOrRevokeOrExecuteMsig("revokeConfirmation", cmd, args, nil)
 	},
 }
 
@@ -367,9 +216,9 @@ var executeMsigCmd = &cobra.Command{
 	Use:               "execute",
 	Short:             "Execute a confirmed gnosis transaction",
 	Long:              ``,
-	PersistentPreRunE: CommonTxPreprocess,
+	PersistentPreRunE: cmdutil.CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		handleApproveOrRevokeOrExecuteMsig("executeTransaction", cmd, args)
+		cmdutil.HandleApproveOrRevokeOrExecuteMsig("executeTransaction", cmd, args, nil)
 	},
 }
 
@@ -377,9 +226,9 @@ var approveMsigCmd = &cobra.Command{
 	Use:               "approve",
 	Short:             "Approve gnosis transaction",
 	Long:              ``,
-	PersistentPreRunE: CommonTxPreprocess,
+	PersistentPreRunE: cmdutil.CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		handleApproveOrRevokeOrExecuteMsig("confirmTransaction", cmd, args)
+		cmdutil.HandleApproveOrRevokeOrExecuteMsig("confirmTransaction", cmd, args, nil)
 	},
 }
 
@@ -388,7 +237,7 @@ var initMsigCmd = &cobra.Command{
 	Short: "Init gnosis transaction",
 	Long:  ``,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		CommonTxPreprocess(cmd, args)
+		cmdutil.CommonTxPreprocess(cmd, args)
 
 		if config.MsigValue < 0 {
 			return fmt.Errorf("multisig value can't be negative")
@@ -409,20 +258,37 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 
-		data, err := promptTxData(config.MsigTo, config.PrefillParams, config.ForceERC20ABI, config.CustomABI)
+		analyzer := txanalyzer.NewGenericAnalyzer(reader)
+
+		a, err := util.ConfigToABI(config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network)
+		if err != nil {
+			fmt.Printf("Couldn't get abi for %s: %s\n", config.MsigTo, err)
+			return
+		}
+
+		data, err := util.PromptTxData(
+			analyzer,
+			config.MsigTo,
+			config.MethodIndex,
+			config.PrefillParams,
+			config.PrefillMode,
+			a,
+			nil,
+			config.Network,
+		)
 		if err != nil {
 			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
 			fmt.Printf("Continue with EMPTY CALLING DATA\n")
 			data = []byte{}
 		}
 
-		a, err := util.GetABI(config.To, config.Network)
+		msigABI, err := util.GetABI(config.To, config.Network)
 		if err != nil {
 			fmt.Printf("Couldn't get the multisig's ABI: %s\n", err)
 			return
 		}
 
-		txdata, err := a.Pack(
+		txdata, err := msigABI.Pack(
 			"submitTransaction",
 			ethutils.HexToAddress(config.MsigTo),
 			ethutils.FloatToBigInt(config.MsigValue, 18),
@@ -444,7 +310,18 @@ var initMsigCmd = &cobra.Command{
 
 		tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
 
-		err = promptTxConfirmation(config.From, tx)
+		customABIs := map[string]*abi.ABI{
+			strings.ToLower(config.MsigTo): a,
+		}
+		err = util.PromptTxConfirmation(
+			analyzer,
+			util.GetJarvisAddress(config.From, config.Network),
+			util.GetJarvisAddress(config.To, config.Network),
+			tx,
+			msigABI,
+			customABIs,
+			config.Network,
+		)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
 			return
@@ -457,10 +334,16 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 		tx, broadcasted, err := account.SignTxAndBroadcast(tx)
-		util.DisplayWaitAnalyze(
-			reader, tx, broadcasted, err, config.Network,
-			config.ForceERC20ABI, config.CustomABI,
-		)
+		if config.DontWaitToBeMined {
+			util.DisplayBroadcastedTx(
+				tx, broadcasted, err, config.Network,
+			)
+		} else {
+			util.DisplayWaitAnalyze(
+				reader, analyzer, tx, broadcasted, err, config.Network,
+				msigABI, customABIs,
+			)
+		}
 	},
 }
 
@@ -497,6 +380,7 @@ func init() {
 		c.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
 		c.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 		c.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
+		c.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	}
 
 	msigCmd.AddCommand(approveMsigCmd)

@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -9,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -22,8 +24,8 @@ import (
 	"github.com/tranvictor/ethutils/monitor"
 	"github.com/tranvictor/ethutils/reader"
 	bleve "github.com/tranvictor/jarvis/bleve"
+	. "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
-	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util/cache"
 )
 
@@ -55,6 +57,16 @@ func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Durati
 		return time.Duration(uint64(time.Second) * (to - from) * 3)
 	}
 	panic("unsupported network")
+}
+
+func GetExactAddressFromDatabases(str string) (addrs []string, names []string, scores []int) {
+	addrDescs1, scores1 := bleve.GetAddresses(str)
+	for i, addr := range addrDescs1 {
+		addrs = append(addrs, addr.Address)
+		names = append(names, addr.Desc)
+		scores = append(scores, scores1[i])
+	}
+	return addrs, names, scores
 }
 
 func getRelevantAddressesFromDatabases(str string) (addrs []string, names []string, scores []int) {
@@ -105,6 +117,14 @@ func GetAddressFromString(str string) (addr string, name string, err error) {
 		addr = addresses[0]
 	}
 	return addr, name, nil
+}
+
+func StringToBigInt(str string) (*big.Int, error) {
+	result, success := big.NewInt(0).SetString(str, 10)
+	if !success {
+		return nil, fmt.Errorf("parsed %s to big int failed", str)
+	}
+	return result, nil
 }
 
 func ParamToBigInt(param string) (*big.Int, error) {
@@ -196,7 +216,15 @@ func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, net
 	}
 }
 
-func DisplayWaitAnalyze(reader *reader.EthReader, t *types.Transaction, broadcasted bool, err error, network string, forceERC20ABI bool, customABI string) {
+func DisplayWaitAnalyze(
+	reader *reader.EthReader,
+	analyzer TxAnalyzer,
+	t *types.Transaction,
+	broadcasted bool,
+	err error,
+	network string,
+	a *abi.ABI,
+	customABIs map[string]*abi.ABI) {
 	if !broadcasted {
 		fmt.Printf("couldn't broadcast tx:\n")
 		fmt.Printf("error on nodes: %v\n", err)
@@ -209,13 +237,69 @@ func DisplayWaitAnalyze(reader *reader.EthReader, t *types.Transaction, broadcas
 			return
 		}
 		mo.BlockingWait(t.Hash().Hex())
-		analyzer, err := EthAnalyzer(network)
-		if err != nil {
-			fmt.Printf("Couldn't analyze the tx: %s\n", err)
-			return
-		}
-		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, forceERC20ABI, customABI)
+		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, false, "", a, customABIs)
 	}
+}
+
+func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, abi *abi.ABI, data []byte, customABIs map[string]*abi.ABI, network string) (method string, params []ParamResult, gnosisResult *GnosisResult, err error) {
+	method, params, gnosisResult, err = analyzer.AnalyzeMethodCall(abi, data, customABIs)
+	if err != nil {
+		fmt.Printf("Couldn't analyze method call: %s\n", err)
+		return
+	}
+	fmt.Printf("  Method: %s\n", method)
+	fmt.Printf("  Params:\n")
+	for _, param := range params {
+		fmt.Printf("    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
+	}
+	if gnosisResult != nil {
+		PrintGnosis(gnosisResult)
+	}
+	return
+}
+
+func AnalyzeAndPrint(
+	reader *reader.EthReader,
+	analyzer TxAnalyzer,
+	tx string,
+	network string,
+	forceERC20ABI bool,
+	customABI string,
+	a *abi.ABI,
+	customABIs map[string]*abi.ABI) *TxResult {
+
+	txinfo, err := reader.TxInfoFromHash(tx)
+	if err != nil {
+		fmt.Printf("getting tx info failed: %s", err)
+		return nil
+	}
+
+	contractAddress := txinfo.Tx.To().Hex()
+
+	code, err := reader.GetCode(contractAddress)
+	if err != nil {
+		fmt.Printf("checking tx type failed: %s", err)
+		return nil
+	}
+	isContract := len(code) > 0
+
+	var result *TxResult
+
+	if isContract {
+		if a == nil {
+			a, err = ConfigToABI(contractAddress, forceERC20ABI, customABI, network)
+			if err != nil {
+				fmt.Printf("Couldn't get abi for %s: %s\n", contractAddress, err)
+				return nil
+			}
+		}
+		result = analyzer.AnalyzeOffline(&txinfo, a, customABIs, true, network)
+	} else {
+		result = analyzer.AnalyzeOffline(&txinfo, nil, nil, false, network)
+	}
+
+	PrintTxDetails(result, os.Stdout)
+	return result
 }
 
 func EthTxMonitor(network string) (*monitor.TxMonitor, error) {
@@ -224,14 +308,6 @@ func EthTxMonitor(network string) (*monitor.TxMonitor, error) {
 		return nil, err
 	}
 	return monitor.NewGenericTxMonitor(r), nil
-}
-
-func EthAnalyzer(network string) (*txanalyzer.TxAnalyzer, error) {
-	r, err := EthReader(network)
-	if err != nil {
-		return nil, err
-	}
-	return txanalyzer.NewGenericAnalyzer(r), nil
 }
 
 func GetNodes(network string) (map[string]string, error) {
@@ -349,20 +425,20 @@ func IsERC20(addr string, network string) (bool, error) {
 	return isERC20, nil
 }
 
-func ReadableNumber(value string) string {
-	digits := []string{}
-	for i, _ := range value {
-		digits = append([]string{string(value[len(value)-1-i])}, digits...)
-		if (i+1)%3 == 0 && i < len(value)-1 {
-			if (i+1)%9 == 0 {
-				digits = append([]string{"‸"}, digits...)
-			} else {
-				digits = append([]string{"￺"}, digits...)
-			}
-		}
-	}
-	return fmt.Sprintf("%s (%s)", value, strings.Join(digits, ""))
-}
+// func ReadableNumber(value string) string {
+// 	digits := []string{}
+// 	for i, _ := range value {
+// 		digits = append([]string{string(value[len(value)-1-i])}, digits...)
+// 		if (i+1)%3 == 0 && i < len(value)-1 {
+// 			if (i+1)%9 == 0 {
+// 				digits = append([]string{"‸"}, digits...)
+// 			} else {
+// 				digits = append([]string{"￺"}, digits...)
+// 			}
+// 		}
+// 	}
+// 	return fmt.Sprintf("%s (%s)", value, strings.Join(digits, ""))
+// }
 
 func isRealAddress(value string) bool {
 	valueBig, isHex := big.NewInt(0).SetString(value, 0)
@@ -377,49 +453,26 @@ func isRealAddress(value string) bool {
 	return true
 }
 
-func verboseValue(value string, network string) string {
+func GetJarvisValue(value string, network string) Value {
 	valueBig, isHex := big.NewInt(0).SetString(value, 0)
 	if !isHex {
-		return value
+		return Value{value, "string", nil}
 	}
 
 	// if it is not a real address
 	if !isRealAddress(value) {
-		// if this is a hex, it is likely to be a byte data so don't display
-		// in readable number
-		if len(value) >= 2 && value[0:2] == "0x" {
-			return value
-		}
-		// otherwise, it is a number then return it in a readable format
-		return ReadableNumber(value)
+		return Value{value, "bytes", nil}
 	}
-	return VerboseAddress(common.BigToAddress(valueBig).Hex(), network)
-}
 
-func VerboseValues(values []string, network string) []string {
-	result := []string{}
-	for _, value := range values {
-		result = append(result, verboseValue(value, network))
-	}
-	return result
-}
-
-func DisplayValues(values []string, network string) string {
-	verboseValues := VerboseValues(values, network)
-	if len(verboseValues) == 0 {
-		return ""
-	} else if len(verboseValues) == 1 {
-		return verboseValues[0]
-	} else {
-		parts := []string{}
-		for i, value := range values {
-			parts = append(parts, fmt.Sprintf("%d. %s", i+1, verboseValue(value, network)))
-		}
-		return strings.Join(parts, "\n")
+	addr := GetJarvisAddress(common.BigToAddress(valueBig).Hex(), network)
+	return Value{
+		common.BigToAddress(valueBig).Hex(),
+		"address",
+		&addr,
 	}
 }
 
-func VerboseAddress(addr string, network string) string {
+func GetJarvisAddress(addr string, network string) Address {
 	var decimal int64
 	var erc20Detected bool
 
@@ -429,15 +482,25 @@ func VerboseAddress(addr string, network string) string {
 		decimal, erc20Detected = cache.GetInt64Cache(cacheKey)
 	}
 
-	addr, name, err := getRelevantAddressFromDatabases(addr)
+	addr, name, err := GetAddressFromString(addr)
 	if err != nil {
-		return fmt.Sprintf("%s (Unknown)", addr)
+		return Address{
+			Address: addr,
+			Desc:    "Unknown",
+		}
 	}
 
 	if erc20Detected {
-		return fmt.Sprintf("%s (%s)", addr, nameWithColor(fmt.Sprintf("%s - %d", name, decimal)))
+		return Address{
+			Address: addr,
+			Desc:    name,
+			Decimal: decimal,
+		}
 	} else {
-		return fmt.Sprintf("%s (%s)", addr, nameWithColor(name))
+		return Address{
+			Address: addr,
+			Desc:    name,
+		}
 	}
 }
 
@@ -480,11 +543,7 @@ func isHttpURL(path string) bool {
 
 func ReadCustomABIString(addr string, pathOrAddress string, network string) (str string, err error) {
 	if isRealAddress(pathOrAddress) {
-		reader, err := EthReader(network)
-		if err != nil {
-			return "", err
-		}
-		str, err = reader.GetABIString(pathOrAddress)
+		return GetABIString(pathOrAddress, network)
 	} else if isHttpURL(pathOrAddress) {
 		str, err = GetABIStringFromURL(pathOrAddress)
 	} else if str, err = GetABIStringFromFile(pathOrAddress); err != nil {
@@ -493,6 +552,23 @@ func ReadCustomABIString(addr string, pathOrAddress string, network string) (str
 	}
 
 	return str, err
+}
+
+type coingeckopriceresponse map[string]map[string]float64
+
+func GetCoinGeckoRateInUSD(token string) (float64, error) {
+	resp, err := http.Get(fmt.Sprintf("https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=%s&vs_currencies=USD&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false", token))
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	priceres := coingeckopriceresponse{}
+	err = json.Unmarshal(body, &priceres)
+	if err != nil {
+		return 0, err
+	}
+	return priceres[strings.ToLower(token)]["usd"], nil
 }
 
 func ReadCustomABI(addr string, pathOrAddress string, network string) (a *abi.ABI, err error) {
@@ -537,23 +613,43 @@ func GetABIFromString(abiStr string) (*abi.ABI, error) {
 	return &result, err
 }
 
-func GetABI(addr string, network string) (*abi.ABI, error) {
+func GetABIString(addr string, network string) (string, error) {
 	cacheKey := fmt.Sprintf("%s_abi", addr)
 	cached, found := cache.GetCache(cacheKey)
 	if found {
-		result, err := GetABIFromString(cached)
-		if err != nil {
-			return nil, err
-		}
-		return result, nil
+		return cached, nil
 	}
 
 	// not found from cache, getting from etherscan or equivalent websites
 	reader, err := EthReader(network)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	abiStr, err := reader.GetABIString(addr)
+	if err != nil {
+		return "", err
+	}
+
+	cache.SetCache(
+		cacheKey,
+		abiStr,
+	)
+	fmt.Printf("Stored %s abi to cache.\n", addr)
+	return abiStr, nil
+}
+
+func ConfigToABI(address string, forceERC20ABI bool, customABI string, network string) (*abi.ABI, error) {
+	if forceERC20ABI {
+		return ethutils.GetERC20ABI()
+	}
+	if customABI != "" {
+		return ReadCustomABI(address, customABI, network)
+	}
+	return GetABI(address, network)
+}
+
+func GetABI(addr string, network string) (*abi.ABI, error) {
+	abiStr, err := GetABIString(addr, network)
 	if err != nil {
 		return nil, err
 	}
@@ -563,11 +659,6 @@ func GetABI(addr string, network string) (*abi.ABI, error) {
 		return nil, err
 	}
 
-	cache.SetCache(
-		cacheKey,
-		abiStr,
-	)
-	fmt.Printf("Stored %s abi to cache.\n", addr)
 	return result, nil
 }
 
@@ -590,4 +681,15 @@ func IsGnosisMultisig(a *abi.ABI) (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+func AllZeroParamFunctions(a *abi.ABI) []abi.Method {
+	methods := []abi.Method{}
+	for _, m := range a.Methods {
+		if m.IsConstant() && len(m.Inputs) == 0 {
+			methods = append(methods, m)
+		}
+	}
+	sort.Sort(orderedMethods(methods))
+	return methods
 }

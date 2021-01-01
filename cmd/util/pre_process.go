@@ -1,4 +1,4 @@
-package cmd
+package util
 
 import (
 	"fmt"
@@ -50,7 +50,6 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 		config.To = config.TxInfo.Tx.To().Hex()
 	}
 
-	fmt.Printf("To address: %s\n", util.VerboseAddress(config.To, config.Network))
 	return nil
 }
 
@@ -64,8 +63,6 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	}
 
 	a, err := util.GetABI(config.To, config.Network)
-	fmt.Printf("getting abi error: %s\n", err)
-	fmt.Printf("custom abi: %s\n", config.CustomABI)
 	if err != nil {
 		if config.ForceERC20ABI {
 			a, err = ethutils.GetERC20ABI()
@@ -127,7 +124,6 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-	fmt.Printf("Network: %s\n", config.Network)
 	reader, err := util.EthReader(config.Network)
 	if err != nil {
 		return err

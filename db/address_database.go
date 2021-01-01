@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/sahilm/fuzzy"
-	"github.com/tranvictor/jarvis/txanalyzer"
 )
 
 func getAddressMatches(input string, source FuzzySource) ([]AddressDesc, []int) {
@@ -55,7 +54,7 @@ func AllTokenAddresses() map[string]string {
 }
 
 func AllAddresses() map[string]string {
-	addrs := txanalyzer.NewDefaultAddressDatabase().Data
+	addrs := NewDefaultAddressDatabase().Data
 	tokenAddrs := AllTokenAddresses()
 	result := map[string]string{}
 	for addr, desc := range tokenAddrs {

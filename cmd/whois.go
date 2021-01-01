@@ -20,12 +20,12 @@ var whoisCmd = &cobra.Command{
 			fmt.Printf("Couldn't find any addresses in the params\n")
 		} else {
 			for _, address := range addresses {
-				addr, name, err := util.GetMatchingAddress(address)
-				if err != nil {
-					fmt.Printf("%s: %s\n", addr, "not found")
+				addrs, names, _ := util.GetExactAddressFromDatabases(address)
+				if len(addrs) == 0 {
+					fmt.Printf("%s: %s\n", address, "not found")
 					continue
 				}
-				fmt.Printf("%s: %s\n", addr, name)
+				fmt.Printf("%s: %s\n", addrs[0], names[0])
 			}
 		}
 	},

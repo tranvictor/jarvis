@@ -12,6 +12,7 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -45,11 +46,29 @@ func handleSend(
 		return
 	}
 
+	analyzer := txanalyzer.NewGenericAnalyzer(reader)
+
 	if tokenAddr == util.ETH_ADDR {
+		var amountWei *big.Int
+		if amount == -1 {
+			ethBalance, err := reader.GetBalance(config.From)
+			if err != nil {
+				fmt.Printf("getting eth balance failed: %s\n", err)
+				return
+			}
+			gasCost := big.NewInt(0).Mul(
+				big.NewInt(int64(config.GasLimit)),
+				ethutils.FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
+			)
+			amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
+		} else {
+			amountWei = ethutils.FloatToBigInt(amount, 18)
+		}
 		t, broadcasted, errors = account.SendETHWithNonceAndPrice(
 			config.Nonce,
+			config.GasLimit,
 			config.GasPrice+config.ExtraGasPrice,
-			ethutils.FloatToBigInt(amount, 18),
+			amountWei,
 			to,
 		)
 	} else {
@@ -88,9 +107,15 @@ func handleSend(
 			)
 		}
 	}
+
+	a, err := ethutils.GetERC20ABI()
+	if err != nil {
+		fmt.Printf("Couldn't get erc20 abi: %s\n", err)
+		return
+	}
 	util.DisplayWaitAnalyze(
-		reader, t, broadcasted, errors, config.Network,
-		config.ForceERC20ABI, config.CustomABI,
+		reader, analyzer, t, broadcasted, errors, config.Network,
+		a, nil,
 	)
 }
 
@@ -201,9 +226,30 @@ exact addresses start with 0x.`,
 			// var GasLimit uint64
 			if config.GasLimit == 0 {
 				if tokenAddr == util.ETH_ADDR {
-					config.GasLimit, err = reader.EstimateGas(config.From, to, config.GasPrice+config.ExtraGasPrice, amount, []byte{})
-					if err != nil {
-						return err
+					if amount == -1 {
+						config.GasLimit, err = reader.EstimateExactGas(config.From, to, config.GasPrice+config.ExtraGasPrice, big.NewInt(1), []byte{})
+						if err != nil {
+							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
+							return err
+						}
+						ethBalance, err := reader.GetBalance(config.From)
+						fmt.Printf("eth balance   : %10s\n", ethBalance)
+						if err != nil {
+							return err
+						}
+						gasCost := big.NewInt(0).Mul(
+							big.NewInt(int64(config.GasLimit)),
+							ethutils.FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
+						)
+						fmt.Printf("gas cost      : %10s\n", gasCost)
+						amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
+						fmt.Printf("amount to send: %10s\n", amountWei)
+					} else {
+						config.GasLimit, err = reader.EstimateExactGas(config.From, to, config.GasPrice+config.ExtraGasPrice, amountWei, []byte{})
+						if err != nil {
+							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
+							return err
+						}
 					}
 				} else {
 					var data []byte
@@ -287,6 +333,7 @@ exact addresses start with 0x.`,
 	// sendCmd.PersistentFlags().Uint64VarP(&ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
 	sendCmd.PersistentFlags().Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
 	sendCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
+	sendCmd.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
 	sendCmd.Flags().StringVarP(&to, "to", "t", "", "Account to send eth to. It can be ethereum address or a hint string to look it up in the address database. See jarvis addr for all of the known addresses")
 	sendCmd.Flags().StringVarP(&value, "amount", "v", "0", "Amount of eth to send. It is in eth/token value, not wei/twei. If a float number is passed, it will be interpreted as ETH, otherwise, it must be in the form of `float|ALL address` or `float|ALL name`. In the later case, `name` will be used to look for the token address. Eg. 0.01, 0.01 knc, 0.01 0xdd974d5c2e2928dea5f71b9825b8b646686bd200, ALL KNC are valid values.")
 	sendCmd.MarkFlagRequired("to")

@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
+	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -113,7 +114,7 @@ func PrintStakeInformation(cmd *cobra.Command, info *StakeRelatedInfo) {
 		return
 	}
 
-	cmd.Printf("Staker: %s\n", util.VerboseAddress(info.Staker, config.Network))
+	cmd.Printf("Staker: %s\n", VerboseAddress(util.GetJarvisAddress(info.Staker, config.Network)))
 	stakef := ethutils.BigToFloat(info.Stake, 18)
 	cmd.Printf("Your stake: %f KNC (%s)\n", stakef, info.Stake)
 
@@ -126,13 +127,13 @@ func PrintStakeInformation(cmd *cobra.Command, info *StakeRelatedInfo) {
 	if strings.ToLower(info.Staker) == strings.ToLower(info.Representative) {
 		cmd.Printf("Your representative: None\n")
 	} else {
-		cmd.Printf("Your representative: %s (Contact him to get your reward if you have some)\n", util.VerboseAddress(info.Representative, config.Network))
+		cmd.Printf("Your representative: %s (Contact him to get your reward if you have some)\n", VerboseAddress(util.GetJarvisAddress(info.Representative, config.Network)))
 	}
 
 	if info.PendingRepresentative == "" {
 		cmd.Printf("Your pending representative: None\n")
 	} else {
-		cmd.Printf("Your pending representative: %s\n", util.VerboseAddress(info.PendingRepresentative, config.Network))
+		cmd.Printf("Your pending representative: %s\n", VerboseAddress(util.GetJarvisAddress(info.PendingRepresentative, config.Network)))
 	}
 	cmd.Printf("Stake other people delegated to you: %f KNC\n", ethutils.BigToFloat(info.DelegatedStake, 18))
 }
