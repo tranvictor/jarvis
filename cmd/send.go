@@ -49,10 +49,26 @@ func handleSend(
 	analyzer := txanalyzer.NewGenericAnalyzer(reader)
 
 	if tokenAddr == util.ETH_ADDR {
+		var amountWei *big.Int
+		if amount == -1 {
+			ethBalance, err := reader.GetBalance(config.From)
+			if err != nil {
+				fmt.Printf("getting eth balance failed: %s\n", err)
+				return
+			}
+			gasCost := big.NewInt(0).Mul(
+				big.NewInt(int64(config.GasLimit)),
+				ethutils.FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
+			)
+			amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
+		} else {
+			amountWei = ethutils.FloatToBigInt(amount, 18)
+		}
 		t, broadcasted, errors = account.SendETHWithNonceAndPrice(
 			config.Nonce,
+			config.GasLimit,
 			config.GasPrice+config.ExtraGasPrice,
-			ethutils.FloatToBigInt(amount, 18),
+			amountWei,
 			to,
 		)
 	} else {
@@ -210,9 +226,30 @@ exact addresses start with 0x.`,
 			// var GasLimit uint64
 			if config.GasLimit == 0 {
 				if tokenAddr == util.ETH_ADDR {
-					config.GasLimit, err = reader.EstimateGas(config.From, to, config.GasPrice+config.ExtraGasPrice, amount, []byte{})
-					if err != nil {
-						return err
+					if amount == -1 {
+						config.GasLimit, err = reader.EstimateExactGas(config.From, to, config.GasPrice+config.ExtraGasPrice, big.NewInt(1), []byte{})
+						if err != nil {
+							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
+							return err
+						}
+						ethBalance, err := reader.GetBalance(config.From)
+						fmt.Printf("eth balance   : %10s\n", ethBalance)
+						if err != nil {
+							return err
+						}
+						gasCost := big.NewInt(0).Mul(
+							big.NewInt(int64(config.GasLimit)),
+							ethutils.FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
+						)
+						fmt.Printf("gas cost      : %10s\n", gasCost)
+						amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
+						fmt.Printf("amount to send: %10s\n", amountWei)
+					} else {
+						config.GasLimit, err = reader.EstimateExactGas(config.From, to, config.GasPrice+config.ExtraGasPrice, amountWei, []byte{})
+						if err != nil {
+							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
+							return err
+						}
 					}
 				} else {
 					var data []byte
