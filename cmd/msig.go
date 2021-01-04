@@ -360,7 +360,7 @@ func init() {
 	msigCmd.AddCommand(transactionInfoMsigCmd)
 	msigCmd.AddCommand(govInfoMsigCmd)
 
-	initMsigCmd.Flags().Float64VarP(&config.MsigValue, "msig-value", "l", 0, "Amount of eth to send with the multisig. It is in ETH, not WEI.")
+	initMsigCmd.Flags().Float64VarP(&config.MsigValue, "msig-value", "V", 0, "Amount of eth to send with the multisig. It is in ETH, not WEI.")
 	initMsigCmd.Flags().StringVarP(&config.MsigTo, "msig-to", "j", "", "Target address the multisig will interact with. Can be address or name.")
 	initMsigCmd.Flags().Uint64VarP(&config.MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
 	initMsigCmd.Flags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
