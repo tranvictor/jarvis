@@ -262,24 +262,26 @@ var initMsigCmd = &cobra.Command{
 
 		a, err := util.ConfigToABI(config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network)
 		if err != nil {
-			fmt.Printf("Couldn't get abi for %s: %s\n", config.MsigTo, err)
-			return
+			fmt.Printf("Couldn't get abi for %s: %s. Continue:\n", config.MsigTo, err)
 		}
 
-		data, err := util.PromptTxData(
-			analyzer,
-			config.MsigTo,
-			config.MethodIndex,
-			config.PrefillParams,
-			config.PrefillMode,
-			a,
-			nil,
-			config.Network,
-		)
-		if err != nil {
-			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
-			fmt.Printf("Continue with EMPTY CALLING DATA\n")
-			data = []byte{}
+		data := []byte{}
+		if a != nil {
+			data, err = util.PromptTxData(
+				analyzer,
+				config.MsigTo,
+				config.MethodIndex,
+				config.PrefillParams,
+				config.PrefillMode,
+				a,
+				nil,
+				config.Network,
+			)
+			if err != nil {
+				fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
+				fmt.Printf("Continue with EMPTY CALLING DATA\n")
+				data = []byte{}
+			}
 		}
 
 		msigABI, err := util.GetABI(config.To, config.Network)
