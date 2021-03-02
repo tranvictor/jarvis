@@ -56,6 +56,14 @@ func (self *KyberDAO) GetPoolMaster(s string, e uint64) (common.Address, error) 
 	return res, err
 }
 
+func (self *KyberDAO) GetPendingDelegatedStake(s string) (*big.Int, error) {
+	var res *big.Int
+	err := self.reader.ReadContract(&res, self.staking, "getLatestDelegatedStake",
+		ethutils.HexToAddress(s),
+	)
+	return res, err
+}
+
 func (self *KyberDAO) GetDelegatedStake(s string, e uint64) (*big.Int, error) {
 	var res *big.Int
 	err := self.reader.ReadContract(&res, self.staking, "getDelegatedStake",
@@ -189,6 +197,7 @@ type StakeRelatedInfo struct {
 	Representative        string
 	PendingRepresentative string
 	DelegatedStake        *big.Int
+	PendingDelegatedStake *big.Int
 }
 
 func (self *KyberDAO) AllStakeRelatedInfo(s string, e uint64) (info *StakeRelatedInfo, err error) {
@@ -204,6 +213,7 @@ func (self *KyberDAO) AllStakeRelatedInfo(s string, e uint64) (info *StakeRelate
 		Representative:        "",
 		PendingRepresentative: "",
 		DelegatedStake:        nil,
+		PendingDelegatedStake: nil,
 	}
 
 	if info.CurrentEpoch, err = self.CurrentEpoch(); err != nil {
@@ -252,6 +262,10 @@ func (self *KyberDAO) AllStakeRelatedInfo(s string, e uint64) (info *StakeRelate
 	}
 	if info.DelegatedStake, err = self.GetDelegatedStake(s, info.Epoch); err != nil {
 		err = fmt.Errorf("Couldn't get delegated stake of %s at epoch %d: %w", s, info.Epoch, err)
+		return
+	}
+	if info.PendingDelegatedStake, err = self.GetPendingDelegatedStake(s); err != nil {
+		err = fmt.Errorf("Couldn't get pending delegated stake of %s of recent epoch: %w", s, err)
 		return
 	}
 	return

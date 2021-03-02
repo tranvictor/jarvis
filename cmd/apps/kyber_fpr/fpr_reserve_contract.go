@@ -180,9 +180,9 @@ func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (nu
 	return numSellStepsX, sellXs, numSellStepsY, sellYs, numBuyStepsX, buyXs, numBuyStepsY, buyYs, nil
 }
 
-func (self *FPRReserveContract) DisplayStepFunctionData(token string) error {
+func (self *FPRReserveContract) DisplayStepFunctionData(token string, price float64) error {
 	fmt.Printf("\nImbalance step functions:\n")
-	return self.DisplayImbalanceStepFunc(token)
+	return self.DisplayImbalanceStepFunc(token, price)
 	// if err != nil {
 	// 	return err
 	// }
@@ -190,13 +190,13 @@ func (self *FPRReserveContract) DisplayStepFunctionData(token string) error {
 	// return self.DisplayQtyStepFunc(token)
 }
 
-func (self *FPRReserveContract) DisplayImbalanceStepFunc(token string) error {
+func (self *FPRReserveContract) DisplayImbalanceStepFunc(token string, price float64) error {
 	numSellStepsX, sellXs, numSellStepsY, sellYs, numBuyStepsX, buyXs, numBuyStepsY, buyYs, err := self.QueryImbalanceStepFunc(ethutils.HexToAddress(token))
 	if err != nil {
 		return err
 	}
-	// 	fmt.Printf("token qty (token)      : ")
-	fmt.Printf("imb  :  ")
+	// displaying imbalance in token
+	fmt.Printf("imb($): ")
 	fmt.Printf("%5s|", "-INF")
 	for i := 0; i < numSellStepsX; i++ {
 		fmt.Printf("%10.1f|", sellXs[i])
@@ -206,6 +206,19 @@ func (self *FPRReserveContract) DisplayImbalanceStepFunc(token string) error {
 		fmt.Printf("%10.1f|", buyXs[i])
 	}
 	fmt.Printf("%10s", "+INF")
+	// displaying imbalance in USD
+	fmt.Printf("\n")
+	fmt.Printf("imb  :  ")
+	fmt.Printf("%5s|", "-INF")
+	for i := 0; i < numSellStepsX; i++ {
+		fmt.Printf("%10.1f|", sellXs[i]*price)
+	}
+	fmt.Printf("%10.1f|", 0.0)
+	for i := 0; i < numBuyStepsX; i++ {
+		fmt.Printf("%10.1f|", buyXs[i]*price)
+	}
+	fmt.Printf("%10s", "+INF")
+	// display slippage
 	fmt.Printf("\n")
 	fmt.Printf("y (%%): ")
 	for i := 0; i < numSellStepsY; i++ {

@@ -133,9 +133,10 @@ func PrintStakeInformation(cmd *cobra.Command, info *StakeRelatedInfo) {
 	if info.PendingRepresentative == "" {
 		cmd.Printf("Your pending representative: None\n")
 	} else {
-		cmd.Printf("Your pending representative: %s\n", VerboseAddress(util.GetJarvisAddress(info.PendingRepresentative, config.Network)))
+		cmd.Printf("Your pending representative for recent epoch: %s\n", VerboseAddress(util.GetJarvisAddress(info.PendingRepresentative, config.Network)))
 	}
 	cmd.Printf("Stake other people delegated to you: %f KNC\n", ethutils.BigToFloat(info.DelegatedStake, 18))
+	cmd.Printf("Stake other people delegated to you including pending: %f KNC\n", ethutils.BigToFloat(info.PendingDelegatedStake, 18))
 }
 
 func percentage(a, n *big.Int) float64 {

@@ -556,7 +556,25 @@ func ReadCustomABIString(addr string, pathOrAddress string, network string) (str
 
 type coingeckopriceresponse map[string]map[string]float64
 
+func GetETHPriceInUSD() (float64, error) {
+	resp, err := http.Get("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false")
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	priceres := coingeckopriceresponse{}
+	err = json.Unmarshal(body, &priceres)
+	if err != nil {
+		return 0, err
+	}
+	return priceres["ethereum"]["usd"], nil
+}
+
 func GetCoinGeckoRateInUSD(token string) (float64, error) {
+	if strings.ToLower(token) == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
+		return GetETHPriceInUSD()
+	}
 	resp, err := http.Get(fmt.Sprintf("https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=%s&vs_currencies=USD&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false", token))
 	if err != nil {
 		return 0, err

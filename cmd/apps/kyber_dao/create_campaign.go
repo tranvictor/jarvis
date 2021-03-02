@@ -175,7 +175,9 @@ var createCamCmd = &cobra.Command{
 		if cType == "brr" && KIP2 {
 			startTimestampBig = big.NewInt(int64(timeInfo.NextEpochStartTimestamp))
 			endTimestampBig = big.NewInt(int64(timeInfo.NextEpochStartTimestamp + 10*24*60*60))
-			Options, err = generateBRROptions(dao, timeInfo.CurrentEpoch-1)
+			// startTimestampBig = big.NewInt(1613027227)
+			// endTimestampBig = big.NewInt(1613891227)
+			Options, err = generateBRROptions(dao, timeInfo.CurrentEpoch)
 			if err != nil {
 				fmt.Printf("Couldn't generate new BRR options: %s\n", err)
 			}

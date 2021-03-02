@@ -3,6 +3,7 @@ package kyberdao
 import (
 	"fmt"
 	"math/big"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
@@ -51,8 +52,8 @@ var infoCmd = &cobra.Command{
 
 		PrintStakeInformation(cmd, stakeInfo)
 
-		fmt.Printf("\nYour REWARD including your delegators' (during last 5 epochs):\n")
-		for i := uint64(0); i < 12 && Epoch >= i; i++ {
+		fmt.Printf("\nYour REWARD including your delegators' (during last 24 epochs):\n")
+		for i := uint64(0); i < 24 && Epoch >= i; i++ {
 			e := Epoch - i
 			reward, totalReward, share, isClaimed, err := dao.GetRewardInfo(config.From, e, e == stakeInfo.CurrentEpoch)
 			if err != nil {
@@ -63,7 +64,23 @@ var infoCmd = &cobra.Command{
 				fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH) | CLAIMED\n", e, ethutils.BigToFloat(reward, 18), share*100, ethutils.BigToFloat(totalReward, 18))
 			} else {
 				if e >= stakeInfo.CurrentEpoch {
-					fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH) | can't claim yet\n", e, ethutils.BigToFloat(reward, 18), share*100, ethutils.BigToFloat(totalReward, 18))
+
+					timeInfo, err := dao.AllTimeRelatedInfo()
+					if err != nil {
+						cmd.Printf("Couldn't get information about time: %s\n", err)
+						return
+					}
+
+					elapsedTime := timeInfo.EpochDurationInSeconds - uint64(timeInfo.TimeUntilNextEpoch/time.Second)
+
+					fmt.Printf(
+						"%d - %f ETH - %f%% of total reward pool (%f ETH) | can't claim yet (expecting %f ETH)\n",
+						e,
+						ethutils.BigToFloat(reward, 18),
+						share*100,
+						ethutils.BigToFloat(totalReward, 18),
+						ethutils.BigToFloat(reward, 18)/float64(elapsedTime)*float64(timeInfo.EpochDurationInSeconds),
+					)
 				} else {
 					fmt.Printf("%d - %f ETH - %f%% of total reward pool (%f ETH)\n", e, ethutils.BigToFloat(reward, 18), share*100, ethutils.BigToFloat(totalReward, 18))
 				}

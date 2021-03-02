@@ -21,6 +21,7 @@ var (
 	PrefillMode          bool
 	PrefillStr           string
 	PrefillParams        []string
+	NoFuncCall           bool
 	Tx                   string
 	TxInfo               *ethutils.TxInfo
 	AllZeroParamsMethods bool
