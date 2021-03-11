@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
 	"syscall"
 
+	gethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/google/uuid"
 	"github.com/sahilm/fuzzy"
 	"github.com/tranvictor/ethutils/account"
 	"github.com/tranvictor/jarvis/util"
@@ -42,6 +46,37 @@ type keystore struct {
 	Address string `json:"address"`
 }
 
+func StorePrivateKeyWithKeystore(privateKey string, passphrase string) (string, error) {
+	priv, err := crypto.HexToECDSA(privateKey)
+	if err != nil {
+		return "", err
+	}
+	id, err := uuid.NewRandom()
+	if err != nil {
+		return "", err
+	}
+	key := &gethkeystore.Key{
+		Id:         id,
+		Address:    crypto.PubkeyToAddress(priv.PublicKey),
+		PrivateKey: priv,
+	}
+
+	keystoreJson, err := gethkeystore.EncryptKey(
+		key,
+		passphrase,
+		262144, // n
+		1,      // p
+	)
+	if err != nil {
+		return "", nil
+	}
+
+	dir := filepath.Join(getHomeDir(), ".jarvis", "keystores")
+	os.MkdirAll(dir, os.ModePerm)
+	path := filepath.Join(dir, fmt.Sprintf("%s.json", key.Address))
+	return path, ioutil.WriteFile(path, keystoreJson, 0644)
+}
+
 func VerifyKeystore(path string) (string, error) {
 	content, err := ioutil.ReadFile(path)
 	if err != nil {
@@ -56,7 +91,9 @@ func VerifyKeystore(path string) (string, error) {
 }
 
 func StoreAccountRecord(accDesc AccDesc) error {
-	path := filepath.Join(getHomeDir(), ".jarvis", fmt.Sprintf("%s.json", accDesc.Address))
+	dir := filepath.Join(getHomeDir(), ".jarvis")
+	os.MkdirAll(dir, os.ModePerm)
+	path := filepath.Join(dir, fmt.Sprintf("%s.json", accDesc.Address))
 	content, _ := json.Marshal(accDesc)
 	return ioutil.WriteFile(path, content, 0644)
 }

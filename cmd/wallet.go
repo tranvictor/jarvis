@@ -3,6 +3,7 @@ package cmd
 import (
 	// "bufio"
 	"fmt"
+	"syscall"
 	// "os"
 	// "strings"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/tranvictor/ethutils/account/trezoreum"
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/util"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 const (
@@ -116,9 +118,33 @@ func handleTrezor() {
 	handleHW(trezor, "trezor")
 }
 
-func handleAddKeystore() {
-	fmt.Printf("Jarvis: Keystore is convenient but not so safe. I recommend you to use it only for unimportant frequent tasks.\n")
-	keystorePath := util.PromptFilePath("Jarvis: Please enter the path to your keystore file: ")
+func handleAddPrivateKey() {
+	fmt.Printf("** Storing plain private key is NOT secure. Let's encrypt it to a Keystore.\n")
+	fmt.Printf("Please enter or paste your private key in hex format (without 0x prefix). It will not be displayed on your terminal to avoid stdout logging.\n")
+	privHex := getPassword("Paste your private key now: ")
+	passphrase := getPassword("\nEnter your passcode to encrypt the private key: ")
+	fmt.Printf("\n")
+	path, err := accounts.StorePrivateKeyWithKeystore(privHex, passphrase)
+	if err != nil {
+		fmt.Printf("Private key encryption failed: %s. Abort.\n", err)
+		return
+	}
+	fmt.Printf("Stored encrypted private key at %s.\n", path)
+
+	err = handleAddKeystoreGivenPath(path)
+	if err != nil {
+		fmt.Printf("Adding private key wallet failed.\n", err)
+		return
+	}
+}
+
+func getPassword(prompt string) string {
+	fmt.Print(prompt)
+	bytePassword, _ := terminal.ReadPassword(int(syscall.Stdin))
+	return string(bytePassword)
+}
+
+func handleAddKeystoreGivenPath(keystorePath string) error {
 	accDesc := &accounts.AccDesc{
 		Address: "",
 		Kind:    "keystore",
@@ -127,7 +153,7 @@ func handleAddKeystore() {
 	address, err := accounts.VerifyKeystore(keystorePath)
 	if err != nil {
 		fmt.Printf("Jarvis: Keystore path verification failed. %s. Abort.\n", err)
-		return
+		return err
 	}
 	accDesc.Address = address
 	fmt.Printf("Jarvis: This keystore is with %s\n", address)
@@ -136,10 +162,18 @@ func handleAddKeystore() {
 	err = accounts.StoreAccountRecord(*accDesc)
 	if err != nil {
 		fmt.Printf("Jarvis: I couldn't store your wallet info: %s. Abort.\n", err)
+		return err
 	} else {
 		fmt.Printf("Jarvis: I created `~/.jarvis/%s.json` to store the keystore info. That file contains the path of your keystore file so please don't move your keystore file later.\n", address)
 		fmt.Printf("Jarvis: Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list\n")
 	}
+	return nil
+}
+
+func handleAddKeystore() {
+	fmt.Printf("Jarvis: Keystore is convenient but not so safe. I recommend you to use it only for unimportant frequent tasks.\n")
+	keystorePath := util.PromptFilePath("Jarvis: Please enter the path to your keystore file: ")
+	handleAddKeystoreGivenPath(keystorePath)
 }
 
 var addWalletCmd = &cobra.Command{
@@ -147,7 +181,7 @@ var addWalletCmd = &cobra.Command{
 	Short: "Add a wallet to jarvis",
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. type
-		keyType := util.PromptInput("Jarvis: Enter key type (enter either trezor, ledger or keystore):")
+		keyType := util.PromptInput("Jarvis: Enter key type (enter either trezor, ledger, keystore or privatekey):")
 		switch keyType {
 		case "trezor":
 			handleTrezor()
@@ -155,6 +189,8 @@ var addWalletCmd = &cobra.Command{
 			handleLedger()
 		case "keystore":
 			handleAddKeystore()
+		case "privatekey":
+			handleAddPrivateKey()
 		default:
 			fmt.Printf("Sorry Victor didn't teach me how to handle this kind of key: %s. Abort.\n", keyType)
 		}
