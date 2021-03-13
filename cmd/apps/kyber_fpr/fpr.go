@@ -65,7 +65,12 @@ var KyberFPRCmd = &cobra.Command{
 		}
 		fmt.Printf("\n")
 		fmt.Printf("Checking on token: %s\n", VerboseAddress(util.GetJarvisAddress(Token, config.Network)))
-		err = reserve.DisplayStepFunctionData(Token)
+		price, err := util.GetCoinGeckoRateInUSD(Token)
+		if err != nil {
+			fmt.Printf("Getting price failed: %s\n", err)
+			return
+		}
+		err = reserve.DisplayStepFunctionData(Token, price)
 		if err != nil {
 			fmt.Printf("Displaying step functions failed: %s\n", err)
 			return
@@ -89,11 +94,6 @@ var KyberFPRCmd = &cobra.Command{
 		decimal, err := util.GetERC20Decimal(Token, config.Network)
 		if err != nil {
 			fmt.Printf("Getting decimal failed: %s\n", err)
-			return
-		}
-		price, err := util.GetCoinGeckoRateInUSD(Token)
-		if err != nil {
-			fmt.Printf("Getting price failed: %s\n", err)
 			return
 		}
 		fmt.Printf("Price: %f USD\n", price)
@@ -191,4 +191,5 @@ func init() {
 	KyberFPRCmd.PersistentFlags().StringVarP(&Token, "token", "T", "", "Token address or name of the FPR reserve to show information. If it is not specified, jarvis will show the list of listed token and you can select from them.")
 
 	KyberFPRCmd.AddCommand(approveListingTokenCmd)
+	approveListingTokenCmd.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 350000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
 }

@@ -262,24 +262,26 @@ var initMsigCmd = &cobra.Command{
 
 		a, err := util.ConfigToABI(config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network)
 		if err != nil {
-			fmt.Printf("Couldn't get abi for %s: %s\n", config.MsigTo, err)
-			return
+			fmt.Printf("Couldn't get abi for %s: %s. Continue:\n", config.MsigTo, err)
 		}
 
-		data, err := util.PromptTxData(
-			analyzer,
-			config.MsigTo,
-			config.MethodIndex,
-			config.PrefillParams,
-			config.PrefillMode,
-			a,
-			nil,
-			config.Network,
-		)
-		if err != nil {
-			fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
-			fmt.Printf("Continue with EMPTY CALLING DATA\n")
-			data = []byte{}
+		data := []byte{}
+		if a != nil && !config.NoFuncCall {
+			data, err = util.PromptTxData(
+				analyzer,
+				config.MsigTo,
+				config.MethodIndex,
+				config.PrefillParams,
+				config.PrefillMode,
+				a,
+				nil,
+				config.Network,
+			)
+			if err != nil {
+				fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
+				fmt.Printf("Continue with EMPTY CALLING DATA\n")
+				data = []byte{}
+			}
 		}
 
 		msigABI, err := util.GetABI(config.To, config.Network)
@@ -358,9 +360,10 @@ func init() {
 	msigCmd.AddCommand(transactionInfoMsigCmd)
 	msigCmd.AddCommand(govInfoMsigCmd)
 
-	initMsigCmd.Flags().Float64VarP(&config.MsigValue, "msig-value", "l", 0, "Amount of eth to send with the multisig. It is in ETH, not WEI.")
+	initMsigCmd.Flags().Float64VarP(&config.MsigValue, "msig-value", "V", 0, "Amount of eth to send with the multisig. It is in ETH, not WEI.")
 	initMsigCmd.Flags().StringVarP(&config.MsigTo, "msig-to", "j", "", "Target address the multisig will interact with. Can be address or name.")
 	initMsigCmd.Flags().Uint64VarP(&config.MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
+	initMsigCmd.Flags().BoolVarP(&config.NoFuncCall, "no-func-call", "N", false, "True: will not send any data to multisig destination.")
 	initMsigCmd.Flags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
 	initMsigCmd.MarkFlagRequired("msig-to")
 
