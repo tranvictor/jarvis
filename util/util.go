@@ -38,6 +38,8 @@ const (
 	TOMO_MAINNET_NODE_VAR     string = "TOMO_MAINNET_NODE"
 	ETHEREUM_KOVAN_NODE_VAR   string = "ETHEREUM_KOVAN_NODE"
 	ETHEREUM_RINKEBY_NODE_VAR string = "ETHEREUM_RINKEBY_NODE"
+	BSC_MAINNET_NODE_VAR      string = "BSC_MAINNET_NODE"
+	BSC_TESTNET_NODE_VAR      string = "BSC_TESTNET_NODE"
 )
 
 func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Duration {
@@ -54,6 +56,10 @@ func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Durati
 	case "rinkeby":
 		return time.Duration(uint64(time.Second) * (to - from) * 15)
 	case "tomo":
+		return time.Duration(uint64(time.Second) * (to - from) * 3)
+	case "bsc":
+		return time.Duration(uint64(time.Second) * (to - from) * 3)
+	case "bsc-test":
 		return time.Duration(uint64(time.Second) * (to - from) * 3)
 	}
 	panic("unsupported network")
@@ -358,8 +364,33 @@ func GetNodes(network string) (map[string]string, error) {
 			nodes["custom-node"] = customNode
 		}
 		return nodes, nil
+	case "bsc":
+		nodes := map[string]string{
+			"binance":  "https://bsc-dataseed.binance.org",
+			"defibit":  "https://bsc-dataseed1.defibit.io",
+			"ninicoin": "https://bsc-dataseed1.ninicoin.io",
+		}
+		customNode := strings.Trim(os.Getenv(BSC_MAINNET_NODE_VAR), " ")
+		if customNode != "" {
+			nodes["custom-node"] = customNode
+		}
+		return nodes, nil
+	case "bsc-test":
+		nodes := map[string]string{
+			"binance1": "https://data-seed-prebsc-1-s1.binance.org:8545",
+			"binance2": "https://data-seed-prebsc-2-s1.binance.org:8545",
+			"binance3": "https://data-seed-prebsc-1-s2.binance.org:8545",
+			"binance4": "https://data-seed-prebsc-2-s2.binance.org:8545",
+			"binance5": "https://data-seed-prebsc-1-s3.binance.org:8545",
+			"binance6": "https://data-seed-prebsc-2-s3.binance.org:8545",
+		}
+		customNode := strings.Trim(os.Getenv(BSC_TESTNET_NODE_VAR), " ")
+		if customNode != "" {
+			nodes["custom-node"] = customNode
+		}
+		return nodes, nil
 	}
-	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, tomo.")
+	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test.")
 }
 
 func EthBroadcaster(network string) (*broadcaster.Broadcaster, error) {
@@ -386,8 +417,12 @@ func EthReader(network string) (*reader.EthReader, error) {
 		return reader.NewRinkebyReaderWithCustomNodes(nodes), nil
 	case "tomo":
 		return reader.NewTomoReaderWithCustomNodes(nodes), nil
+	case "bsc":
+		return reader.NewBSCReaderWithCustomNodes(nodes), nil
+	case "bsc-test":
+		return reader.NewBSCTestnetReaderWithCustomNodes(nodes), nil
 	}
-	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, tomo.")
+	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test.")
 }
 
 func queryToCheckERC20(addr string, network string) (bool, error) {

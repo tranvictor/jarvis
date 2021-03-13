@@ -126,8 +126,12 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			fromAcc, err = account.NewRinkebyAccountFromKeystore(ad.Keypath, pwd)
 		} else if network == "tomo" {
 			fromAcc, err = account.NewTomoAccountFromKeystore(ad.Keypath, pwd)
+		} else if network == "bsc" {
+			fromAcc, err = account.NewBSCAccountFromKeystore(ad.Keypath, pwd)
+		} else if network == "bsc-test" {
+			fromAcc, err = account.NewBSCTestnetAccountFromKeystore(ad.Keypath, pwd)
 		} else {
-			return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten")
+			return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test")
 		}
 		if err != nil {
 			fmt.Printf("Unlocking keystore '%s' failed: %s. Abort!\n", ad.Keypath, err)
@@ -155,6 +159,14 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			)
 		} else if network == "tomo" {
 			fromAcc, err = account.NewTomoTrezorAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "bsc" {
+			fromAcc, err = account.NewBSCTrezorAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "bsc-test" {
+			fromAcc, err = account.NewBSCTestnetTrezorAccount(
 				ad.Derpath, ad.Address,
 			)
 		} else {
@@ -186,6 +198,14 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 			)
 		} else if network == "tomo" {
 			fromAcc, err = account.NewTomoLedgerAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "bsc" {
+			fromAcc, err = account.NewBSCLedgerAccount(
+				ad.Derpath, ad.Address,
+			)
+		} else if network == "bsc-test" {
+			fromAcc, err = account.NewBSCTestnetLedgerAccount(
 				ad.Derpath, ad.Address,
 			)
 		} else {

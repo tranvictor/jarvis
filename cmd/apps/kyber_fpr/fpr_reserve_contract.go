@@ -196,7 +196,7 @@ func (self *FPRReserveContract) DisplayImbalanceStepFunc(token string, price flo
 		return err
 	}
 	// displaying imbalance in token
-	fmt.Printf("imb($): ")
+	fmt.Printf("imb   : ")
 	fmt.Printf("%5s|", "-INF")
 	for i := 0; i < numSellStepsX; i++ {
 		fmt.Printf("%10.1f|", sellXs[i])
@@ -208,7 +208,7 @@ func (self *FPRReserveContract) DisplayImbalanceStepFunc(token string, price flo
 	fmt.Printf("%10s", "+INF")
 	// displaying imbalance in USD
 	fmt.Printf("\n")
-	fmt.Printf("imb  :  ")
+	fmt.Printf("imb($): ")
 	fmt.Printf("%5s|", "-INF")
 	for i := 0; i < numSellStepsX; i++ {
 		fmt.Printf("%10.1f|", sellXs[i]*price)

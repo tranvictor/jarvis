@@ -49,15 +49,23 @@ Jarvis supports you on different ends:
 	3. It helps you to read smart contract and do transactions with
 	intuitive command line interface.
 
-By default, Jarvis supports ethereum mainnet, ropsten and tomo chain. In order to
+By default, Jarvis supports ethereum mainnet, ropsten, rinkeby, kovan, tomo, bsc testnet and bsc . In order to
 interact with the chains, it uses the following nodes by default:
 	1. For mainnet: it uses alchemy and infura
 	2. For ropsten: it uses infura
 	3. For tomo: it uses rpc.tomochain.com
+	4. For kovan: it uses infura
+	5. For rinkeby: it uses infura
+	6. For bsc: it uses binance, defibit and ninicoin
+	7. For bsc-test: it uses binance
 You can also add your custom node by setting the following env vars:
-	1. For mainnet: %s,
-	2. For ropsten: %s,
-	3. For tomo: %s,
+	1. For mainnet: %s
+	2. For ropsten: %s
+	3. For tomo: %s
+	4. For kovan: %s
+	5. For rinkeby: %s
+	6. For bsc: %s
+	7. For bsc-test: %s
 Note: jarvis will only check if the env vars are not empty and take the env vars blindly,
 it will not check if it is a valid url or not, the error will pop up during its command
 execution instead.
@@ -68,6 +76,8 @@ For more information or support, reach me at https://github.com/tranvictor.`,
 		util.TOMO_MAINNET_NODE_VAR,
 		util.ETHEREUM_KOVAN_NODE_VAR,
 		util.ETHEREUM_RINKEBY_NODE_VAR,
+		util.BSC_MAINNET_NODE_VAR,
+		util.BSC_TESTNET_NODE_VAR,
 	),
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
@@ -77,7 +87,7 @@ For more information or support, reach me at https://github.com/tranvictor.`,
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
-	rootCmd.PersistentFlags().StringVarP(&config.Network, "network", "k", "mainnet", "ethereum network. Valid values: \"mainnet\", \"ropsten\", \"kovan\", \"rinkeby\", \"tomo\".")
+	rootCmd.PersistentFlags().StringVarP(&config.Network, "network", "k", "mainnet", "ethereum network. Valid values: \"mainnet\", \"ropsten\", \"kovan\", \"rinkeby\", \"tomo\", \"bsc\", \"bsc-test\".")
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
