@@ -3,7 +3,6 @@ module github.com/tranvictor/jarvis
 require (
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/allegro/bigcache v1.2.1 // indirect
-	github.com/aristanetworks/goarista v0.0.0-20200812190859-4cb0e71f3c0e // indirect
 	github.com/blevesearch/bleve v1.0.12
 	github.com/cespare/cp v1.1.1 // indirect
 	github.com/cznic/b v0.0.0-20181122101859-a26611c4d92d // indirect
