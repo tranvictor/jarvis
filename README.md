@@ -1,6 +1,12 @@
 # jarvis
 Ethereum automation made easy to human
 
+## If you like Jarvis You can buy me a cup of coffee by sending any tokens to
+
+0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb
+
+Both Ethereum and BSC :)
+
 ## Installation
 ### MacOS via Homebrew
 ```bash
