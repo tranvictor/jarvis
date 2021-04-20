@@ -3,6 +3,7 @@ package kyberfpr
 import (
 	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/tranvictor/ethutils"
@@ -12,6 +13,18 @@ import (
 )
 
 const RATE_WRAPPER_CONTRACT = "0x3F0d4A4363d08Cd625285965832C4BA53b5A718A"
+const RATE_WRAPPER_CONTRACT_ON_BSC = "0x81Cf022a0216F75Cf28Af1E0D0831B62878e04CF"
+
+func getRateWrapperContract(network string) string {
+	switch network {
+	case "mainnet":
+		return RATE_WRAPPER_CONTRACT
+	case "bsc":
+		return RATE_WRAPPER_CONTRACT_ON_BSC
+	default:
+		panic("not support network")
+	}
+}
 
 type FPRReserveContract struct {
 	Address                string
@@ -19,11 +32,18 @@ type FPRReserveContract struct {
 	reader                 *reader.EthReader
 }
 
-func NewFPRReserveContract(address string, r *reader.EthReader) (*FPRReserveContract, error) {
+func NewFPRReserveContract(address string, conversionRateAddress string, r *reader.EthReader) (*FPRReserveContract, error) {
+	var err error
+	var conversionRateContract *common.Address
 
-	conversionRateContract, err := r.AddressFromContract(address, "conversionRatesContract")
-	if err != nil {
-		return nil, err
+	if conversionRateAddress == "" {
+		conversionRateContract, err = r.AddressFromContract(address, "conversionRatesContract")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		conversionRateContractV := ethutils.HexToAddress(conversionRateAddress)
+		conversionRateContract = &conversionRateContractV
 	}
 	fmt.Printf("Conversion rate contract: %s\n", conversionRateContract.Hex())
 
@@ -61,7 +81,7 @@ func (self *FPRReserveContract) QueryQtyStepFunc(token common.Address) (numSellS
 	err = self.reader.ReadHistoryContract(
 		config.AtBlock,
 		res,
-		RATE_WRAPPER_CONTRACT,
+		getRateWrapperContract(config.Network),
 		"readQtyStepFunctions",
 		self.ConversionRateContract,
 		token,
@@ -140,25 +160,34 @@ func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (nu
 		NumSellRateImbalanceStepsY *big.Int
 		SellRateImbalanceStepsY    []*big.Int
 	}
+
 	res := &imbFunc{}
+	fmt.Printf("wrapper rate contract: %s\n", getRateWrapperContract(config.Network))
+	fmt.Printf("token: %s\n", token)
 	err = self.reader.ReadHistoryContract(
 		config.AtBlock,
 		res,
-		RATE_WRAPPER_CONTRACT,
+		getRateWrapperContract(config.Network),
 		"readImbalanceStepFunctions",
 		self.ConversionRateContract,
 		token,
 	)
 	if err != nil {
+		fmt.Printf("error: %s\n", err)
 		return 0, []float64{}, 0, []float64{}, 0, []float64{}, 0, []float64{}, err
 	}
 	numSellStepsX = int(res.NumSellRateImbalanceStepsX.Int64())
 	numSellStepsY = int(res.NumSellRateImbalanceStepsY.Int64())
 	numBuyStepsX = int(res.NumBuyRateImbalanceStepsX.Int64())
 	numBuyStepsY = int(res.NumBuyRateImbalanceStepsY.Int64())
-	decimal, err := self.reader.ERC20Decimal(token.Hex())
-	if err != nil {
-		return 0, []float64{}, 0, []float64{}, 0, []float64{}, 0, []float64{}, err
+	var decimal int64
+	if strings.ToLower(token.Hex()) == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
+		decimal = 18
+	} else {
+		decimal, err = self.reader.ERC20Decimal(token.Hex())
+		if err != nil {
+			return 0, []float64{}, 0, []float64{}, 0, []float64{}, 0, []float64{}, err
+		}
 	}
 	sellXs = []float64{}
 	for _, x := range res.SellRateImbalanceStepsX {

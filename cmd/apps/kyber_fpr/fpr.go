@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	Token   string
-	Reserve string
+	Token                 string
+	Reserve               string
+	ConversionRateAddress string
 )
 
 var KyberFPRCmd = &cobra.Command{
@@ -32,7 +33,7 @@ var KyberFPRCmd = &cobra.Command{
 			return
 		}
 		fmt.Printf("Working on reserve: %s (%s)\n", Reserve, resName)
-		reserve, err := NewFPRReserveContract(Reserve, reader)
+		reserve, err := NewFPRReserveContract(Reserve, ConversionRateAddress, reader)
 		if err != nil {
 			fmt.Printf("Couldn't initiate reserve instance: %s\n", err)
 			return
@@ -189,6 +190,7 @@ var approveListingTokenCmd = &cobra.Command{
 func init() {
 	KyberFPRCmd.PersistentFlags().Int64VarP(&config.AtBlock, "block", "b", -1, "Specify the block to read at. Default value indicates reading at latest state of the chain.")
 	KyberFPRCmd.PersistentFlags().StringVarP(&Token, "token", "T", "", "Token address or name of the FPR reserve to show information. If it is not specified, jarvis will show the list of listed token and you can select from them.")
+	KyberFPRCmd.PersistentFlags().StringVarP(&ConversionRateAddress, "rate-contract", "R", "", "Address of the conversion rate contract.")
 
 	KyberFPRCmd.AddCommand(approveListingTokenCmd)
 	approveListingTokenCmd.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 350000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")

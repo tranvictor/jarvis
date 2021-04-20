@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	VERSION string = "0.0.19"
+	VERSION string = "0.0.20"
 )
 
 var versionCmd = &cobra.Command{
@@ -17,7 +17,7 @@ var versionCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		fmt.Printf("Version: %s\n", VERSION)
 		fmt.Printf("Contact author at: @tranvictor on Telegram or victor@kyber.network\n")
-		fmt.Printf("At Kyber, beside providing the best ERC20 liquidity, we also contribute nice tools for Ethereum community.\n")
+		fmt.Printf("At Kyber, besides contributing liquidity, we also contribute tools :)")
 	},
 }
 
