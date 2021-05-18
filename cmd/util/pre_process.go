@@ -78,9 +78,13 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	}
 	// loosely check by checking a set of method names
 
-	isGnosisMultisig, err := util.IsGnosisMultisig(a)
-	if err != nil {
-		return err
+	isGnosisMultisig := false
+
+	if err == nil {
+		isGnosisMultisig, err = util.IsGnosisMultisig(a)
+		if err != nil {
+			return err
+		}
 	}
 
 	if config.From == "" && isGnosisMultisig {

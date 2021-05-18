@@ -49,8 +49,8 @@ Jarvis supports you on different ends:
 	3. It helps you to read smart contract and do transactions with
 	intuitive command line interface.
 
-By default, Jarvis supports ethereum mainnet, ropsten, rinkeby, kovan, tomo, bsc testnet and bsc . In order to
-interact with the chains, it uses the following nodes by default:
+By default, Jarvis supports ethereum mainnet, ropsten, rinkeby, kovan, tomo, bsc testnet
+and bsc . In order to interact with the chains, it uses the following nodes by default:
 	1. For mainnet: it uses alchemy and infura
 	2. For ropsten: it uses infura
 	3. For tomo: it uses rpc.tomochain.com
@@ -66,7 +66,16 @@ You can also add your custom node by setting the following env vars:
 	5. For rinkeby: %s
 	6. For bsc: %s
 	7. For bsc-test: %s
-Note: jarvis will only check if the env vars are not empty and take the env vars blindly,
+
+Jarvis also utilizes chain explorers like Etherscan, Bscscan and Tomoscan in order to look
+up additional informations such as contract ABI, recommended gas price..etc. By default,
+Jarvis uses default API keys. You can also specify your API keys (recommended to make
+Jarvis more stable) by setting the following env vars:
+	1. For etherscan: %s
+	2. For bscscan: %s
+	3. For tomoscan: NOT SUPPORTED YET
+
+Note: Jarvis will only check if the env vars are not empty and take the env vars blindly,
 it will not check if it is a valid url or not, the error will pop up during its command
 execution instead.
 
@@ -78,6 +87,8 @@ For more information or support, reach me at https://github.com/tranvictor.`,
 		util.ETHEREUM_RINKEBY_NODE_VAR,
 		util.BSC_MAINNET_NODE_VAR,
 		util.BSC_TESTNET_NODE_VAR,
+		util.ETHERSCAN_API_KEY_VAR,
+		util.BSCSCAN_API_KEY_VAR,
 	),
 	// Uncomment the following line if your bare application
 	// has an action associated with it:

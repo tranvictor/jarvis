@@ -1,6 +1,7 @@
 package db
 
 var TOKENS map[string]string = map[string]string{
+	"0xdeFA4e8a7bcBA345F687a2f1456F5Edd9CE97202": "KNC token",
 	"0xA4Bdb11dc0a2bEC88d24A3aa1E6Bb17201112eBe": "USDS token",
 	"0x094c875704c14783049DDF8136E298B3a099c446": "PT token",
 	"0x2260fac5e5542a773aa44fbcfedf7c193bc2c599": "WBTC token",
@@ -546,7 +547,7 @@ var TOKENS map[string]string = map[string]string{
 	"0x27695E09149AdC738A978e9A678F99E4c39e9eb9": "KICK token",
 	"0x818Fc6C2Ec5986bc6E2CBf00939d90556aB12ce5": "KIN token",
 	"0x4618519de4c304f3444ffa7f812dddc2971cc688": "KIND token",
-	"0xdd974D5C2e2928deA5F71b9825b8b646686BD200": "KNC token",
+	"0xdd974D5C2e2928deA5F71b9825b8b646686BD200": "KNCL token",
 	"0x8e5610ab5e39d26828167640ea29823fe1dd5843": "KNDC token",
 	"0xff5c25d2f40b47c4a37f989de933e26562ef0ac0": "KNT token",
 	"0xb5c33f965c8899d255c34cdd2a3efa8abcbb3dea": "KPR token",

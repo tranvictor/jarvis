@@ -40,6 +40,8 @@ const (
 	ETHEREUM_RINKEBY_NODE_VAR string = "ETHEREUM_RINKEBY_NODE"
 	BSC_MAINNET_NODE_VAR      string = "BSC_MAINNET_NODE"
 	BSC_TESTNET_NODE_VAR      string = "BSC_TESTNET_NODE"
+	ETHERSCAN_API_KEY_VAR     string = "ETHERSCAN_API_KEY"
+	BSCSCAN_API_KEY_VAR       string = "BSCSCAN_API_KEY"
 )
 
 func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Duration {
@@ -402,27 +404,40 @@ func EthBroadcaster(network string) (*broadcaster.Broadcaster, error) {
 }
 
 func EthReader(network string) (*reader.EthReader, error) {
+	var result *reader.EthReader
+	var err error
 	nodes, err := GetNodes(network)
 	if err != nil {
 		return nil, err
 	}
 	switch network {
 	case "mainnet":
-		return reader.NewEthReaderWithCustomNodes(nodes), nil
+		result = reader.NewEthReaderWithCustomNodes(nodes)
 	case "ropsten":
-		return reader.NewRopstenReaderWithCustomNodes(nodes), nil
+		result = reader.NewRopstenReaderWithCustomNodes(nodes)
 	case "kovan":
-		return reader.NewKovanReaderWithCustomNodes(nodes), nil
+		result = reader.NewKovanReaderWithCustomNodes(nodes)
 	case "rinkeby":
-		return reader.NewRinkebyReaderWithCustomNodes(nodes), nil
+		result = reader.NewRinkebyReaderWithCustomNodes(nodes)
 	case "tomo":
-		return reader.NewTomoReaderWithCustomNodes(nodes), nil
+		result = reader.NewTomoReaderWithCustomNodes(nodes)
 	case "bsc":
-		return reader.NewBSCReaderWithCustomNodes(nodes), nil
+		result = reader.NewBSCReaderWithCustomNodes(nodes)
 	case "bsc-test":
-		return reader.NewBSCTestnetReaderWithCustomNodes(nodes), nil
+		result = reader.NewBSCTestnetReaderWithCustomNodes(nodes)
+	default:
+		return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test.")
 	}
-	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test.")
+	etherscanAPIKey := strings.Trim(os.Getenv(ETHERSCAN_API_KEY_VAR), " ")
+	if etherscanAPIKey != "" {
+		result.SetEtherscanAPIKey(etherscanAPIKey)
+	}
+
+	bscscanAPIKey := strings.Trim(os.Getenv(BSCSCAN_API_KEY_VAR), " ")
+	if bscscanAPIKey != "" {
+		result.SetBSCScanAPIKey(bscscanAPIKey)
+	}
+	return result, nil
 }
 
 func queryToCheckERC20(addr string, network string) (bool, error) {
@@ -666,13 +681,8 @@ func GetABIFromString(abiStr string) (*abi.ABI, error) {
 	return &result, err
 }
 
-func GetABIString(addr string, network string) (string, error) {
+func GetABIStringBypassCache(addr string, network string) (string, error) {
 	cacheKey := fmt.Sprintf("%s_abi", addr)
-	cached, found := cache.GetCache(cacheKey)
-	if found {
-		return cached, nil
-	}
-
 	// not found from cache, getting from etherscan or equivalent websites
 	reader, err := EthReader(network)
 	if err != nil {
@@ -689,6 +699,15 @@ func GetABIString(addr string, network string) (string, error) {
 	)
 	fmt.Printf("Stored %s abi to cache.\n", addr)
 	return abiStr, nil
+}
+
+func GetABIString(addr string, network string) (string, error) {
+	cacheKey := fmt.Sprintf("%s_abi", addr)
+	cached, found := cache.GetCache(cacheKey)
+	if found {
+		return cached, nil
+	}
+	return GetABIStringBypassCache(addr, network)
 }
 
 func ConfigToABI(address string, forceERC20ABI bool, customABI string, network string) (*abi.ABI, error) {
@@ -708,11 +727,17 @@ func GetABI(addr string, network string) (*abi.ABI, error) {
 	}
 
 	result, err := GetABIFromString(abiStr)
+	if err == nil {
+		return result, nil
+	}
+
+	// now abiStr is an invalid abi string
+	// try bypassing the cache and query again
+	abiStr, err = GetABIStringBypassCache(addr, network)
 	if err != nil {
 		return nil, err
 	}
-
-	return result, nil
+	return GetABIFromString(abiStr)
 }
 
 func IsGnosisMultisig(a *abi.ABI) (bool, error) {
