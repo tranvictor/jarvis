@@ -123,19 +123,20 @@ var approveListingTokenCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: cmdutil.CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmdutil.HandleApproveOrRevokeOrExecuteMsig("confirmTransaction", cmd, args, func(method string, params []ParamResult, gnosisResult *GnosisResult, err error) error {
+		cmdutil.HandleApproveOrRevokeOrExecuteMsig("confirmTransaction", cmd, args, func(fc *FunctionCall) error {
 			fmt.Printf("\n\n%s\n", InfoColor("Listing token validation..."))
-			if err != nil {
+
+			if fc.Error != "" {
 				fmt.Printf("%s\n", AlertColor("Provided tx doesn't call any smart contract function"))
 				return fmt.Errorf("provided tx doesn't call any smart contract function")
 			}
 
-			if method != "addToken" {
+			if fc.Method != "addToken" {
 				fmt.Printf("%s\n", AlertColor("Calling method is wrong. It must be 'addToken'"))
 				return fmt.Errorf("wrong conversion rate contract method")
 			}
 
-			tokenValue := params[0].Value[0]
+			tokenValue := fc.Params[0].Value[0]
 
 			if tokenValue.Address == nil || tokenValue.Address.Decimal == 0 {
 				fmt.Printf("Token from the msig params is not an address\n")
@@ -154,7 +155,7 @@ var approveListingTokenCmd = &cobra.Command{
 				tokenValue.Address.Desc,
 				price,
 			)
-			resolutionBig, err := util.StringToBigInt(params[1].Value[0].Value)
+			resolutionBig, err := util.StringToBigInt(fc.Params[1].Value[0].Value)
 			if err != nil {
 				fmt.Printf("Parsing min resolution value to big in failed\n")
 				return fmt.Errorf("Parsing min resolution failed: %s", err)
@@ -166,7 +167,7 @@ var approveListingTokenCmd = &cobra.Command{
 				fmt.Printf("Resolution: %f USD\n", resolution)
 			}
 
-			maxPerBlockImbalanceBig, err := util.StringToBigInt(params[2].Value[0].Value)
+			maxPerBlockImbalanceBig, err := util.StringToBigInt(fc.Params[2].Value[0].Value)
 			if err != nil {
 				fmt.Printf("Parsing max block imbalance value to big in failed: %s\n", err)
 				return fmt.Errorf("Parsing max block imbalance failed: %s", err)
@@ -174,7 +175,7 @@ var approveListingTokenCmd = &cobra.Command{
 			maxPerBlockImbalance := price * ethutils.BigToFloat(maxPerBlockImbalanceBig, tokenValue.Address.Decimal)
 			fmt.Printf("Max Block Imbalance: %f USD\n", maxPerBlockImbalance)
 
-			maxTotalImbalanceBig, err := util.StringToBigInt(params[3].Value[0].Value)
+			maxTotalImbalanceBig, err := util.StringToBigInt(fc.Params[3].Value[0].Value)
 			if err != nil {
 				fmt.Printf("Parsing max block imbalance value to big in failed\n")
 				return fmt.Errorf("Parsing max block imbalance failed: %s", err)

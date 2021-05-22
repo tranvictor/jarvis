@@ -7,10 +7,12 @@ import (
 	"strings"
 
 	aurora "github.com/logrusorgru/aurora"
+	indent "github.com/openconfig/goyang/pkg/indent"
+	"github.com/tranvictor/ethutils"
 )
 
-func PrintGnosis(result *GnosisResult) {
-	printGnosisToWriter(result, os.Stdout)
+func PrintFunctionCall(fc *FunctionCall) {
+	printFunctionCallToWriter(fc, os.Stdout, 0)
 }
 
 func PrintTxDetails(result *TxResult, writer io.Writer) {
@@ -37,17 +39,8 @@ func PrintTxDetails(result *TxResult, writer io.Writer) {
 		return
 	}
 
-	if result.Method == "" {
-		fmt.Fprintf(writer, "Getting ABI and function name failed: %s\n", result.Error)
-		return
-	}
-	fmt.Fprintf(writer, "\nContract: %s\n", VerboseAddress(result.Contract))
-	fmt.Fprintf(writer, "Method: %s\n", result.Method)
-	fmt.Fprintf(writer, "Params:\n")
-	for _, param := range result.Params {
-		fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
-	}
-	printGnosisToWriter(result.GnosisInit, writer)
+	printFunctionCallToWriter(result.FunctionCall, writer, 0)
+
 	fmt.Fprintf(writer, "\nEvent logs:\n")
 	for i, l := range result.Logs {
 		fmt.Fprintf(writer, "Log %d: %s\n", i+1, l.Name)
@@ -61,20 +54,31 @@ func PrintTxDetails(result *TxResult, writer io.Writer) {
 	}
 }
 
-func printGnosisToWriter(result *GnosisResult, writer io.Writer) {
-	if result != nil {
-		fmt.Fprintf(writer, "\n     __________________________")
-		fmt.Fprintf(writer, "\n     Gnosis multisig init data: ")
-		if result.Method == "" {
-			fmt.Fprintf(writer, "Couldn't decode gnosis call method\n")
-			return
-		}
-		fmt.Fprintf(writer, "\n     Contract: %s\n", VerboseAddress(result.Contract))
-		fmt.Fprintf(writer, "     Method: %s\n", result.Method)
-		fmt.Fprintf(writer, "     Params:\n")
-		for _, param := range result.Params {
-			fmt.Fprintf(writer, "       %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
-		}
+func printFunctionCallToWriter(fc *FunctionCall, w io.Writer, level int) {
+	indentation := ""
+	for i := 0; i < level; i++ {
+		indentation = indentation + "    "
+	}
+	writer := indent.NewWriter(w, indentation)
+
+	if fc.Method == "" {
+		fmt.Fprintf(writer, "Getting ABI and function name failed: %s\n", fc.Error)
+		return
+	}
+
+	if level > 0 {
+		fmt.Fprintf(writer, "Interpreted Contract call: %s\n", VerboseAddress(fc.Destination))
+		fmt.Fprintf(writer, "| Value: %f ETH\n", ethutils.BigToFloat(fc.Value, 18))
+	} else {
+		fmt.Fprintf(writer, "Contract: %s\n", VerboseAddress(fc.Destination))
+	}
+	fmt.Fprintf(writer, "| Method: %s\n", fc.Method)
+	fmt.Fprintf(writer, "| Params:\n")
+	for _, param := range fc.Params {
+		fmt.Fprintf(writer, "|    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
+	}
+	for _, dfc := range fc.DecodedFunctionCalls {
+		printFunctionCallToWriter(dfc, w, level+1)
 	}
 }
 

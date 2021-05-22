@@ -18,6 +18,7 @@ require (
 	github.com/karalabe/usb v0.0.0-20191104083709-911d15fe12a9 // indirect
 	github.com/logrusorgru/aurora v0.0.0-20181002194514-a7b3b318ed4e
 	github.com/mattn/go-colorable v0.1.2 // indirect
+	github.com/openconfig/goyang v0.2.4
 	github.com/prometheus/tsdb v0.10.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
 	github.com/sahilm/fuzzy v0.1.0

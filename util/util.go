@@ -249,21 +249,11 @@ func DisplayWaitAnalyze(
 	}
 }
 
-func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, abi *abi.ABI, data []byte, customABIs map[string]*abi.ABI, network string) (method string, params []ParamResult, gnosisResult *GnosisResult, err error) {
-	method, params, gnosisResult, err = analyzer.AnalyzeMethodCall(abi, data, customABIs)
-	if err != nil {
-		fmt.Printf("Couldn't analyze method call: %s\n", err)
-		return
-	}
-	fmt.Printf("  Method: %s\n", method)
-	fmt.Printf("  Params:\n")
-	for _, param := range params {
-		fmt.Printf("    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
-	}
-	if gnosisResult != nil {
-		PrintGnosis(gnosisResult)
-	}
-	return
+func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, value *big.Int, destination string, data []byte, customABIs map[string]*abi.ABI, network string) (fc *FunctionCall) {
+	fc = analyzer.AnalyzeFunctionCallRecursively(
+		GetABI, value, destination, data, customABIs)
+	PrintFunctionCall(fc)
+	return fc
 }
 
 func AnalyzeAndPrint(
@@ -275,6 +265,9 @@ func AnalyzeAndPrint(
 	customABI string,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI) *TxResult {
+	if customABIs == nil {
+		customABIs = map[string]*abi.ABI{}
+	}
 
 	txinfo, err := reader.TxInfoFromHash(tx)
 	if err != nil {
@@ -301,9 +294,10 @@ func AnalyzeAndPrint(
 				return nil
 			}
 		}
-		result = analyzer.AnalyzeOffline(&txinfo, a, customABIs, true, network)
+		customABIs[strings.ToLower(txinfo.Tx.To().Hex())] = a
+		result = analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, true, network)
 	} else {
-		result = analyzer.AnalyzeOffline(&txinfo, nil, nil, false, network)
+		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false, network)
 	}
 
 	PrintTxDetails(result, os.Stdout)

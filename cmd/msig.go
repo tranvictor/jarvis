@@ -314,13 +314,13 @@ var initMsigCmd = &cobra.Command{
 
 		customABIs := map[string]*abi.ABI{
 			strings.ToLower(config.MsigTo): a,
+			strings.ToLower(config.To):     msigABI,
 		}
 		err = util.PromptTxConfirmation(
 			analyzer,
 			util.GetJarvisAddress(config.From, config.Network),
 			util.GetJarvisAddress(config.To, config.Network),
 			tx,
-			msigABI,
 			customABIs,
 			config.Network,
 		)

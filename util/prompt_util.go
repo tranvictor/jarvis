@@ -239,13 +239,12 @@ func PromptTxConfirmation(
 	from Address,
 	to Address,
 	tx *types.Transaction,
-	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	network string,
 ) error {
 	fmt.Printf("\n========== Confirm tx data before signing ==========\n\n")
 	err := showTxInfoToConfirm(
-		analyzer, from, to, tx, a, customABIs, network,
+		analyzer, from, to, tx, customABIs, network,
 	)
 	if err != nil {
 		fmt.Printf("%s\n", err)
@@ -395,7 +394,6 @@ func showTxInfoToConfirm(
 	from Address,
 	to Address,
 	tx *types.Transaction,
-	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	network string,
 ) error {
@@ -421,20 +419,14 @@ func showTxInfoToConfirm(
 		),
 	)
 
-	method, params, gnosisResult, err := analyzer.AnalyzeMethodCall(a, tx.Data(), customABIs)
-	if err != nil {
-		return fmt.Errorf("Can't decode method call: %s", err)
-	}
-	fmt.Printf("\nContract: %s\n", VerboseAddress(to))
-	fmt.Printf("Method: %s\n", method)
-	for _, param := range params {
-		fmt.Printf(
-			" . %s (%s): %s\n",
-			param.Name,
-			param.Type,
-			DisplayValues(param.Value),
-		)
-	}
-	PrintGnosis(gnosisResult)
+	fc := analyzer.AnalyzeFunctionCallRecursively(
+		GetABI,
+		tx.Value(),
+		to.Address,
+		tx.Data(),
+		customABIs,
+	)
+	PrintFunctionCall(fc)
+
 	return nil
 }

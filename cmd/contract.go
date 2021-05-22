@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -176,8 +177,9 @@ var txContractCmd = &cobra.Command{
 			util.GetJarvisAddress(config.From, config.Network),
 			util.GetJarvisAddress(config.To, config.Network),
 			tx,
-			a,
-			nil,
+			map[string]*abi.ABI{
+				strings.ToLower(config.To): a,
+			},
 			config.Network,
 		)
 		if err != nil {

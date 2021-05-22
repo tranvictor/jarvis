@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
@@ -15,7 +16,7 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) (method string, params []ParamResult, gnosisResult *GnosisResult, msigErr error) {
+func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) (fc *FunctionCall) {
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
 		fmt.Printf("Jarvis: Can't get tx info: %s\n", err)
@@ -41,9 +42,16 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 			fmt.Printf("Couldn't analyze tx: %s\n", err)
 			return
 		}
-		method, params, gnosisResult, msigErr = util.AnalyzeMethodCallAndPrint(analyzer, destAbi, data, nil, config.Network)
-	} else {
-		msigErr = fmt.Errorf("no contract call in tx data")
+		fc = util.AnalyzeMethodCallAndPrint(
+			analyzer,
+			value,
+			address,
+			data,
+			map[string]*abi.ABI{
+				strings.ToLower(address): destAbi,
+			},
+			config.Network,
+		)
 	}
 
 	fmt.Printf("\nExecuted: %t\n", executed)
@@ -59,7 +67,7 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 	return
 }
 
-type PostProcessFunc func(method string, params []ParamResult, gnosisResult *GnosisResult, err error) error
+type PostProcessFunc func(fc *FunctionCall) error
 
 func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args []string, postProcess PostProcessFunc) {
 	reader, err := util.EthReader(config.Network)
@@ -121,9 +129,9 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		return
 	}
 
-	gnosisMethod, gnosisParams, gnosisResult, gnosisErr := AnalyzeAndShowMsigTxInfo(multisigContract, txid)
+	fc := AnalyzeAndShowMsigTxInfo(multisigContract, txid)
 
-	if postProcess != nil && postProcess(gnosisMethod, gnosisParams, gnosisResult, gnosisErr) != nil {
+	if postProcess != nil && postProcess(fc) != nil {
 		return
 	}
 	// TODO: support multiple txs?
@@ -156,7 +164,6 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		util.GetJarvisAddress(config.From, config.Network),
 		util.GetJarvisAddress(config.To, config.Network),
 		tx,
-		a,
 		nil,
 		config.Network,
 	)
