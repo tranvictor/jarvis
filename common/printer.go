@@ -45,11 +45,29 @@ func PrintTxDetails(result *TxResult, writer io.Writer) {
 	for i, l := range result.Logs {
 		fmt.Fprintf(writer, "Log %d: %s\n", i+1, l.Name)
 		for j, topic := range l.Topics {
-			fmt.Fprintf(writer, "    Topic %d - %s: %s\n", j+1, topic.Name, DisplayValues(topic.Value))
+			fmt.Fprintf(writer, "    Topic %d - %s: ", j+1, topic.Name)
+			PrintVerboseValueToWriter(writer, topic.Value)
 		}
 		fmt.Fprintf(writer, "    Data:\n")
 		for _, param := range l.Data {
-			fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
+			fmt.Fprintf(writer, "    %s (%s): ", param.Name, param.Type)
+			PrintVerboseValueToWriter(writer, param.Value)
+		}
+	}
+}
+
+func printParamToWriter(p ParamResult, w io.Writer, parentw io.Writer, level int) {
+	indentation := ""
+	for i := 0; i < level; i++ {
+		indentation = indentation + "    "
+	}
+	writer := indent.NewWriter(w, indentation)
+
+	fmt.Fprintf(writer, "    %s (%s): ", p.Name, p.Type)
+	PrintVerboseValueToWriter(writer, p.Value)
+	if len(p.Tuple) > 0 {
+		for _, f := range p.Tuple {
+			printParamToWriter(f, writer, parentw, level+1)
 		}
 	}
 }
@@ -75,7 +93,7 @@ func printFunctionCallToWriter(fc *FunctionCall, w io.Writer, level int) {
 	fmt.Fprintf(writer, "| Method: %s\n", fc.Method)
 	fmt.Fprintf(writer, "| Params:\n")
 	for _, param := range fc.Params {
-		fmt.Fprintf(writer, "|    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
+		printParamToWriter(param, writer, w, 0)
 	}
 	for _, dfc := range fc.DecodedFunctionCalls {
 		printFunctionCallToWriter(dfc, w, level+1)
@@ -123,18 +141,17 @@ func VerboseValues(values []Value) []string {
 	return result
 }
 
-func DisplayValues(values []Value) string {
+func PrintVerboseValueToWriter(writer io.Writer, values []Value) {
 	verboseValues := VerboseValues(values)
 	if len(verboseValues) == 0 {
-		return ""
+		fmt.Fprintf(writer, "\n")
 	} else if len(verboseValues) == 1 {
-		return verboseValues[0]
+		fmt.Fprintf(writer, "%s\n", verboseValues[0])
 	} else {
-		parts := []string{}
+		fmt.Fprintf(writer, "\n")
 		for i, value := range values {
-			parts = append(parts, fmt.Sprintf("%d. %s", i+1, verboseValue(value)))
+			fmt.Fprintf(writer, "        %d. %s\n", i+1, verboseValue(value))
 		}
-		return strings.Join(parts, "\n")
 	}
 }
 

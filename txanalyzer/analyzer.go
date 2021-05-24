@@ -71,6 +71,37 @@ func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}
 	return util.GetJarvisValue(valueStr, self.Network)
 }
 
+func (self *TxAnalyzer) ParamAsJarvisTuple(t abi.Type, value interface{}) []ParamResult {
+	result := []ParamResult{}
+	realVal := reflect.ValueOf(value)
+	for i, field := range t.TupleElems {
+		if field.T == abi.TupleTy {
+			result = append(result, ParamResult{
+				Name: t.TupleRawNames[i],
+				Type: field.TupleRawName,
+				Tuple: self.ParamAsJarvisTuple(
+					*field,
+					reflect.Indirect(realVal).FieldByName(
+						strings.Title(field.TupleRawName),
+					).Interface(),
+				),
+			})
+		} else {
+			result = append(result, ParamResult{
+				Name: t.TupleRawNames[i],
+				Type: field.String(),
+				Value: self.ParamAsJarvisValues(
+					*field,
+					reflect.Indirect(realVal).FieldByName(
+						strings.Title(t.TupleRawNames[i]),
+					).Interface(),
+				),
+			})
+		}
+	}
+	return result
+}
+
 func (self *TxAnalyzer) ParamAsJarvisValues(t abi.Type, value interface{}) []Value {
 	switch t.T {
 	case abi.SliceTy:
@@ -220,13 +251,23 @@ func (self *TxAnalyzer) AnalyzeMethodCall(a *abi.ABI, data []byte) (method strin
 	if err != nil {
 		return method, []ParamResult{}, err
 	}
+
 	params = []ParamResult{}
 	for i, input := range m.Inputs {
-		params = append(params, ParamResult{
-			Name:  input.Name,
-			Type:  input.Type.String(),
-			Value: self.ParamAsJarvisValues(input.Type, ps[i]),
-		})
+		if input.Type.T == abi.TupleTy {
+			fmt.Printf("going to analyze tuple: %s, %s\n", input.Name, input.Type.TupleRawName)
+			params = append(params, ParamResult{
+				Name:  input.Name,
+				Type:  input.Type.TupleRawName,
+				Tuple: self.ParamAsJarvisTuple(input.Type, ps[i]),
+			})
+		} else {
+			params = append(params, ParamResult{
+				Name:  input.Name,
+				Type:  input.Type.String(),
+				Value: self.ParamAsJarvisValues(input.Type, ps[i]),
+			})
+		}
 	}
 
 	return method, params, nil

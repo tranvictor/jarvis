@@ -32,6 +32,7 @@ type ParamResult struct {
 	Name  string
 	Type  string
 	Value []Value
+	Tuple []ParamResult
 }
 
 type TopicResult struct {
