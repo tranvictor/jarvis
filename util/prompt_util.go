@@ -237,14 +237,13 @@ func PromptNonArray(input abi.Argument, prefill string, network string) (interfa
 func PromptTxConfirmation(
 	analyzer TxAnalyzer,
 	from Address,
-	to Address,
 	tx *types.Transaction,
 	customABIs map[string]*abi.ABI,
 	network string,
 ) error {
 	fmt.Printf("\n========== Confirm tx data before signing ==========\n\n")
 	err := showTxInfoToConfirm(
-		analyzer, from, to, tx, customABIs, network,
+		analyzer, from, tx, customABIs, network,
 	)
 	if err != nil {
 		fmt.Printf("%s\n", err)
@@ -392,7 +391,6 @@ func PromptFunctionCallData(
 func showTxInfoToConfirm(
 	analyzer TxAnalyzer,
 	from Address,
-	to Address,
 	tx *types.Transaction,
 	customABIs map[string]*abi.ABI,
 	network string,
@@ -400,16 +398,16 @@ func showTxInfoToConfirm(
 	fmt.Printf(
 		"From: %s ==> %s\n",
 		VerboseAddress(from),
-		VerboseAddress(to),
+		VerboseAddress(GetJarvisAddress(tx.To().Hex(), network)),
 	)
 
-	sendingETH := ethutils.BigToFloat(tx.Value(), 18)
-	if sendingETH > 0 {
-		fmt.Printf("Value: %s\n", InfoColor(fmt.Sprintf("%f ETH", sendingETH)))
+	sendingETH := BigToFloatString(tx.Value(), 18)
+	if tx.Value().Cmp(big.NewInt(0)) > 0 {
+		fmt.Printf("Value: %s\n", InfoColor(fmt.Sprintf("%s ETH", sendingETH)))
 	}
 
 	fmt.Printf(
-		"Nonce: %d  |  Gas: %.2f gwei (%d gas, %f ETH)\n",
+		"Nonce: %d  |  Gas: %.2f gwei (%d gas = %f ETH)\n",
 		tx.Nonce(),
 		ethutils.BigToFloat(tx.GasPrice(), 9),
 		tx.Gas(),
@@ -419,10 +417,19 @@ func showTxInfoToConfirm(
 		),
 	)
 
+	isContract, err := IsContract(tx.To().Hex(), network)
+	if err != nil {
+		return err
+	}
+
+	if !isContract {
+		return nil
+	}
+
 	fc := analyzer.AnalyzeFunctionCallRecursively(
 		GetABI,
 		tx.Value(),
-		to.Address,
+		tx.To().Hex(),
 		tx.Data(),
 		customABIs,
 	)

@@ -164,18 +164,24 @@ var txContractCmd = &cobra.Command{
 		}
 		// var GasLimit uint64
 		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
+			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
 			if err != nil {
 				fmt.Printf("Couldn't estimate gas limit: %s\n", err)
 				return
 			}
 		}
 
-		tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
+		tx := ethutils.BuildExactTx(
+			config.Nonce,
+			config.To,
+			config.Value,
+			config.GasLimit+config.ExtraGasLimit,
+			config.GasPrice+config.ExtraGasPrice,
+			data,
+		)
 		err = util.PromptTxConfirmation(
 			analyzer,
 			util.GetJarvisAddress(config.From, config.Network),
-			util.GetJarvisAddress(config.To, config.Network),
 			tx,
 			map[string]*abi.ABI{
 				strings.ToLower(config.To): a,
@@ -428,7 +434,7 @@ func init() {
 	txContractCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	txContractCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 	txContractCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
-	txContractCmd.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
+	txContractCmd.Flags().StringVarP(&config.RawValue, "amount", "v", "0", "Amount of eth to send. It is in eth value, not wei.")
 	txContractCmd.MarkFlagRequired("from")
 	contractCmd.AddCommand(txContractCmd)
 

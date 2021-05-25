@@ -1,6 +1,8 @@
 package config
 
 import (
+	"math/big"
+
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 )
@@ -16,7 +18,8 @@ var (
 	From                 string
 	FromAcc              accounts.AccDesc
 	To                   string
-	Value                float64
+	Value                *big.Int
+	RawValue             string
 	MethodIndex          uint64
 	PrefillMode          bool
 	PrefillStr           string

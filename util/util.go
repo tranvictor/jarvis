@@ -150,16 +150,38 @@ func ParamToBigInt(param string) (*big.Int, error) {
 	return result, nil
 }
 
+func FloatStringToBig(value string, decimal int64) (*big.Int, error) {
+	f, success := new(big.Float).SetString(value)
+	if !success {
+		return nil, fmt.Errorf("couldn't parse string to big int")
+	}
+	power := new(big.Float).SetInt(new(big.Int).Exp(
+		big.NewInt(10), big.NewInt(decimal), nil,
+	))
+	f.Mul(f, power)
+	res, _ := f.Int(nil)
+	return res, nil
+}
+
+func BigToFloatString(value *big.Int, decimal int64) string {
+	f := new(big.Float).SetInt(value)
+	power := new(big.Float).SetInt(new(big.Int).Exp(
+		big.NewInt(10), big.NewInt(decimal), nil,
+	))
+	res := new(big.Float).Quo(f, power)
+	return strings.TrimRight(res.Text('f', int(decimal)), "0")
+}
+
 // Split value by space,
-// if the lowercase of first element is 'all', the amount will be -1, indicating a balance query is needed
-// else, parses the first element to float64 as the amount.
+// if the lowercase of first element is 'all', the amount will be "ALL", indicating a balance query is needed
+// else, return the string as the amount.
 // Join whats left by space and trim by space, if it is empty, interpret it
 // as ETH.
 // Error will not be nil if it fails to proceed all of above steps.
-func ValueToAmountAndCurrency(value string) (float64, string, error) {
+func ValueToAmountAndCurrency(value string) (string, string, error) {
 	parts := strings.Split(value, " ")
 	if len(parts) == 0 {
-		return 0, "", fmt.Errorf("`%s` is invalid. See help to learn more", value)
+		return "", "", fmt.Errorf("`%s` is invalid. See help to learn more", value)
 	}
 	amountStr := parts[0]
 	currency := strings.Trim(strings.Join(parts[1:], " "), " ")
@@ -168,16 +190,10 @@ func ValueToAmountAndCurrency(value string) (float64, string, error) {
 	}
 
 	if strings.ToLower(strings.Trim(amountStr, " ")) == "all" {
-		return -1, currency, nil
+		return "ALL", currency, nil
 	}
 
-	amount, err := strconv.ParseFloat(amountStr, 64)
-	if err != nil {
-		return 0, "", fmt.Errorf(
-			"`%s` is not float. See help to learn more", amountStr,
-		)
-	}
-	return amount, currency, nil
+	return amountStr, currency, nil
 }
 
 func ScanForTxs(para string) []string {
@@ -277,12 +293,11 @@ func AnalyzeAndPrint(
 
 	contractAddress := txinfo.Tx.To().Hex()
 
-	code, err := reader.GetCode(contractAddress)
+	isContract, err := IsContract(contractAddress, network)
 	if err != nil {
 		fmt.Printf("checking tx type failed: %s", err)
 		return nil
 	}
-	isContract := len(code) > 0
 
 	var result *TxResult
 
@@ -695,8 +710,37 @@ func GetABIStringBypassCache(addr string, network string) (string, error) {
 	return abiStr, nil
 }
 
+func IsContract(addr string, network string) (bool, error) {
+	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network)
+	_, found := cache.GetCache(cacheKey)
+	if found {
+		return true, nil
+	}
+
+	reader, err := EthReader(network)
+	if err != nil {
+		return false, err
+	}
+
+	code, err := reader.GetCode(addr)
+	if err != nil {
+		return false, err
+	}
+
+	isContract := len(code) > 0
+
+	if isContract {
+		cache.SetCache(
+			cacheKey,
+			"true",
+		)
+		fmt.Printf("Stored %s contract code to cache.\n", addr)
+	}
+	return isContract, nil
+}
+
 func GetABIString(addr string, network string) (string, error) {
-	cacheKey := fmt.Sprintf("%s_abi", addr)
+	cacheKey := fmt.Sprintf("%s_abi", strings.ToLower(addr))
 	cached, found := cache.GetCache(cacheKey)
 	if found {
 		return cached, nil

@@ -32,7 +32,7 @@ type TxAnalyzer struct {
 
 func (self *TxAnalyzer) setBasicTxInfo(txinfo ethutils.TxInfo, result *TxResult) {
 	result.From = util.GetJarvisAddress(txinfo.Tx.Extra.From.Hex(), self.Network)
-	result.Value = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.Tx.Value(), 18))
+	result.Value = fmt.Sprintf("%s", util.BigToFloatString(txinfo.Tx.Value(), 18))
 	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.Tx.GasPrice(), 9))

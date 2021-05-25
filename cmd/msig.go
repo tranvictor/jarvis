@@ -303,14 +303,14 @@ var initMsigCmd = &cobra.Command{
 
 		// var GasLimit uint64
 		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, txdata)
+			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, txdata)
 			if err != nil {
 				fmt.Printf("Couldn't estimate gas limit: %s\n", err)
 				return
 			}
 		}
 
-		tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
+		tx := ethutils.BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
 
 		customABIs := map[string]*abi.ABI{
 			strings.ToLower(config.MsigTo): a,
@@ -319,7 +319,6 @@ var initMsigCmd = &cobra.Command{
 		err = util.PromptTxConfirmation(
 			analyzer,
 			util.GetJarvisAddress(config.From, config.Network),
-			util.GetJarvisAddress(config.To, config.Network),
 			tx,
 			customABIs,
 			config.Network,
@@ -380,7 +379,7 @@ func init() {
 		c.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
 		c.PersistentFlags().Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
 		c.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
-		c.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
+		c.Flags().StringVarP(&config.RawValue, "amount", "v", "0", "Amount of eth to send. It is in eth value, not wei.")
 		c.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 		c.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
 		c.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")

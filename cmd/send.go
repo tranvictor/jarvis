@@ -6,8 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/Songmu/prompter"
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
@@ -24,20 +26,12 @@ func handleSend(
 	nonce uint64,
 	from accounts.AccDesc,
 	to string,
-	amount float64,
+	amountWei *big.Int,
 	tokenAddr string,
 ) {
-	fmt.Printf("== Unlock your wallet and send now...\n")
-	account, err := accounts.UnlockAccount(from, config.Network)
-	if err != nil {
-		fmt.Printf("Failed: %s\n", err)
-		os.Exit(126)
-	}
-
 	var (
-		t           *types.Transaction
-		broadcasted bool
-		errors      error
+		t *types.Transaction
+		a *abi.ABI
 	)
 
 	reader, err := util.EthReader(config.Network)
@@ -49,108 +43,91 @@ func handleSend(
 	analyzer := txanalyzer.NewGenericAnalyzer(reader)
 
 	if tokenAddr == util.ETH_ADDR {
-		var amountWei *big.Int
-		if amount == -1 {
-			ethBalance, err := reader.GetBalance(config.From)
-			if err != nil {
-				fmt.Printf("getting eth balance failed: %s\n", err)
-				return
-			}
-			gasCost := big.NewInt(0).Mul(
-				big.NewInt(int64(config.GasLimit)),
-				ethutils.FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
-			)
-			amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
-		} else {
-			amountWei = ethutils.FloatToBigInt(amount, 18)
-		}
-		t, broadcasted, errors = account.SendETHWithNonceAndPrice(
+		t = ethutils.BuildExactTx(
 			config.Nonce,
-			config.GasLimit,
-			config.GasPrice+config.ExtraGasPrice,
-			amountWei,
 			to,
+			amountWei,
+			config.GasLimit+config.ExtraGasLimit,
+			config.GasPrice+config.ExtraGasPrice,
+			[]byte{},
 		)
 	} else {
-		if amount == -1 {
-			amountWei, err := reader.ERC20Balance(tokenAddr, config.From)
-			if err != nil {
-				fmt.Printf("Couldn't get token balance: %s\n", err)
-				return
-			}
-			t, broadcasted, errors = account.CallERC20ContractWithNonceAndPrice(
-				config.Nonce,
-				config.GasPrice+config.ExtraGasPrice,
-				150000,
-				0,
-				tokenAddr,
-				"transfer",
-				ethutils.HexToAddress(to),
-				amountWei,
+		a, err = ethutils.GetERC20ABI()
+		if err != nil {
+			fmt.Printf("Couldn't get erc20 abi: %s\n", err)
+			return
+		}
+		data, err := a.Pack(
+			"transfer",
+			ethutils.HexToAddress(to),
+			amountWei,
+		)
+		if err != nil {
+			fmt.Printf("Couldn't pack data: %s\n", err)
+			return
+		}
+		t = ethutils.BuildExactTx(
+			config.Nonce,
+			tokenAddr,
+			big.NewInt(0),
+			config.GasLimit+config.ExtraGasLimit,
+			config.GasPrice+config.ExtraGasPrice,
+			data,
+		)
+	}
+
+	err = util.PromptTxConfirmation(
+		analyzer,
+		util.GetJarvisAddress(config.From, config.Network),
+		t,
+		map[string]*abi.ABI{
+			strings.ToLower(tokenAddr): a,
+		},
+		config.Network,
+	)
+	if err != nil {
+		fmt.Printf("Aborted!\n")
+		return
+	}
+
+	fmt.Printf("== Unlock your wallet and send now...\n")
+	account, err := accounts.UnlockAccount(from, config.Network)
+	if err != nil {
+		fmt.Printf("Failed: %s\n", err)
+		os.Exit(126)
+	}
+
+	if config.DontBroadcast {
+		signedTx, err := account.SignTx(t)
+		if err != nil {
+			fmt.Printf("%s", err)
+			return
+		}
+		data, err := rlp.EncodeToBytes(signedTx)
+		if err != nil {
+			fmt.Printf("Couldn't encode the signed tx: %s", err)
+			return
+		}
+		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
+	} else {
+		tx, broadcasted, err := account.SignTxAndBroadcast(t)
+		if config.DontWaitToBeMined {
+			util.DisplayBroadcastedTx(
+				tx, broadcasted, err, config.Network,
 			)
 		} else {
-			decimals, err := util.GetERC20Decimal(tokenAddr, config.Network)
-			if err != nil {
-				fmt.Printf("Couldn't get token decimal: %s\n", err)
-				return
-			}
-			amountBig := ethutils.FloatToBigInt(amount, decimals)
-			t, broadcasted, errors = account.CallERC20ContractWithNonceAndPrice(
-				config.Nonce,
-				config.GasPrice+config.ExtraGasPrice,
-				150000,
-				0,
-				tokenAddr,
-				"transfer",
-				ethutils.HexToAddress(to),
-				amountBig,
+			util.DisplayWaitAnalyze(
+				reader, analyzer, tx, broadcasted, err, config.Network,
+				a, nil,
 			)
 		}
 	}
-
-	a, err := ethutils.GetERC20ABI()
-	if err != nil {
-		fmt.Printf("Couldn't get erc20 abi: %s\n", err)
-		return
-	}
-	util.DisplayWaitAnalyze(
-		reader, analyzer, t, broadcasted, errors, config.Network,
-		a, nil,
-	)
-}
-
-func promptConfirmation(
-	from accounts.AccDesc,
-	toAddr string,
-	toName string,
-	nonce uint64,
-	gasPrice float64,
-	extraGasPrice float64,
-	gasLimit uint64,
-	extraGasLimit uint64,
-	amount float64,
-	amountWei *big.Int,
-	tokenAddr string,
-	tokenDesc string) error {
-	fmt.Printf("From: %s - %s\n", from.Address, from.Desc)
-	fmt.Printf("To: %s - %s\n", toAddr, toName)
-	if amountWei != nil {
-		fmt.Printf("Value: %s %s wei(%s)\n", amountWei.Text(10), tokenDesc, tokenAddr)
-	} else {
-		fmt.Printf("Value: %f %s(%s)\n", amount, tokenDesc, tokenAddr)
-	}
-	fmt.Printf("Nonce: %d\n", nonce)
-	fmt.Printf("Gas price: %f gwei\n", gasPrice+extraGasPrice)
-	fmt.Printf("Gas limit: %d\n", gasLimit+extraGasLimit)
-	if !prompter.YN("Confirm?", true) {
-		return fmt.Errorf("Aborted!")
-	}
-	return nil
 }
 
 func init() {
 	var to string
-	var amount float64
+	var amountStr string
+	var amountWei *big.Int
 	var value string
 	var tokenAddr string
 	var tokenDesc string
@@ -166,9 +143,7 @@ exact addresses start with 0x.`,
 		TraverseChildren: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 
-			var amountWei *big.Int
-
-			amount, currency, err = util.ValueToAmountAndCurrency(value)
+			amountStr, currency, err = util.ValueToAmountAndCurrency(value)
 			if err != nil {
 				return err
 			}
@@ -194,8 +169,6 @@ exact addresses start with 0x.`,
 				}
 			}
 
-			fmt.Printf("Currency addr: %s\n", tokenAddr)
-			fmt.Printf("Currency desc: %s\n", tokenDesc)
 			// process from to get address
 			acc, err := accounts.GetAccount(config.From)
 			if err != nil {
@@ -205,13 +178,12 @@ exact addresses start with 0x.`,
 				config.From = acc.Address
 			}
 			// process to to get address
-			toAddr, toName, err := util.GetMatchingAddress(to)
+			toAddr, _, err := util.GetMatchingAddress(to)
 			if err != nil {
 				return err
 			} else {
 				to = toAddr
 			}
-			fmt.Printf("Network: %s\n", config.Network)
 			reader, err := util.EthReader(config.Network)
 			if err != nil {
 				return err
@@ -226,14 +198,13 @@ exact addresses start with 0x.`,
 			// var GasLimit uint64
 			if config.GasLimit == 0 {
 				if tokenAddr == util.ETH_ADDR {
-					if amount == -1 {
+					if amountStr == "ALL" {
 						config.GasLimit, err = reader.EstimateExactGas(config.From, to, config.GasPrice+config.ExtraGasPrice, big.NewInt(1), []byte{})
 						if err != nil {
 							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
 							return err
 						}
 						ethBalance, err := reader.GetBalance(config.From)
-						fmt.Printf("eth balance   : %10s\n", ethBalance)
 						if err != nil {
 							return err
 						}
@@ -241,10 +212,12 @@ exact addresses start with 0x.`,
 							big.NewInt(int64(config.GasLimit)),
 							ethutils.FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
 						)
-						fmt.Printf("gas cost      : %10s\n", gasCost)
 						amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
-						fmt.Printf("amount to send: %10s\n", amountWei)
 					} else {
+						amountWei, err = util.FloatStringToBig(amountStr, 18)
+						if err != nil {
+							return err
+						}
 						config.GasLimit, err = reader.EstimateExactGas(config.From, to, config.GasPrice+config.ExtraGasPrice, amountWei, []byte{})
 						if err != nil {
 							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
@@ -254,7 +227,7 @@ exact addresses start with 0x.`,
 				} else {
 					var data []byte
 
-					if amount == -1 {
+					if amountStr == "ALL" {
 						amountWei, err = reader.ERC20Balance(tokenAddr, config.From)
 						if err != nil {
 							return err
@@ -272,10 +245,15 @@ exact addresses start with 0x.`,
 						if err != nil {
 							return err
 						}
+						amountWei, err = util.FloatStringToBig(amountStr, decimals)
+						if err != nil {
+							return err
+						}
+
 						data, err = ethutils.PackERC20Data(
 							"transfer",
 							ethutils.HexToAddress(to),
-							ethutils.FloatToBigInt(amount, decimals),
+							amountWei,
 						)
 						if err != nil {
 							return err
@@ -294,23 +272,6 @@ exact addresses start with 0x.`,
 					return err
 				}
 			}
-			err = promptConfirmation(
-				acc,
-				toAddr,
-				toName,
-				config.Nonce,
-				config.GasPrice,
-				config.ExtraGasPrice,
-				config.GasLimit,
-				config.ExtraGasLimit,
-				amount,
-				amountWei,
-				tokenAddr,
-				tokenDesc,
-			)
-			if err != nil {
-				os.Exit(126)
-			}
 			return nil
 		},
 		Run: func(cmd *cobra.Command, args []string) {
@@ -321,7 +282,7 @@ exact addresses start with 0x.`,
 				config.Nonce,
 				config.FromAcc,
 				to,
-				amount,
+				amountWei,
 				tokenAddr,
 			)
 		},

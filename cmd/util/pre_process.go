@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,8 +26,13 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 		}
 	}
 
-	if config.Value < 0 {
-		return fmt.Errorf("value can't be negative")
+	config.Value, err = util.FloatStringToBig(config.RawValue, 18)
+	if err != nil {
+		return fmt.Errorf("couldn't parse -v param: %s", err)
+	}
+
+	if config.Value.Cmp(big.NewInt(0)) < 0 {
+		return fmt.Errorf("-v param can't be negative")
 	}
 
 	config.To, _, err = util.GetAddressFromString(args[0])
@@ -133,7 +139,11 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	// var GasPrice float64
+	// config.GasPrice, err = util.FloatStringToBig(config.RawGasPrice, 9)
+	// if err != nil {
+	// 	return fmt.Errorf("couldn't parse gas price param: %s", err)
+	// }
+
 	if config.GasPrice == 0 {
 		config.GasPrice, err = reader.RecommendedGasPrice()
 		if err != nil {

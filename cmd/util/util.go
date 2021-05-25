@@ -150,19 +150,24 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	// var GasLimit uint64
 	if config.GasLimit == 0 {
-		config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
+		config.GasLimit, err = reader.EstimateExactGas(
+			config.From,
+			config.To,
+			config.GasPrice+config.ExtraGasPrice,
+			config.Value,
+			data,
+		)
 		if err != nil {
 			fmt.Printf("Couldn't estimate gas limit: %s\n", err)
 			return
 		}
 	}
 
-	tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
+	tx := ethutils.BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
 
 	err = util.PromptTxConfirmation(
 		analyzer,
 		util.GetJarvisAddress(config.From, config.Network),
-		util.GetJarvisAddress(config.To, config.Network),
 		tx,
 		nil,
 		config.Network,
