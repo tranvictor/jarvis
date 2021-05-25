@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
@@ -334,16 +336,31 @@ var initMsigCmd = &cobra.Command{
 			fmt.Printf("Failed: %s\n", err)
 			return
 		}
-		tx, broadcasted, err := account.SignTxAndBroadcast(tx)
-		if config.DontWaitToBeMined {
-			util.DisplayBroadcastedTx(
-				tx, broadcasted, err, config.Network,
-			)
+
+		if config.DontBroadcast {
+			signedTx, err := account.SignTx(tx)
+			if err != nil {
+				fmt.Printf("%s", err)
+				return
+			}
+			data, err := rlp.EncodeToBytes(signedTx)
+			if err != nil {
+				fmt.Printf("Couldn't encode the signed tx: %s", err)
+				return
+			}
+			fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
 		} else {
-			util.DisplayWaitAnalyze(
-				reader, analyzer, tx, broadcasted, err, config.Network,
-				msigABI, customABIs,
-			)
+			tx, broadcasted, err := account.SignTxAndBroadcast(tx)
+			if config.DontWaitToBeMined {
+				util.DisplayBroadcastedTx(
+					tx, broadcasted, err, config.Network,
+				)
+			} else {
+				util.DisplayWaitAnalyze(
+					reader, analyzer, tx, broadcasted, err, config.Network,
+					msigABI, customABIs,
+				)
+			}
 		}
 	},
 }
@@ -383,6 +400,7 @@ func init() {
 		c.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 		c.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
 		c.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
+		c.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
 	}
 
 	msigCmd.AddCommand(approveMsigCmd)
