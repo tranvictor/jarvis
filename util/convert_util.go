@@ -30,13 +30,11 @@ func ConvertToBig(str string, network string) (*big.Int, error) {
 			return resultBig, nil
 		}
 	} else {
-		floatNum, err := strconv.ParseFloat(parts[0], 64)
-		if err != nil {
-			return nil, err
-		}
+		floatStr := parts[0]
+
 		tokenName := strings.Join(parts[1:], " ")
 		if strings.ToLower(tokenName) == "eth" {
-			return ethutils.FloatToBigInt(floatNum, 18), nil
+			return FloatStringToBig(floatStr, 18)
 		}
 		token, err := ConvertToAddress(fmt.Sprintf("%s token", tokenName))
 		if err != nil {
@@ -46,7 +44,7 @@ func ConvertToBig(str string, network string) (*big.Int, error) {
 		if err != nil {
 			return nil, err
 		}
-		return ethutils.FloatToBigInt(floatNum, decimal), nil
+		return FloatStringToBig(floatStr, decimal)
 	}
 }
 
