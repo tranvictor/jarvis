@@ -291,6 +291,9 @@ func AnalyzeAndPrint(
 		return nil
 	}
 
+	if txinfo.Tx.To() == nil {
+		return nil
+	}
 	contractAddress := txinfo.Tx.To().Hex()
 
 	isContract, err := IsContract(contractAddress, network)
@@ -756,6 +759,23 @@ func ConfigToABI(address string, forceERC20ABI bool, customABI string, network s
 		return ReadCustomABI(address, customABI, network)
 	}
 	return GetABI(address, network)
+}
+
+func GetGnosisMsigDeployByteCode(ctorBytes []byte) ([]byte, error) {
+	bytecode, err := hexutil.Decode(gnosisMsigDeployCode)
+	if err != nil {
+		return []byte{}, err
+	}
+	data := append(bytecode, ctorBytes...)
+	return data, nil
+}
+
+func GetGnosisMsigABI() *abi.ABI {
+	result, err := abi.JSON(strings.NewReader(gnosisMsigABI))
+	if err != nil {
+		panic(err)
+	}
+	return &result
 }
 
 func GetABI(addr string, network string) (*abi.ABI, error) {

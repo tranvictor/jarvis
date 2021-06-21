@@ -13,13 +13,15 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/tranvictor/ethutils"
 	. "github.com/tranvictor/jarvis/common"
 )
 
 const (
-	NEXT int = -1
-	BACK int = -2
+	NEXT                     int    = -1
+	BACK                     int    = -2
+	CONSTRUCTOR_METHOD_INDEX uint64 = 1000000 // assuming there is no contract with more than 1m methods
 )
 
 type NumberValidator func(number *big.Int) error
@@ -135,6 +137,10 @@ func PromptArray(input abi.Argument, prefill string, network string) (interface{
 		inpStr = prefill
 	}
 	inpStr = strings.Trim(inpStr, " ")
+	inpStr, err := InterpretInput(inpStr, network)
+	if err != nil {
+		return nil, err
+	}
 	if len(inpStr) < 2 || inpStr[0] != '[' || inpStr[len(inpStr)-1] != ']' {
 		return nil, fmt.Errorf("input must be wrapped by []")
 	}
@@ -231,6 +237,10 @@ func PromptNonArray(input abi.Argument, prefill string, network string) (interfa
 		inpStr = prefill
 	}
 	inpStr = strings.Trim(inpStr, " ")
+	inpStr, err := InterpretInput(inpStr, network)
+	if err != nil {
+		return nil, err
+	}
 	return ConvertParamStrToType(input.Name, input.Type, inpStr, network)
 }
 
@@ -298,6 +308,9 @@ func PromptTxData(
 	if err != nil {
 		return []byte{}, err
 	}
+	if method.Type == abi.Constructor {
+		return method.Inputs.Pack(params...)
+	}
 	return a.Pack(method.Name, params...)
 }
 
@@ -307,17 +320,7 @@ func (m orderedMethods) Len() int           { return len(m) }
 func (m orderedMethods) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
 func (m orderedMethods) Less(i, j int) bool { return m[i].Name < m[j].Name }
 
-func PromptFunctionCallData(
-	analyzer TxAnalyzer,
-	contractAddress string,
-	methodIndex uint64,
-	prefills []string,
-	prefillMode bool,
-	mode string,
-	a *abi.ABI,
-	customABIs map[string]*abi.ABI,
-	network string) (method *abi.Method, params []interface{}, err error) {
-
+func PromptMethod(a *abi.ABI, methodIndex uint64, mode string) (*abi.Method, string, error) {
 	methods := []abi.Method{}
 	if mode == "write" {
 		for _, m := range a.Methods {
@@ -339,12 +342,41 @@ func PromptFunctionCallData(
 			fmt.Printf("%d. %s\n", i+1, m.Name)
 		}
 		methodIndex = uint64(PromptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
+		method := &methods[methodIndex-1]
+		return method, method.Name, nil
+	} else if methodIndex == CONSTRUCTOR_METHOD_INDEX {
+		method := a.Constructor
+		return &method, "constructor", nil
 	} else if int(methodIndex) > len(methods) {
-		return nil, nil, fmt.Errorf("the contract doesn't have %d(th) write method", methodIndex)
+		return nil, "", fmt.Errorf("the contract doesn't have %d(th) write method", methodIndex)
+	} else {
+		method := &methods[methodIndex-1]
+		return method, method.Name, nil
 	}
-	method = &methods[methodIndex-1]
-	fmt.Printf("\nContract: %s\n", VerboseAddress(GetJarvisAddress(contractAddress, network)))
-	fmt.Printf("Method: %s\n", method.Name)
+}
+
+func PromptFunctionCallData(
+	analyzer TxAnalyzer,
+	contractAddress string,
+	methodIndex uint64,
+	prefills []string,
+	prefillMode bool,
+	mode string,
+	a *abi.ABI,
+	customABIs map[string]*abi.ABI,
+	network string) (method *abi.Method, params []interface{}, err error) {
+
+	method, methodName, err := PromptMethod(a, methodIndex, mode)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if method.Type == abi.Constructor {
+		fmt.Printf("Creating new contract at %s\n", contractAddress)
+	} else {
+		fmt.Printf("\nContract: %s\n", VerboseAddress(GetJarvisAddress(contractAddress, network)))
+	}
+	fmt.Printf("Method: %s\n", methodName)
 	inputs := method.Inputs
 	if prefillMode && len(inputs) != len(prefills) {
 		return nil, nil, fmt.Errorf("You must specify enough params in prefilled mode")
@@ -395,11 +427,23 @@ func showTxInfoToConfirm(
 	customABIs map[string]*abi.ABI,
 	network string,
 ) error {
-	fmt.Printf(
-		"From: %s ==> %s\n",
-		VerboseAddress(from),
-		VerboseAddress(GetJarvisAddress(tx.To().Hex(), network)),
-	)
+	if tx.To() != nil {
+		fmt.Printf(
+			"From: %s ==> %s\n",
+			VerboseAddress(from),
+			VerboseAddress(GetJarvisAddress(tx.To().Hex(), network)),
+		)
+	} else {
+		cAddr := crypto.CreateAddress(
+			ethutils.HexToAddress(from.Address),
+			tx.Nonce(),
+		).Hex()
+		fmt.Printf(
+			"From: %s ==> Create contract at %s\n",
+			VerboseAddress(from),
+			cAddr,
+		)
+	}
 
 	sendingETH := BigToFloatString(tx.Value(), 18)
 	if tx.Value().Cmp(big.NewInt(0)) > 0 {
@@ -416,6 +460,12 @@ func showTxInfoToConfirm(
 			18,
 		),
 	)
+
+	if tx.To() == nil {
+		// TODO: analyzing creation tx
+		// just ignore it for now
+		return nil
+	}
 
 	isContract, err := IsContract(tx.To().Hex(), network)
 	if err != nil {

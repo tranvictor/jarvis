@@ -35,25 +35,29 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 		return fmt.Errorf("-v param can't be negative")
 	}
 
-	config.To, _, err = util.GetAddressFromString(args[0])
-	if err != nil {
-		txs := util.ScanForTxs(args[0])
-		if len(txs) == 0 {
-			return fmt.Errorf("can't interpret the contract address")
-		}
-		config.Tx = txs[0]
-
-		reader, err := util.EthReader(config.Network)
+	if len(args) == 0 {
+		config.To = "" // this is to indicate a contract creation tx
+	} else {
+		config.To, _, err = util.GetAddressFromString(args[0])
 		if err != nil {
-			return fmt.Errorf("couldn't connect to blockchain\n")
-		}
+			txs := util.ScanForTxs(args[0])
+			if len(txs) == 0 {
+				return fmt.Errorf("can't interpret the contract address")
+			}
+			config.Tx = txs[0]
 
-		txinfo, err := reader.TxInfoFromHash(config.Tx)
-		if err != nil {
-			return fmt.Errorf("couldn't get tx info from the blockchain: %s\n", err)
+			reader, err := util.EthReader(config.Network)
+			if err != nil {
+				return fmt.Errorf("couldn't connect to blockchain\n")
+			}
+
+			txinfo, err := reader.TxInfoFromHash(config.Tx)
+			if err != nil {
+				return fmt.Errorf("couldn't get tx info from the blockchain: %s\n", err)
+			}
+			config.TxInfo = &txinfo
+			config.To = config.TxInfo.Tx.To().Hex()
 		}
-		config.TxInfo = &txinfo
-		config.To = config.TxInfo.Tx.To().Hex()
 	}
 
 	return nil

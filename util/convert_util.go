@@ -495,6 +495,10 @@ func ConvertParamStrToFixedByteType(name string, t abi.Type, strs []string, netw
 	return []byte{}, fmt.Errorf("fixed byte array of size %d is not supported", t.Size)
 }
 
+func ConvertEthereumTypeToInputString(t abi.Type, value interface{}) (string, error) {
+	return "", fmt.Errorf("not implmeneted")
+}
+
 func ConvertParamStrToType(name string, t abi.Type, str string, network string) (interface{}, error) {
 	switch t.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
