@@ -121,7 +121,7 @@ var createCamCmd = &cobra.Command{
 	PersistentPreRunE: Preprocess,
 	Run: func(cmd *cobra.Command, args []string) {
 		PrintENV()
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			cmd.Printf("Couldn't init eth reader: %s\n", err)
 			return
@@ -175,8 +175,8 @@ var createCamCmd = &cobra.Command{
 		if cType == "brr" && KIP2 {
 			// startTimestampBig = big.NewInt(int64(timeInfo.NextEpochStartTimestamp))
 			// endTimestampBig = big.NewInt(int64(timeInfo.NextEpochStartTimestamp + 10*24*60*60))
-			startTimestampBig = big.NewInt(1615446427)
-			endTimestampBig = big.NewInt(1616310427)
+			startTimestampBig = big.NewInt(1617865627)
+			endTimestampBig = big.NewInt(1618729627)
 			Options, err = generateBRROptions(dao, timeInfo.CurrentEpoch-1)
 			if err != nil {
 				fmt.Printf("Couldn't generate new BRR options: %s\n", err)
@@ -196,7 +196,7 @@ var createCamCmd = &cobra.Command{
 
 					return nil
 				},
-				config.Network,
+				config.Network(),
 			)
 			if startTimestampBig.Uint64() < timeInfo.NextEpochStartTimestamp {
 				epochOfTheCam = "current"
@@ -220,7 +220,7 @@ var createCamCmd = &cobra.Command{
 					}
 					return nil
 				},
-				config.Network,
+				config.Network(),
 			)
 
 			noOfOptions = util.PromptNumber(
@@ -232,7 +232,7 @@ var createCamCmd = &cobra.Command{
 					}
 					return nil
 				},
-				config.Network,
+				config.Network(),
 			)
 
 			switch cType {
@@ -245,7 +245,7 @@ var createCamCmd = &cobra.Command{
 					fee := util.PromptPercentageBps(
 						fmt.Sprintf("Enter fee for option #%d", i),
 						10000,
-						config.Network,
+						config.Network(),
 					)
 					Options = append(Options, fee)
 				}

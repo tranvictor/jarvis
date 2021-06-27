@@ -5,45 +5,55 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
+	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
-func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) (method string, params []ParamResult, gnosisResult *GnosisResult, msigErr error) {
+func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int, network Network) (fc *FunctionCall) {
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
 		fmt.Printf("Jarvis: Can't get tx info: %s\n", err)
 		return
 	}
 	fmt.Printf(
-		"Sending: %f ETH to %s\n",
-		ethutils.BigToFloat(value, 18),
-		VerboseAddress(util.GetJarvisAddress(address, config.Network)),
+		"Sending: %f %s to %s\n",
+		ethutils.BigToFloat(value, network.GetNativeTokenDecimal()),
+		network.GetNativeTokenSymbol(),
+		VerboseAddress(util.GetJarvisAddress(address, config.Network())),
 	)
 
 	if len(data) != 0 {
-		fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, config.Network)))
+		fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, config.Network())))
 
-		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, config.Network)
+		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't get abi of destination address: %s\n", err)
 			return
 		}
 
-		analyzer, err := txanalyzer.EthAnalyzer(config.Network)
+		analyzer, err := txanalyzer.EthAnalyzer(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't analyze tx: %s\n", err)
 			return
 		}
-		method, params, gnosisResult, msigErr = util.AnalyzeMethodCallAndPrint(analyzer, destAbi, data, nil, config.Network)
-	} else {
-		msigErr = fmt.Errorf("no contract call in tx data")
+		fc = util.AnalyzeMethodCallAndPrint(
+			analyzer,
+			value,
+			address,
+			data,
+			map[string]*abi.ABI{
+				strings.ToLower(address): destAbi,
+			},
+			config.Network(),
+		)
 	}
 
 	fmt.Printf("\nExecuted: %t\n", executed)
@@ -59,16 +69,16 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 	return
 }
 
-type PostProcessFunc func(method string, params []ParamResult, gnosisResult *GnosisResult, err error) error
+type PostProcessFunc func(fc *FunctionCall) error
 
 func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args []string, postProcess PostProcessFunc) {
-	reader, err := util.EthReader(config.Network)
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't connect to blockchain.\n")
 		return
 	}
 
-	analyzer := txanalyzer.NewGenericAnalyzer(reader)
+	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 	var txid *big.Int
 
@@ -114,21 +124,21 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	multisigContract, err := msig.NewMultisigContract(
 		config.To,
-		config.Network,
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Couldn't interact with the contract: %s\n", err)
 		return
 	}
 
-	gnosisMethod, gnosisParams, gnosisResult, gnosisErr := AnalyzeAndShowMsigTxInfo(multisigContract, txid)
+	fc := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
 
-	if postProcess != nil && postProcess(gnosisMethod, gnosisParams, gnosisResult, gnosisErr) != nil {
+	if postProcess != nil && postProcess(fc) != nil {
 		return
 	}
 	// TODO: support multiple txs?
 
-	a, err := util.GetABI(config.To, config.Network)
+	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't get the ABI for %s: %s\n", config.To, err)
 		return
@@ -142,23 +152,27 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	// var GasLimit uint64
 	if config.GasLimit == 0 {
-		config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
+		config.GasLimit, err = reader.EstimateExactGas(
+			config.From,
+			config.To,
+			config.GasPrice+config.ExtraGasPrice,
+			config.Value,
+			data,
+		)
 		if err != nil {
 			fmt.Printf("Couldn't estimate gas limit: %s\n", err)
 			return
 		}
 	}
 
-	tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
+	tx := ethutils.BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
 
 	err = util.PromptTxConfirmation(
 		analyzer,
-		util.GetJarvisAddress(config.From, config.Network),
-		util.GetJarvisAddress(config.To, config.Network),
+		util.GetJarvisAddress(config.From, config.Network()),
 		tx,
-		a,
 		nil,
-		config.Network,
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Aborted!\n")
@@ -166,7 +180,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	}
 
 	fmt.Printf("== Unlock your wallet and sign now...\n")
-	account, err := accounts.UnlockAccount(config.FromAcc, config.Network)
+	account, err := accounts.UnlockAccount(config.FromAcc, config.Network())
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		return
@@ -174,11 +188,11 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 	if config.DontWaitToBeMined {
 		util.DisplayBroadcastedTx(
-			tx, broadcasted, err, config.Network,
+			tx, broadcasted, err, config.Network(),
 		)
 	} else {
 		util.DisplayWaitAnalyze(
-			reader, analyzer, tx, broadcasted, err, config.Network,
+			reader, analyzer, tx, broadcasted, err, config.Network(),
 			a, nil,
 		)
 	}

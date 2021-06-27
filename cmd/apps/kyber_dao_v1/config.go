@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/jarvis/config"
+	. "github.com/tranvictor/jarvis/networks"
 )
 
 var (
@@ -22,8 +23,8 @@ var (
 )
 
 func Preprocess(cmd *cobra.Command, args []string) (err error) {
-	switch config.Network {
-	case "mainnet":
+	switch config.Network() {
+	case EthereumMainnet:
 		StakingContract = "0xecf0bdb7b3f349abfd68c3563678124c5e8aaea3"
 		DaoContract = "0x49bdd8854481005bba4acebabf6e06cd5f6312e9"
 		FeeHandler = "0xd3d2b5643e506c6d9b7099e9116d7aaa941114fe"
@@ -33,7 +34,7 @@ func Preprocess(cmd *cobra.Command, args []string) (err error) {
 		StartDAOTimestamp = 1594710427
 		MinCamDurationInSeconds = 345600
 		return nil
-	case "ropsten":
+	case Ropsten:
 		StakingContract = "0x8ba3ecae2ffd1dc9e730e54c9c5481d30a3ca2a3"
 		DaoContract = "0x752f6BEb3E103696842414Be1f3361011167EDa9"
 		FeeHandler = "0x8329e24cb7d85284f32689ef57983c8a7d4b268b"
@@ -42,7 +43,7 @@ func Preprocess(cmd *cobra.Command, args []string) (err error) {
 		EpochDurationInSeconds = 0
 		StartDAOTimestamp = 0
 		MinCamDurationInSeconds = 0
-		return fmt.Errorf("'%s' doesn't have kyber staking yet", config.Network)
+		return fmt.Errorf("'%s' doesn't have kyber staking yet", config.Network())
 	}
-	return fmt.Errorf("'%s' is not support for this app", config.Network)
+	return fmt.Errorf("'%s' is not support for this app", config.Network())
 }

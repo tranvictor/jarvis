@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -87,15 +88,15 @@ Param rules:
 		}
 		fmt.Printf("Contract: %s (%s)\n", contractAddress, contractName)
 
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't connect to blockchain.\n")
 			return
 		}
 
-		analyzer := txanalyzer.NewGenericAnalyzer(reader)
+		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-		a, err := util.ConfigToABI(contractAddress, config.ForceERC20ABI, config.CustomABI, config.Network)
+		a, err := util.ConfigToABI(contractAddress, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't get abi for %s: %s\n", contractAddress, err)
 			return
@@ -109,7 +110,7 @@ Param rules:
 			config.PrefillMode,
 			a,
 			nil,
-			config.Network,
+			config.Network(),
 		)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
@@ -133,15 +134,15 @@ var txContractCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: cmdutil.CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
 		}
 
-		analyzer := txanalyzer.NewGenericAnalyzer(reader)
+		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-		a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network)
+		a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
 			return
@@ -155,7 +156,7 @@ var txContractCmd = &cobra.Command{
 			config.PrefillMode,
 			a,
 			nil,
-			config.Network,
+			config.Network(),
 		)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
@@ -163,29 +164,36 @@ var txContractCmd = &cobra.Command{
 		}
 		// var GasLimit uint64
 		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
+			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
 			if err != nil {
 				fmt.Printf("Couldn't estimate gas limit: %s\n", err)
 				return
 			}
 		}
 
-		tx := ethutils.BuildTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
+		tx := ethutils.BuildExactTx(
+			config.Nonce,
+			config.To,
+			config.Value,
+			config.GasLimit+config.ExtraGasLimit,
+			config.GasPrice+config.ExtraGasPrice,
+			data,
+		)
 		err = util.PromptTxConfirmation(
 			analyzer,
-			util.GetJarvisAddress(config.From, config.Network),
-			util.GetJarvisAddress(config.To, config.Network),
+			util.GetJarvisAddress(config.From, config.Network()),
 			tx,
-			a,
-			nil,
-			config.Network,
+			map[string]*abi.ABI{
+				strings.ToLower(config.To): a,
+			},
+			config.Network(),
 		)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
 			return
 		}
 		fmt.Printf("== Unlock your wallet and sign now...\n")
-		account, err := accounts.UnlockAccount(config.FromAcc, config.Network)
+		account, err := accounts.UnlockAccount(config.FromAcc, config.Network())
 		if err != nil {
 			fmt.Printf("Unlock your wallet failed: %s\n", err)
 			return
@@ -207,11 +215,11 @@ var txContractCmd = &cobra.Command{
 			tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 			if config.DontWaitToBeMined {
 				util.DisplayBroadcastedTx(
-					tx, broadcasted, err, config.Network,
+					tx, broadcasted, err, config.Network(),
 				)
 			} else {
 				util.DisplayWaitAnalyze(
-					reader, analyzer, tx, broadcasted, err, config.Network,
+					reader, analyzer, tx, broadcasted, err, config.Network(),
 					a, nil,
 				)
 			}
@@ -234,7 +242,7 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 		fmt.Printf("Couldn't unpack response to go types: %s\n", err)
 		return contractReadResult{}, err
 	}
-	analyzer, err := txanalyzer.EthAnalyzer(config.Network)
+	analyzer, err := txanalyzer.EthAnalyzer(config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't init analyzer: %s\n", err)
 		return contractReadResult{}, err
@@ -305,7 +313,7 @@ var readContractCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: cmdutil.CommonFunctionCallPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
@@ -320,7 +328,7 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network)
+			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
 				fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
 				return
@@ -354,9 +362,9 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			analyzer := txanalyzer.NewGenericAnalyzer(reader)
+			analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network)
+			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
 				fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
 				return
@@ -371,7 +379,7 @@ var readContractCmd = &cobra.Command{
 				"read",
 				a,
 				nil,
-				config.Network,
+				config.Network(),
 			)
 			if err != nil {
 				fmt.Printf("Couldn't get params from users: %s\n", err)
@@ -389,30 +397,8 @@ var readContractCmd = &cobra.Command{
 	},
 }
 
-// var cloneContractCmd = &cobra.Command{
-// 	Use:               "clone",
-// 	Short:             "clone a contract using Etherscan ABI corpus",
-// 	Long:              ` `,
-// 	TraverseChildren:  true,
-// 	PersistentPreRunE: CommonTxPreprocess,
-// 	Run: func(cmd *cobra.Command, args []string) {
-// 	},
-// }
-
 func init() {
 	contractCmd.AddCommand(composeDataContractCmd)
-
-	// cloneContractCmd.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
-	// cloneContractCmd.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
-	// cloneContractCmd.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
-	// cloneContractCmd.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
-	// cloneContractCmd.PersistentFlags().Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
-	// cloneContractCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
-	// cloneContractCmd.PersistentFlags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
-	// cloneContractCmd.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
-	// cloneContractCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
-	// cloneContractCmd.MarkFlagRequired("from")
-	// contractCmd.AddCommand(cloneContractCmd)
 
 	txContractCmd.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
 	txContractCmd.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
@@ -426,7 +412,7 @@ func init() {
 	txContractCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	txContractCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 	txContractCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
-	txContractCmd.Flags().Float64VarP(&config.Value, "amount", "v", 0, "Amount of eth to send. It is in eth value, not wei.")
+	txContractCmd.Flags().StringVarP(&config.RawValue, "amount", "v", "0", "Amount of eth to send. It is in eth value, not wei.")
 	txContractCmd.MarkFlagRequired("from")
 	contractCmd.AddCommand(txContractCmd)
 

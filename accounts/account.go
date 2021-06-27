@@ -16,6 +16,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/sahilm/fuzzy"
 	"github.com/tranvictor/ethutils/account"
+	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 	"golang.org/x/crypto/ssh/terminal"
 )
@@ -98,7 +99,7 @@ func StoreAccountRecord(accDesc AccDesc) error {
 	return ioutil.WriteFile(path, content, 0644)
 }
 
-func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
+func UnlockAccount(ad AccDesc, network networks.Network) (*account.Account, error) {
 	var fromAcc *account.Account
 	var err error
 
@@ -116,110 +117,29 @@ func UnlockAccount(ad AccDesc, network string) (*account.Account, error) {
 		fmt.Printf("Using keystore: %s\n", ad.Keypath)
 		pwd := getPassword("Enter passphrase: ")
 		fmt.Printf("\n")
-		if network == "mainnet" {
-			fromAcc, err = account.NewAccountFromKeystore(ad.Keypath, pwd)
-		} else if network == "ropsten" {
-			fromAcc, err = account.NewRopstenAccountFromKeystore(ad.Keypath, pwd)
-		} else if network == "kovan" {
-			fromAcc, err = account.NewKovanAccountFromKeystore(ad.Keypath, pwd)
-		} else if network == "rinkeby" {
-			fromAcc, err = account.NewRinkebyAccountFromKeystore(ad.Keypath, pwd)
-		} else if network == "tomo" {
-			fromAcc, err = account.NewTomoAccountFromKeystore(ad.Keypath, pwd)
-		} else if network == "bsc" {
-			fromAcc, err = account.NewBSCAccountFromKeystore(ad.Keypath, pwd)
-		} else if network == "bsc-test" {
-			fromAcc, err = account.NewBSCTestnetAccountFromKeystore(ad.Keypath, pwd)
-		} else {
-			return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test")
-		}
+
+		fromAcc, err = account.NewKeystoreAccountGeneric(ad.Keypath, pwd, reader, broadcaster, network.GetChainID())
 		if err != nil {
 			fmt.Printf("Unlocking keystore '%s' failed: %s. Abort!\n", ad.Keypath, err)
 			return nil, err
 		}
-		fromAcc.SetReader(reader)
-		fromAcc.SetBroadcaster(broadcaster)
-		return fromAcc, nil
 	case "trezor":
-		if network == "mainnet" {
-			fromAcc, err = account.NewTrezorAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "ropsten" {
-			fromAcc, err = account.NewRopstenTrezorAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "kovan" {
-			fromAcc, err = account.NewKovanTrezorAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "rinkeby" {
-			fromAcc, err = account.NewRinkebyTrezorAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "tomo" {
-			fromAcc, err = account.NewTomoTrezorAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "bsc" {
-			fromAcc, err = account.NewBSCTrezorAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "bsc-test" {
-			fromAcc, err = account.NewBSCTestnetTrezorAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else {
-			return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten")
-		}
+		fromAcc, err = account.NewTrezorAccountGeneric(ad.Derpath, ad.Address, reader, broadcaster, network.GetChainID())
 		if err != nil {
 			fmt.Printf("Creating trezor instance failed: %s\n", err)
 			return nil, err
 		}
-		fromAcc.SetReader(reader)
-		fromAcc.SetBroadcaster(broadcaster)
-		return fromAcc, nil
 	case "ledger":
-		if network == "mainnet" {
-			fromAcc, err = account.NewLedgerAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "ropsten" {
-			fromAcc, err = account.NewRopstenLedgerAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "kovan" {
-			fromAcc, err = account.NewKovanLedgerAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "rinkeby" {
-			fromAcc, err = account.NewRinkebyLedgerAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "tomo" {
-			fromAcc, err = account.NewTomoLedgerAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "bsc" {
-			fromAcc, err = account.NewBSCLedgerAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else if network == "bsc-test" {
-			fromAcc, err = account.NewBSCTestnetLedgerAccount(
-				ad.Derpath, ad.Address,
-			)
-		} else {
-			return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten")
-		}
+		fromAcc, err = account.NewLedgerAccountGeneric(ad.Derpath, ad.Address, reader, broadcaster, network.GetChainID())
 		if err != nil {
 			fmt.Printf("Creating ledger instance failed: %s\n", err)
 			return nil, err
 		}
-		fromAcc.SetReader(reader)
-		fromAcc.SetBroadcaster(broadcaster)
-		return fromAcc, nil
+	default:
+		return nil, fmt.Errorf("not supported %s device", ad.Kind)
 	}
-	return nil, nil
+
+	return fromAcc, nil
 }
 
 func GetAccount(input string) (AccDesc, error) {

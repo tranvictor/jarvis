@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	Token   string
-	Reserve string
+	Token                 string
+	Reserve               string
+	ConversionRateAddress string
 )
 
 var KyberFPRCmd = &cobra.Command{
@@ -21,7 +22,7 @@ var KyberFPRCmd = &cobra.Command{
 	Short:            "utilities on FPR reserve",
 	TraverseChildren: true,
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
@@ -32,7 +33,7 @@ var KyberFPRCmd = &cobra.Command{
 			return
 		}
 		fmt.Printf("Working on reserve: %s (%s)\n", Reserve, resName)
-		reserve, err := NewFPRReserveContract(Reserve, reader)
+		reserve, err := NewFPRReserveContract(Reserve, ConversionRateAddress, reader)
 		if err != nil {
 			fmt.Printf("Couldn't initiate reserve instance: %s\n", err)
 			return
@@ -55,7 +56,7 @@ var KyberFPRCmd = &cobra.Command{
 			}
 			fmt.Printf("\nListed tokens:\n")
 			for i, token := range tokens {
-				fmt.Printf("%d. %s\n", i, VerboseAddress(util.GetJarvisAddress(token.Hex(), config.Network)))
+				fmt.Printf("%d. %s\n", i, VerboseAddress(util.GetJarvisAddress(token.Hex(), config.Network())))
 			}
 			fmt.Printf("\n")
 
@@ -64,7 +65,7 @@ var KyberFPRCmd = &cobra.Command{
 			Token = tokens[index].Hex()
 		}
 		fmt.Printf("\n")
-		fmt.Printf("Checking on token: %s\n", VerboseAddress(util.GetJarvisAddress(Token, config.Network)))
+		fmt.Printf("Checking on token: %s\n", VerboseAddress(util.GetJarvisAddress(Token, config.Network())))
 		price, err := util.GetCoinGeckoRateInUSD(Token)
 		if err != nil {
 			fmt.Printf("Getting price failed: %s\n", err)
@@ -91,7 +92,7 @@ var KyberFPRCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\n")
-		decimal, err := util.GetERC20Decimal(Token, config.Network)
+		decimal, err := util.GetERC20Decimal(Token, config.Network())
 		if err != nil {
 			fmt.Printf("Getting decimal failed: %s\n", err)
 			return
@@ -122,19 +123,20 @@ var approveListingTokenCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: cmdutil.CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		cmdutil.HandleApproveOrRevokeOrExecuteMsig("confirmTransaction", cmd, args, func(method string, params []ParamResult, gnosisResult *GnosisResult, err error) error {
+		cmdutil.HandleApproveOrRevokeOrExecuteMsig("confirmTransaction", cmd, args, func(fc *FunctionCall) error {
 			fmt.Printf("\n\n%s\n", InfoColor("Listing token validation..."))
-			if err != nil {
+
+			if fc.Error != "" {
 				fmt.Printf("%s\n", AlertColor("Provided tx doesn't call any smart contract function"))
 				return fmt.Errorf("provided tx doesn't call any smart contract function")
 			}
 
-			if method != "addToken" {
+			if fc.Method != "addToken" {
 				fmt.Printf("%s\n", AlertColor("Calling method is wrong. It must be 'addToken'"))
 				return fmt.Errorf("wrong conversion rate contract method")
 			}
 
-			tokenValue := params[0].Value[0]
+			tokenValue := fc.Params[0].Value[0]
 
 			if tokenValue.Address == nil || tokenValue.Address.Decimal == 0 {
 				fmt.Printf("Token from the msig params is not an address\n")
@@ -153,7 +155,7 @@ var approveListingTokenCmd = &cobra.Command{
 				tokenValue.Address.Desc,
 				price,
 			)
-			resolutionBig, err := util.StringToBigInt(params[1].Value[0].Value)
+			resolutionBig, err := util.StringToBigInt(fc.Params[1].Value[0].Value)
 			if err != nil {
 				fmt.Printf("Parsing min resolution value to big in failed\n")
 				return fmt.Errorf("Parsing min resolution failed: %s", err)
@@ -165,7 +167,7 @@ var approveListingTokenCmd = &cobra.Command{
 				fmt.Printf("Resolution: %f USD\n", resolution)
 			}
 
-			maxPerBlockImbalanceBig, err := util.StringToBigInt(params[2].Value[0].Value)
+			maxPerBlockImbalanceBig, err := util.StringToBigInt(fc.Params[2].Value[0].Value)
 			if err != nil {
 				fmt.Printf("Parsing max block imbalance value to big in failed: %s\n", err)
 				return fmt.Errorf("Parsing max block imbalance failed: %s", err)
@@ -173,7 +175,7 @@ var approveListingTokenCmd = &cobra.Command{
 			maxPerBlockImbalance := price * ethutils.BigToFloat(maxPerBlockImbalanceBig, tokenValue.Address.Decimal)
 			fmt.Printf("Max Block Imbalance: %f USD\n", maxPerBlockImbalance)
 
-			maxTotalImbalanceBig, err := util.StringToBigInt(params[3].Value[0].Value)
+			maxTotalImbalanceBig, err := util.StringToBigInt(fc.Params[3].Value[0].Value)
 			if err != nil {
 				fmt.Printf("Parsing max block imbalance value to big in failed\n")
 				return fmt.Errorf("Parsing max block imbalance failed: %s", err)
@@ -189,6 +191,7 @@ var approveListingTokenCmd = &cobra.Command{
 func init() {
 	KyberFPRCmd.PersistentFlags().Int64VarP(&config.AtBlock, "block", "b", -1, "Specify the block to read at. Default value indicates reading at latest state of the chain.")
 	KyberFPRCmd.PersistentFlags().StringVarP(&Token, "token", "T", "", "Token address or name of the FPR reserve to show information. If it is not specified, jarvis will show the list of listed token and you can select from them.")
+	KyberFPRCmd.PersistentFlags().StringVarP(&ConversionRateAddress, "rate-contract", "R", "", "Address of the conversion rate contract.")
 
 	KyberFPRCmd.AddCommand(approveListingTokenCmd)
 	approveListingTokenCmd.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 350000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")

@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -25,29 +26,38 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 		}
 	}
 
-	if config.Value < 0 {
-		return fmt.Errorf("value can't be negative")
+	config.Value, err = util.FloatStringToBig(config.RawValue, 18)
+	if err != nil {
+		return fmt.Errorf("couldn't parse -v param: %s", err)
 	}
 
-	config.To, _, err = util.GetAddressFromString(args[0])
-	if err != nil {
-		txs := util.ScanForTxs(args[0])
-		if len(txs) == 0 {
-			return fmt.Errorf("can't interpret the contract address")
-		}
-		config.Tx = txs[0]
+	if config.Value.Cmp(big.NewInt(0)) < 0 {
+		return fmt.Errorf("-v param can't be negative")
+	}
 
-		reader, err := util.EthReader(config.Network)
+	if len(args) == 0 {
+		config.To = "" // this is to indicate a contract creation tx
+	} else {
+		config.To, _, err = util.GetAddressFromString(args[0])
 		if err != nil {
-			return fmt.Errorf("couldn't connect to blockchain\n")
-		}
+			txs := util.ScanForTxs(args[0])
+			if len(txs) == 0 {
+				return fmt.Errorf("can't interpret the contract address")
+			}
+			config.Tx = txs[0]
 
-		txinfo, err := reader.TxInfoFromHash(config.Tx)
-		if err != nil {
-			return fmt.Errorf("couldn't get tx info from the blockchain: %s\n", err)
+			reader, err := util.EthReader(config.Network())
+			if err != nil {
+				return fmt.Errorf("couldn't connect to blockchain\n")
+			}
+
+			txinfo, err := reader.TxInfoFromHash(config.Tx)
+			if err != nil {
+				return fmt.Errorf("couldn't get tx info from the blockchain: %s\n", err)
+			}
+			config.TxInfo = &txinfo
+			config.To = config.TxInfo.Tx.To().Hex()
 		}
-		config.TxInfo = &txinfo
-		config.To = config.TxInfo.Tx.To().Hex()
 	}
 
 	return nil
@@ -62,7 +72,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	a, err := util.GetABI(config.To, config.Network)
+	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
 		if config.ForceERC20ABI {
 			a, err = ethutils.GetERC20ABI()
@@ -70,7 +80,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 				return err
 			}
 		} else if config.CustomABI != "" {
-			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network)
+			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
 			if err != nil {
 				return err
 			}
@@ -78,15 +88,19 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	}
 	// loosely check by checking a set of method names
 
-	isGnosisMultisig, err := util.IsGnosisMultisig(a)
-	if err != nil {
-		return err
+	isGnosisMultisig := false
+
+	if err == nil {
+		isGnosisMultisig, err = util.IsGnosisMultisig(a)
+		if err != nil {
+			return err
+		}
 	}
 
 	if config.From == "" && isGnosisMultisig {
 		multisigContract, err := msig.NewMultisigContract(
 			config.To,
-			config.Network,
+			config.Network(),
 		)
 		if err != nil {
 			return err
@@ -124,12 +138,16 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-	reader, err := util.EthReader(config.Network)
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		return err
 	}
 
-	// var GasPrice float64
+	// config.GasPrice, err = util.FloatStringToBig(config.RawGasPrice, 9)
+	// if err != nil {
+	// 	return fmt.Errorf("couldn't parse gas price param: %s", err)
+	// }
+
 	if config.GasPrice == 0 {
 		config.GasPrice, err = reader.RecommendedGasPrice()
 		if err != nil {

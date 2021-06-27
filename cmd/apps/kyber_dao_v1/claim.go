@@ -37,7 +37,7 @@ var claimCmd = &cobra.Command{
 
 		PrintENV()
 
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			cmd.Printf("Couldn't init eth reader: %s\n", err)
 			return

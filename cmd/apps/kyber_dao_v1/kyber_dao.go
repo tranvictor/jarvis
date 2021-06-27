@@ -5,8 +5,8 @@ import (
 )
 
 var KyberDAOCmd = &cobra.Command{
-	Use:              "kyber-dao",
-	Short:            "participate to Kyber DAO to get rewards",
+	Use:              "kyber-dao-v1",
+	Short:            "participate to Kyber DAO V1 to get rewards",
 	Long:             ``,
 	TraverseChildren: true,
 }

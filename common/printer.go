@@ -7,13 +7,16 @@ import (
 	"strings"
 
 	aurora "github.com/logrusorgru/aurora"
+	indent "github.com/openconfig/goyang/pkg/indent"
+	"github.com/tranvictor/ethutils"
+	. "github.com/tranvictor/jarvis/networks"
 )
 
-func PrintGnosis(result *GnosisResult) {
-	printGnosisToWriter(result, os.Stdout)
+func PrintFunctionCall(fc *FunctionCall) {
+	printFunctionCallToWriter(fc, os.Stdout, 0)
 }
 
-func PrintTxDetails(result *TxResult, writer io.Writer) {
+func PrintTxDetails(result *TxResult, network Network, writer io.Writer) {
 	fmt.Fprintf(writer, "Tx hash: %s\n", result.Hash)
 	if result.Status == "done" {
 		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Green(result.Status))
@@ -21,7 +24,7 @@ func PrintTxDetails(result *TxResult, writer io.Writer) {
 		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Bold(aurora.Red(result.Status)))
 	}
 	fmt.Fprintf(writer, "From: %s\n", VerboseAddress(result.From))
-	fmt.Fprintf(writer, "Value: %s ETH\n", result.Value)
+	fmt.Fprintf(writer, "Value: %s %s\n", result.Value, network.GetNativeTokenSymbol())
 	fmt.Fprintf(writer, "To: %s\n", VerboseAddress(result.To))
 	fmt.Fprintf(writer, "Nonce: %s\n", result.Nonce)
 	fmt.Fprintf(writer, "Gas price: %s gwei\n", result.GasPrice)
@@ -37,44 +40,64 @@ func PrintTxDetails(result *TxResult, writer io.Writer) {
 		return
 	}
 
-	if result.Method == "" {
-		fmt.Fprintf(writer, "Getting ABI and function name failed: %s\n", result.Error)
-		return
-	}
-	fmt.Fprintf(writer, "\nContract: %s\n", VerboseAddress(result.Contract))
-	fmt.Fprintf(writer, "Method: %s\n", result.Method)
-	fmt.Fprintf(writer, "Params:\n")
-	for _, param := range result.Params {
-		fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
-	}
-	printGnosisToWriter(result.GnosisInit, writer)
+	printFunctionCallToWriter(result.FunctionCall, writer, 0)
+
 	fmt.Fprintf(writer, "\nEvent logs:\n")
 	for i, l := range result.Logs {
 		fmt.Fprintf(writer, "Log %d: %s\n", i+1, l.Name)
 		for j, topic := range l.Topics {
-			fmt.Fprintf(writer, "    Topic %d - %s: %s\n", j+1, topic.Name, DisplayValues(topic.Value))
+			fmt.Fprintf(writer, "    Topic %d - %s: ", j+1, topic.Name)
+			PrintVerboseValueToWriter(writer, topic.Value)
 		}
 		fmt.Fprintf(writer, "    Data:\n")
 		for _, param := range l.Data {
-			fmt.Fprintf(writer, "    %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
+			fmt.Fprintf(writer, "    %s (%s): ", param.Name, param.Type)
+			PrintVerboseValueToWriter(writer, param.Value)
 		}
 	}
 }
 
-func printGnosisToWriter(result *GnosisResult, writer io.Writer) {
-	if result != nil {
-		fmt.Fprintf(writer, "\n     __________________________")
-		fmt.Fprintf(writer, "\n     Gnosis multisig init data: ")
-		if result.Method == "" {
-			fmt.Fprintf(writer, "Couldn't decode gnosis call method\n")
-			return
+func printParamToWriter(p ParamResult, w io.Writer, parentw io.Writer, level int) {
+	indentation := ""
+	for i := 0; i < level; i++ {
+		indentation = indentation + "    "
+	}
+	writer := indent.NewWriter(w, indentation)
+
+	fmt.Fprintf(writer, "    %s (%s): ", p.Name, p.Type)
+	PrintVerboseValueToWriter(writer, p.Value)
+	if len(p.Tuple) > 0 {
+		for _, f := range p.Tuple {
+			printParamToWriter(f, writer, parentw, level+1)
 		}
-		fmt.Fprintf(writer, "\n     Contract: %s\n", VerboseAddress(result.Contract))
-		fmt.Fprintf(writer, "     Method: %s\n", result.Method)
-		fmt.Fprintf(writer, "     Params:\n")
-		for _, param := range result.Params {
-			fmt.Fprintf(writer, "       %s (%s): %s\n", param.Name, param.Type, DisplayValues(param.Value))
-		}
+	}
+}
+
+func printFunctionCallToWriter(fc *FunctionCall, w io.Writer, level int) {
+	indentation := ""
+	for i := 0; i < level; i++ {
+		indentation = indentation + "    "
+	}
+	writer := indent.NewWriter(w, indentation)
+
+	if fc.Method == "" {
+		fmt.Fprintf(writer, "Getting ABI and function name failed: %s\n", fc.Error)
+		return
+	}
+
+	if level > 0 {
+		fmt.Fprintf(writer, "Interpreted Contract call: %s\n", VerboseAddress(fc.Destination))
+		fmt.Fprintf(writer, "| Value: %f ETH\n", ethutils.BigToFloat(fc.Value, 18))
+	} else {
+		fmt.Fprintf(writer, "Contract: %s\n", VerboseAddress(fc.Destination))
+	}
+	fmt.Fprintf(writer, "| Method: %s\n", fc.Method)
+	fmt.Fprintf(writer, "| Params:\n")
+	for _, param := range fc.Params {
+		printParamToWriter(param, writer, w, 0)
+	}
+	for _, dfc := range fc.DecodedFunctionCalls {
+		printFunctionCallToWriter(dfc, w, level+1)
 	}
 }
 
@@ -119,18 +142,17 @@ func VerboseValues(values []Value) []string {
 	return result
 }
 
-func DisplayValues(values []Value) string {
+func PrintVerboseValueToWriter(writer io.Writer, values []Value) {
 	verboseValues := VerboseValues(values)
 	if len(verboseValues) == 0 {
-		return ""
+		fmt.Fprintf(writer, "\n")
 	} else if len(verboseValues) == 1 {
-		return verboseValues[0]
+		fmt.Fprintf(writer, "%s\n", verboseValues[0])
 	} else {
-		parts := []string{}
+		fmt.Fprintf(writer, "\n")
 		for i, value := range values {
-			parts = append(parts, fmt.Sprintf("%d. %s", i+1, verboseValue(value)))
+			fmt.Fprintf(writer, "        %d. %s\n", i+1, verboseValue(value))
 		}
-		return strings.Join(parts, "\n")
 	}
 }
 

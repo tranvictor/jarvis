@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 )
 
 type Address struct {
@@ -18,10 +19,20 @@ type Value struct {
 	Address *Address
 }
 
+type FunctionCall struct {
+	Destination          Address
+	Value                *big.Int
+	Method               string
+	Params               []ParamResult
+	DecodedFunctionCalls []*FunctionCall
+	Error                string
+}
+
 type ParamResult struct {
 	Name  string
 	Type  string
 	Value []Value
+	Tuple []ParamResult
 }
 
 type TopicResult struct {
@@ -33,15 +44,6 @@ type LogResult struct {
 	Name   string
 	Topics []TopicResult
 	Data   []ParamResult
-}
-
-type GnosisResult struct {
-	Contract   Address
-	Network    string
-	Method     string
-	Params     []ParamResult
-	GnosisInit *GnosisResult
-	Error      string
 }
 
 type TxResults map[string]*TxResult
@@ -68,12 +70,8 @@ type TxResult struct {
 	GasCost  string
 	TxType   string
 
-	Contract Address
-	Method   string
-	Params   []ParamResult
-	Logs     []LogResult
-
-	GnosisInit *GnosisResult
+	FunctionCall *FunctionCall
+	Logs         []LogResult
 
 	Completed bool
 	Error     string
@@ -81,24 +79,21 @@ type TxResult struct {
 
 func NewTxResult() *TxResult {
 	return &TxResult{
-		Hash:       "",
-		Network:    "mainnet",
-		Status:     "",
-		From:       Address{},
-		Value:      "",
-		To:         Address{},
-		Nonce:      "",
-		GasPrice:   "",
-		GasLimit:   "",
-		GasUsed:    "",
-		GasCost:    "",
-		TxType:     "",
-		Contract:   Address{},
-		Method:     "",
-		Params:     []ParamResult{},
-		Logs:       []LogResult{},
-		GnosisInit: nil,
-		Completed:  false,
-		Error:      "",
+		Hash:         "",
+		Network:      "mainnet",
+		Status:       "",
+		From:         Address{},
+		Value:        "",
+		To:           Address{},
+		Nonce:        "",
+		GasPrice:     "",
+		GasLimit:     "",
+		GasUsed:      "",
+		GasCost:      "",
+		TxType:       "",
+		FunctionCall: &FunctionCall{},
+		Logs:         []LogResult{},
+		Completed:    false,
+		Error:        "",
 	}
 }

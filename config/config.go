@@ -1,11 +1,22 @@
 package config
 
 import (
+	"math/big"
+
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/networks"
 )
 
-var Network string
+func Network() networks.Network {
+	res, err := networks.GetNetwork(NetworkString)
+	if err != nil {
+		return networks.EthereumMainnet
+	}
+	return res
+}
+
+var NetworkString string
 
 var (
 	GasPrice             float64
@@ -16,7 +27,8 @@ var (
 	From                 string
 	FromAcc              accounts.AccDesc
 	To                   string
-	Value                float64
+	Value                *big.Int
+	RawValue             string
 	MethodIndex          uint64
 	PrefillMode          bool
 	PrefillStr           string
