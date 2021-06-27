@@ -14,31 +14,32 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
 	. "github.com/tranvictor/jarvis/common"
+	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 )
 
-func EthAnalyzer(network string) (*TxAnalyzer, error) {
+func EthAnalyzer(network Network) (*TxAnalyzer, error) {
 	r, err := util.EthReader(network)
 	if err != nil {
 		return nil, err
 	}
-	return NewGenericAnalyzer(r), nil
+	return NewGenericAnalyzer(r, network), nil
 }
 
 type TxAnalyzer struct {
 	reader  *reader.EthReader
-	Network string
+	Network Network
 }
 
-func (self *TxAnalyzer) setBasicTxInfo(txinfo ethutils.TxInfo, result *TxResult) {
+func (self *TxAnalyzer) setBasicTxInfo(txinfo ethutils.TxInfo, result *TxResult, network Network) {
 	result.From = util.GetJarvisAddress(txinfo.Tx.Extra.From.Hex(), self.Network)
-	result.Value = fmt.Sprintf("%s", util.BigToFloatString(txinfo.Tx.Value(), 18))
+	result.Value = fmt.Sprintf("%s", util.BigToFloatString(txinfo.Tx.Value(), network.GetNativeTokenDecimal()))
 	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
 	result.GasUsed = fmt.Sprintf("%d", txinfo.Receipt.GasUsed)
-	result.GasCost = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.GasCost(), 18))
+	result.GasCost = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()))
 }
 
 func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}) Value {
@@ -273,7 +274,7 @@ func (self *TxAnalyzer) AnalyzeMethodCall(a *abi.ABI, data []byte) (method strin
 	return method, params, nil
 }
 
-func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log, network string) (LogResult, error) {
+func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log, network Network) (LogResult, error) {
 	logResult := LogResult{
 		Name:   "",
 		Topics: []TopicResult{},
@@ -317,7 +318,7 @@ func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log,
 	return logResult, nil
 }
 
-func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, result *TxResult, network string) {
+func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, result *TxResult, network Network) {
 	result.FunctionCall = self.AnalyzeFunctionCallRecursively(
 		lookupABI,
 		txinfo.Tx.Value(),
@@ -407,16 +408,16 @@ func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, lookupABI ABID
 // 	return result
 // }
 
-func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, isContract bool, network string) *TxResult {
+func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, isContract bool, network Network) *TxResult {
 	result := NewTxResult()
-	result.Network = self.Network
+	result.Network = self.Network.GetName()
 	// fmt.Printf("==========================================Transaction info===============================================================\n")
 	// fmt.Printf("tx hash: %s\n", tx)
 	result.Hash = txinfo.Tx.Hash().Hex()
 	// fmt.Printf("mining status: %s\n", txinfo.Status)
 	result.Status = txinfo.Status
 	if txinfo.Status == "done" || txinfo.Status == "reverted" {
-		self.setBasicTxInfo(*txinfo, result)
+		self.setBasicTxInfo(*txinfo, result, network)
 		if !isContract {
 			// fmt.Printf("tx type: normal\n")
 			result.TxType = "normal"
@@ -430,30 +431,27 @@ func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, lookupABI ABIDat
 	return result
 }
 
-func NewGenericAnalyzer(r *reader.EthReader) *TxAnalyzer {
-	return &TxAnalyzer{
-		r,
-		"mainnet",
-	}
+func NewGenericAnalyzer(r *reader.EthReader, network Network) *TxAnalyzer {
+	return &TxAnalyzer{r, network}
 }
 
 func NewAnalyzer() *TxAnalyzer {
 	return &TxAnalyzer{
 		reader.NewEthReader(),
-		"mainnet",
+		EthereumMainnet,
 	}
 }
 
 func NewRopstenAnalyzer() *TxAnalyzer {
 	return &TxAnalyzer{
 		reader.NewRopstenReader(),
-		"ropsten",
+		Ropsten,
 	}
 }
 
 func NewTomoAnalyzer() *TxAnalyzer {
 	return &TxAnalyzer{
 		reader.NewTomoReader(),
-		"tomo",
+		TomoMainnet,
 	}
 }

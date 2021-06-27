@@ -9,13 +9,14 @@ import (
 	aurora "github.com/logrusorgru/aurora"
 	indent "github.com/openconfig/goyang/pkg/indent"
 	"github.com/tranvictor/ethutils"
+	. "github.com/tranvictor/jarvis/networks"
 )
 
 func PrintFunctionCall(fc *FunctionCall) {
 	printFunctionCallToWriter(fc, os.Stdout, 0)
 }
 
-func PrintTxDetails(result *TxResult, writer io.Writer) {
+func PrintTxDetails(result *TxResult, network Network, writer io.Writer) {
 	fmt.Fprintf(writer, "Tx hash: %s\n", result.Hash)
 	if result.Status == "done" {
 		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Green(result.Status))
@@ -23,7 +24,7 @@ func PrintTxDetails(result *TxResult, writer io.Writer) {
 		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Bold(aurora.Red(result.Status)))
 	}
 	fmt.Fprintf(writer, "From: %s\n", VerboseAddress(result.From))
-	fmt.Fprintf(writer, "Value: %s ETH\n", result.Value)
+	fmt.Fprintf(writer, "Value: %s %s\n", result.Value, network.GetNativeTokenSymbol())
 	fmt.Fprintf(writer, "To: %s\n", VerboseAddress(result.To))
 	fmt.Fprintf(writer, "Nonce: %s\n", result.Nonce)
 	fmt.Fprintf(writer, "Gas price: %s gwei\n", result.GasPrice)

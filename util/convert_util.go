@@ -10,9 +10,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/tranvictor/ethutils"
+	. "github.com/tranvictor/jarvis/networks"
 )
 
-func ConvertToBig(str string, network string) (*big.Int, error) {
+func ConvertToBig(str string, network Network) (*big.Int, error) {
 	str = strings.Trim(str, " ")
 	parts := strings.Split(str, " ")
 	if len(parts) == 0 {
@@ -33,8 +34,8 @@ func ConvertToBig(str string, network string) (*big.Int, error) {
 		floatStr := parts[0]
 
 		tokenName := strings.Join(parts[1:], " ")
-		if strings.ToLower(tokenName) == "eth" {
-			return FloatStringToBig(floatStr, 18)
+		if strings.ToLower(tokenName) == strings.ToLower(network.GetNativeTokenSymbol()) {
+			return FloatStringToBig(floatStr, int64(network.GetNativeTokenDecimal()))
 		}
 		token, err := ConvertToAddress(fmt.Sprintf("%s token", tokenName))
 		if err != nil {
@@ -87,7 +88,7 @@ func ConvertToHash(str string) (common.Hash, error) {
 	return ethutils.HexToHash(str), nil
 }
 
-func ConvertToIntOrBig(str string, size int, network string) (interface{}, error) {
+func ConvertToIntOrBig(str string, size int, network Network) (interface{}, error) {
 	switch size {
 	case 8, 16, 32, 64:
 		return ConvertToInt(str, size)
@@ -96,7 +97,7 @@ func ConvertToIntOrBig(str string, size int, network string) (interface{}, error
 	}
 }
 
-func ConvertToUintOrBig(str string, size int, network string) (interface{}, error) {
+func ConvertToUintOrBig(str string, size int, network Network) (interface{}, error) {
 	switch size {
 	case 8, 16, 32, 64:
 		return ConvertToUint(str, size)
@@ -105,7 +106,7 @@ func ConvertToUintOrBig(str string, size int, network string) (interface{}, erro
 	}
 }
 
-func ConvertParamStrToFixedByteType(name string, t abi.Type, strs []string, network string) (interface{}, error) {
+func ConvertParamStrToFixedByteType(name string, t abi.Type, strs []string, network Network) (interface{}, error) {
 	switch t.Size {
 	case 1:
 		res := [][1]byte{}
@@ -499,7 +500,7 @@ func ConvertEthereumTypeToInputString(t abi.Type, value interface{}) (string, er
 	return "", fmt.Errorf("not implmeneted")
 }
 
-func ConvertParamStrToType(name string, t abi.Type, str string, network string) (interface{}, error) {
+func ConvertParamStrToType(name string, t abi.Type, str string, network Network) (interface{}, error) {
 	switch t.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
 		return ConvertToString(str)

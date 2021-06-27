@@ -46,7 +46,7 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 			}
 			config.Tx = txs[0]
 
-			reader, err := util.EthReader(config.Network)
+			reader, err := util.EthReader(config.Network())
 			if err != nil {
 				return fmt.Errorf("couldn't connect to blockchain\n")
 			}
@@ -72,7 +72,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	a, err := util.GetABI(config.To, config.Network)
+	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
 		if config.ForceERC20ABI {
 			a, err = ethutils.GetERC20ABI()
@@ -80,7 +80,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 				return err
 			}
 		} else if config.CustomABI != "" {
-			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network)
+			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
 			if err != nil {
 				return err
 			}
@@ -100,7 +100,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	if config.From == "" && isGnosisMultisig {
 		multisigContract, err := msig.NewMultisigContract(
 			config.To,
-			config.Network,
+			config.Network(),
 		)
 		if err != nil {
 			return err
@@ -138,7 +138,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-	reader, err := util.EthReader(config.Network)
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		return err
 	}

@@ -28,13 +28,13 @@ var txCmd = &cobra.Command{
 			}
 			fmt.Printf("\n\n")
 
-			reader, err := util.EthReader(config.Network)
+			reader, err := util.EthReader(config.Network())
 			if err != nil {
 				fmt.Printf("Couldn't init eth reader: %s\n", err)
 				return
 			}
 
-			analyzer := txanalyzer.NewGenericAnalyzer(reader)
+			analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 			results := TxResults{}
 
@@ -49,7 +49,7 @@ var txCmd = &cobra.Command{
 					reader,
 					analyzer,
 					t,
-					config.Network,
+					config.Network(),
 					config.ForceERC20ABI,
 					config.CustomABI,
 					nil,

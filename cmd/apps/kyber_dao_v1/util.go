@@ -114,7 +114,7 @@ func PrintStakeInformation(cmd *cobra.Command, info *StakeRelatedInfo) {
 		return
 	}
 
-	cmd.Printf("Staker: %s\n", VerboseAddress(util.GetJarvisAddress(info.Staker, config.Network)))
+	cmd.Printf("Staker: %s\n", VerboseAddress(util.GetJarvisAddress(info.Staker, config.Network())))
 	stakef := ethutils.BigToFloat(info.Stake, 18)
 	cmd.Printf("Your stake: %f KNC (%s)\n", stakef, info.Stake)
 
@@ -127,13 +127,13 @@ func PrintStakeInformation(cmd *cobra.Command, info *StakeRelatedInfo) {
 	if strings.ToLower(info.Staker) == strings.ToLower(info.Representative) {
 		cmd.Printf("Your representative: None\n")
 	} else {
-		cmd.Printf("Your representative: %s (Contact him to get your reward if you have some)\n", VerboseAddress(util.GetJarvisAddress(info.Representative, config.Network)))
+		cmd.Printf("Your representative: %s (Contact him to get your reward if you have some)\n", VerboseAddress(util.GetJarvisAddress(info.Representative, config.Network())))
 	}
 
 	if info.PendingRepresentative == "" {
 		cmd.Printf("Your pending representative: None\n")
 	} else {
-		cmd.Printf("Your pending representative for recent epoch: %s\n", VerboseAddress(util.GetJarvisAddress(info.PendingRepresentative, config.Network)))
+		cmd.Printf("Your pending representative for recent epoch: %s\n", VerboseAddress(util.GetJarvisAddress(info.PendingRepresentative, config.Network())))
 	}
 	cmd.Printf("Stake other people delegated to you: %f KNC\n", ethutils.BigToFloat(info.DelegatedStake, 18))
 	cmd.Printf("Stake other people delegated to you including pending: %f KNC\n", ethutils.BigToFloat(info.PendingDelegatedStake, 18))

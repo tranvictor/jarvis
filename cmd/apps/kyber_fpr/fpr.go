@@ -22,7 +22,7 @@ var KyberFPRCmd = &cobra.Command{
 	Short:            "utilities on FPR reserve",
 	TraverseChildren: true,
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
@@ -56,7 +56,7 @@ var KyberFPRCmd = &cobra.Command{
 			}
 			fmt.Printf("\nListed tokens:\n")
 			for i, token := range tokens {
-				fmt.Printf("%d. %s\n", i, VerboseAddress(util.GetJarvisAddress(token.Hex(), config.Network)))
+				fmt.Printf("%d. %s\n", i, VerboseAddress(util.GetJarvisAddress(token.Hex(), config.Network())))
 			}
 			fmt.Printf("\n")
 
@@ -65,7 +65,7 @@ var KyberFPRCmd = &cobra.Command{
 			Token = tokens[index].Hex()
 		}
 		fmt.Printf("\n")
-		fmt.Printf("Checking on token: %s\n", VerboseAddress(util.GetJarvisAddress(Token, config.Network)))
+		fmt.Printf("Checking on token: %s\n", VerboseAddress(util.GetJarvisAddress(Token, config.Network())))
 		price, err := util.GetCoinGeckoRateInUSD(Token)
 		if err != nil {
 			fmt.Printf("Getting price failed: %s\n", err)
@@ -92,7 +92,7 @@ var KyberFPRCmd = &cobra.Command{
 		}
 
 		fmt.Printf("\n")
-		decimal, err := util.GetERC20Decimal(Token, config.Network)
+		decimal, err := util.GetERC20Decimal(Token, config.Network())
 		if err != nil {
 			fmt.Printf("Getting decimal failed: %s\n", err)
 			return

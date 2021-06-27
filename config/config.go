@@ -5,9 +5,18 @@ import (
 
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/networks"
 )
 
-var Network string
+func Network() networks.Network {
+	res, err := networks.GetNetwork(NetworkString)
+	if err != nil {
+		return networks.EthereumMainnet
+	}
+	return res
+}
+
+var NetworkString string
 
 var (
 	GasPrice             float64

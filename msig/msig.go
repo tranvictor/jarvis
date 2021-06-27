@@ -7,6 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/tranvictor/ethutils/reader"
+	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -14,7 +15,7 @@ const GNOSIS_MULTISIG_ABI string = `[{"constant":true,"inputs":[{"name":"","type
 
 type MultisigContract struct {
 	Address string
-	Network string
+	Network Network
 	reader  *reader.EthReader
 	Abi     *abi.ABI
 }
@@ -126,7 +127,7 @@ func (self *MultisigContract) TransactionInfo(txid *big.Int) (address string, va
 	return ret.Destination.Hex(), ret.Value, *ret.Data, *ret.Executed, confirmations, nil
 }
 
-func NewMultisigContract(address string, network string) (*MultisigContract, error) {
+func NewMultisigContract(address string, network Network) (*MultisigContract, error) {
 	reader, err := util.EthReader(network)
 	if err != nil {
 		return nil, err

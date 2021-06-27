@@ -34,13 +34,13 @@ func handleSend(
 		a *abi.ABI
 	)
 
-	reader, err := util.EthReader(config.Network)
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		fmt.Printf("init reader failed: %s\n", err)
 		return
 	}
 
-	analyzer := txanalyzer.NewGenericAnalyzer(reader)
+	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 	if tokenAddr == util.ETH_ADDR {
 		t = ethutils.BuildExactTx(
@@ -78,12 +78,12 @@ func handleSend(
 
 	err = util.PromptTxConfirmation(
 		analyzer,
-		util.GetJarvisAddress(config.From, config.Network),
+		util.GetJarvisAddress(config.From, config.Network()),
 		t,
 		map[string]*abi.ABI{
 			strings.ToLower(tokenAddr): a,
 		},
-		config.Network,
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Aborted!\n")
@@ -91,7 +91,7 @@ func handleSend(
 	}
 
 	fmt.Printf("== Unlock your wallet and send now...\n")
-	account, err := accounts.UnlockAccount(from, config.Network)
+	account, err := accounts.UnlockAccount(from, config.Network())
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		os.Exit(126)
@@ -113,11 +113,11 @@ func handleSend(
 		tx, broadcasted, err := account.SignTxAndBroadcast(t)
 		if config.DontWaitToBeMined {
 			util.DisplayBroadcastedTx(
-				tx, broadcasted, err, config.Network,
+				tx, broadcasted, err, config.Network(),
 			)
 		} else {
 			util.DisplayWaitAnalyze(
-				reader, analyzer, tx, broadcasted, err, config.Network,
+				reader, analyzer, tx, broadcasted, err, config.Network(),
 				a, nil,
 			)
 		}
@@ -184,7 +184,7 @@ exact addresses start with 0x.`,
 			} else {
 				to = toAddr
 			}
-			reader, err := util.EthReader(config.Network)
+			reader, err := util.EthReader(config.Network())
 			if err != nil {
 				return err
 			}
@@ -214,7 +214,7 @@ exact addresses start with 0x.`,
 						)
 						amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
 					} else {
-						amountWei, err = util.FloatStringToBig(amountStr, 18)
+						amountWei, err = util.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
 						if err != nil {
 							return err
 						}

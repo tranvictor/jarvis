@@ -88,15 +88,15 @@ Param rules:
 		}
 		fmt.Printf("Contract: %s (%s)\n", contractAddress, contractName)
 
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't connect to blockchain.\n")
 			return
 		}
 
-		analyzer := txanalyzer.NewGenericAnalyzer(reader)
+		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-		a, err := util.ConfigToABI(contractAddress, config.ForceERC20ABI, config.CustomABI, config.Network)
+		a, err := util.ConfigToABI(contractAddress, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't get abi for %s: %s\n", contractAddress, err)
 			return
@@ -110,7 +110,7 @@ Param rules:
 			config.PrefillMode,
 			a,
 			nil,
-			config.Network,
+			config.Network(),
 		)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
@@ -134,15 +134,15 @@ var txContractCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: cmdutil.CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
 		}
 
-		analyzer := txanalyzer.NewGenericAnalyzer(reader)
+		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-		a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network)
+		a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
 			return
@@ -156,7 +156,7 @@ var txContractCmd = &cobra.Command{
 			config.PrefillMode,
 			a,
 			nil,
-			config.Network,
+			config.Network(),
 		)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
@@ -181,19 +181,19 @@ var txContractCmd = &cobra.Command{
 		)
 		err = util.PromptTxConfirmation(
 			analyzer,
-			util.GetJarvisAddress(config.From, config.Network),
+			util.GetJarvisAddress(config.From, config.Network()),
 			tx,
 			map[string]*abi.ABI{
 				strings.ToLower(config.To): a,
 			},
-			config.Network,
+			config.Network(),
 		)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
 			return
 		}
 		fmt.Printf("== Unlock your wallet and sign now...\n")
-		account, err := accounts.UnlockAccount(config.FromAcc, config.Network)
+		account, err := accounts.UnlockAccount(config.FromAcc, config.Network())
 		if err != nil {
 			fmt.Printf("Unlock your wallet failed: %s\n", err)
 			return
@@ -215,11 +215,11 @@ var txContractCmd = &cobra.Command{
 			tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 			if config.DontWaitToBeMined {
 				util.DisplayBroadcastedTx(
-					tx, broadcasted, err, config.Network,
+					tx, broadcasted, err, config.Network(),
 				)
 			} else {
 				util.DisplayWaitAnalyze(
-					reader, analyzer, tx, broadcasted, err, config.Network,
+					reader, analyzer, tx, broadcasted, err, config.Network(),
 					a, nil,
 				)
 			}
@@ -242,7 +242,7 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 		fmt.Printf("Couldn't unpack response to go types: %s\n", err)
 		return contractReadResult{}, err
 	}
-	analyzer, err := txanalyzer.EthAnalyzer(config.Network)
+	analyzer, err := txanalyzer.EthAnalyzer(config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't init analyzer: %s\n", err)
 		return contractReadResult{}, err
@@ -313,7 +313,7 @@ var readContractCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: cmdutil.CommonFunctionCallPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(config.Network)
+		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't init eth reader: %s\n", err)
 			return
@@ -328,7 +328,7 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network)
+			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
 				fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
 				return
@@ -362,9 +362,9 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			analyzer := txanalyzer.NewGenericAnalyzer(reader)
+			analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network)
+			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
 				fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
 				return
@@ -379,7 +379,7 @@ var readContractCmd = &cobra.Command{
 				"read",
 				a,
 				nil,
-				config.Network,
+				config.Network(),
 			)
 			if err != nil {
 				fmt.Printf("Couldn't get params from users: %s\n", err)

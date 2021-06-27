@@ -26,6 +26,7 @@ import (
 	bleve "github.com/tranvictor/jarvis/bleve"
 	. "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
+	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util/cache"
 )
 
@@ -44,27 +45,11 @@ const (
 	BSCSCAN_API_KEY_VAR       string = "BSCSCAN_API_KEY"
 )
 
-func CalculateTimeDurationFromBlock(network string, from, to uint64) time.Duration {
+func CalculateTimeDurationFromBlock(network Network, from, to uint64) time.Duration {
 	if from >= to {
 		return time.Duration(0)
 	}
-	switch network {
-	case "mainnet":
-		return time.Duration(uint64(time.Second) * (to - from) * 16)
-	case "ropsten":
-		return time.Duration(uint64(time.Second) * (to - from) * 16)
-	case "kovan":
-		return time.Duration(uint64(time.Second) * (to - from) * 4)
-	case "rinkeby":
-		return time.Duration(uint64(time.Second) * (to - from) * 15)
-	case "tomo":
-		return time.Duration(uint64(time.Second) * (to - from) * 3)
-	case "bsc":
-		return time.Duration(uint64(time.Second) * (to - from) * 3)
-	case "bsc-test":
-		return time.Duration(uint64(time.Second) * (to - from) * 3)
-	}
-	panic("unsupported network")
+	return time.Duration(uint64(time.Second) * (to - from) * uint64(network.GetBlockTime()))
 }
 
 func GetExactAddressFromDatabases(str string) (addrs []string, names []string, scores []int) {
@@ -231,7 +216,7 @@ func PathToAddress(path string) (string, error) {
 	return result[0], nil
 }
 
-func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, network string) {
+func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, network Network) {
 	if !broadcasted {
 		fmt.Printf("couldn't broadcast tx:\n")
 		fmt.Printf("error on nodes: %v\n", err)
@@ -246,7 +231,7 @@ func DisplayWaitAnalyze(
 	t *types.Transaction,
 	broadcasted bool,
 	err error,
-	network string,
+	network Network,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI) {
 	if !broadcasted {
@@ -265,7 +250,7 @@ func DisplayWaitAnalyze(
 	}
 }
 
-func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, value *big.Int, destination string, data []byte, customABIs map[string]*abi.ABI, network string) (fc *FunctionCall) {
+func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, value *big.Int, destination string, data []byte, customABIs map[string]*abi.ABI, network Network) (fc *FunctionCall) {
 	fc = analyzer.AnalyzeFunctionCallRecursively(
 		GetABI, value, destination, data, customABIs)
 	PrintFunctionCall(fc)
@@ -276,7 +261,7 @@ func AnalyzeAndPrint(
 	reader *reader.EthReader,
 	analyzer TxAnalyzer,
 	tx string,
-	network string,
+	network Network,
 	forceERC20ABI bool,
 	customABI string,
 	a *abi.ABI,
@@ -318,11 +303,11 @@ func AnalyzeAndPrint(
 		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false, network)
 	}
 
-	PrintTxDetails(result, os.Stdout)
+	PrintTxDetails(result, network, os.Stdout)
 	return result
 }
 
-func EthTxMonitor(network string) (*monitor.TxMonitor, error) {
+func EthTxMonitor(network Network) (*monitor.TxMonitor, error) {
 	r, err := EthReader(network)
 	if err != nil {
 		return nil, err
@@ -330,84 +315,90 @@ func EthTxMonitor(network string) (*monitor.TxMonitor, error) {
 	return monitor.NewGenericTxMonitor(r), nil
 }
 
-func GetNodes(network string) (map[string]string, error) {
-	switch network {
-	case "mainnet":
-		nodes := map[string]string{
-			"mainnet-alchemy": "https://eth-mainnet.alchemyapi.io/v2/YP5f6eM2wC9c2nwJfB0DC1LObdSY7Qfv",
-			"mainnet-infura":  "https://mainnet.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
-		}
-		customNode := strings.Trim(os.Getenv(ETHEREUM_MAINNET_NODE_VAR), " ")
-		if customNode != "" {
-			nodes["custom-node"] = customNode
-		}
-		return nodes, nil
-	case "ropsten":
-		nodes := map[string]string{
-			"ropsten-infura": "https://ropsten.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
-		}
-		customNode := strings.Trim(os.Getenv(ETHEREUM_ROPSTEN_NODE_VAR), " ")
-		if customNode != "" {
-			nodes["custom-node"] = customNode
-		}
-		return nodes, nil
-	case "kovan":
-		nodes := map[string]string{
-			"kovan-infura": "https://kovan.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
-		}
-		customNode := strings.Trim(os.Getenv(ETHEREUM_KOVAN_NODE_VAR), " ")
-		if customNode != "" {
-			nodes["custom-node"] = customNode
-		}
-		return nodes, nil
-	case "rinkeby":
-		nodes := map[string]string{
-			"rinkeby-infura": "https://rinkeby.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
-		}
-		customNode := strings.Trim(os.Getenv(ETHEREUM_RINKEBY_NODE_VAR), " ")
-		if customNode != "" {
-			nodes["custom-node"] = customNode
-		}
-		return nodes, nil
-	case "tomo":
-		nodes := map[string]string{
-			"mainnet-tomo": "https://rpc.tomochain.com",
-		}
-		customNode := strings.Trim(os.Getenv(TOMO_MAINNET_NODE_VAR), " ")
-		if customNode != "" {
-			nodes["custom-node"] = customNode
-		}
-		return nodes, nil
-	case "bsc":
-		nodes := map[string]string{
-			"binance":  "https://bsc-dataseed.binance.org",
-			"defibit":  "https://bsc-dataseed1.defibit.io",
-			"ninicoin": "https://bsc-dataseed1.ninicoin.io",
-		}
-		customNode := strings.Trim(os.Getenv(BSC_MAINNET_NODE_VAR), " ")
-		if customNode != "" {
-			nodes["custom-node"] = customNode
-		}
-		return nodes, nil
-	case "bsc-test":
-		nodes := map[string]string{
-			"binance1": "https://data-seed-prebsc-1-s1.binance.org:8545",
-			"binance2": "https://data-seed-prebsc-2-s1.binance.org:8545",
-			"binance3": "https://data-seed-prebsc-1-s2.binance.org:8545",
-			"binance4": "https://data-seed-prebsc-2-s2.binance.org:8545",
-			"binance5": "https://data-seed-prebsc-1-s3.binance.org:8545",
-			"binance6": "https://data-seed-prebsc-2-s3.binance.org:8545",
-		}
-		customNode := strings.Trim(os.Getenv(BSC_TESTNET_NODE_VAR), " ")
-		if customNode != "" {
-			nodes["custom-node"] = customNode
-		}
-		return nodes, nil
+func GetNodes(network Network) (map[string]string, error) {
+	nodes := network.GetDefaultNodes()
+	customNode := strings.Trim(os.Getenv(network.GetNodeVariableName()), " ")
+	if customNode != "" {
+		nodes["custom-node"] = customNode
 	}
-	return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test.")
+	return nodes, nil
+	// switch network {
+	// case "mainnet":
+	// 	nodes := map[string]string{
+	// 		"mainnet-alchemy": "https://eth-mainnet.alchemyapi.io/v2/YP5f6eM2wC9c2nwJfB0DC1LObdSY7Qfv",
+	// 		"mainnet-infura":  "https://mainnet.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+	// 	}
+	// 	customNode := strings.Trim(os.Getenv(ETHEREUM_MAINNET_NODE_VAR), " ")
+	// 	if customNode != "" {
+	// 		nodes["custom-node"] = customNode
+	// 	}
+	// 	return nodes, nil
+	// case "ropsten":
+	// 	nodes := map[string]string{
+	// 		"ropsten-infura": "https://ropsten.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+	// 	}
+	// 	customNode := strings.Trim(os.Getenv(ETHEREUM_ROPSTEN_NODE_VAR), " ")
+	// 	if customNode != "" {
+	// 		nodes["custom-node"] = customNode
+	// 	}
+	// 	return nodes, nil
+	// case "kovan":
+	// 	nodes := map[string]string{
+	// 		"kovan-infura": "https://kovan.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+	// 	}
+	// 	customNode := strings.Trim(os.Getenv(ETHEREUM_KOVAN_NODE_VAR), " ")
+	// 	if customNode != "" {
+	// 		nodes["custom-node"] = customNode
+	// 	}
+	// 	return nodes, nil
+	// case "rinkeby":
+	// 	nodes := map[string]string{
+	// 		"rinkeby-infura": "https://rinkeby.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+	// 	}
+	// 	customNode := strings.Trim(os.Getenv(ETHEREUM_RINKEBY_NODE_VAR), " ")
+	// 	if customNode != "" {
+	// 		nodes["custom-node"] = customNode
+	// 	}
+	// 	return nodes, nil
+	// case "tomo":
+	// 	nodes := map[string]string{
+	// 		"mainnet-tomo": "https://rpc.tomochain.com",
+	// 	}
+	// 	customNode := strings.Trim(os.Getenv(TOMO_MAINNET_NODE_VAR), " ")
+	// 	if customNode != "" {
+	// 		nodes["custom-node"] = customNode
+	// 	}
+	// 	return nodes, nil
+	// case "bsc":
+	// 	nodes := map[string]string{
+	// 		"binance":  "https://bsc-dataseed.binance.org",
+	// 		"defibit":  "https://bsc-dataseed1.defibit.io",
+	// 		"ninicoin": "https://bsc-dataseed1.ninicoin.io",
+	// 	}
+	// 	customNode := strings.Trim(os.Getenv(BSC_MAINNET_NODE_VAR), " ")
+	// 	if customNode != "" {
+	// 		nodes["custom-node"] = customNode
+	// 	}
+	// 	return nodes, nil
+	// case "bsc-test":
+	// 	nodes := map[string]string{
+	// 		"binance1": "https://data-seed-prebsc-1-s1.binance.org:8545",
+	// 		"binance2": "https://data-seed-prebsc-2-s1.binance.org:8545",
+	// 		"binance3": "https://data-seed-prebsc-1-s2.binance.org:8545",
+	// 		"binance4": "https://data-seed-prebsc-2-s2.binance.org:8545",
+	// 		"binance5": "https://data-seed-prebsc-1-s3.binance.org:8545",
+	// 		"binance6": "https://data-seed-prebsc-2-s3.binance.org:8545",
+	// 	}
+	// 	customNode := strings.Trim(os.Getenv(BSC_TESTNET_NODE_VAR), " ")
+	// 	if customNode != "" {
+	// 		nodes["custom-node"] = customNode
+	// 	}
+	// 	return nodes, nil
+	// }
+	// return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test.")
 }
 
-func EthBroadcaster(network string) (*broadcaster.Broadcaster, error) {
+func EthBroadcaster(network Network) (*broadcaster.Broadcaster, error) {
 	nodes, err := GetNodes(network)
 	if err != nil {
 		return nil, err
@@ -415,44 +406,28 @@ func EthBroadcaster(network string) (*broadcaster.Broadcaster, error) {
 	return broadcaster.NewGenericBroadcaster(nodes), nil
 }
 
-func EthReader(network string) (*reader.EthReader, error) {
+func EthReader(network Network) (*reader.EthReader, error) {
 	var result *reader.EthReader
 	var err error
 	nodes, err := GetNodes(network)
 	if err != nil {
 		return nil, err
 	}
-	switch network {
-	case "mainnet":
-		result = reader.NewEthReaderWithCustomNodes(nodes)
-	case "ropsten":
-		result = reader.NewRopstenReaderWithCustomNodes(nodes)
-	case "kovan":
-		result = reader.NewKovanReaderWithCustomNodes(nodes)
-	case "rinkeby":
-		result = reader.NewRinkebyReaderWithCustomNodes(nodes)
-	case "tomo":
-		result = reader.NewTomoReaderWithCustomNodes(nodes)
-	case "bsc":
-		result = reader.NewBSCReaderWithCustomNodes(nodes)
-	case "bsc-test":
-		result = reader.NewBSCTestnetReaderWithCustomNodes(nodes)
-	default:
-		return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test.")
-	}
-	etherscanAPIKey := strings.Trim(os.Getenv(ETHERSCAN_API_KEY_VAR), " ")
-	if etherscanAPIKey != "" {
-		result.SetEtherscanAPIKey(etherscanAPIKey)
-	}
 
-	bscscanAPIKey := strings.Trim(os.Getenv(BSCSCAN_API_KEY_VAR), " ")
-	if bscscanAPIKey != "" {
-		result.SetBSCScanAPIKey(bscscanAPIKey)
-	}
+	result = reader.NewEthReaderGeneric(nodes, network)
+	// etherscanAPIKey := strings.Trim(os.Getenv(ETHERSCAN_API_KEY_VAR), " ")
+	// if etherscanAPIKey != "" {
+	// 	result.SetEtherscanAPIKey(etherscanAPIKey)
+	// }
+
+	// bscscanAPIKey := strings.Trim(os.Getenv(BSCSCAN_API_KEY_VAR), " ")
+	// if bscscanAPIKey != "" {
+	// 	result.SetBSCScanAPIKey(bscscanAPIKey)
+	// }
 	return result, nil
 }
 
-func queryToCheckERC20(addr string, network string) (bool, error) {
+func queryToCheckERC20(addr string, network Network) (bool, error) {
 	_, err := GetERC20Decimal(addr, network)
 	if err != nil {
 		if strings.Contains(fmt.Sprintf("%s", err), "abi: attempting to unmarshall an empty string while arguments are expected") {
@@ -464,7 +439,7 @@ func queryToCheckERC20(addr string, network string) (bool, error) {
 	return true, nil
 }
 
-func IsERC20(addr string, network string) (bool, error) {
+func IsERC20(addr string, network Network) (bool, error) {
 	if !isRealAddress(addr) {
 		return false, nil
 	}
@@ -515,7 +490,7 @@ func isRealAddress(value string) bool {
 	return true
 }
 
-func GetJarvisValue(value string, network string) Value {
+func GetJarvisValue(value string, network Network) Value {
 	valueBig, isHex := big.NewInt(0).SetString(value, 0)
 	if !isHex {
 		return Value{value, "string", nil}
@@ -534,7 +509,7 @@ func GetJarvisValue(value string, network string) Value {
 	}
 }
 
-func GetJarvisAddress(addr string, network string) Address {
+func GetJarvisAddress(addr string, network Network) Address {
 	var decimal int64
 	var erc20Detected bool
 
@@ -566,7 +541,7 @@ func GetJarvisAddress(addr string, network string) Address {
 	}
 }
 
-func GetERC20Decimal(addr string, network string) (int64, error) {
+func GetERC20Decimal(addr string, network Network) (int64, error) {
 	cacheKey := fmt.Sprintf("%s_decimal", addr)
 	result, found := cache.GetInt64Cache(cacheKey)
 	if found {
@@ -603,7 +578,7 @@ func isHttpURL(path string) bool {
 	return true
 }
 
-func ReadCustomABIString(addr string, pathOrAddress string, network string) (str string, err error) {
+func ReadCustomABIString(addr string, pathOrAddress string, network Network) (str string, err error) {
 	if isRealAddress(pathOrAddress) {
 		return GetABIString(pathOrAddress, network)
 	} else if isHttpURL(pathOrAddress) {
@@ -651,7 +626,7 @@ func GetCoinGeckoRateInUSD(token string) (float64, error) {
 	return priceres[strings.ToLower(token)]["usd"], nil
 }
 
-func ReadCustomABI(addr string, pathOrAddress string, network string) (a *abi.ABI, err error) {
+func ReadCustomABI(addr string, pathOrAddress string, network Network) (a *abi.ABI, err error) {
 	str, err := ReadCustomABIString(addr, pathOrAddress, network)
 	if err != nil {
 		return nil, err
@@ -693,7 +668,7 @@ func GetABIFromString(abiStr string) (*abi.ABI, error) {
 	return &result, err
 }
 
-func GetABIStringBypassCache(addr string, network string) (string, error) {
+func GetABIStringBypassCache(addr string, network Network) (string, error) {
 	cacheKey := fmt.Sprintf("%s_abi", addr)
 	// not found from cache, getting from etherscan or equivalent websites
 	reader, err := EthReader(network)
@@ -713,7 +688,7 @@ func GetABIStringBypassCache(addr string, network string) (string, error) {
 	return abiStr, nil
 }
 
-func IsContract(addr string, network string) (bool, error) {
+func IsContract(addr string, network Network) (bool, error) {
 	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network)
 	_, found := cache.GetCache(cacheKey)
 	if found {
@@ -742,7 +717,7 @@ func IsContract(addr string, network string) (bool, error) {
 	return isContract, nil
 }
 
-func GetABIString(addr string, network string) (string, error) {
+func GetABIString(addr string, network Network) (string, error) {
 	cacheKey := fmt.Sprintf("%s_abi", strings.ToLower(addr))
 	cached, found := cache.GetCache(cacheKey)
 	if found {
@@ -751,7 +726,7 @@ func GetABIString(addr string, network string) (string, error) {
 	return GetABIStringBypassCache(addr, network)
 }
 
-func ConfigToABI(address string, forceERC20ABI bool, customABI string, network string) (*abi.ABI, error) {
+func ConfigToABI(address string, forceERC20ABI bool, customABI string, network Network) (*abi.ABI, error) {
 	if forceERC20ABI {
 		return ethutils.GetERC20ABI()
 	}
@@ -778,7 +753,7 @@ func GetGnosisMsigABI() *abi.ABI {
 	return &result
 }
 
-func GetABI(addr string, network string) (*abi.ABI, error) {
+func GetABI(addr string, network Network) (*abi.ABI, error) {
 	abiStr, err := GetABIString(addr, network)
 	if err != nil {
 		return nil, err

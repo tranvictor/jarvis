@@ -12,32 +12,34 @@ import (
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
+	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
-func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int) (fc *FunctionCall) {
+func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int, network Network) (fc *FunctionCall) {
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
 		fmt.Printf("Jarvis: Can't get tx info: %s\n", err)
 		return
 	}
 	fmt.Printf(
-		"Sending: %f ETH to %s\n",
-		ethutils.BigToFloat(value, 18),
-		VerboseAddress(util.GetJarvisAddress(address, config.Network)),
+		"Sending: %f %s to %s\n",
+		ethutils.BigToFloat(value, network.GetNativeTokenDecimal()),
+		network.GetNativeTokenSymbol(),
+		VerboseAddress(util.GetJarvisAddress(address, config.Network())),
 	)
 
 	if len(data) != 0 {
-		fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, config.Network)))
+		fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, config.Network())))
 
-		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, config.Network)
+		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't get abi of destination address: %s\n", err)
 			return
 		}
 
-		analyzer, err := txanalyzer.EthAnalyzer(config.Network)
+		analyzer, err := txanalyzer.EthAnalyzer(config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't analyze tx: %s\n", err)
 			return
@@ -50,7 +52,7 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 			map[string]*abi.ABI{
 				strings.ToLower(address): destAbi,
 			},
-			config.Network,
+			config.Network(),
 		)
 	}
 
@@ -70,13 +72,13 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 type PostProcessFunc func(fc *FunctionCall) error
 
 func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args []string, postProcess PostProcessFunc) {
-	reader, err := util.EthReader(config.Network)
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't connect to blockchain.\n")
 		return
 	}
 
-	analyzer := txanalyzer.NewGenericAnalyzer(reader)
+	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 	var txid *big.Int
 
@@ -122,21 +124,21 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	multisigContract, err := msig.NewMultisigContract(
 		config.To,
-		config.Network,
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Couldn't interact with the contract: %s\n", err)
 		return
 	}
 
-	fc := AnalyzeAndShowMsigTxInfo(multisigContract, txid)
+	fc := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
 
 	if postProcess != nil && postProcess(fc) != nil {
 		return
 	}
 	// TODO: support multiple txs?
 
-	a, err := util.GetABI(config.To, config.Network)
+	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't get the ABI for %s: %s\n", config.To, err)
 		return
@@ -167,10 +169,10 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	err = util.PromptTxConfirmation(
 		analyzer,
-		util.GetJarvisAddress(config.From, config.Network),
+		util.GetJarvisAddress(config.From, config.Network()),
 		tx,
 		nil,
-		config.Network,
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Aborted!\n")
@@ -178,7 +180,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	}
 
 	fmt.Printf("== Unlock your wallet and sign now...\n")
-	account, err := accounts.UnlockAccount(config.FromAcc, config.Network)
+	account, err := accounts.UnlockAccount(config.FromAcc, config.Network())
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		return
@@ -186,11 +188,11 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 	if config.DontWaitToBeMined {
 		util.DisplayBroadcastedTx(
-			tx, broadcasted, err, config.Network,
+			tx, broadcasted, err, config.Network(),
 		)
 	} else {
 		util.DisplayWaitAnalyze(
-			reader, analyzer, tx, broadcasted, err, config.Network,
+			reader, analyzer, tx, broadcasted, err, config.Network(),
 			a, nil,
 		)
 	}

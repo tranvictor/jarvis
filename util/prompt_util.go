@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/tranvictor/ethutils"
 	. "github.com/tranvictor/jarvis/common"
+	. "github.com/tranvictor/jarvis/networks"
 )
 
 const (
@@ -41,7 +42,7 @@ func PromptInputWithValidation(prompter string, validator StringValidator) strin
 	}
 }
 
-func PromptPercentageBps(prompter string, upbound int64, network string) *big.Int {
+func PromptPercentageBps(prompter string, upbound int64, network Network) *big.Int {
 	return PromptNumber(prompter, func(number *big.Int) error {
 		n := number.Int64()
 		if n < 0 || n > upbound {
@@ -51,7 +52,7 @@ func PromptPercentageBps(prompter string, upbound int64, network string) *big.In
 	}, network)
 }
 
-func PromptNumber(prompter string, validator NumberValidator, network string) *big.Int {
+func PromptNumber(prompter string, validator NumberValidator, network Network) *big.Int {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Printf("%s: ", prompter)
@@ -119,7 +120,7 @@ func PromptFilePath(prompter string) string {
 	return PromptInput(prompter)
 }
 
-func PromptParam(input abi.Argument, prefill string, network string) (interface{}, error) {
+func PromptParam(input abi.Argument, prefill string, network Network) (interface{}, error) {
 	t := input.Type
 	switch t.T {
 	case abi.SliceTy, abi.ArrayTy:
@@ -129,7 +130,7 @@ func PromptParam(input abi.Argument, prefill string, network string) (interface{
 	}
 }
 
-func PromptArray(input abi.Argument, prefill string, network string) (interface{}, error) {
+func PromptArray(input abi.Argument, prefill string, network Network) (interface{}, error) {
 	var inpStr string
 	if prefill == "" {
 		inpStr = PromptInput("")
@@ -229,7 +230,7 @@ func PromptArray(input abi.Argument, prefill string, network string) (interface{
 	}
 }
 
-func PromptNonArray(input abi.Argument, prefill string, network string) (interface{}, error) {
+func PromptNonArray(input abi.Argument, prefill string, network Network) (interface{}, error) {
 	var inpStr string
 	if prefill == "" {
 		inpStr = PromptInput("")
@@ -249,7 +250,7 @@ func PromptTxConfirmation(
 	from Address,
 	tx *types.Transaction,
 	customABIs map[string]*abi.ABI,
-	network string,
+	network Network,
 ) error {
 	fmt.Printf("\n========== Confirm tx data before signing ==========\n\n")
 	err := showTxInfoToConfirm(
@@ -294,7 +295,7 @@ func PromptTxData(
 	prefillMode bool,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	network string) ([]byte, error) {
+	network Network) ([]byte, error) {
 	method, params, err := PromptFunctionCallData(
 		analyzer,
 		contractAddress,
@@ -364,7 +365,7 @@ func PromptFunctionCallData(
 	mode string,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	network string) (method *abi.Method, params []interface{}, err error) {
+	network Network) (method *abi.Method, params []interface{}, err error) {
 
 	method, methodName, err := PromptMethod(a, methodIndex, mode)
 	if err != nil {
@@ -425,7 +426,7 @@ func showTxInfoToConfirm(
 	from Address,
 	tx *types.Transaction,
 	customABIs map[string]*abi.ABI,
-	network string,
+	network Network,
 ) error {
 	if tx.To() != nil {
 		fmt.Printf(
@@ -445,13 +446,13 @@ func showTxInfoToConfirm(
 		)
 	}
 
-	sendingETH := BigToFloatString(tx.Value(), 18)
+	sendingETH := BigToFloatString(tx.Value(), network.GetNativeTokenDecimal())
 	if tx.Value().Cmp(big.NewInt(0)) > 0 {
 		fmt.Printf("Value: %s\n", InfoColor(fmt.Sprintf("%s ETH", sendingETH)))
 	}
 
 	fmt.Printf(
-		"Nonce: %d  |  Gas: %.2f gwei (%d gas = %f ETH)\n",
+		"Nonce: %d  |  Gas: %.2f gwei (%d gas = %f %s)\n",
 		tx.Nonce(),
 		ethutils.BigToFloat(tx.GasPrice(), 9),
 		tx.Gas(),
@@ -459,6 +460,7 @@ func showTxInfoToConfirm(
 			big.NewInt(0).Mul(big.NewInt(int64(tx.Gas())), tx.GasPrice()),
 			18,
 		),
+		network.GetNativeTokenSymbol(),
 	)
 
 	if tx.To() == nil {

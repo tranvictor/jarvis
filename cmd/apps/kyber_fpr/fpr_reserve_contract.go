@@ -9,17 +9,18 @@ import (
 	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/ethutils/reader"
 	"github.com/tranvictor/jarvis/config"
+	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 )
 
 const RATE_WRAPPER_CONTRACT = "0x3F0d4A4363d08Cd625285965832C4BA53b5A718A"
 const RATE_WRAPPER_CONTRACT_ON_BSC = "0x81Cf022a0216F75Cf28Af1E0D0831B62878e04CF"
 
-func getRateWrapperContract(network string) string {
+func getRateWrapperContract(network Network) string {
 	switch network {
-	case "mainnet":
+	case EthereumMainnet:
 		return RATE_WRAPPER_CONTRACT
-	case "bsc":
+	case BSCMainnet:
 		return RATE_WRAPPER_CONTRACT_ON_BSC
 	default:
 		panic("not support network")
@@ -54,7 +55,7 @@ func NewFPRReserveContract(address string, conversionRateAddress string, r *read
 
 func (self *FPRReserveContract) QueryListedTokens() ([]common.Address, error) {
 	res := []common.Address{}
-	abi, err := util.GetABI(self.ConversionRateContract.Hex(), config.Network)
+	abi, err := util.GetABI(self.ConversionRateContract.Hex(), config.Network())
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +82,7 @@ func (self *FPRReserveContract) QueryQtyStepFunc(token common.Address) (numSellS
 	err = self.reader.ReadHistoryContract(
 		config.AtBlock,
 		res,
-		getRateWrapperContract(config.Network),
+		getRateWrapperContract(config.Network()),
 		"readQtyStepFunctions",
 		self.ConversionRateContract,
 		token,
@@ -117,7 +118,7 @@ func (self *FPRReserveContract) QueryQtyStepFunc(token common.Address) (numSellS
 
 func (self *FPRReserveContract) GetTokenControlInfo(token string) (*big.Int, *big.Int, *big.Int, error) {
 	result := [3]*big.Int{nil, nil, nil}
-	abi, err := util.GetABI(self.ConversionRateContract.Hex(), config.Network)
+	abi, err := util.GetABI(self.ConversionRateContract.Hex(), config.Network())
 	if err != nil {
 		return result[0], result[1], result[2], err
 	}
@@ -134,7 +135,7 @@ func (self *FPRReserveContract) GetTokenControlInfo(token string) (*big.Int, *bi
 
 func (self *FPRReserveContract) GetBasicInfo(token string) (bool, bool, error) {
 	result := [2]bool{false, false}
-	abi, err := util.GetABI(self.ConversionRateContract.Hex(), config.Network)
+	abi, err := util.GetABI(self.ConversionRateContract.Hex(), config.Network())
 	if err != nil {
 		return result[0], result[1], err
 	}
@@ -162,12 +163,12 @@ func (self *FPRReserveContract) QueryImbalanceStepFunc(token common.Address) (nu
 	}
 
 	res := &imbFunc{}
-	fmt.Printf("wrapper rate contract: %s\n", getRateWrapperContract(config.Network))
+	fmt.Printf("wrapper rate contract: %s\n", getRateWrapperContract(config.Network()))
 	fmt.Printf("token: %s\n", token)
 	err = self.reader.ReadHistoryContract(
 		config.AtBlock,
 		res,
-		getRateWrapperContract(config.Network),
+		getRateWrapperContract(config.Network()),
 		"readImbalanceStepFunctions",
 		self.ConversionRateContract,
 		token,
