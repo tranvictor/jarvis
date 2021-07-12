@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	VERSION string = "0.0.20"
+	VERSION string = "0.0.21"
 )
 
 var versionCmd = &cobra.Command{

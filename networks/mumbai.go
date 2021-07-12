@@ -64,3 +64,7 @@ func (self *mumbai) GetBlockExplorerAPIKeyVariableName() string {
 func (self *mumbai) GetBlockExplorerAPIURL() string {
 	return self.EtherscanLikeExplorer.Domain
 }
+
+func (self *mumbai) MultiCallContract() string {
+	return "0x08411ADd0b5AA8ee47563b146743C13b3556c9Cc"
+}

@@ -30,27 +30,27 @@ import (
 )
 
 func main() {
-	runtime.SetBlockProfileRate(1)
-	f, err := os.Create("cpuprofile")
-	if err != nil {
-		log.Fatal("could not create CPU profile: ", err)
-	}
-	defer f.Close() // error handling omitted for example
+	// runtime.SetBlockProfileRate(1)
+	// f, err := os.Create("cpuprofile")
+	// if err != nil {
+	// 	log.Fatal("could not create CPU profile: ", err)
+	// }
+	// defer f.Close() // error handling omitted for example
 
-	bf, err := os.Create("blockingprofile")
-	if err != nil {
-		log.Fatal("could not create blocking profile: ", err)
-	}
-	defer bf.Close()
+	// bf, err := os.Create("blockingprofile")
+	// if err != nil {
+	// 	log.Fatal("could not create blocking profile: ", err)
+	// }
+	// defer bf.Close()
 
-	if err := pprof.StartCPUProfile(f); err != nil {
-		log.Fatal("could not start CPU profile: ", err)
-	}
-	defer func() {
-		pprof.StopCPUProfile()
-		profile := pprof.Lookup("block")
-		profile.WriteTo(bf, 0)
-	}()
+	// if err := pprof.StartCPUProfile(f); err != nil {
+	// 	log.Fatal("could not start CPU profile: ", err)
+	// }
+	// defer func() {
+	// 	pprof.StopCPUProfile()
+	// 	profile := pprof.Lookup("block")
+	// 	profile.WriteTo(bf, 0)
+	// }()
 
 	cmd.Execute()
 }

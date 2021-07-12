@@ -65,3 +65,7 @@ func (self *ethereumMainnet) GetBlockExplorerAPIKeyVariableName() string {
 func (self *ethereumMainnet) GetBlockExplorerAPIURL() string {
 	return self.EtherscanLikeExplorer.Domain
 }
+
+func (self *ethereumMainnet) MultiCallContract() string {
+	return "0xeefba1e63905ef1d7acba5a8513c70307c1ce441"
+}

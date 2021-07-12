@@ -804,3 +804,146 @@ func AllZeroParamFunctions(a *abi.ABI) []abi.Method {
 	sort.Sort(orderedMethods(methods))
 	return methods
 }
+
+// func (self *EthReader) ReadContractToBytes(atBlock int64, from string, caddr string, abi *abi.ABI, method string, args ...interface{}) ([]byte, error) {
+
+type multicallres struct {
+	BlockNumber *big.Int
+	ReturnData  [][]byte
+}
+
+type call struct {
+	Target   common.Address
+	CallData []byte
+}
+
+func GetBalances(wallets []string, tokens []string, network Network) (balances map[common.Address][]*big.Int, block int64, err error) {
+	return GetHistoryBalances(-1, wallets, tokens, network)
+}
+
+func GetHistoryBalances(atBlock int64, wallets []string, tokens []string, network Network) (balances map[common.Address][]*big.Int, block int64, err error) {
+	multicallContract := network.MultiCallContract()
+	if multicallContract == "" {
+		return nil, 0, fmt.Errorf("network not support get multi balances")
+	}
+
+	helperABI, err := GetABI(multicallContract, network)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	erc20ABI, err := ethutils.GetERC20ABI()
+	if err != nil {
+		return nil, 0, err
+	}
+
+	results := []interface{}{}
+	caddrs := []string{}
+	abis := []*abi.ABI{}
+	methods := []string{}
+	argLists := [][]interface{}{}
+	for _, wallet := range wallets {
+		for _, token := range tokens {
+			oneResult := big.NewInt(0)
+			results = append(results, &oneResult)
+			if strings.ToLower(token) == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
+				caddrs = append(caddrs, multicallContract)
+				abis = append(abis, helperABI)
+				methods = append(methods, "getEthBalance")
+				argLists = append(argLists, []interface{}{
+					ethutils.HexToAddress(wallet),
+				})
+			} else {
+				caddrs = append(caddrs, token)
+				abis = append(abis, erc20ABI)
+				methods = append(methods, "balanceOf")
+				argLists = append(argLists, []interface{}{
+					ethutils.HexToAddress(wallet),
+				})
+			}
+		}
+	}
+
+	block, err = MultiReadContract(
+		network,
+		atBlock,
+		results,
+		caddrs,
+		abis,
+		methods,
+		argLists,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("multi read contract failed: %w", err)
+	}
+
+	balances = map[common.Address][]*big.Int{}
+	for i, wallet := range wallets {
+		oneWalletBalances := []*big.Int{}
+		for j, _ := range tokens {
+			oneWalletBalances = append(
+				oneWalletBalances,
+				*results[i*len(tokens)+j].(**big.Int),
+			)
+		}
+		balances[ethutils.HexToAddress(wallet)] = oneWalletBalances
+	}
+
+	return balances, block, nil
+}
+
+func MultiReadContract(
+	network Network,
+	atBlock int64,
+	results []interface{},
+	caddrs []string,
+	abis []*abi.ABI,
+	methods []string,
+	argLists [][]interface{},
+) (block int64, err error) {
+
+	reader, err := EthReader(network)
+	if err != nil {
+		return 0, err
+	}
+
+	contract := network.MultiCallContract()
+	if contract == "" {
+		return 0, fmt.Errorf("network not support multicall")
+	}
+	res := multicallres{}
+
+	calls := []call{}
+	for i, caddr := range caddrs {
+		data, err := abis[i].Pack(methods[i], argLists[i]...)
+		if err != nil {
+			return 0, err
+		}
+
+		calls = append(calls, call{ethutils.HexToAddress(caddr), data})
+	}
+
+	err = reader.ReadHistoryContract(
+		atBlock,
+		&res,
+		contract,
+		"aggregate",
+		calls,
+	)
+
+	if err != nil {
+		return 0, fmt.Errorf("reading multical failed: %w", err)
+	}
+
+	for i, _ := range results {
+		err := abis[i].UnpackIntoInterface(
+			results[i],
+			methods[i],
+			res.ReturnData[i],
+		)
+		if err != nil {
+			return 0, fmt.Errorf("unpacking call index %d failed: %w", i, err)
+		}
+	}
+	return res.BlockNumber.Int64(), nil
+}
