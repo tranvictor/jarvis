@@ -10,7 +10,7 @@ require (
 	github.com/cznic/b v0.0.0-20181122101859-a26611c4d92d // indirect
 	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548 // indirect
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
-	github.com/ethereum/go-ethereum v1.10.4
+	github.com/ethereum/go-ethereum v1.10.8
 	github.com/facebookgo/ensure v0.0.0-20200202191622-63f1cf65ac4c // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
@@ -19,7 +19,6 @@ require (
 	github.com/jmhodges/levigo v1.0.0 // indirect
 	github.com/karalabe/usb v0.0.0-20191104083709-911d15fe12a9 // indirect
 	github.com/logrusorgru/aurora v0.0.0-20181002194514-a7b3b318ed4e
-	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/openconfig/goyang v0.2.4
 	github.com/prometheus/tsdb v0.10.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20200410134404-eec4a21b6bb0 // indirect
@@ -27,14 +26,14 @@ require (
 	github.com/spf13/cobra v1.1.1
 	github.com/status-im/keycard-go v0.0.0-20191114114615-9d48af884d5b // indirect
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c // indirect
-	github.com/tranvictor/ethutils v0.7.5
+	github.com/tranvictor/ethutils v0.8.0
 	github.com/tyler-smith/go-bip39 v1.0.2 // indirect
-	golang.org/x/crypto v0.0.0-20210616213533-5ff15b29337e
-	golang.org/x/sys v0.0.0-20210616094352-59db8d763f22 // indirect
+	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
+	golang.org/x/sys v0.0.0-20210823070655-63515b42dcdf // indirect
 )
 
 // replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/ethereum/go-ethereum
 
-replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
+// replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
 
 go 1.13
