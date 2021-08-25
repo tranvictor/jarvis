@@ -52,11 +52,7 @@ func handleSend(
 			[]byte{},
 		)
 	} else {
-		a, err = ethutils.GetERC20ABI()
-		if err != nil {
-			fmt.Printf("Couldn't get erc20 abi: %s\n", err)
-			return
-		}
+		a = ethutils.GetERC20ABI()
 		data, err := a.Pack(
 			"transfer",
 			ethutils.HexToAddress(to),
@@ -151,9 +147,9 @@ exact addresses start with 0x.`,
 			// if value is not an address, we need to look it up
 			// from the token database to get its address
 
-			if currency == util.ETH_ADDR || strings.ToLower(currency) == "eth" {
+			if currency == util.ETH_ADDR || strings.ToLower(currency) == strings.ToLower(config.Network().GetNativeTokenSymbol()) {
 				tokenAddr = util.ETH_ADDR
-				tokenDesc = "ETH"
+				tokenDesc = config.Network().GetNativeTokenSymbol()
 			} else {
 				addr, name, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
 				if err != nil {
@@ -204,6 +200,8 @@ exact addresses start with 0x.`,
 							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
 							return err
 						}
+						config.ExtraGasLimit = 0
+
 						ethBalance, err := reader.GetBalance(config.From)
 						if err != nil {
 							return err

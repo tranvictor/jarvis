@@ -64,3 +64,7 @@ func (self *tomoMainnet) GetBlockExplorerAPIKeyVariableName() string {
 func (self *tomoMainnet) GetBlockExplorerAPIURL() string {
 	return self.EtherscanLikeExplorer.Domain
 }
+
+func (self *tomoMainnet) MultiCallContract() string {
+	return ""
+}

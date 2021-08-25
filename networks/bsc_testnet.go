@@ -69,3 +69,7 @@ func (self *bscTestnet) GetBlockExplorerAPIKeyVariableName() string {
 func (self *bscTestnet) GetBlockExplorerAPIURL() string {
 	return self.EtherscanLikeExplorer.Domain
 }
+
+func (self *bscTestnet) MultiCallContract() string {
+	return "0xae11C5B5f29A6a25e955F0CB8ddCc416f522AF5C"
+}

@@ -64,3 +64,7 @@ func (self *rinkeby) GetBlockExplorerAPIKeyVariableName() string {
 func (self *rinkeby) GetBlockExplorerAPIURL() string {
 	return self.EtherscanLikeExplorer.Domain
 }
+
+func (self *rinkeby) MultiCallContract() string {
+	return "0x42ad527de7d4e9d9d011ac45b31d8551f8fe9821"
+}

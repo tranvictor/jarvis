@@ -19,4 +19,8 @@ type Network interface {
 	GetBlockExplorerAPIURL() string
 	RecommendedGasPrice() (float64, error)
 	GetABIString(address string) (string, error)
+
+	// this interface can return "" in case
+	// there is no multicall contract on the network
+	MultiCallContract() string
 }

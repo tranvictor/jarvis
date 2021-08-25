@@ -70,3 +70,7 @@ func (self *bscMainnet) GetBlockExplorerAPIURL() string {
 func (self *bscMainnet) RecommendedGasPrice() (float64, error) {
 	return 10, nil
 }
+
+func (self *bscMainnet) MultiCallContract() string {
+	return "0x41263cba59eb80dc200f3e2544eda4ed6a90e76c"
+}

@@ -212,7 +212,7 @@ func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(lookupABI ABIDatabase, va
 	if a == nil {
 		a, err = lookupABI(destination, self.Network)
 		if err != nil {
-			a, _ = ethutils.GetERC20ABI()
+			a = ethutils.GetERC20ABI()
 		}
 	}
 
@@ -241,7 +241,7 @@ func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(lookupABI ABIDatabase, va
 
 func (self *TxAnalyzer) AnalyzeMethodCall(a *abi.ABI, data []byte) (method string, params []ParamResult, err error) {
 	if _, err := a.MethodById(data); err != nil {
-		a, _ = ethutils.GetERC20ABI()
+		a = ethutils.GetERC20ABI()
 	}
 	m, err := a.MethodById(data)
 	if err != nil {

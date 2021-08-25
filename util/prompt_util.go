@@ -448,7 +448,7 @@ func showTxInfoToConfirm(
 
 	sendingETH := BigToFloatString(tx.Value(), network.GetNativeTokenDecimal())
 	if tx.Value().Cmp(big.NewInt(0)) > 0 {
-		fmt.Printf("Value: %s\n", InfoColor(fmt.Sprintf("%s ETH", sendingETH)))
+		fmt.Printf("Value: %s\n", InfoColor(fmt.Sprintf("%s %s", sendingETH, network.GetNativeTokenSymbol())))
 	}
 
 	fmt.Printf(

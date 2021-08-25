@@ -64,3 +64,7 @@ func (self *ropsten) GetBlockExplorerAPIKeyVariableName() string {
 func (self *ropsten) GetBlockExplorerAPIURL() string {
 	return self.EtherscanLikeExplorer.Domain
 }
+
+func (self *ropsten) MultiCallContract() string {
+	return "0x53c43764255c17bd724f74c4ef150724ac50a3ed"
+}

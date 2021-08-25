@@ -64,3 +64,7 @@ func (self *kovan) GetBlockExplorerAPIKeyVariableName() string {
 func (self *kovan) GetBlockExplorerAPIURL() string {
 	return self.EtherscanLikeExplorer.Domain
 }
+
+func (self *kovan) MultiCallContract() string {
+	return "0x2cc8688c5f75e365aaeeb4ea8d6a480405a48d2a"
+}
