@@ -1,6 +1,7 @@
 module github.com/tranvictor/jarvis
 
 require (
+	github.com/PuerkitoBio/goquery v1.7.1
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/allegro/bigcache v1.2.1 // indirect
 	github.com/blevesearch/bleve v1.0.12
@@ -34,6 +35,6 @@ require (
 
 // replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/ethereum/go-ethereum
 
-// replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
+replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
 
 go 1.13

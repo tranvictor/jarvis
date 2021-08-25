@@ -75,10 +75,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
 		if config.ForceERC20ABI {
-			a, err = ethutils.GetERC20ABI()
-			if err != nil {
-				return err
-			}
+			a = ethutils.GetERC20ABI()
 		} else if config.CustomABI != "" {
 			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
 			if err != nil {

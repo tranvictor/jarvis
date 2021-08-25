@@ -322,80 +322,6 @@ func GetNodes(network Network) (map[string]string, error) {
 		nodes["custom-node"] = customNode
 	}
 	return nodes, nil
-	// switch network {
-	// case "mainnet":
-	// 	nodes := map[string]string{
-	// 		"mainnet-alchemy": "https://eth-mainnet.alchemyapi.io/v2/YP5f6eM2wC9c2nwJfB0DC1LObdSY7Qfv",
-	// 		"mainnet-infura":  "https://mainnet.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
-	// 	}
-	// 	customNode := strings.Trim(os.Getenv(ETHEREUM_MAINNET_NODE_VAR), " ")
-	// 	if customNode != "" {
-	// 		nodes["custom-node"] = customNode
-	// 	}
-	// 	return nodes, nil
-	// case "ropsten":
-	// 	nodes := map[string]string{
-	// 		"ropsten-infura": "https://ropsten.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
-	// 	}
-	// 	customNode := strings.Trim(os.Getenv(ETHEREUM_ROPSTEN_NODE_VAR), " ")
-	// 	if customNode != "" {
-	// 		nodes["custom-node"] = customNode
-	// 	}
-	// 	return nodes, nil
-	// case "kovan":
-	// 	nodes := map[string]string{
-	// 		"kovan-infura": "https://kovan.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
-	// 	}
-	// 	customNode := strings.Trim(os.Getenv(ETHEREUM_KOVAN_NODE_VAR), " ")
-	// 	if customNode != "" {
-	// 		nodes["custom-node"] = customNode
-	// 	}
-	// 	return nodes, nil
-	// case "rinkeby":
-	// 	nodes := map[string]string{
-	// 		"rinkeby-infura": "https://rinkeby.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
-	// 	}
-	// 	customNode := strings.Trim(os.Getenv(ETHEREUM_RINKEBY_NODE_VAR), " ")
-	// 	if customNode != "" {
-	// 		nodes["custom-node"] = customNode
-	// 	}
-	// 	return nodes, nil
-	// case "tomo":
-	// 	nodes := map[string]string{
-	// 		"mainnet-tomo": "https://rpc.tomochain.com",
-	// 	}
-	// 	customNode := strings.Trim(os.Getenv(TOMO_MAINNET_NODE_VAR), " ")
-	// 	if customNode != "" {
-	// 		nodes["custom-node"] = customNode
-	// 	}
-	// 	return nodes, nil
-	// case "bsc":
-	// 	nodes := map[string]string{
-	// 		"binance":  "https://bsc-dataseed.binance.org",
-	// 		"defibit":  "https://bsc-dataseed1.defibit.io",
-	// 		"ninicoin": "https://bsc-dataseed1.ninicoin.io",
-	// 	}
-	// 	customNode := strings.Trim(os.Getenv(BSC_MAINNET_NODE_VAR), " ")
-	// 	if customNode != "" {
-	// 		nodes["custom-node"] = customNode
-	// 	}
-	// 	return nodes, nil
-	// case "bsc-test":
-	// 	nodes := map[string]string{
-	// 		"binance1": "https://data-seed-prebsc-1-s1.binance.org:8545",
-	// 		"binance2": "https://data-seed-prebsc-2-s1.binance.org:8545",
-	// 		"binance3": "https://data-seed-prebsc-1-s2.binance.org:8545",
-	// 		"binance4": "https://data-seed-prebsc-2-s2.binance.org:8545",
-	// 		"binance5": "https://data-seed-prebsc-1-s3.binance.org:8545",
-	// 		"binance6": "https://data-seed-prebsc-2-s3.binance.org:8545",
-	// 	}
-	// 	customNode := strings.Trim(os.Getenv(BSC_TESTNET_NODE_VAR), " ")
-	// 	if customNode != "" {
-	// 		nodes["custom-node"] = customNode
-	// 	}
-	// 	return nodes, nil
-	// }
-	// return nil, fmt.Errorf("Invalid network. Valid values are: mainnet, ropsten, kovan, rinkeby, tomo, bsc, bsc-test.")
 }
 
 func EthBroadcaster(network Network) (*broadcaster.Broadcaster, error) {
@@ -728,7 +654,7 @@ func GetABIString(addr string, network Network) (string, error) {
 
 func ConfigToABI(address string, forceERC20ABI bool, customABI string, network Network) (*abi.ABI, error) {
 	if forceERC20ABI {
-		return ethutils.GetERC20ABI()
+		return ethutils.GetERC20ABI(), nil
 	}
 	if customABI != "" {
 		return ReadCustomABI(address, customABI, network)
@@ -805,145 +731,64 @@ func AllZeroParamFunctions(a *abi.ABI) []abi.Method {
 	return methods
 }
 
-// func (self *EthReader) ReadContractToBytes(atBlock int64, from string, caddr string, abi *abi.ABI, method string, args ...interface{}) ([]byte, error) {
-
-type multicallres struct {
-	BlockNumber *big.Int
-	ReturnData  [][]byte
-}
-
-type call struct {
-	Target   common.Address
-	CallData []byte
-}
-
 func GetBalances(wallets []string, tokens []string, network Network) (balances map[common.Address][]*big.Int, block int64, err error) {
 	return GetHistoryBalances(-1, wallets, tokens, network)
 }
 
 func GetHistoryBalances(atBlock int64, wallets []string, tokens []string, network Network) (balances map[common.Address][]*big.Int, block int64, err error) {
-	multicallContract := network.MultiCallContract()
-	if multicallContract == "" {
-		return nil, 0, fmt.Errorf("network not support get multi balances")
-	}
+	helperABI := ethutils.GetMultiCallABI()
+	erc20ABI := ethutils.GetERC20ABI()
 
-	helperABI, err := GetABI(multicallContract, network)
+	mc, err := NewMultiCall(network)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	erc20ABI, err := ethutils.GetERC20ABI()
-	if err != nil {
-		return nil, 0, err
-	}
+	balances = map[common.Address][]*big.Int{}
 
-	results := []interface{}{}
-	caddrs := []string{}
-	abis := []*abi.ABI{}
-	methods := []string{}
-	argLists := [][]interface{}{}
 	for _, wallet := range wallets {
-		for _, token := range tokens {
+		wAddr := ethutils.HexToAddress(wallet)
+		for i, token := range tokens {
+			index := i
 			oneResult := big.NewInt(0)
-			results = append(results, &oneResult)
+			balances[wAddr] = append(balances[wAddr], oneResult)
 			if strings.ToLower(token) == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
-				caddrs = append(caddrs, multicallContract)
-				abis = append(abis, helperABI)
-				methods = append(methods, "getEthBalance")
-				argLists = append(argLists, []interface{}{
+				mc.RegisterWithHook(
+					&oneResult,
+					func(r interface{}) error {
+						balances[wAddr][index] = *r.(**big.Int)
+						return nil
+					},
+					network.MultiCallContract(),
+					helperABI,
+					"getEthBalance",
 					ethutils.HexToAddress(wallet),
-				})
+				)
 			} else {
-				caddrs = append(caddrs, token)
-				abis = append(abis, erc20ABI)
-				methods = append(methods, "balanceOf")
-				argLists = append(argLists, []interface{}{
+				mc.RegisterWithHook(
+					&oneResult,
+					func(r interface{}) error {
+						balances[wAddr][index] = *r.(**big.Int)
+						return nil
+					},
+					token,
+					erc20ABI,
+					"balanceOf",
 					ethutils.HexToAddress(wallet),
-				})
+				)
 			}
 		}
 	}
 
-	block, err = MultiReadContract(
-		network,
-		atBlock,
-		results,
-		caddrs,
-		abis,
-		methods,
-		argLists,
-	)
-	if err != nil {
-		return nil, 0, fmt.Errorf("multi read contract failed: %w", err)
-	}
+	block, err = mc.Do(atBlock)
 
-	balances = map[common.Address][]*big.Int{}
-	for i, wallet := range wallets {
-		oneWalletBalances := []*big.Int{}
-		for j, _ := range tokens {
-			oneWalletBalances = append(
-				oneWalletBalances,
-				*results[i*len(tokens)+j].(**big.Int),
-			)
-		}
-		balances[ethutils.HexToAddress(wallet)] = oneWalletBalances
-	}
-
-	return balances, block, nil
+	return balances, block, err
 }
 
-func MultiReadContract(
-	network Network,
-	atBlock int64,
-	results []interface{},
-	caddrs []string,
-	abis []*abi.ABI,
-	methods []string,
-	argLists [][]interface{},
-) (block int64, err error) {
-
-	reader, err := EthReader(network)
+func NewMultiCall(network Network) (*reader.MultipleCall, error) {
+	r, err := EthReader(network)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-
-	contract := network.MultiCallContract()
-	if contract == "" {
-		return 0, fmt.Errorf("network not support multicall")
-	}
-	res := multicallres{}
-
-	calls := []call{}
-	for i, caddr := range caddrs {
-		data, err := abis[i].Pack(methods[i], argLists[i]...)
-		if err != nil {
-			return 0, err
-		}
-
-		calls = append(calls, call{ethutils.HexToAddress(caddr), data})
-	}
-
-	err = reader.ReadHistoryContract(
-		atBlock,
-		&res,
-		contract,
-		"aggregate",
-		calls,
-	)
-
-	if err != nil {
-		return 0, fmt.Errorf("reading multical failed: %w", err)
-	}
-
-	for i, _ := range results {
-		err := abis[i].UnpackIntoInterface(
-			results[i],
-			methods[i],
-			res.ReturnData[i],
-		)
-		if err != nil {
-			return 0, fmt.Errorf("unpacking call index %d failed: %w", i, err)
-		}
-	}
-	return res.BlockNumber.Int64(), nil
+	return reader.NewMultiCall(r, network.MultiCallContract()), nil
 }
