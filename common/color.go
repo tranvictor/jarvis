@@ -1,15 +1,15 @@
 package common
 
 import (
-	. "github.com/logrusorgru/aurora"
+	"github.com/logrusorgru/aurora"
 )
 
 func AlertColor(str string) string {
-	return Red(str).String()
+	return aurora.Red(str).String()
 }
 
 func InfoColor(str string) string {
-	return Green(str).String()
+	return aurora.Green(str).String()
 }
 
 func NameWithColor(name string) string {
