@@ -164,7 +164,7 @@ var txContractCmd = &cobra.Command{
 		}
 		// var GasLimit uint64
 		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, config.Value, data)
+			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, 0, config.Value, data)
 			if err != nil {
 				fmt.Printf("Couldn't estimate gas limit: %s\n", err)
 				return
