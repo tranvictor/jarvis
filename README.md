@@ -86,6 +86,8 @@ wget -q -O - https://raw.githubusercontent.com/LedgerHQ/udev-rules/master/add_ud
 ## Configure custom nodes
 
 Custom node is load from ~/nodes.json
+This settings will override all default nodes
+If any supported network is not define it will use default nodes
 
 ```
 {
