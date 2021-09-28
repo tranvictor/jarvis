@@ -155,7 +155,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		config.GasLimit, err = reader.EstimateExactGas(
 			config.From,
 			config.To,
-			config.GasPrice+config.ExtraGasPrice,
+			0,
 			config.Value,
 			data,
 		)
