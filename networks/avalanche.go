@@ -53,7 +53,7 @@ func (self *avalanche) GetDefaultNodes() map[string]string {
 }
 
 func (self *avalanche) GetBlockExplorerAPIKeyVariableName() string {
-	return "POLYGONSCAN_API_KEY"
+	return "not supported"
 }
 
 func (self *avalanche) GetBlockExplorerAPIURL() string {

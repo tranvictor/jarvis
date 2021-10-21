@@ -44,7 +44,7 @@ func (self *bscMainnet) GetNativeTokenDecimal() int64 {
 }
 
 func (self *bscMainnet) GetBlockTime() time.Duration {
-	return 14 * time.Second
+	return 2 * time.Second
 }
 
 func (self *bscMainnet) GetNodeVariableName() string {
