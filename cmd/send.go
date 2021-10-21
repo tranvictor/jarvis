@@ -195,7 +195,7 @@ exact addresses start with 0x.`,
 			if config.GasLimit == 0 {
 				if tokenAddr == util.ETH_ADDR {
 					if amountStr == "ALL" {
-						config.GasLimit, err = reader.EstimateExactGas(config.From, to, config.GasPrice+config.ExtraGasPrice, big.NewInt(1), []byte{})
+						config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, big.NewInt(1), []byte{})
 						if err != nil {
 							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
 							return err
@@ -216,7 +216,7 @@ exact addresses start with 0x.`,
 						if err != nil {
 							return err
 						}
-						config.GasLimit, err = reader.EstimateExactGas(config.From, to, config.GasPrice+config.ExtraGasPrice, amountWei, []byte{})
+						config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, amountWei, []byte{})
 						if err != nil {
 							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
 							return err
