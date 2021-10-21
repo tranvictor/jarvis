@@ -99,6 +99,24 @@ func StoreAccountRecord(accDesc AccDesc) error {
 	return ioutil.WriteFile(path, content, 0644)
 }
 
+func UnlockKeystoreAccountWithPassword(ad AccDesc, network networks.Network, pwd string) (*account.Account, error) {
+	reader, err := util.EthReader(network)
+	if err != nil {
+		return nil, err
+	}
+	broadcaster, err := util.EthBroadcaster(network)
+	if err != nil {
+		return nil, err
+	}
+
+	fromAcc, err := account.NewKeystoreAccountGeneric(ad.Keypath, pwd, reader, broadcaster, network.GetChainID())
+	if err != nil {
+		fmt.Printf("Unlocking keystore '%s' failed: %s. Abort!\n", ad.Keypath, err)
+		return nil, err
+	}
+	return fromAcc, nil
+}
+
 func UnlockAccount(ad AccDesc, network networks.Network) (*account.Account, error) {
 	var fromAcc *account.Account
 	var err error

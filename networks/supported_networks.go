@@ -16,6 +16,7 @@ var supportedNetworks = []Network{
 	BSCTestnet,
 	Matic,
 	Avalanche,
+	Fantom,
 	// Mumbai,
 }
 
