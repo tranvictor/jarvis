@@ -126,7 +126,6 @@ func init() {
 	var amountWei *big.Int
 	var value string
 	var tokenAddr string
-	var tokenDesc string
 	var currency string
 	var err error
 	// sendCmd represents the send command
@@ -149,19 +148,16 @@ exact addresses start with 0x.`,
 
 			if currency == util.ETH_ADDR || strings.ToLower(currency) == strings.ToLower(config.Network().GetNativeTokenSymbol()) {
 				tokenAddr = util.ETH_ADDR
-				tokenDesc = config.Network().GetNativeTokenSymbol()
 			} else {
-				addr, name, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
+				addr, _, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
 				if err != nil {
 					if util.IsAddress(currency) {
 						tokenAddr = currency
-						tokenDesc = "unrecognized"
 					} else {
 						return err
 					}
 				} else {
 					tokenAddr = addr
-					tokenDesc = name
 				}
 			}
 
