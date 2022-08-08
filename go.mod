@@ -10,14 +10,13 @@ require (
 	github.com/cznic/b v0.0.0-20181122101859-a26611c4d92d // indirect
 	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548 // indirect
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
-	github.com/ethereum/go-ethereum v1.10.8
+	github.com/ethereum/go-ethereum v1.10.17
 	github.com/facebookgo/ensure v0.0.0-20200202191622-63f1cf65ac4c // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08 // indirect
-	github.com/google/uuid v1.1.5
+	github.com/google/uuid v1.2.0
 	github.com/jmhodges/levigo v1.0.0 // indirect
-	github.com/karalabe/usb v0.0.0-20191104083709-911d15fe12a9 // indirect
 	github.com/logrusorgru/aurora v0.0.0-20181002194514-a7b3b318ed4e
 	github.com/openconfig/goyang v0.2.4
 	github.com/prometheus/tsdb v0.10.0 // indirect
@@ -34,6 +33,6 @@ require (
 
 // replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/ethereum/go-ethereum
 
-// replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
+replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
 
 go 1.13

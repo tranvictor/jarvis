@@ -57,18 +57,19 @@ func (tr *TxResults) Write(filepath string) {
 }
 
 type TxResult struct {
-	Hash     string
-	Network  string
-	Status   string
-	From     Address
-	Value    string
-	To       Address
-	Nonce    string
-	GasPrice string
-	GasLimit string
-	GasUsed  string
-	GasCost  string
-	TxType   string
+	Hash      string
+	Network   string
+	Status    string
+	From      Address
+	Value     string
+	To        Address
+	Nonce     string
+	GasPrice  string
+	GasLimit  string
+	GasUsed   string
+	GasCost   string
+	Timestamp string
+	TxType    string
 
 	FunctionCall *FunctionCall
 	Logs         []LogResult

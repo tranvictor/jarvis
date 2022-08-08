@@ -79,7 +79,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		} else if config.CustomABI != "" {
 			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
 			if err != nil {
-				return err
+				return fmt.Errorf("reading cusom abi failed: %w", err)
 			}
 		}
 	}
@@ -90,7 +90,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	if err == nil {
 		isGnosisMultisig, err = util.IsGnosisMultisig(a)
 		if err != nil {
-			return err
+			return fmt.Errorf("checking if the address is gnosis multisig classic failed: %w", err)
 		}
 	}
 
@@ -104,7 +104,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 		owners, err := multisigContract.Owners()
 		if err != nil {
-			return err
+			return fmt.Errorf("getting msig owners failed: %w", err)
 		}
 
 		var acc accounts.AccDesc
@@ -148,7 +148,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	if config.GasPrice == 0 {
 		config.GasPrice, err = reader.RecommendedGasPrice()
 		if err != nil {
-			return err
+			return fmt.Errorf("getting recommended gas price failed: %w", err)
 		}
 	}
 
@@ -156,7 +156,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	if config.Nonce == 0 {
 		config.Nonce, err = reader.GetMinedNonce(config.From)
 		if err != nil {
-			return err
+			return fmt.Errorf("getting nonce failed: %w", err)
 		}
 	}
 	return nil
