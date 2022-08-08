@@ -10,7 +10,7 @@ require (
 	github.com/cznic/b v0.0.0-20181122101859-a26611c4d92d // indirect
 	github.com/cznic/mathutil v0.0.0-20181122101859-297441e03548 // indirect
 	github.com/cznic/strutil v0.0.0-20181122101858-275e90344537 // indirect
-	github.com/ethereum/go-ethereum v1.10.17
+	github.com/ethereum/go-ethereum v1.10.21
 	github.com/facebookgo/ensure v0.0.0-20200202191622-63f1cf65ac4c // indirect
 	github.com/facebookgo/stack v0.0.0-20160209184415-751773369052 // indirect
 	github.com/facebookgo/subset v0.0.0-20200203212716-c811ad88dec4 // indirect
@@ -25,14 +25,14 @@ require (
 	github.com/spf13/cobra v1.1.1
 	github.com/status-im/keycard-go v0.0.0-20191114114615-9d48af884d5b // indirect
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c // indirect
-	github.com/tranvictor/ethutils v0.8.1
+	github.com/tranvictor/ethutils v0.8.2
 	github.com/tyler-smith/go-bip39 v1.0.2 // indirect
-	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
-	golang.org/x/sys v0.0.0-20210908233432-aa78b53d3365 // indirect
+	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
+	golang.org/x/sys v0.0.0-20220804214406-8e32c043e418 // indirect
 )
 
 // replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/ethereum/go-ethereum
 
-replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
+// replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
 
 go 1.13
