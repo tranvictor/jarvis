@@ -4,6 +4,7 @@ require (
 	github.com/PuerkitoBio/goquery v1.7.1
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/blevesearch/bleve v1.0.12
+	github.com/btcsuite/btcd v0.22.1 // indirect
 	github.com/cespare/cp v1.1.1 // indirect
 	github.com/cznic/b v0.0.0-20181122101859-a26611c4d92d // indirect
 	github.com/ethereum/go-ethereum v1.10.21
