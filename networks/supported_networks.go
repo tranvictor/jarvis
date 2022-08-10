@@ -17,6 +17,9 @@ var supportedNetworks = []Network{
 	Matic,
 	Avalanche,
 	Fantom,
+	OptimismMainnet,
+	ArbitrumMainnet,
+	BttcMainnet,
 	// Mumbai,
 }
 
