@@ -25,10 +25,10 @@ require (
 	github.com/spf13/cobra v1.1.1
 	github.com/status-im/keycard-go v0.0.0-20191114114615-9d48af884d5b // indirect
 	github.com/tecbot/gorocksdb v0.0.0-20191217155057-f0fad39f321c // indirect
-	github.com/tranvictor/ethutils v0.8.2
+	github.com/tranvictor/ethutils v0.8.3
 	github.com/tyler-smith/go-bip39 v1.0.2 // indirect
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
-	golang.org/x/sys v0.0.0-20220804214406-8e32c043e418 // indirect
+	golang.org/x/sys v0.0.0-20220808155132-1c4a2a72c664 // indirect
 )
 
 // replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/ethereum/go-ethereum

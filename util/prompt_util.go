@@ -452,12 +452,15 @@ func showTxInfoToConfirm(
 	}
 
 	fmt.Printf(
-		"Nonce: %d  |  Gas: %.2f gwei (%d gas = %f %s)\n",
+		"Nonce: %d  |  Gas: %.4f gwei (%d gas = %.8f %s)\n",
 		tx.Nonce(),
 		ethutils.BigToFloat(tx.GasPrice(), 9),
 		tx.Gas(),
 		ethutils.BigToFloat(
-			big.NewInt(0).Mul(big.NewInt(int64(tx.Gas())), tx.GasPrice()),
+			big.NewInt(0).Mul(
+				big.NewInt(int64(tx.Gas())),
+				tx.GasPrice(),
+			),
 			18,
 		),
 		network.GetNativeTokenSymbol(),

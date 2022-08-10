@@ -37,10 +37,10 @@ func (self *TxAnalyzer) setBasicTxInfo(txinfo ethutils.TxInfo, result *TxResult,
 	result.Value = fmt.Sprintf("%s", util.BigToFloatString(txinfo.Tx.Value(), network.GetNativeTokenDecimal()))
 	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
-	result.GasPrice = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.Tx.GasPrice(), 9))
+	result.GasPrice = fmt.Sprintf("%.4f", ethutils.BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
 	result.GasUsed = fmt.Sprintf("%d", txinfo.Receipt.GasUsed)
-	result.GasCost = fmt.Sprintf("%f", ethutils.BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()))
+	result.GasCost = fmt.Sprintf("%.8f", ethutils.BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()))
 	result.Timestamp = fmt.Sprintf("%s", time.Unix(int64(txinfo.BlockHeader.Time), 0).String())
 }
 
