@@ -44,7 +44,7 @@ archives:
 brews:
   - name: jarvis
     ids: [nix]
-    github:
+    tap:
       owner: tranvictor
       name: homebrew-tranvictor
     skip_upload: auto
