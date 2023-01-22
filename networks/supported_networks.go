@@ -20,6 +20,7 @@ var supportedNetworks = []Network{
 	OptimismMainnet,
 	ArbitrumMainnet,
 	BttcMainnet,
+	EthereumPOW,
 	// Mumbai,
 }
 

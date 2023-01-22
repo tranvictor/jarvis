@@ -220,7 +220,6 @@ exact addresses start with 0x.`,
 					}
 				} else {
 					var data []byte
-
 					if amountStr == "ALL" {
 						amountWei, err = reader.ERC20Balance(tokenAddr, config.From)
 						if err != nil {

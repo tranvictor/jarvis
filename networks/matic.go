@@ -66,9 +66,9 @@ func (self *matic) GetBlockExplorerAPIURL() string {
 	return self.EtherscanLikeExplorer.Domain
 }
 
-func (self *matic) RecommendedGasPrice() (float64, error) {
-	return 10, nil
-}
+// func (self *matic) RecommendedGasPrice() (float64, error) {
+// 	return 10, nil
+// }
 
 func (self *matic) MultiCallContract() string {
 	return "0x11ce4B23bD875D7F5C6a31084f55fDe1e9A87507"
