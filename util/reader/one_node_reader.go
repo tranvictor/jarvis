@@ -49,7 +49,7 @@ func (self *OneNodeReader) initConnection() error {
 	defer self.mu.Unlock()
 	client, err := rpc.Dial(self.NodeURL())
 	if err != nil {
-		return fmt.Errorf("Couldn't connect to %s: %s", self.NodeName, err)
+		return fmt.Errorf("Couldn't connect to %s: %w", self.nodeName, err)
 	}
 	self.client = client
 	self.ethClient = ethclient.NewClient(self.client)

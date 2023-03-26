@@ -214,7 +214,7 @@ func indexAddresses(i bleve.Index, addrs map[string]string) error {
 	startTime := time.Now().UnixNano()
 	batch := i.NewBatch()
 	batchCount := 0
-	fmt.Printf("indexing %s addresses\n", len(addrs))
+	fmt.Printf("indexing %d addresses\n", len(addrs))
 	for addr, desc := range addrs {
 		batch.Index(addr, AddressDesc{
 			Address: addr,

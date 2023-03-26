@@ -162,7 +162,7 @@ func handleAddPrivateKey() {
 
 	err = handleAddKeystoreGivenPath(path)
 	if err != nil {
-		fmt.Printf("Adding private key wallet failed.\n", err)
+		fmt.Printf("Adding private key wallet failed: %s\n", err)
 		return
 	}
 }
