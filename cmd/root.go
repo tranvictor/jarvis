@@ -123,7 +123,7 @@ func Execute() {
 	rootCmd.PersistentFlags().BoolVarP(
 		&config.DegenMode,
 		"degen",
-		"d",
+		"x",
 		false,
 		"Set to enable degen prints such as detailed contract calls, nonces... Default false",
 	)
