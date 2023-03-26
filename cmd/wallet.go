@@ -19,9 +19,11 @@ import (
 )
 
 const (
-	TREZOR_BASE_PATH string = "m/44'/60'/0'/0/%d"
+	TREZOR_BASE_PATH      string = "m/44'/60'/0'/0/%d"
+	LEDGER_LIVE_BASE_PATH string = "m/44'/60'/0'/0/%d"
+	LEDGER_BASE_PATH      string = "m/44'/60'/0'/%d"
 
-	LEDGER_BASE_PATH string = "m/44'/60'/0'/%d"
+	WALLET_PAGING int = 5
 )
 
 var walletCmd = &cobra.Command{
@@ -34,64 +36,90 @@ type HW interface {
 	Derive(path gethaccounts.DerivationPath) (common.Address, error)
 }
 
+func getAccDescsFromHW(hw HW, t string, path string) (*accounts.AccDesc, error) {
+	ret := &accounts.AccDesc{
+		Kind: t,
+	}
+
+	p, err := gethaccounts.ParseDerivationPath(path)
+	if err != nil {
+		fmt.Printf("Can't parse your %s to get wallets, %s\n", t, err)
+		return nil, err
+	}
+
+	w, err := hw.Derive(p)
+	if err != nil {
+		fmt.Printf("Can't read/derive your %s to get wallets, %s. Please check if your ledger is unlocked.\n", t, err)
+		return nil, err
+	}
+	ret.Derpath = p.String()
+	ret.Address = w.Hex()
+	return ret, nil
+}
+
 func handleHW(hw HW, t string) {
+	accs := []*accounts.AccDesc{}
+	var accDesc *accounts.AccDesc
+	var err error
+
 	batch := 0
 	for {
-		accs := []*accounts.AccDesc{}
-		for i := 0; i < 5; i++ {
-			acc := &accounts.AccDesc{
-				Kind: t,
-			}
-			var err error
-			var p gethaccounts.DerivationPath
+		for i := 0; i < WALLET_PAGING; i++ {
+			var path string
 			switch t {
 			case "ledger":
-				p, err = gethaccounts.ParseDerivationPath(fmt.Sprintf(LEDGER_BASE_PATH, batch*5+i))
+				path = fmt.Sprintf(LEDGER_BASE_PATH, batch*WALLET_PAGING+i)
+			case "ledger-live":
+				path = fmt.Sprintf(LEDGER_LIVE_BASE_PATH, batch*WALLET_PAGING+i)
 			case "trezor":
-				p, err = gethaccounts.ParseDerivationPath(fmt.Sprintf(TREZOR_BASE_PATH, batch*5+i))
+				path = fmt.Sprintf(TREZOR_BASE_PATH, batch*WALLET_PAGING+i)
 			}
+			acc, err := getAccDescsFromHW(hw, t, path)
 			if err != nil {
-				fmt.Printf("Jarvis: Can't read your %s to get wallets, %s\n", t, err)
 				return
 			}
-			w, err := hw.Derive(p)
-			if err != nil {
-				fmt.Printf("Jarvis: Can't read your %s to get wallets, %s\n", t, err)
-				return
-			}
-			acc.Derpath = p.String()
-			acc.Address = w.Hex()
 			accs = append(accs, acc)
 		}
 		for i, acc := range accs {
 			fmt.Printf("%d. %s (%s)\n", i, acc.Address, acc.Derpath)
 		}
-		index := util.PromptIndex("Jarvis: Please enter the wallet index you want to add (0, 1, 2, 3, 4, next, back): ", 0, len(accs)-1)
+
+		index := util.PromptIndex("Please enter the wallet index you want to add (0, 1, 2,..., next, back, custom)", 0, len(accs)-1)
 		if index == util.NEXT {
 			batch += 1
+			continue
 		} else if index == util.BACK {
 			if batch > 0 {
 				batch -= 1
 			} else {
-				fmt.Printf("Jarvis: It can't be back. Continue with path 0\n")
+				fmt.Printf("It can't be back. Continue with path 0\n")
 			}
-		} else {
-			accDesc := accs[index]
-			des := util.PromptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
-			accDesc.Desc = des
-			err := accounts.StoreAccountRecord(*accDesc)
+			continue
+		} else if index == util.CUSTOM {
+			path := util.PromptInput("Please enter custom derivation path (eg: m/44'/60'/0'/88)")
+			accDesc, err = getAccDescsFromHW(hw, t, path)
 			if err != nil {
-				fmt.Printf("Jarvis: I couldn't store your wallet info: %s. Abort.\n", err)
-			} else {
-				fmt.Printf("Jarvis: I created `~/.jarvis/%s.json` to store the wallet info.\n", accDesc.Address)
-				fmt.Printf("Jarvis: Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list\n")
+				return
 			}
-			return
+			fmt.Printf("%s (%s)\n", accDesc.Address, accDesc.Derpath)
+		} else {
+			accDesc = accs[index]
 		}
+
+		des := util.PromptInput("Please enter description of this wallet, it will be used to search your wallet by keywards")
+		accDesc.Desc = des
+		err := accounts.StoreAccountRecord(*accDesc)
+		if err != nil {
+			fmt.Printf("Couldn't store your wallet info: %s. Abort.\n", err)
+		} else {
+			fmt.Printf("Created `~/.jarvis/%s.json` to store the wallet info.\n", accDesc.Address)
+			fmt.Printf("Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list\n")
+		}
+		return
 	}
 }
 
-func handleLedger() {
+func handleLedger(version string) {
 	ledger, err := ledgereum.NewLedgereum()
 	if err != nil {
 		fmt.Printf("Jarvis: Can't establish communication channel to your ledger, %s\n", err)
@@ -102,7 +130,7 @@ func handleLedger() {
 		fmt.Printf("Jarvis: Can't unlock your ledger, %s\n", err)
 		return
 	}
-	handleHW(ledger, "ledger")
+	handleHW(ledger, version)
 }
 
 func handleTrezor() {
@@ -182,18 +210,18 @@ var addWalletCmd = &cobra.Command{
 	Short: "Add a wallet to jarvis",
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. type
-		keyType := util.PromptInput("Jarvis: Enter key type (enter either trezor, ledger, keystore or privatekey):")
+		keyType := util.PromptInput("Jarvis: Enter key type (enter either trezor, ledger, ledger-live, keystore or privatekey):")
 		switch keyType {
 		case "trezor":
 			handleTrezor()
-		case "ledger":
-			handleLedger()
+		case "ledger", "ledger-live":
+			handleLedger(keyType)
 		case "keystore":
 			handleAddKeystore()
 		case "privatekey":
 			handleAddPrivateKey()
 		default:
-			fmt.Printf("Sorry Victor didn't teach me how to handle this kind of key: %s. Abort.\n", keyType)
+			fmt.Printf("Key: %s is not supported. Abort.\n", keyType)
 		}
 		// if type is keystore => path to keystore
 		// if type is ledger/trezor => show 10 addresses
@@ -214,19 +242,6 @@ var listWalletCmd = &cobra.Command{
 			fmt.Printf("%d. %s: %s (%s)\n", index, addr, acc.Kind, acc.Desc)
 		}
 		fmt.Printf("\nJarvis: If you want to add more wallets to the list, use following command:\n> jarvis wallet add\n")
-		// fmt.Printf("Enter wallet to unlock: ")
-		// reader := bufio.NewReader(os.Stdin)
-		// input, _ := reader.ReadString('\n')
-		// ad, err := accounts.GetAccount(strings.TrimSpace(input))
-		// if err != nil {
-		// 	fmt.Printf("%s\n", err)
-		// 	return
-		// }
-		// _, err = accounts.UnlockAccount(ad, Network)
-		// if err != nil {
-		// 	fmt.Printf("Unlocking failed: %s\n", err)
-		// }
-		// fmt.Printf("Unlocking successfully\n")
 	},
 }
 
@@ -234,14 +249,4 @@ func init() {
 	walletCmd.AddCommand(listWalletCmd)
 	walletCmd.AddCommand(addWalletCmd)
 	rootCmd.AddCommand(walletCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// txCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// txCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

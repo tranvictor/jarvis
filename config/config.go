@@ -17,6 +17,8 @@ func Network() networks.Network {
 }
 
 var NetworkString string
+var Debug bool
+var DegenMode bool
 
 var (
 	GasPrice             float64

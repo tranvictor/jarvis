@@ -21,6 +21,7 @@ import (
 const (
 	NEXT                     int    = -1
 	BACK                     int    = -2
+	CUSTOM                   int    = -3
 	CONSTRUCTOR_METHOD_INDEX uint64 = 1000000 // assuming there is no contract with more than 1m methods
 )
 
@@ -95,6 +96,8 @@ func PromptIndex(prompter string, min, max int) int {
 			return NEXT
 		} else if indexInput == "back" {
 			return BACK
+		} else if indexInput == "custom" {
+			return CUSTOM
 		} else {
 			index, err := strconv.Atoi(indexInput)
 			if err != nil {

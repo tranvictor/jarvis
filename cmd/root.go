@@ -112,6 +112,22 @@ func Execute() {
 		),
 	)
 
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.Debug,
+		"debug",
+		"b",
+		false,
+		"Set to enable debug prints. Default false",
+	)
+
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.DegenMode,
+		"degen",
+		"d",
+		false,
+		"Set to enable degen prints such as detailed contract calls, nonces... Default false",
+	)
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

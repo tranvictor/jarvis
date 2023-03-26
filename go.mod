@@ -66,6 +66,4 @@ require (
 
 // replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/ethereum/go-ethereum
 
-// replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
-
 go 1.20
