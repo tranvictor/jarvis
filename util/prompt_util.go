@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/tranvictor/ethutils"
 	. "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/networks"
 )
@@ -436,7 +435,7 @@ func showTxInfoToConfirm(
 		)
 	} else {
 		cAddr := crypto.CreateAddress(
-			ethutils.HexToAddress(from.Address),
+			HexToAddress(from.Address),
 			tx.Nonce(),
 		).Hex()
 		fmt.Printf(
@@ -454,9 +453,9 @@ func showTxInfoToConfirm(
 	fmt.Printf(
 		"Nonce: %d  |  Gas: %.4f gwei (%d gas = %.8f %s)\n",
 		tx.Nonce(),
-		ethutils.BigToFloat(tx.GasPrice(), 9),
+		BigToFloat(tx.GasPrice(), 9),
 		tx.Gas(),
-		ethutils.BigToFloat(
+		BigToFloat(
 			big.NewInt(0).Mul(
 				big.NewInt(int64(tx.Gas())),
 				tx.GasPrice(),

@@ -7,7 +7,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/spf13/cobra"
-	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
@@ -25,7 +24,7 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 	}
 	fmt.Printf(
 		"Sending: %f %s to %s\n",
-		ethutils.BigToFloat(value, network.GetNativeTokenDecimal()),
+		BigToFloat(value, network.GetNativeTokenDecimal()),
 		network.GetNativeTokenSymbol(),
 		VerboseAddress(util.GetJarvisAddress(address, config.Network())),
 	)
@@ -165,7 +164,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		}
 	}
 
-	tx := ethutils.BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
+	tx := BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
 
 	err = util.PromptTxConfirmation(
 		analyzer,

@@ -12,11 +12,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/tranvictor/ethutils"
-	"github.com/tranvictor/ethutils/reader"
 	. "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
+	reader "github.com/tranvictor/jarvis/util/reader"
 )
 
 func EthAnalyzer(network Network) (*TxAnalyzer, error) {
@@ -32,15 +31,15 @@ type TxAnalyzer struct {
 	Network Network
 }
 
-func (self *TxAnalyzer) setBasicTxInfo(txinfo ethutils.TxInfo, result *TxResult, network Network) {
+func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult, network Network) {
 	result.From = util.GetJarvisAddress(txinfo.Tx.Extra.From.Hex(), self.Network)
-	result.Value = fmt.Sprintf("%s", util.BigToFloatString(txinfo.Tx.Value(), network.GetNativeTokenDecimal()))
+	result.Value = fmt.Sprintf("%s", BigToFloatString(txinfo.Tx.Value(), network.GetNativeTokenDecimal()))
 	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
-	result.GasPrice = fmt.Sprintf("%.4f", ethutils.BigToFloat(txinfo.Tx.GasPrice(), 9))
+	result.GasPrice = fmt.Sprintf("%.4f", BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
 	result.GasUsed = fmt.Sprintf("%d", txinfo.Receipt.GasUsed)
-	result.GasCost = fmt.Sprintf("%.8f", ethutils.BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()))
+	result.GasCost = fmt.Sprintf("%.8f", BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()))
 	result.Timestamp = fmt.Sprintf("%s", time.Unix(int64(txinfo.BlockHeader.Time), 0).String())
 }
 
@@ -214,7 +213,7 @@ func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(lookupABI ABIDatabase, va
 	if a == nil {
 		a, err = lookupABI(destination, self.Network)
 		if err != nil {
-			a = ethutils.GetERC20ABI()
+			a = GetERC20ABI()
 		}
 	}
 
@@ -229,7 +228,7 @@ func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(lookupABI ABIDatabase, va
 			data, _ := hexutil.Decode(dataStrs[i])
 			nextFc := self.AnalyzeFunctionCallRecursively(
 				lookupABI,
-				ethutils.StringToBig(valueStrs[i]),
+				StringToBig(valueStrs[i]),
 				destinations[i],
 				data,
 				customABIs,
@@ -243,7 +242,7 @@ func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(lookupABI ABIDatabase, va
 
 func (self *TxAnalyzer) AnalyzeMethodCall(a *abi.ABI, data []byte) (method string, params []ParamResult, err error) {
 	if _, err := a.MethodById(data); err != nil {
-		a = ethutils.GetERC20ABI()
+		a = GetERC20ABI()
 	}
 	m, err := a.MethodById(data)
 	if err != nil {
@@ -320,7 +319,7 @@ func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log,
 	return logResult, nil
 }
 
-func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, result *TxResult, network Network) {
+func (self *TxAnalyzer) analyzeContractTx(txinfo TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, result *TxResult, network Network) {
 	result.FunctionCall = self.AnalyzeFunctionCallRecursively(
 		lookupABI,
 		txinfo.Tx.Value(),
@@ -371,7 +370,7 @@ func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, lookupABI ABID
 // 		return result
 // 	}
 // 	if _, err = a.MethodById(data); err != nil {
-// 		a, _ = ethutils.GetERC20ABI()
+// 		a, _ = GetERC20ABI()
 // 	}
 // 	method, err := a.MethodById(data)
 // 	if err != nil {
@@ -402,7 +401,7 @@ func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, lookupABI ABID
 // 		if a == nil {
 // 			a, err = util.GetABI(contract.Hex(), self.Network)
 // 			if err != nil {
-// 				a, _ = ethutils.GetERC20ABI()
+// 				a, _ = GetERC20ABI()
 // 			}
 // 		}
 // 		result.GnosisInit = self.gnosisMultisigInitData(a, ps, customABIs)
@@ -410,7 +409,7 @@ func (self *TxAnalyzer) analyzeContractTx(txinfo ethutils.TxInfo, lookupABI ABID
 // 	return result
 // }
 
-func (self *TxAnalyzer) AnalyzeOffline(txinfo *ethutils.TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, isContract bool, network Network) *TxResult {
+func (self *TxAnalyzer) AnalyzeOffline(txinfo *TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, isContract bool, network Network) *TxResult {
 	result := NewTxResult()
 	result.Network = self.Network.GetName()
 	// fmt.Printf("==========================================Transaction info===============================================================\n")

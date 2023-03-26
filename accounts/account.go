@@ -15,9 +15,9 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/google/uuid"
 	"github.com/sahilm/fuzzy"
-	"github.com/tranvictor/ethutils/account"
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/util/account"
 	"golang.org/x/crypto/ssh/terminal"
 )
 

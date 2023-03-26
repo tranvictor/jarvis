@@ -4,16 +4,17 @@ import (
 	// "bufio"
 	"fmt"
 	"syscall"
+
 	// "os"
 	// "strings"
 
 	gethaccounts "github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
-	"github.com/tranvictor/ethutils/account/ledgereum"
-	"github.com/tranvictor/ethutils/account/trezoreum"
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/util/account/ledgereum"
+	"github.com/tranvictor/jarvis/util/account/trezoreum"
 	"golang.org/x/crypto/ssh/terminal"
 )
 

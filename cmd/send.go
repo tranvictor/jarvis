@@ -11,8 +11,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
-	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
+	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
@@ -43,7 +43,7 @@ func handleSend(
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 	if tokenAddr == util.ETH_ADDR {
-		t = ethutils.BuildExactTx(
+		t = BuildExactTx(
 			config.Nonce,
 			to,
 			amountWei,
@@ -52,17 +52,17 @@ func handleSend(
 			[]byte{},
 		)
 	} else {
-		a = ethutils.GetERC20ABI()
+		a = GetERC20ABI()
 		data, err := a.Pack(
 			"transfer",
-			ethutils.HexToAddress(to),
+			HexToAddress(to),
 			amountWei,
 		)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
 		}
-		t = ethutils.BuildExactTx(
+		t = BuildExactTx(
 			config.Nonce,
 			tokenAddr,
 			big.NewInt(0),
@@ -204,11 +204,11 @@ exact addresses start with 0x.`,
 						}
 						gasCost := big.NewInt(0).Mul(
 							big.NewInt(int64(config.GasLimit)),
-							ethutils.FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
+							FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
 						)
 						amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
 					} else {
-						amountWei, err = util.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
+						amountWei, err = FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
 						if err != nil {
 							return err
 						}
@@ -225,9 +225,9 @@ exact addresses start with 0x.`,
 						if err != nil {
 							return err
 						}
-						data, err = ethutils.PackERC20Data(
+						data, err = PackERC20Data(
 							"transfer",
-							ethutils.HexToAddress(to),
+							HexToAddress(to),
 							amountWei,
 						)
 						if err != nil {
@@ -238,14 +238,14 @@ exact addresses start with 0x.`,
 						if err != nil {
 							return err
 						}
-						amountWei, err = util.FloatStringToBig(amountStr, decimals)
+						amountWei, err = FloatStringToBig(amountStr, decimals)
 						if err != nil {
 							return err
 						}
 
-						data, err = ethutils.PackERC20Data(
+						data, err = PackERC20Data(
 							"transfer",
-							ethutils.HexToAddress(to),
+							HexToAddress(to),
 							amountWei,
 						)
 						if err != nil {

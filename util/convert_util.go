@@ -9,7 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/tranvictor/ethutils"
+	. "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/networks"
 )
 
@@ -70,13 +70,13 @@ func ConvertToAddress(str string) (common.Address, error) {
 		if len(addresses) > 1 {
 			return common.Address{}, fmt.Errorf("too many addresses provided")
 		}
-		return ethutils.HexToAddress(addresses[0]), nil
+		return HexToAddress(addresses[0]), nil
 	} else {
 		addr, _, err := GetMatchingAddress(str)
 		if err != nil {
 			return common.Address{}, fmt.Errorf("address alias not found")
 		}
-		return ethutils.HexToAddress(addr), nil
+		return HexToAddress(addr), nil
 	}
 }
 
@@ -85,7 +85,7 @@ func ConvertToHash(str string) (common.Hash, error) {
 	if len(str) < 2 || str[0:2] != "0x" {
 		return common.Hash{}, fmt.Errorf("hash must begin with 0x")
 	}
-	return ethutils.HexToHash(str), nil
+	return HexToHash(str), nil
 }
 
 func ConvertToIntOrBig(str string, size int, network Network) (interface{}, error) {

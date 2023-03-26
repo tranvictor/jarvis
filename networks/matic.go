@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/tranvictor/ethutils/explorers"
+	. "github.com/tranvictor/jarvis/util/explorers"
 )
 
 var Matic Network = NewMatic()

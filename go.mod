@@ -5,13 +5,15 @@ require (
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/blevesearch/bleve v1.0.12
 	github.com/ethereum/go-ethereum v1.10.16
+	github.com/golang/protobuf v1.5.2
 	github.com/google/uuid v1.2.0
+	github.com/karalabe/usb v0.0.2
 	github.com/logrusorgru/aurora v0.0.0-20181002194514-a7b3b318ed4e
 	github.com/openconfig/goyang v0.2.4
 	github.com/sahilm/fuzzy v0.1.0
 	github.com/spf13/cobra v1.1.1
-	github.com/tranvictor/ethutils v0.8.4
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
+	golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab
 )
 
 require (
@@ -36,12 +38,10 @@ require (
 	github.com/glycerine/go-unsnap-stream v0.0.0-20181221182339-f9677308dec2 // indirect
 	github.com/go-ole/go-ole v1.2.4 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/jmhodges/levigo v1.0.0 // indirect
-	github.com/karalabe/usb v0.0.2 // indirect
 	github.com/mattn/go-isatty v0.0.12 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/philhofer/fwd v1.0.0 // indirect
@@ -59,7 +59,6 @@ require (
 	github.com/willf/bitset v1.1.10 // indirect
 	go.etcd.io/bbolt v1.3.5 // indirect
 	golang.org/x/net v0.0.0-20220607020251-c690dde0001d // indirect
-	golang.org/x/sys v0.0.0-20220811171246-fbc7d0a398ab // indirect
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211 // indirect
 	google.golang.org/protobuf v1.26.0 // indirect
 	gopkg.in/natefinch/npipe.v2 v2.0.0-20160621034901-c1b8fa8bdcce // indirect
@@ -69,4 +68,4 @@ require (
 
 // replace github.com/tranvictor/ethutils => /Users/victor/go/src/github.com/tranvictor/ethutils
 
-go 1.19
+go 1.20

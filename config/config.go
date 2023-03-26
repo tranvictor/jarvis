@@ -3,8 +3,8 @@ package config
 import (
 	"math/big"
 
-	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/networks"
 )
 
@@ -35,7 +35,7 @@ var (
 	PrefillParams        []string
 	NoFuncCall           bool
 	Tx                   string
-	TxInfo               *ethutils.TxInfo
+	TxInfo               *common.TxInfo
 	AllZeroParamsMethods bool
 	AtBlock              int64
 

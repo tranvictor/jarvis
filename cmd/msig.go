@@ -10,9 +10,9 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
-	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
+	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/txanalyzer"
@@ -252,7 +252,7 @@ var newMsigCmd = &cobra.Command{
 
 		msigABI := util.GetGnosisMsigABI()
 
-		cAddr := crypto.CreateAddress(ethutils.HexToAddress(config.From), config.Nonce).Hex()
+		cAddr := crypto.CreateAddress(HexToAddress(config.From), config.Nonce).Hex()
 
 		data, err := util.PromptTxData(
 			analyzer,
@@ -287,7 +287,7 @@ var newMsigCmd = &cobra.Command{
 				return
 			}
 		}
-		tx := ethutils.BuildContractCreationTx(config.Nonce, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, bytecode)
+		tx := BuildContractCreationTx(config.Nonce, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, bytecode)
 
 		err = util.PromptTxConfirmation(
 			analyzer,
@@ -396,8 +396,8 @@ var initMsigCmd = &cobra.Command{
 
 		txdata, err := msigABI.Pack(
 			"submitTransaction",
-			ethutils.HexToAddress(config.MsigTo),
-			ethutils.FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()),
+			HexToAddress(config.MsigTo),
+			FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()),
 			data,
 		)
 		if err != nil {
@@ -414,7 +414,7 @@ var initMsigCmd = &cobra.Command{
 			}
 		}
 
-		tx := ethutils.BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
+		tx := BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
 
 		customABIs := map[string]*abi.ABI{
 			strings.ToLower(config.MsigTo): a,

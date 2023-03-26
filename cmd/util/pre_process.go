@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tranvictor/ethutils"
 	"github.com/tranvictor/jarvis/accounts"
+	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/util"
@@ -26,7 +26,7 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 		}
 	}
 
-	config.Value, err = util.FloatStringToBig(config.RawValue, 18)
+	config.Value, err = FloatStringToBig(config.RawValue, 18)
 	if err != nil {
 		return fmt.Errorf("couldn't parse -v param: %s", err)
 	}
@@ -75,7 +75,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
 		if config.ForceERC20ABI {
-			a = ethutils.GetERC20ABI()
+			a = GetERC20ABI()
 		} else if config.CustomABI != "" {
 			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
 			if err != nil {

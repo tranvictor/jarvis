@@ -21,15 +21,14 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/tranvictor/ethutils"
-	"github.com/tranvictor/ethutils/broadcaster"
-	"github.com/tranvictor/ethutils/monitor"
-	"github.com/tranvictor/ethutils/reader"
 	bleve "github.com/tranvictor/jarvis/bleve"
 	. "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
 	. "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/util/broadcaster"
 	"github.com/tranvictor/jarvis/util/cache"
+	"github.com/tranvictor/jarvis/util/monitor"
+	"github.com/tranvictor/jarvis/util/reader"
 )
 
 const (
@@ -114,19 +113,11 @@ func GetAddressFromString(str string) (addr string, name string, err error) {
 	return addr, name, nil
 }
 
-func StringToBigInt(str string) (*big.Int, error) {
-	result, success := big.NewInt(0).SetString(str, 10)
-	if !success {
-		return nil, fmt.Errorf("parsed %s to big int failed", str)
-	}
-	return result, nil
-}
-
 func ParamToBigInt(param string) (*big.Int, error) {
 	var result *big.Int
 	param = strings.Trim(param, " ")
 	if len(param) > 2 && param[0:2] == "0x" {
-		result = ethutils.HexToBig(param)
+		result = HexToBig(param)
 	} else {
 		idInt, err := strconv.Atoi(param)
 		if err != nil {
@@ -135,28 +126,6 @@ func ParamToBigInt(param string) (*big.Int, error) {
 		result = big.NewInt(int64(idInt))
 	}
 	return result, nil
-}
-
-func FloatStringToBig(value string, decimal int64) (*big.Int, error) {
-	f, success := new(big.Float).SetString(value)
-	if !success {
-		return nil, fmt.Errorf("couldn't parse string to big int")
-	}
-	power := new(big.Float).SetInt(new(big.Int).Exp(
-		big.NewInt(10), big.NewInt(decimal), nil,
-	))
-	f.Mul(f, power)
-	res, _ := f.Int(nil)
-	return res, nil
-}
-
-func BigToFloatString(value *big.Int, decimal int64) string {
-	f := new(big.Float).SetInt(value)
-	power := new(big.Float).SetInt(new(big.Int).Exp(
-		big.NewInt(10), big.NewInt(decimal), nil,
-	))
-	res := new(big.Float).Quo(f, power)
-	return strings.TrimRight(res.Text('f', int(decimal)), "0")
 }
 
 // Split value by space,
@@ -598,7 +567,7 @@ func GetABIString(addr string, network Network) (string, error) {
 
 func ConfigToABI(address string, forceERC20ABI bool, customABI string, network Network) (*abi.ABI, error) {
 	if forceERC20ABI {
-		return ethutils.GetERC20ABI(), nil
+		return GetERC20ABI(), nil
 	}
 	if customABI != "" {
 		return ReadCustomABI(address, customABI, network)
@@ -680,8 +649,8 @@ func GetBalances(wallets []string, tokens []string, network Network) (balances m
 }
 
 func GetHistoryBalances(atBlock int64, wallets []string, tokens []string, network Network) (balances map[common.Address][]*big.Int, block int64, err error) {
-	helperABI := ethutils.GetMultiCallABI()
-	erc20ABI := ethutils.GetERC20ABI()
+	helperABI := GetMultiCallABI()
+	erc20ABI := GetERC20ABI()
 
 	mc, err := NewMultiCall(network)
 	if err != nil {
@@ -691,7 +660,7 @@ func GetHistoryBalances(atBlock int64, wallets []string, tokens []string, networ
 	balances = map[common.Address][]*big.Int{}
 
 	for _, wallet := range wallets {
-		wAddr := ethutils.HexToAddress(wallet)
+		wAddr := HexToAddress(wallet)
 		for i, token := range tokens {
 			index := i
 			oneResult := big.NewInt(0)
@@ -706,7 +675,7 @@ func GetHistoryBalances(atBlock int64, wallets []string, tokens []string, networ
 					network.MultiCallContract(),
 					helperABI,
 					"getEthBalance",
-					ethutils.HexToAddress(wallet),
+					HexToAddress(wallet),
 				)
 			} else {
 				mc.RegisterWithHook(
@@ -718,7 +687,7 @@ func GetHistoryBalances(atBlock int64, wallets []string, tokens []string, networ
 					token,
 					erc20ABI,
 					"balanceOf",
-					ethutils.HexToAddress(wallet),
+					HexToAddress(wallet),
 				)
 			}
 		}

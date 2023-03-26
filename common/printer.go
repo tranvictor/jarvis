@@ -8,7 +8,6 @@ import (
 
 	aurora "github.com/logrusorgru/aurora"
 	indent "github.com/openconfig/goyang/pkg/indent"
-	"github.com/tranvictor/ethutils"
 	. "github.com/tranvictor/jarvis/networks"
 )
 
@@ -87,7 +86,7 @@ func printFunctionCallToWriter(fc *FunctionCall, w io.Writer, level int) {
 
 	if level > 0 {
 		fmt.Fprintf(writer, "Interpreted Contract call: %s\n", VerboseAddress(fc.Destination))
-		fmt.Fprintf(writer, "| Value: %f ETH\n", ethutils.BigToFloat(fc.Value, 18))
+		fmt.Fprintf(writer, "| Value: %f ETH\n", BigToFloat(fc.Value, 18))
 	} else {
 		fmt.Fprintf(writer, "Contract: %s\n", VerboseAddress(fc.Destination))
 	}
