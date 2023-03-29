@@ -204,7 +204,8 @@ func DisplayWaitAnalyze(
 	err error,
 	network Network,
 	a *abi.ABI,
-	customABIs map[string]*abi.ABI) {
+	customABIs map[string]*abi.ABI,
+	degenMode bool) {
 	if !broadcasted {
 		fmt.Printf("couldn't broadcast tx:\n")
 		fmt.Printf("error on nodes: %v\n", err)
@@ -217,7 +218,7 @@ func DisplayWaitAnalyze(
 			return
 		}
 		mo.BlockingWait(t.Hash().Hex())
-		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, false, "", a, customABIs)
+		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, false, "", a, customABIs, degenMode)
 	}
 }
 
@@ -236,7 +237,8 @@ func AnalyzeAndPrint(
 	forceERC20ABI bool,
 	customABI string,
 	a *abi.ABI,
-	customABIs map[string]*abi.ABI) *TxResult {
+	customABIs map[string]*abi.ABI,
+	degenMode bool) *TxResult {
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
 	}
@@ -274,7 +276,11 @@ func AnalyzeAndPrint(
 		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false, network)
 	}
 
-	PrintTxDetails(result, network, os.Stdout)
+	if degenMode {
+		PrintTxSuccessSummary(result, network, os.Stdout)
+	} else {
+		PrintTxDetails(result, network, os.Stdout)
+	}
 	return result
 }
 

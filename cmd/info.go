@@ -54,6 +54,7 @@ var txCmd = &cobra.Command{
 					config.CustomABI,
 					nil,
 					nil,
+					config.DegenMode,
 				)
 				results[t] = r
 				fmt.Printf("----------------------------------------------------------\n")

@@ -329,7 +329,7 @@ var newMsigCmd = &cobra.Command{
 			} else {
 				util.DisplayWaitAnalyze(
 					reader, analyzer, tx, broadcasted, err, config.Network(),
-					msigABI, customABIs,
+					msigABI, customABIs, config.DegenMode,
 				)
 			}
 		}
@@ -468,7 +468,7 @@ var initMsigCmd = &cobra.Command{
 			} else {
 				util.DisplayWaitAnalyze(
 					reader, analyzer, tx, broadcasted, err, config.Network(),
-					msigABI, customABIs,
+					msigABI, customABIs, config.DegenMode,
 				)
 			}
 		}

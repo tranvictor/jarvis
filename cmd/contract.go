@@ -219,7 +219,7 @@ var txContractCmd = &cobra.Command{
 			} else {
 				util.DisplayWaitAnalyze(
 					reader, analyzer, tx, broadcasted, err, config.Network(),
-					a, nil,
+					a, nil, config.DegenMode,
 				)
 			}
 		}

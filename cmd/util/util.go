@@ -17,7 +17,7 @@ import (
 )
 
 func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int, network Network) (fc *FunctionCall, executed bool) {
-	fmt.Printf("=== What the multisig will do:\n")
+	fmt.Printf("========== What the multisig will do ==========\n")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
 		fmt.Printf("Couldn't get tx info: %s\n", err)
@@ -78,10 +78,11 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 				isStandardERC20Call = true
 
 				fmt.Printf(
-					"Sending: %f %s (%s)\nTo: %s\n",
-					StringToFloat(funcCall.Params[1].Value[0].Value, decimal),
-					symbol,
+					"Sending: %s %s (%s)\nFrom: %s\nTo: %s\n",
+					InfoColor(fmt.Sprintf("%f", StringToFloat(funcCall.Params[1].Value[0].Value, decimal))),
+					InfoColor(symbol),
 					address,
+					VerboseAddress(util.GetJarvisAddress(multisigContract.Address, config.Network())),
 					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, config.Network())),
 				)
 			case "transferFrom":
@@ -122,7 +123,8 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 		}
 	}
 
-	fmt.Printf("\n=== Multisig transaction status:\n")
+	fmt.Printf("===============================================\n\n")
+	fmt.Printf("========== Multisig transaction status ========\n")
 	fmt.Printf("Executed: %t\n", executed)
 	fmt.Printf("Confirmations (among current owners):\n")
 	for i, c := range confirmations {
@@ -268,7 +270,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	} else {
 		util.DisplayWaitAnalyze(
 			reader, analyzer, tx, broadcasted, err, config.Network(),
-			a, nil,
+			a, nil, config.DegenMode,
 		)
 	}
 }

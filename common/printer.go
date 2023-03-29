@@ -15,6 +15,29 @@ func PrintFunctionCall(fc *FunctionCall) {
 	printFunctionCallToWriter(fc, os.Stdout, 0)
 }
 
+func PrintTxSuccessSummary(result *TxResult, network Network, writer io.Writer) {
+	fmt.Fprintf(writer, "Tx hash: %s\n", result.Hash)
+	if result.Status == "done" {
+		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Green(result.Status))
+	} else {
+		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Bold(aurora.Red(result.Status)))
+	}
+
+	fmt.Fprintf(writer, "\nEvent logs:\n")
+	for i, l := range result.Logs {
+		fmt.Fprintf(writer, "Log %d: %s\n", i+1, l.Name)
+		for j, topic := range l.Topics {
+			fmt.Fprintf(writer, "    Topic %d - %s: ", j+1, topic.Name)
+			PrintVerboseValueToWriter(writer, topic.Value)
+		}
+		fmt.Fprintf(writer, "    Data:\n")
+		for _, param := range l.Data {
+			fmt.Fprintf(writer, "    %s (%s): ", param.Name, param.Type)
+			PrintVerboseValueToWriter(writer, param.Value)
+		}
+	}
+}
+
 func PrintTxDetails(result *TxResult, network Network, writer io.Writer) {
 	fmt.Fprintf(writer, "Tx hash: %s\n", result.Hash)
 	if result.Status == "done" {
