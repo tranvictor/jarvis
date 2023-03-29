@@ -277,9 +277,9 @@ func AnalyzeAndPrint(
 	}
 
 	if degenMode {
-		PrintTxSuccessSummary(result, network, os.Stdout)
-	} else {
 		PrintTxDetails(result, network, os.Stdout)
+	} else {
+		PrintTxSuccessSummary(result, network, os.Stdout)
 	}
 	return result
 }

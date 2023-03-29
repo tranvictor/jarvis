@@ -16,12 +16,18 @@ func PrintFunctionCall(fc *FunctionCall) {
 }
 
 func PrintTxSuccessSummary(result *TxResult, network Network, writer io.Writer) {
-	fmt.Fprintf(writer, "Tx hash: %s\n", result.Hash)
 	if result.Status == "done" {
 		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Green(result.Status))
 	} else {
 		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Bold(aurora.Red(result.Status)))
 	}
+
+	fmt.Fprintf(
+		writer, "From: %s ===[%s %s]===> %s\n",
+		VerboseAddress(result.From),
+		result.Value, network.GetNativeTokenSymbol(),
+		VerboseAddress(result.To),
+	)
 
 	fmt.Fprintf(writer, "\nEvent logs:\n")
 	for i, l := range result.Logs {
@@ -39,15 +45,18 @@ func PrintTxSuccessSummary(result *TxResult, network Network, writer io.Writer) 
 }
 
 func PrintTxDetails(result *TxResult, network Network, writer io.Writer) {
-	fmt.Fprintf(writer, "Tx hash: %s\n", result.Hash)
 	if result.Status == "done" {
 		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Green(result.Status))
 	} else {
 		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Bold(aurora.Red(result.Status)))
 	}
-	fmt.Fprintf(writer, "From: %s\n", VerboseAddress(result.From))
-	fmt.Fprintf(writer, "Value: %s %s\n", result.Value, network.GetNativeTokenSymbol())
-	fmt.Fprintf(writer, "To: %s\n", VerboseAddress(result.To))
+
+	fmt.Fprintf(
+		writer, "From: %s ===[%s %s]===> %s\n",
+		VerboseAddress(result.From),
+		result.Value, network.GetNativeTokenSymbol(),
+		VerboseAddress(result.To),
+	)
 	fmt.Fprintf(writer, "Nonce: %s\n", result.Nonce)
 	fmt.Fprintf(writer, "Gas price: %s gwei\n", result.GasPrice)
 	fmt.Fprintf(writer, "Gas limit: %s\n", result.GasLimit)
@@ -57,7 +66,6 @@ func PrintTxDetails(result *TxResult, network Network, writer io.Writer) {
 		return
 	}
 
-	fmt.Fprintf(writer, "Tx type: %s\n", result.TxType)
 	if result.TxType == "normal" {
 		return
 	}
@@ -108,10 +116,10 @@ func printFunctionCallToWriter(fc *FunctionCall, w io.Writer, level int) {
 	}
 
 	if level > 0 {
-		fmt.Fprintf(writer, "Interpreted Contract call: %s\n", VerboseAddress(fc.Destination))
+		fmt.Fprintf(writer, "Interpreted Contract call to: %s\n", VerboseAddress(fc.Destination))
 		fmt.Fprintf(writer, "| Value: %f ETH\n", BigToFloat(fc.Value, 18))
 	} else {
-		fmt.Fprintf(writer, "Contract: %s\n", VerboseAddress(fc.Destination))
+		fmt.Fprintf(writer, "\n")
 	}
 	fmt.Fprintf(writer, "| Method: %s\n", fc.Method)
 	fmt.Fprintf(writer, "| Params:\n")
