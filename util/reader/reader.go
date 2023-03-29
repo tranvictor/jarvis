@@ -478,6 +478,13 @@ func (self *EthReader) HistoryERC20Balance(atBlock int64, caddr string, user str
 	return result, err
 }
 
+func (self *EthReader) ERC20Symbol(caddr string) (string, error) {
+	abi := GetERC20ABI()
+	var result string
+	err := self.ReadContractWithABI(&result, caddr, abi, "symbol")
+	return result, err
+}
+
 func (self *EthReader) ERC20Balance(caddr string, user string) (*big.Int, error) {
 	abi := GetERC20ABI()
 	result := big.NewInt(0)

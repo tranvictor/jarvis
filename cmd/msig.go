@@ -336,6 +336,14 @@ var newMsigCmd = &cobra.Command{
 	},
 }
 
+// var initMsigSend = &cobra.Command{
+// 	Use:   "init",
+// 	Short: "Init gnosis transaction",
+// 	Long:  ``,
+// 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+// 	},
+// }
+
 var initMsigCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Init gnosis transaction",
@@ -477,6 +485,7 @@ func init() {
 	msigCmd.AddCommand(summaryMsigCmd)
 	msigCmd.AddCommand(transactionInfoMsigCmd)
 	msigCmd.AddCommand(govInfoMsigCmd)
+	// msigCmd.AddCommand(initMsigSend)
 
 	initMsigCmd.Flags().Float64VarP(&config.MsigValue, "msig-value", "V", 0, "Amount of native tokens (eth, bnb, matic...) to send with the multisig. It is in native tokens, not WEI.")
 	initMsigCmd.Flags().StringVarP(&config.MsigTo, "msig-to", "j", "", "Target address the multisig will interact with. Can be address or name.")
@@ -490,6 +499,8 @@ func init() {
 		revokeMsigCmd,
 		initMsigCmd,
 		executeMsigCmd,
+
+		// initMsigSend,
 	}
 	for _, c := range writeCmds {
 		c.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")

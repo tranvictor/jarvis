@@ -612,6 +612,16 @@ func GetABI(addr string, network Network) (*abi.ABI, error) {
 	return GetABIFromString(abiStr)
 }
 
+func IsERC20ABI(a *abi.ABI) bool {
+	for _, m := range ERC20_METHODS {
+		_, found := a.Methods[m]
+		if !found {
+			return false
+		}
+	}
+	return true
+}
+
 func IsGnosisMultisig(a *abi.ABI) (bool, error) {
 	methods := []string{
 		"confirmations",

@@ -8,6 +8,18 @@ import (
 	"github.com/tranvictor/jarvis/util/cache"
 )
 
+var ERC20_METHODS = [...]string{
+	"name",
+	"symbol",
+	"decimals",
+	"totalSupply",
+	"balanceOf",
+	"transfer",
+	"transferFrom",
+	"approve",
+	"allowance",
+}
+
 func queryToCheckERC20(addr string, network Network) (bool, error) {
 	_, err := GetERC20Decimal(addr, network)
 	if err != nil {
@@ -41,6 +53,32 @@ func IsERC20(addr string, network Network) (bool, error) {
 		isERC20,
 	)
 	return isERC20, nil
+}
+
+func GetERC20Symbol(addr string, network Network) (string, error) {
+	cacheKey := fmt.Sprintf("%s_symbol", addr)
+	result, found := cache.GetCache(cacheKey)
+	if found {
+		return result, nil
+	}
+
+	reader, err := EthReader(network)
+	if err != nil {
+		return "", err
+	}
+
+	result, err = reader.ERC20Symbol(addr)
+
+	if err != nil {
+		return "", err
+	}
+
+	cache.SetCache(
+		cacheKey,
+		result,
+	)
+
+	return result, nil
 }
 
 func GetERC20Decimal(addr string, network Network) (int64, error) {

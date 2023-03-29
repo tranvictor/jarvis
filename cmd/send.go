@@ -14,9 +14,95 @@ import (
 	"github.com/tranvictor/jarvis/accounts"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
+
+var to string
+var amountStr string
+var amountWei *big.Int
+var value string
+var tokenAddr string
+var currency string
+var err error
+
+func handleMsigSend(
+	cmd *cobra.Command, args []string,
+	basePrice, extraPrice float64,
+	baseGas, extraGas uint64,
+	nonce uint64,
+	from accounts.AccDesc,
+	to string,
+	txdata []byte,
+) {
+	var (
+		t *types.Transaction
+		a *abi.ABI
+	)
+
+	reader, err := util.EthReader(config.Network())
+	if err != nil {
+		fmt.Printf("init reader failed: %s\n", err)
+		return
+	}
+
+	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+
+	t = BuildExactTx(
+		config.Nonce,
+		to,
+		big.NewInt(0),
+		config.GasLimit+config.ExtraGasLimit,
+		config.GasPrice+config.ExtraGasPrice,
+		txdata,
+	)
+
+	err = util.PromptTxConfirmation(
+		analyzer,
+		util.GetJarvisAddress(config.From, config.Network()),
+		t,
+		nil,
+		config.Network(),
+	)
+	if err != nil {
+		fmt.Printf("Aborted!\n")
+		return
+	}
+
+	fmt.Printf("== Unlock your wallet and send now...\n")
+	account, err := accounts.UnlockAccount(from, config.Network())
+	if err != nil {
+		fmt.Printf("Failed: %s\n", err)
+		os.Exit(126)
+	}
+
+	if config.DontBroadcast {
+		signedTx, err := account.SignTx(t)
+		if err != nil {
+			fmt.Printf("%s", err)
+			return
+		}
+		data, err := rlp.EncodeToBytes(signedTx)
+		if err != nil {
+			fmt.Printf("Couldn't encode the signed tx: %s", err)
+			return
+		}
+		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
+	} else {
+		tx, broadcasted, err := account.SignTxAndBroadcast(t)
+		if config.DontWaitToBeMined {
+			util.DisplayBroadcastedTx(
+				tx, broadcasted, err, config.Network(),
+			)
+		} else {
+			util.DisplayWaitAnalyze(
+				reader, analyzer, tx, broadcasted, err, config.Network(),
+				a, nil,
+			)
+		}
+	}
+}
 
 // currency here is supposed to be either ETH or address of an ERC20 token
 func handleSend(
@@ -120,27 +206,240 @@ func handleSend(
 	}
 }
 
+func sendFromMsig(cmd *cobra.Command, args []string) {
+	msigAddress, err := getMsigContractFromParams([]string{config.From})
+	if err != nil {
+		fmt.Printf("Couldn't find a wallet or multisig with keyword %s\n", config.From)
+		return
+	}
+
+	config.To, _, err = util.GetAddressFromString(msigAddress)
+
+	multisigContract, err := msig.NewMultisigContract(
+		config.To,
+		config.Network(),
+	)
+	if err != nil {
+		fmt.Printf("Couldn't read the multisig: %s\n", err)
+		return
+	}
+
+	owners, err := multisigContract.Owners()
+	if err != nil {
+		fmt.Printf("getting msig owners failed: %s\n", err)
+		return
+	}
+
+	var acc accounts.AccDesc
+	count := 0
+	for _, owner := range owners {
+		a, err := accounts.GetAccount(owner)
+		if err == nil {
+			acc = a
+			count++
+			break
+		}
+	}
+	if count == 0 {
+		fmt.Printf("You don't have any wallet which is this multisig signer. Please jarvis wallet add to add the wallet.")
+		return
+	}
+
+	config.FromAcc = acc
+	config.From = acc.Address
+
+	amountStr, currency, err := util.ValueToAmountAndCurrency(value)
+	if err != nil {
+		fmt.Printf("Wrong format of the --value/-v param\n")
+		return
+	}
+
+	// if value is not an address, we need to look it up
+	// from the token database to get its address
+
+	if currency == util.ETH_ADDR || strings.ToLower(currency) == strings.ToLower(config.Network().GetNativeTokenSymbol()) {
+		tokenAddr = util.ETH_ADDR
+	} else {
+		addr, _, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
+		if err != nil {
+			if util.IsAddress(currency) {
+				tokenAddr = currency
+			} else {
+				fmt.Printf("Couldn't find the token by name or address\n")
+				return
+			}
+		} else {
+			tokenAddr = addr
+		}
+	}
+
+	// process to to get address
+	toAddr, _, err := util.GetMatchingAddress(to)
+	if err != nil {
+		fmt.Printf("Couldn't get destination address with keyword: %s\n", to)
+		return
+	} else {
+		to = toAddr
+	}
+
+	reader, err := util.EthReader(config.Network())
+	if err != nil {
+		fmt.Printf("Couldn't init connection to node: %s\n", err)
+		return
+	}
+
+	// var GasPrice float64
+	if config.GasPrice == 0 {
+		config.GasPrice, err = reader.RecommendedGasPrice()
+		if err != nil {
+			fmt.Printf("Couldn't get recommended gas price: %s\n", err)
+			return
+		}
+	}
+
+	var txdata []byte
+
+	// var GasLimit uint64
+	if config.GasLimit == 0 {
+		if tokenAddr == util.ETH_ADDR {
+			if amountStr == "ALL" {
+				ethBalance, err := reader.GetBalance(config.To)
+				if err != nil {
+					fmt.Printf("Couldn't get balance of the multisig: %s\n", err)
+					return
+				}
+				amountWei = ethBalance
+			} else {
+				amountWei, err = FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
+				if err != nil {
+					fmt.Printf("Couldn't calculate the amount: %s\n", err)
+					return
+				}
+			}
+
+			msigABI := util.GetGnosisMsigABI()
+			txdata, err = msigABI.Pack(
+				"submitTransaction",
+				HexToAddress(to),
+				amountWei,
+				[]byte{},
+			)
+
+			if err != nil {
+				fmt.Printf("Couldn't pack tx data 1: %s\n", err)
+				return
+			}
+
+			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, 0, big.NewInt(0), txdata)
+			if err != nil {
+				fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
+				return
+			}
+
+		} else {
+			var data []byte
+			if amountStr == "ALL" {
+				amountWei, err = reader.ERC20Balance(tokenAddr, config.To)
+				if err != nil {
+					fmt.Printf("Couldn't read balance of the multisig: %s\n", err)
+				}
+				data, err = PackERC20Data(
+					"transfer",
+					HexToAddress(to),
+					amountWei,
+				)
+				if err != nil {
+					fmt.Printf("Couldn't pack transfer data: %s\n", err)
+					return
+				}
+			} else {
+				decimals, err := reader.ERC20Decimal(tokenAddr)
+				if err != nil {
+					fmt.Printf("Couldn't get token decimal: %s\n", err)
+					return
+				}
+				amountWei, err = FloatStringToBig(amountStr, decimals)
+				if err != nil {
+					fmt.Printf("Couldn't calculate amount in wei: %s\n", err)
+					return
+				}
+
+				data, err = PackERC20Data(
+					"transfer",
+					HexToAddress(to),
+					amountWei,
+				)
+				if err != nil {
+					fmt.Printf("Couldn't pack transfer data: %s\n", err)
+					return
+				}
+			}
+
+			msigABI := util.GetGnosisMsigABI()
+			txdata, err = msigABI.Pack(
+				"submitTransaction",
+				HexToAddress(tokenAddr),
+				big.NewInt(0),
+				data,
+			)
+
+			if err != nil {
+				fmt.Printf("Couldn't pack tx data 2: %s\n", err)
+				return
+			}
+			config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, 0, txdata)
+			if err != nil {
+				fmt.Printf("Couldn't estimate gas: %s\n", err)
+				return
+			}
+		}
+	}
+
+	// var Nonce uint64
+	if config.Nonce == 0 {
+		config.Nonce, err = reader.GetMinedNonce(config.From)
+		if err != nil {
+			fmt.Printf("Couldn't get nonce of %s: %s\n", config.From, err)
+			return
+		}
+	}
+
+	handleMsigSend(
+		cmd, args,
+		config.GasPrice, config.ExtraGasPrice,
+		config.GasLimit, config.ExtraGasLimit,
+		config.Nonce,
+		config.FromAcc,
+		config.To,
+		txdata,
+	)
+}
+
 func init() {
-	var to string
-	var amountStr string
-	var amountWei *big.Int
-	var value string
-	var tokenAddr string
-	var currency string
-	var err error
 	// sendCmd represents the send command
 	var sendCmd = &cobra.Command{
 		Use:   "send",
-		Short: "Send eth or erc20 token from your account to others",
-		Long: `Send eth or erc20 token from your account to other accounts.
+		Short: "Send eth or erc20 token from your account/multisig to others",
+		Long: `Send eth or erc20 token from your account or multisig to other accounts.
 The token and accounts can be specified either by memorable name or
 exact addresses start with 0x.`,
 		TraverseChildren: true,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		Run: func(cmd *cobra.Command, args []string) {
+			// process from to get address
+			acc, err := accounts.GetAccount(config.From)
+			if err != nil {
+				// if config.From is not in wallet list, fall back to msig send
+				sendFromMsig(cmd, args)
+				return
+			}
+
+			config.FromAcc = acc
+			config.From = acc.Address
 
 			amountStr, currency, err = util.ValueToAmountAndCurrency(value)
 			if err != nil {
-				return err
+				fmt.Printf("Wrong format of --value/-v param\n")
+				return
 			}
 
 			// if value is not an address, we need to look it up
@@ -154,37 +453,33 @@ exact addresses start with 0x.`,
 					if util.IsAddress(currency) {
 						tokenAddr = currency
 					} else {
-						return err
+						fmt.Printf("Couldn't find the token by name or address\n")
+						return
 					}
 				} else {
 					tokenAddr = addr
 				}
 			}
 
-			// process from to get address
-			acc, err := accounts.GetAccount(config.From)
-			if err != nil {
-				return err
-			} else {
-				config.FromAcc = acc
-				config.From = acc.Address
-			}
 			// process to to get address
 			toAddr, _, err := util.GetMatchingAddress(to)
 			if err != nil {
-				return err
+				fmt.Printf("Couldn't find destination address by keyword nor address: %s\n", to)
+				return
 			} else {
 				to = toAddr
 			}
 			reader, err := util.EthReader(config.Network())
 			if err != nil {
-				return err
+				fmt.Printf("Couldn't establish connection to node: %s\n", err)
+				return
 			}
 			// var GasPrice float64
 			if config.GasPrice == 0 {
 				config.GasPrice, err = reader.RecommendedGasPrice()
 				if err != nil {
-					return err
+					fmt.Printf("Couldn't estimate recommended gas price: %s\n", err)
+					return
 				}
 			}
 			// var GasLimit uint64
@@ -194,13 +489,14 @@ exact addresses start with 0x.`,
 						config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, big.NewInt(1), []byte{})
 						if err != nil {
 							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
-							return err
+							return
 						}
 						config.ExtraGasLimit = 0
 
 						ethBalance, err := reader.GetBalance(config.From)
 						if err != nil {
-							return err
+							fmt.Printf("Couldn't get %s balance: %s\n", config.Network().GetNativeTokenSymbol(), err)
+							return
 						}
 						gasCost := big.NewInt(0).Mul(
 							big.NewInt(int64(config.GasLimit)),
@@ -210,12 +506,13 @@ exact addresses start with 0x.`,
 					} else {
 						amountWei, err = FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
 						if err != nil {
-							return err
+							fmt.Printf("Couldn't calculate send amount: %s\n", err)
+							return
 						}
 						config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, amountWei, []byte{})
 						if err != nil {
 							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
-							return err
+							return
 						}
 					}
 				} else {
@@ -223,7 +520,8 @@ exact addresses start with 0x.`,
 					if amountStr == "ALL" {
 						amountWei, err = reader.ERC20Balance(tokenAddr, config.From)
 						if err != nil {
-							return err
+							fmt.Printf("Couldn't get token balance: %s\n", err)
+							return
 						}
 						data, err = PackERC20Data(
 							"transfer",
@@ -231,16 +529,19 @@ exact addresses start with 0x.`,
 							amountWei,
 						)
 						if err != nil {
-							return err
+							fmt.Printf("Couldn't pack data: %s\n", err)
+							return
 						}
 					} else {
 						decimals, err := reader.ERC20Decimal(tokenAddr)
 						if err != nil {
-							return err
+							fmt.Printf("Couldn't get token decimal: %s\n", err)
+							return
 						}
 						amountWei, err = FloatStringToBig(amountStr, decimals)
 						if err != nil {
-							return err
+							fmt.Printf("Couldn't calculate token amount in wei: %s\n", err)
+							return
 						}
 
 						data, err = PackERC20Data(
@@ -249,12 +550,14 @@ exact addresses start with 0x.`,
 							amountWei,
 						)
 						if err != nil {
-							return err
+							fmt.Printf("Couldn't pack data: %s\n", err)
+							return
 						}
 					}
 					config.GasLimit, err = reader.EstimateGas(config.From, tokenAddr, config.GasPrice+config.ExtraGasPrice, 0, data)
 					if err != nil {
-						return err
+						fmt.Printf("Couldn't estimate gas limit: %s\n", err)
+						return
 					}
 				}
 			}
@@ -262,12 +565,10 @@ exact addresses start with 0x.`,
 			if config.Nonce == 0 {
 				config.Nonce, err = reader.GetMinedNonce(config.From)
 				if err != nil {
-					return err
+					fmt.Printf("Couldn't get nonce: %s\n", err)
+					return
 				}
 			}
-			return nil
-		},
-		Run: func(cmd *cobra.Command, args []string) {
 			handleSend(
 				cmd, args,
 				config.GasPrice, config.ExtraGasPrice,

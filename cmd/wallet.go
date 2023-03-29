@@ -20,7 +20,7 @@ import (
 
 const (
 	TREZOR_BASE_PATH      string = "m/44'/60'/0'/0/%d"
-	LEDGER_LIVE_BASE_PATH string = "m/44'/60'/0'/0/%d"
+	LEDGER_LIVE_BASE_PATH string = "m/44'/60'/%d'/0/0"
 	LEDGER_BASE_PATH      string = "m/44'/60'/0'/%d"
 
 	WALLET_PAGING int = 5

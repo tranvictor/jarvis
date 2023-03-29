@@ -16,22 +16,22 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int, network Network) (fc *FunctionCall) {
+func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int, network Network) (fc *FunctionCall, executed bool) {
+	fmt.Printf("=== What the multisig will do:\n")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
-		fmt.Printf("Jarvis: Can't get tx info: %s\n", err)
+		fmt.Printf("Couldn't get tx info: %s\n", err)
 		return
 	}
-	fmt.Printf(
-		"Sending: %f %s to %s\n",
-		BigToFloat(value, network.GetNativeTokenDecimal()),
-		network.GetNativeTokenSymbol(),
-		VerboseAddress(util.GetJarvisAddress(address, config.Network())),
-	)
 
-	if len(data) != 0 {
-		fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, config.Network())))
-
+	if len(data) == 0 {
+		fmt.Printf(
+			"Sending: %f %s to %s\n",
+			BigToFloat(value, network.GetNativeTokenDecimal()),
+			network.GetNativeTokenSymbol(),
+			VerboseAddress(util.GetJarvisAddress(address, config.Network())),
+		)
+	} else {
 		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			fmt.Printf("Couldn't get abi of destination address: %s\n", err)
@@ -43,19 +43,87 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 			fmt.Printf("Couldn't analyze tx: %s\n", err)
 			return
 		}
-		fc = util.AnalyzeMethodCallAndPrint(
-			analyzer,
-			value,
-			address,
-			data,
-			map[string]*abi.ABI{
-				strings.ToLower(address): destAbi,
-			},
-			config.Network(),
-		)
+
+		var isStandardERC20Call bool
+
+		if util.IsERC20ABI(destAbi) {
+			funcCall := analyzer.AnalyzeFunctionCallRecursively(
+				util.GetABI,
+				value,
+				address,
+				data,
+				map[string]*abi.ABI{
+					strings.ToLower(address): destAbi,
+				},
+			)
+			if funcCall.Error != "" {
+				fmt.Printf("This tx calls an unknown function from %s's ABI. Proceed with tx anyways.\n", address)
+				return
+			}
+
+			symbol, err := util.GetERC20Symbol(address, network)
+			if err != nil {
+				fmt.Printf("Getting the token's symbol failed: %s. Proceed with tx anyways.\n", err)
+				return
+			}
+
+			decimal, err := util.GetERC20Decimal(address, network)
+			if err != nil {
+				fmt.Printf("Getting the token's decimal failed: %s. Proceed with tx anyways.\n", err)
+				return
+			}
+
+			switch funcCall.Method {
+			case "transfer":
+				isStandardERC20Call = true
+
+				fmt.Printf(
+					"Sending: %f %s (%s)\nTo: %s\n",
+					StringToFloat(funcCall.Params[1].Value[0].Value, decimal),
+					symbol,
+					address,
+					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, config.Network())),
+				)
+			case "transferFrom":
+				isStandardERC20Call = true
+
+				fmt.Printf(
+					"Sending: %f %s (%s)\nFrom: %s\nTo: %s\n",
+					StringToFloat(funcCall.Params[2].Value[0].Value, decimal),
+					symbol,
+					address,
+					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, config.Network())),
+					VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Value[0].Value, config.Network())),
+				)
+			case "approve":
+				isStandardERC20Call = true
+				fmt.Printf(
+					"Approving %s to spend upto: %f %s (%s) from the multisig\n",
+					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, config.Network())),
+					StringToFloat(funcCall.Params[1].Value[0].Value, decimal),
+					symbol,
+					address,
+				)
+			}
+		}
+
+		if !isStandardERC20Call {
+			fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, config.Network())))
+			fc = util.AnalyzeMethodCallAndPrint(
+				analyzer,
+				value,
+				address,
+				data,
+				map[string]*abi.ABI{
+					strings.ToLower(address): destAbi,
+				},
+				config.Network(),
+			)
+		}
 	}
 
-	fmt.Printf("\nExecuted: %t\n", executed)
+	fmt.Printf("\n=== Multisig transaction status:\n")
+	fmt.Printf("Executed: %t\n", executed)
 	fmt.Printf("Confirmations (among current owners):\n")
 	for i, c := range confirmations {
 		_, name, err := util.GetMatchingAddress(c)
@@ -64,6 +132,10 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 		} else {
 			fmt.Printf("%d. %s (%s)\n", i+1, c, name)
 		}
+	}
+
+	if executed {
+		fmt.Printf("This multisig is executed, you don't need to approve it anymore\n")
 	}
 	return
 }
@@ -130,9 +202,13 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		return
 	}
 
-	fc := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
+	fc, executed := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
 
 	if postProcess != nil && postProcess(fc) != nil {
+		return
+	}
+
+	if executed {
 		return
 	}
 	// TODO: support multiple txs?
