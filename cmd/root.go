@@ -113,14 +113,6 @@ func Execute() {
 	)
 
 	rootCmd.PersistentFlags().BoolVarP(
-		&config.Debug,
-		"debug",
-		"b",
-		false,
-		"Set to enable debug prints. Default false",
-	)
-
-	rootCmd.PersistentFlags().BoolVarP(
 		&config.DegenMode,
 		"degen",
 		"x",
