@@ -147,7 +147,7 @@ func UnlockAccount(ad AccDesc, network networks.Network) (*account.Account, erro
 			fmt.Printf("Creating trezor instance failed: %s\n", err)
 			return nil, err
 		}
-	case "ledger":
+	case "ledger", "ledger-live":
 		fromAcc, err = account.NewLedgerAccountGeneric(ad.Derpath, ad.Address, reader, broadcaster, network.GetChainID())
 		if err != nil {
 			fmt.Printf("Creating ledger instance failed: %s\n", err)
