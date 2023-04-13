@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
+	"os/exec"
 	"os/user"
 	"path"
 	"path/filepath"
@@ -19,11 +21,24 @@ import (
 )
 
 var (
-	BLEVE_PATH      string = filepath.Join(getHomeDir(), ".jarvis", "db.bleve")
-	BLEVE_DATA_PATH string = filepath.Join(getHomeDir(), ".jarvis", "bleve.data")
-	bleveDB         *BleveDB
-	once            sync.Once
+	BLEVE_PATH                   string = filepath.Join(getHomeDir(), ".jarvis", "db.bleve")
+	BLEVE_DATA_PATH              string = filepath.Join(getHomeDir(), ".jarvis", "bleve.data")
+	THIS_SESSION_BLEVE_DATA_PATH string
+	bleveDB                      *BleveDB
+	bleveDBSession               string
+	once                         sync.Once
 )
+
+func getRandomSessionBleveDataPath() string {
+	if bleveDBSession == "" {
+		rand.Seed(time.Now().UnixNano())
+		b := make([]byte, 8)
+		rand.Read(b)
+		bleveDBSession = fmt.Sprintf("%x", b)
+	}
+
+	return filepath.Join(getHomeDir(), ".jarvis", fmt.Sprintf("bleve_%s.data", bleveDBSession))
+}
 
 func getHomeDir() string {
 	usr, err := user.Current()
@@ -92,8 +107,9 @@ func getDataFromDefaultFile() (result map[string]string, hash string) {
 }
 
 type BleveDB struct {
-	index bleve.Index
-	Hash  string
+	index   bleve.Index
+	Hash    string
+	Session string
 }
 
 func buildIndexMapping() mapping.IndexMapping {
@@ -113,8 +129,8 @@ func buildIndexMapping() mapping.IndexMapping {
 	return indexMapping
 }
 
-func loadIndex(db *BleveDB) error {
-	index, err := bleve.Open(BLEVE_DATA_PATH)
+func loadIndex(db *BleveDB, path string) error {
+	index, err := bleve.Open(path)
 	if err != nil && err != bleve.ErrorIndexPathDoesNotExist {
 		return err
 	}
@@ -128,7 +144,7 @@ func loadIndex(db *BleveDB) error {
 	if err == bleve.ErrorIndexPathDoesNotExist {
 		// here index file doesn't exist, create one
 		indexMapping := buildIndexMapping()
-		index, err = bleve.New(BLEVE_DATA_PATH, indexMapping)
+		index, err = bleve.New(path, indexMapping)
 		if err != nil {
 			return err
 		}
@@ -161,6 +177,10 @@ func loadBleveDB() (*BleveDB, error) {
 	return result, nil
 }
 
+func CopyBleveDataFileToSession() error {
+	return exec.Command("cp", "-R", BLEVE_DATA_PATH, THIS_SESSION_BLEVE_DATA_PATH).Run()
+}
+
 func NewBleveDB() (*BleveDB, error) {
 	var resError error
 	once.Do(func() {
@@ -168,7 +188,14 @@ func NewBleveDB() (*BleveDB, error) {
 		if resError != nil {
 			return
 		}
-		resError = loadIndex(bleveDB)
+
+		// THIS_SESSION_BLEVE_DATA_PATH = getRandomSessionBleveDataPath()
+		// resError = CopyBleveDataFileToSession()
+		// if resError != nil {
+		// 	return
+		// }
+
+		resError = loadIndex(bleveDB, BLEVE_DATA_PATH)
 	})
 	return bleveDB, resError
 }

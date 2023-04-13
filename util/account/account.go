@@ -460,11 +460,15 @@ func (self *Account) SignTx(tx *types.Transaction) (*types.Transaction, error) {
 	return signedTx, nil
 }
 
+func (self *Account) Broadcast(tx *types.Transaction) (*types.Transaction, bool, error) {
+	_, broadcasted, err := self.broadcaster.BroadcastTx(tx)
+	return tx, broadcasted, err
+}
+
 func (self *Account) SignTxAndBroadcast(tx *types.Transaction) (*types.Transaction, bool, error) {
 	signedTx, err := self.SignTx(tx)
 	if err != nil {
 		return tx, false, err
 	}
-	_, broadcasted, err := self.broadcaster.BroadcastTx(signedTx)
-	return signedTx, broadcasted, err
+	return self.Broadcast(signedTx)
 }

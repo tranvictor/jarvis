@@ -27,7 +27,7 @@ func (self *avalanche) GetChainID() int64 {
 }
 
 func (self *avalanche) GetAlternativeNames() []string {
-	return []string{}
+	return []string{"snowtrace"}
 }
 
 func (self *avalanche) GetNativeTokenSymbol() string {

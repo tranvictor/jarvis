@@ -40,11 +40,14 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 	} else {
 		config.To, _, err = util.GetAddressFromString(args[0])
 		if err != nil {
-			txs := util.ScanForTxs(args[0])
+			networks, txs := ScanForTxs(args[0])
 			if len(txs) == 0 {
 				return fmt.Errorf("can't interpret the contract address")
 			}
 			config.Tx = txs[0]
+			if networks[0] != "" {
+				config.SetNetwork(networks[0])
+			}
 
 			reader, err := util.EthReader(config.Network())
 			if err != nil {

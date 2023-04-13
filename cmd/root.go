@@ -120,6 +120,14 @@ func Execute() {
 		"Set to enable degen prints such as detailed contract calls, nonces... Default false",
 	)
 
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.YesToAllPrompt,
+		"yes",
+		"Y",
+		false,
+		"Automatically Yes to all Y/N prompts",
+	)
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

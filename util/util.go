@@ -12,7 +12,6 @@ import (
 	"os/user"
 	"path"
 	"regexp"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -647,17 +646,6 @@ func IsGnosisMultisig(a *abi.ABI) (bool, error) {
 		}
 	}
 	return true, nil
-}
-
-func AllZeroParamFunctions(a *abi.ABI) []abi.Method {
-	methods := []abi.Method{}
-	for _, m := range a.Methods {
-		if m.IsConstant() && len(m.Inputs) == 0 {
-			methods = append(methods, m)
-		}
-	}
-	sort.Sort(orderedMethods(methods))
-	return methods
 }
 
 func GetBalances(wallets []string, tokens []string, network Network) (balances map[common.Address][]*big.Int, block int64, err error) {

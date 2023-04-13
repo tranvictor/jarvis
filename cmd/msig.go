@@ -254,10 +254,10 @@ var newMsigCmd = &cobra.Command{
 
 		cAddr := crypto.CreateAddress(HexToAddress(config.From), config.Nonce).Hex()
 
-		data, err := util.PromptTxData(
+		data, err := cmdutil.PromptTxData(
 			analyzer,
 			cAddr,
-			util.CONSTRUCTOR_METHOD_INDEX,
+			cmdutil.CONSTRUCTOR_METHOD_INDEX,
 			config.PrefillParams,
 			config.PrefillMode,
 			msigABI,
@@ -289,7 +289,7 @@ var newMsigCmd = &cobra.Command{
 		}
 		tx := BuildContractCreationTx(config.Nonce, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, bytecode)
 
-		err = util.PromptTxConfirmation(
+		err = cmdutil.PromptTxConfirmation(
 			analyzer,
 			util.GetJarvisAddress(config.From, config.Network()),
 			tx,
@@ -379,7 +379,7 @@ var initMsigCmd = &cobra.Command{
 
 		data := []byte{}
 		if a != nil && !config.NoFuncCall {
-			data, err = util.PromptTxData(
+			data, err = cmdutil.PromptTxData(
 				analyzer,
 				config.MsigTo,
 				config.MethodIndex,
@@ -428,7 +428,7 @@ var initMsigCmd = &cobra.Command{
 			strings.ToLower(config.MsigTo): a,
 			strings.ToLower(config.To):     msigABI,
 		}
-		err = util.PromptTxConfirmation(
+		err = cmdutil.PromptTxConfirmation(
 			analyzer,
 			util.GetJarvisAddress(config.From, config.Network()),
 			tx,

@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/jarvis/accounts"
+	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
@@ -58,7 +59,7 @@ func handleMsigSend(
 		txdata,
 	)
 
-	err = util.PromptTxConfirmation(
+	err = cmdutil.PromptTxConfirmation(
 		analyzer,
 		util.GetJarvisAddress(config.From, config.Network()),
 		t,
@@ -158,7 +159,7 @@ func handleSend(
 		)
 	}
 
-	err = util.PromptTxConfirmation(
+	err = cmdutil.PromptTxConfirmation(
 		analyzer,
 		util.GetJarvisAddress(config.From, config.Network()),
 		t,
@@ -469,7 +470,9 @@ exact addresses start with 0x.`,
 			} else {
 				to = toAddr
 			}
+
 			reader, err := util.EthReader(config.Network())
+
 			if err != nil {
 				fmt.Printf("Couldn't establish connection to node: %s\n", err)
 				return

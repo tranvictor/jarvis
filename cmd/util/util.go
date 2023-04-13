@@ -3,6 +3,7 @@ package util
 import (
 	"fmt"
 	"math/big"
+	"regexp"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -144,6 +145,24 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 
 type PostProcessFunc func(fc *FunctionCall) error
 
+func ScanForTxs(para string) (networks []string, addresses []string) {
+	networkNames := GetSupportedNetworkNames()
+	regexStr := strings.Join(networkNames, "|")
+	regexStr = fmt.Sprintf("(?i)(?:(?P<network>%s)(?:.{0,}?))?(?P<address>(?:0x)?(?:[0-9a-fA-F]{64}))", regexStr)
+
+	re := regexp.MustCompile(regexStr)
+
+	// Find all matches
+	matches := re.FindAllStringSubmatch(para, -1)
+
+	for _, match := range matches {
+		networks = append(networks, strings.ToLower(match[1]))
+		addresses = append(addresses, match[2])
+	}
+
+	return
+}
+
 func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args []string, postProcess PostProcessFunc) {
 	reader, err := util.EthReader(config.Network())
 	if err != nil {
@@ -156,7 +175,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 	var txid *big.Int
 
 	if config.Tx == "" {
-		txs := util.ScanForTxs(args[1])
+		networks, txs := ScanForTxs(args[1])
 		if len(txs) == 0 {
 			txid, err = util.ParamToBigInt(args[1])
 			if err != nil {
@@ -165,6 +184,9 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 			}
 		} else {
 			config.Tx = txs[0]
+			if networks[0] != "" {
+				config.SetNetwork(networks[0])
+			}
 		}
 	}
 
@@ -244,7 +266,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	tx := BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
 
-	err = util.PromptTxConfirmation(
+	err = PromptTxConfirmation(
 		analyzer,
 		util.GetJarvisAddress(config.From, config.Network()),
 		tx,

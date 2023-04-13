@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -101,7 +102,7 @@ Param rules:
 			return
 		}
 
-		data, err := util.PromptTxData(
+		data, err := cmdutil.PromptTxData(
 			analyzer,
 			contractAddress,
 			config.MethodIndex,
@@ -147,7 +148,7 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 
-		data, err := util.PromptTxData(
+		data, err := cmdutil.PromptTxData(
 			analyzer,
 			config.To,
 			config.MethodIndex,
@@ -178,7 +179,7 @@ var txContractCmd = &cobra.Command{
 			config.GasPrice+config.ExtraGasPrice,
 			data,
 		)
-		err = util.PromptTxConfirmation(
+		err = cmdutil.PromptTxConfirmation(
 			analyzer,
 			util.GetJarvisAddress(config.From, config.Network()),
 			tx,
@@ -198,12 +199,13 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 
+		signedTx, err := account.SignTx(tx)
+		if err != nil {
+			fmt.Printf("%s", err)
+			return
+		}
+
 		if config.DontBroadcast {
-			signedTx, err := account.SignTx(tx)
-			if err != nil {
-				fmt.Printf("%s", err)
-				return
-			}
 			data, err := rlp.EncodeToBytes(signedTx)
 			if err != nil {
 				fmt.Printf("Couldn't encode the signed tx: %s", err)
@@ -211,16 +213,56 @@ var txContractCmd = &cobra.Command{
 			}
 			fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
 		} else {
-			tx, broadcasted, err := account.SignTxAndBroadcast(tx)
-			if config.DontWaitToBeMined {
-				util.DisplayBroadcastedTx(
-					tx, broadcasted, err, config.Network(),
-				)
+			var broadcasted bool
+
+			if config.RetryBroadcast {
+				ticker := time.NewTicker(500 * time.Millisecond)
+				quit := make(chan struct{})
+				broadcastedCh := make(chan *struct{})
+				go func() {
+					for {
+						select {
+						case <-ticker.C:
+							tx, broadcasted, err = account.Broadcast(signedTx)
+							if broadcasted {
+								broadcastedCh <- nil
+								close(quit)
+							} else {
+								fmt.Printf("Couldn't broadcast tx: %s. Retry in a while.\n", err)
+							}
+						case <-quit:
+							ticker.Stop()
+							return
+						}
+					}
+				}()
+
+				select {
+				case <-broadcastedCh:
+					if config.DontWaitToBeMined {
+						util.DisplayBroadcastedTx(
+							tx, broadcasted, err, config.Network(),
+						)
+					} else {
+						util.DisplayWaitAnalyze(
+							reader, analyzer, tx, broadcasted, err, config.Network(),
+							a, nil, config.DegenMode,
+						)
+					}
+				}
+
 			} else {
-				util.DisplayWaitAnalyze(
-					reader, analyzer, tx, broadcasted, err, config.Network(),
-					a, nil, config.DegenMode,
-				)
+				tx, broadcasted, err := account.Broadcast(signedTx)
+				if config.DontWaitToBeMined {
+					util.DisplayBroadcastedTx(
+						tx, broadcasted, err, config.Network(),
+					)
+				} else {
+					util.DisplayWaitAnalyze(
+						reader, analyzer, tx, broadcasted, err, config.Network(),
+						a, nil, config.DegenMode,
+					)
+				}
 			}
 		}
 	},
@@ -333,7 +375,7 @@ var readContractCmd = &cobra.Command{
 				return
 			}
 
-			methods := util.AllZeroParamFunctions(a)
+			methods := cmdutil.AllZeroParamFunctions(a)
 			for i := range methods {
 				method := methods[i]
 				resultJSON.Functions = append(resultJSON.Functions, method.Name)
@@ -369,7 +411,7 @@ var readContractCmd = &cobra.Command{
 				return
 			}
 
-			method, params, err := util.PromptFunctionCallData(
+			method, params, err := cmdutil.PromptFunctionCallData(
 				analyzer,
 				config.To,
 				config.MethodIndex,
@@ -410,6 +452,7 @@ func init() {
 	txContractCmd.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
 	txContractCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	txContractCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
+	txContractCmd.PersistentFlags().BoolVarP(&config.RetryBroadcast, "retry-broadcast", "r", false, "Retry broadcasting as soon as possible.")
 	txContractCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
 	txContractCmd.Flags().StringVarP(&config.RawValue, "amount", "v", "0", "Amount of eth to send. It is in eth value, not wei.")
 	txContractCmd.MarkFlagRequired("from")

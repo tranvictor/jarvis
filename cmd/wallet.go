@@ -12,7 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/jarvis/accounts"
-	"github.com/tranvictor/jarvis/util"
+	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/util/account/ledgereum"
 	"github.com/tranvictor/jarvis/util/account/trezoreum"
 	"golang.org/x/crypto/ssh/terminal"
@@ -84,19 +84,19 @@ func handleHW(hw HW, t string) {
 			fmt.Printf("%d. %s (%s)\n", i, acc.Address, acc.Derpath)
 		}
 
-		index := util.PromptIndex("Please enter the wallet index you want to add (0, 1, 2,..., next, back, custom)", 0, len(accs)-1)
-		if index == util.NEXT {
+		index := cmdutil.PromptIndex("Please enter the wallet index you want to add (0, 1, 2,..., next, back, custom)", 0, len(accs)-1)
+		if index == cmdutil.NEXT {
 			batch += 1
 			continue
-		} else if index == util.BACK {
+		} else if index == cmdutil.BACK {
 			if batch > 0 {
 				batch -= 1
 			} else {
 				fmt.Printf("It can't be back. Continue with path 0\n")
 			}
 			continue
-		} else if index == util.CUSTOM {
-			path := util.PromptInput("Please enter custom derivation path (eg: m/44'/60'/0'/88)")
+		} else if index == cmdutil.CUSTOM {
+			path := cmdutil.PromptInput("Please enter custom derivation path (eg: m/44'/60'/0'/88)")
 			accDesc, err = getAccDescsFromHW(hw, t, path)
 			if err != nil {
 				return
@@ -106,7 +106,7 @@ func handleHW(hw HW, t string) {
 			accDesc = accs[index]
 		}
 
-		des := util.PromptInput("Please enter description of this wallet, it will be used to search your wallet by keywards")
+		des := cmdutil.PromptInput("Please enter description of this wallet, it will be used to search your wallet by keywards")
 		accDesc.Desc = des
 		err := accounts.StoreAccountRecord(*accDesc)
 		if err != nil {
@@ -186,7 +186,7 @@ func handleAddKeystoreGivenPath(keystorePath string) error {
 	}
 	accDesc.Address = address
 	fmt.Printf("Jarvis: This keystore is with %s\n", address)
-	des := util.PromptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
+	des := cmdutil.PromptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
 	accDesc.Desc = des
 	err = accounts.StoreAccountRecord(*accDesc)
 	if err != nil {
@@ -201,7 +201,7 @@ func handleAddKeystoreGivenPath(keystorePath string) error {
 
 func handleAddKeystore() {
 	fmt.Printf("Jarvis: Keystore is convenient but not so safe. I recommend you to use it only for unimportant frequent tasks.\n")
-	keystorePath := util.PromptFilePath("Jarvis: Please enter the path to your keystore file: ")
+	keystorePath := cmdutil.PromptFilePath("Jarvis: Please enter the path to your keystore file: ")
 	handleAddKeystoreGivenPath(keystorePath)
 }
 
@@ -210,7 +210,7 @@ var addWalletCmd = &cobra.Command{
 	Short: "Add a wallet to jarvis",
 	Run: func(cmd *cobra.Command, args []string) {
 		// 1. type
-		keyType := util.PromptInput("Jarvis: Enter key type (enter either trezor, ledger, ledger-live, keystore or privatekey):")
+		keyType := cmdutil.PromptInput("Jarvis: Enter key type (enter either trezor, ledger, ledger-live, keystore or privatekey):")
 		switch keyType {
 		case "trezor":
 			handleTrezor()

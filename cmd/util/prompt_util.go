@@ -15,7 +15,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	. "github.com/tranvictor/jarvis/common"
+	"github.com/tranvictor/jarvis/config"
 	. "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/util"
 )
 
 const (
@@ -58,7 +60,7 @@ func PromptNumber(prompter string, validator NumberValidator, network Network) *
 		fmt.Printf("%s: ", prompter)
 		text, _ := reader.ReadString('\n')
 		input := strings.Trim(text[0:len(text)-1], "\r\n ")
-		num, err := ConvertToBig(input, network)
+		num, err := util.ConvertToBig(input, network)
 		if err != nil {
 			fmt.Printf("Jarvis: couldn't interpret as a number because %s\n", err)
 			continue
@@ -140,7 +142,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 		inpStr = prefill
 	}
 	inpStr = strings.Trim(inpStr, " ")
-	inpStr, err := InterpretInput(inpStr, network)
+	inpStr, err := util.InterpretInput(inpStr, network)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +164,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 			return result, nil
 		}
 		for _, p := range paramsStr {
-			converted, err := ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
 				return nil, err
 			}
@@ -175,7 +177,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 			return result, nil
 		}
 		for _, p := range paramsStr {
-			converted, err := ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
 				return nil, err
 			}
@@ -188,7 +190,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 			return result, nil
 		}
 		for _, p := range paramsStr {
-			converted, err := ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
 				return nil, err
 			}
@@ -201,7 +203,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 			return result, nil
 		}
 		for _, p := range paramsStr {
-			converted, err := ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
 				return nil, err
 			}
@@ -214,7 +216,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 			return result, nil
 		}
 		for _, p := range paramsStr {
-			converted, err := ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
 				return nil, err
 			}
@@ -224,7 +226,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 	case abi.BytesTy:
 		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
 	case abi.FixedBytesTy:
-		return ConvertParamStrToFixedByteType(input.Name, *input.Type.Elem, paramsStr, network)
+		return util.ConvertParamStrToFixedByteType(input.Name, *input.Type.Elem, paramsStr, network)
 	case abi.FunctionTy:
 		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
 	default:
@@ -240,15 +242,15 @@ func PromptNonArray(input abi.Argument, prefill string, network Network) (interf
 		inpStr = prefill
 	}
 	inpStr = strings.Trim(inpStr, " ")
-	inpStr, err := InterpretInput(inpStr, network)
+	inpStr, err := util.InterpretInput(inpStr, network)
 	if err != nil {
 		return nil, err
 	}
-	return ConvertParamStrToType(input.Name, input.Type, inpStr, network)
+	return util.ConvertParamStrToType(input.Name, input.Type, inpStr, network)
 }
 
 func PromptTxConfirmation(
-	analyzer TxAnalyzer,
+	analyzer util.TxAnalyzer,
 	from Address,
 	tx *types.Transaction,
 	customABIs map[string]*abi.ABI,
@@ -262,7 +264,7 @@ func PromptTxConfirmation(
 		fmt.Printf("%s\n", err)
 		return err
 	}
-	if !prompter.YN("\nConfirm?", true) {
+	if !config.YesToAllPrompt && !prompter.YN("\nConfirm?", true) {
 		return fmt.Errorf("user aborted")
 	}
 	return nil
@@ -290,7 +292,7 @@ func indent(nospace int, strs []string) string {
 }
 
 func PromptTxData(
-	analyzer TxAnalyzer,
+	analyzer util.TxAnalyzer,
 	contractAddress string,
 	methodIndex uint64,
 	prefills []string,
@@ -322,6 +324,17 @@ type orderedMethods []abi.Method
 func (m orderedMethods) Len() int           { return len(m) }
 func (m orderedMethods) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
 func (m orderedMethods) Less(i, j int) bool { return m[i].Name < m[j].Name }
+
+func AllZeroParamFunctions(a *abi.ABI) []abi.Method {
+	methods := []abi.Method{}
+	for _, m := range a.Methods {
+		if m.IsConstant() && len(m.Inputs) == 0 {
+			methods = append(methods, m)
+		}
+	}
+	sort.Sort(orderedMethods(methods))
+	return methods
+}
 
 func PromptMethod(a *abi.ABI, methodIndex uint64, mode string) (*abi.Method, string, error) {
 	methods := []abi.Method{}
@@ -359,7 +372,7 @@ func PromptMethod(a *abi.ABI, methodIndex uint64, mode string) (*abi.Method, str
 }
 
 func PromptFunctionCallData(
-	analyzer TxAnalyzer,
+	analyzer util.TxAnalyzer,
 	contractAddress string,
 	methodIndex uint64,
 	prefills []string,
@@ -377,7 +390,7 @@ func PromptFunctionCallData(
 	if method.Type == abi.Constructor {
 		fmt.Printf("Creating new contract at %s\n", contractAddress)
 	} else {
-		fmt.Printf("\nContract: %s\n", VerboseAddress(GetJarvisAddress(contractAddress, network)))
+		fmt.Printf("\nContract: %s\n", VerboseAddress(util.GetJarvisAddress(contractAddress, network)))
 	}
 	fmt.Printf("Method: %s\n", methodName)
 	inputs := method.Inputs
@@ -424,7 +437,7 @@ func PromptFunctionCallData(
 }
 
 func showTxInfoToConfirm(
-	analyzer TxAnalyzer,
+	analyzer util.TxAnalyzer,
 	from Address,
 	tx *types.Transaction,
 	customABIs map[string]*abi.ABI,
@@ -434,7 +447,7 @@ func showTxInfoToConfirm(
 		fmt.Printf(
 			"From: %s ==> %s\n",
 			VerboseAddress(from),
-			VerboseAddress(GetJarvisAddress(tx.To().Hex(), network)),
+			VerboseAddress(util.GetJarvisAddress(tx.To().Hex(), network)),
 		)
 	} else {
 		cAddr := crypto.CreateAddress(
@@ -474,7 +487,7 @@ func showTxInfoToConfirm(
 		return nil
 	}
 
-	isContract, err := IsContract(tx.To().Hex(), network)
+	isContract, err := util.IsContract(tx.To().Hex(), network)
 	if err != nil {
 		return err
 	}
@@ -484,7 +497,7 @@ func showTxInfoToConfirm(
 	}
 
 	fc := analyzer.AnalyzeFunctionCallRecursively(
-		GetABI,
+		util.GetABI,
 		tx.Value(),
 		tx.To().Hex(),
 		tx.Data(),
