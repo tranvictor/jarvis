@@ -279,3 +279,21 @@ func (self *OneNodeReader) CurrentBlock() (uint64, error) {
 	}
 	return header.Number.Uint64(), nil
 }
+
+func (self *OneNodeReader) StorageAt(atBlock int64, contractAddr string, slot string) ([]byte, error) {
+	ethcli, err := self.EthClient()
+	if err != nil {
+		return []byte{}, err
+	}
+	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+
+	contract := HexToAddress(contractAddr)
+	hash := common.HexToHash(slot)
+	var blockBig *big.Int
+	if atBlock > 0 {
+		blockBig = big.NewInt(atBlock)
+	}
+
+	return ethcli.StorageAt(timeout, contract, hash, blockBig)
+}

@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	. "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/util/explorers"
 )
@@ -413,6 +414,63 @@ func (self *EthReader) ReadContractToBytes(atBlock int64, from string, caddr str
 		n := self.nodes[i]
 		go func() {
 			data, err := n.ReadContractToBytes(atBlock, from, caddr, abi, method, args...)
+			resCh <- readContractToBytesResponse{
+				Data:  data,
+				Error: wrapError(err, n.NodeName()),
+			}
+		}()
+	}
+	errs := []error{}
+	for i := 0; i < len(self.nodes); i++ {
+		result := <-resCh
+		if result.Error == nil {
+			return result.Data, result.Error
+		}
+		errs = append(errs, result.Error)
+	}
+	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+}
+
+func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Address, error) {
+	// eip 1967
+	// bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
+	slotBig := big.NewInt(0).Sub(
+		crypto.Keccak256Hash([]byte("eip1967.proxy.implementation")).Big(),
+		big.NewInt(1),
+	)
+
+	addrByte, err := self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	addr := common.BytesToAddress(addrByte)
+
+	if addr.Big().Cmp(big.NewInt(0)) != 0 {
+		return addr, nil
+	}
+
+	// eip 1967 on Poygon
+	// bytes32(uint256(keccak256('matic.network.proxy.implementation')) - 1)
+	slotBig = big.NewInt(0).Sub(
+		crypto.Keccak256Hash([]byte("matic.network.proxy.implementation")).Big(),
+		big.NewInt(1),
+	)
+
+	addrByte, err = self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	return common.BytesToAddress(addrByte), nil
+}
+
+func (self *EthReader) StorageAt(atBlock int64, caddr string, slot string) ([]byte, error) {
+	resCh := make(chan readContractToBytesResponse, len(self.nodes))
+	for i, _ := range self.nodes {
+		n := self.nodes[i]
+		go func() {
+			data, err := n.StorageAt(atBlock, caddr, slot)
 			resCh <- readContractToBytesResponse{
 				Data:  data,
 				Error: wrapError(err, n.NodeName()),

@@ -21,6 +21,7 @@ type EthereumNode interface {
 	// Call(result interface{}, method string, args ...interface{}) error
 	GetGasPriceSuggestion() (*big.Int, error)
 	ReadContractToBytes(atBlock int64, from string, caddr string, abi *abi.ABI, method string, args ...interface{}) ([]byte, error)
+	StorageAt(atBlock int64, caddr string, slot string) ([]byte, error)
 	HeaderByNumber(number int64) (*types.Header, error)
 	GetLogs(fromBlock, toBlock int, addresses []string, topic string) ([]types.Log, error)
 	CurrentBlock() (uint64, error)

@@ -20,6 +20,12 @@ var ERC20_METHODS = [...]string{
 	"allowance",
 }
 
+var PROXY_METHODS = [...]string{
+	"implementation",
+	"upgradeTo",
+	"upgradeToAndCall",
+}
+
 func queryToCheckERC20(addr string, network Network) (bool, error) {
 	_, err := GetERC20Decimal(addr, network)
 	if err != nil {

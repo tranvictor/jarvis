@@ -577,7 +577,25 @@ func ConfigToABI(address string, forceERC20ABI bool, customABI string, network N
 	if customABI != "" {
 		return ReadCustomABI(address, customABI, network)
 	}
-	return GetABI(address, network)
+	a, err := GetABI(address, network)
+	if err != nil {
+		return a, err
+	}
+
+	if IsProxyABI(a) {
+		r, err := EthReader(network)
+		if err != nil {
+			return nil, err
+		}
+
+		impl, err := r.ImplementationOf(-1, address)
+		if err != nil {
+			return nil, err
+		}
+		return GetABI(impl.Hex(), network)
+	}
+
+	return a, nil
 }
 
 func GetGnosisMsigDeployByteCode(ctorBytes []byte) ([]byte, error) {
@@ -615,6 +633,16 @@ func GetABI(addr string, network Network) (*abi.ABI, error) {
 		return nil, err
 	}
 	return GetABIFromString(abiStr)
+}
+
+func IsProxyABI(a *abi.ABI) bool {
+	for _, m := range PROXY_METHODS {
+		_, found := a.Methods[m]
+		if !found {
+			return false
+		}
+	}
+	return true
 }
 
 func IsERC20ABI(a *abi.ABI) bool {
