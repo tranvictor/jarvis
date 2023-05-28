@@ -450,6 +450,20 @@ func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Add
 		return addr, nil
 	}
 
+	// old standard: org.zeppelinos.proxy.implementation
+	slotBig = crypto.Keccak256Hash([]byte("org.zeppelinos.proxy.implementation")).Big()
+
+	addrByte, err = self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	addr = common.BytesToAddress(addrByte)
+
+	if addr.Big().Cmp(big.NewInt(0)) != 0 {
+		return addr, nil
+	}
+
 	// eip 1967 on Poygon
 	// bytes32(uint256(keccak256('matic.network.proxy.implementation')) - 1)
 	slotBig = big.NewInt(0).Sub(

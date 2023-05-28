@@ -592,6 +592,7 @@ func ConfigToABI(address string, forceERC20ABI bool, customABI string, network N
 		if err != nil {
 			return nil, err
 		}
+		fmt.Printf("Implementation contract: %s\n", impl.Hex())
 		return GetABI(impl.Hex(), network)
 	}
 
