@@ -51,14 +51,16 @@ func NewLedgereum() (*Ledgereum, error) {
 func (self *Ledgereum) Unlock() error {
 	self.devmu.Lock()
 	defer self.devmu.Unlock()
-	infos, err := kusb.Enumerate(LEDGER_VENDOR_ID, 0)
+	// infos, err := kusb.Enumerate(LEDGER_VENDOR_ID, 0)
+	infos, err := kusb.Enumerate(0, 0)
 	if err != nil {
 		return err
 	}
 	if len(infos) == 0 {
 		return fmt.Errorf("Ledger device is not found")
 	} else {
-		for _, info := range infos {
+		for i, info := range infos {
+			fmt.Printf("Device %d: Vendor ID: %d, %v\n", i, info.VendorID, info)
 			for _, id := range LEDGER_PRODUCT_IDS {
 				// Windows and Macos use UsageID matching, Linux uses Interface matching
 				if info.ProductID == id && (info.UsagePage == LEDGER_USAGE_ID || info.Interface == LEDGER_ENDPOINT_ID) {
