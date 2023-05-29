@@ -59,8 +59,8 @@ func (self *Ledgereum) Unlock() error {
 	if len(infos) == 0 {
 		return fmt.Errorf("Ledger device is not found")
 	} else {
-		for i, info := range infos {
-			fmt.Printf("Device %d: Vendor ID: %d, %v\n", i, info.VendorID, info)
+		for _, info := range infos {
+			// fmt.Printf("Device %d: Vendor ID: %d, %v\n", i, info.VendorID, info)
 			for _, id := range LEDGER_PRODUCT_IDS {
 				// Windows and Macos use UsageID matching, Linux uses Interface matching
 				if info.ProductID == id && (info.UsagePage == LEDGER_USAGE_ID || info.Interface == LEDGER_ENDPOINT_ID) {

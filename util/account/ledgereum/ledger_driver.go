@@ -30,6 +30,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 )
@@ -419,7 +420,7 @@ func (w *ledgerDriver) ledgerExchange(opcode ledgerOpcode, p1 ledgerParam1, p2 l
 			apdu = nil
 		}
 		// Send over to the device
-		// fmt.Printf("Data chunk sent to the Ledger: %s\n", hexutil.Bytes(chunk))
+		fmt.Printf("Data chunk sent to the Ledger: %s\n", hexutil.Bytes(chunk))
 		if _, err := w.device.Write(chunk); err != nil {
 			return nil, err
 		}
@@ -430,6 +431,7 @@ func (w *ledgerDriver) ledgerExchange(opcode ledgerOpcode, p1 ledgerParam1, p2 l
 	for {
 		// Read the next chunk from the Ledger wallet
 		if _, err := io.ReadFull(w.device, chunk); err != nil {
+			fmt.Printf("reading from ledger device failed: %s\n", err)
 			return nil, err
 		}
 		// fmt.Printf("Data chunk received from the Ledger: %s\n", hexutil.Bytes(chunk))
