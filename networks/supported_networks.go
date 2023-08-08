@@ -22,6 +22,7 @@ var supportedNetworks = []Network{
 	BttcMainnet,
 	EthereumPOW,
 	// Mumbai,
+	LineaMainnet,
 }
 
 var globalSupportedNetworks = newSupportedNetworks()
