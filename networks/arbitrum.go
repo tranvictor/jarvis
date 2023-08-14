@@ -57,7 +57,8 @@ func (self *arbitrumMainnet) GetNodeVariableName() string {
 func (self *arbitrumMainnet) GetDefaultNodes() map[string]string {
 	return map[string]string{
 		"alchemy-arbitrum": "https://arb-mainnet.g.alchemy.com/v2/PGAWvp9KLZbqjvap-iingGj-Id7HM_Yn",
-		"arbitrum.io": "https://arb1.arbitrum.io/rpc",
+		"arbitrum.io":      "https://arb1.arbitrum.io/rpc",
+		"kyber-arbitrum":   "https://arbitrum.kyberengineering.io",
 	}
 }
 

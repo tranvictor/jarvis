@@ -500,6 +500,38 @@ func ConvertEthereumTypeToInputString(t abi.Type, value interface{}) (string, er
 	return "", fmt.Errorf("not implmeneted")
 }
 
+func ConvertParamStrToTupleType(name string, t abi.Type, str string, network Network) (interface{}, error) {
+	fmt.Printf("value str: %s\n", str)
+	fmt.Printf("input name: %s\n", name)
+	fmt.Printf("input type: %v\n", t)
+	fmt.Printf("input tuple type: %v\n", t.TupleType)
+	fmt.Printf("input tuple raw name: %v\n", t.TupleRawName)
+	fmt.Printf("input tuple elems: %v\n", t.TupleElems)
+	return nil, fmt.Errorf("not supported type: %s", t)
+}
+
+func ConvertParamStrToArray(name string, t abi.Type, str string, network Network) ([]interface{}, error) {
+	// split to get the elements
+	//   if element type is tuple or slice or array
+	//       using regex to extract elements including []
+	//   if not:
+	//       if element is string:
+	//           using regex to extract elements between ""
+	//       if element is not string:
+	//           using regex to extract elements split by ,
+	// for each element:
+	//    convert element to type
+	// str = strings.Trim(str, " ")
+	// if len(str) < 2 || str[0] != '[' || str[len(str)-1] != ']' {
+	// 	return nil, fmt.Errorf("input must be wrapped by []")
+	// }
+	// if t.Elem.T == abi.TupleTy || t.Elem.T == abi.SliceTy || t.Elem.T == abi.ArrayTy {
+	// } else if t.Elem.T == abi.StringTy {
+	// } else {
+	// }
+	return nil, fmt.Errorf("unimplemented")
+}
+
 func ConvertParamStrToType(name string, t abi.Type, str string, network Network) (interface{}, error) {
 	switch t.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
@@ -524,6 +556,11 @@ func ConvertParamStrToType(name string, t abi.Type, str string, network Network)
 		return ConvertToFixedBytes(str, t.Size)
 	case abi.FunctionTy:
 		return ConvertToBytes(str)
+	case abi.TupleTy:
+		return ConvertParamStrToTupleType(name, t, str, network)
+	case abi.SliceTy, abi.ArrayTy:
+		return ConvertParamStrToArray(name, t, str, network)
+	// case abi.FixedPointTy:
 	default:
 		return nil, fmt.Errorf("not supported type: %s", t)
 	}

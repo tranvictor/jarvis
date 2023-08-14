@@ -1,20 +1,25 @@
 package networks
 
 import (
-	"fmt"
-	"net/http"
+	"os"
+	"strings"
 	"time"
 
-	"github.com/PuerkitoBio/goquery"
+	. "github.com/tranvictor/jarvis/util/explorers"
 )
 
 var Avalanche Network = NewAvalanche()
 
 type avalanche struct {
+	*EtherscanLikeExplorer
 }
 
 func NewAvalanche() *avalanche {
-	result := &avalanche{}
+	result := &avalanche{NewSnowtrace()}
+	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
+	if apiKey != "" {
+		result.EtherscanLikeExplorer.APIKey = apiKey
+	}
 	return result
 }
 
@@ -22,7 +27,7 @@ func (self *avalanche) GetName() string {
 	return "avalanche"
 }
 
-func (self *avalanche) GetChainID() int64 {
+func (self *avalanche) GetChainID() uint64 {
 	return 43114
 }
 
@@ -34,7 +39,7 @@ func (self *avalanche) GetNativeTokenSymbol() string {
 	return "AVAX"
 }
 
-func (self *avalanche) GetNativeTokenDecimal() int64 {
+func (self *avalanche) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 
@@ -53,46 +58,11 @@ func (self *avalanche) GetDefaultNodes() map[string]string {
 }
 
 func (self *avalanche) GetBlockExplorerAPIKeyVariableName() string {
-	return "not supported"
+	return "SNOWTRACE_API_KEY"
 }
 
 func (self *avalanche) GetBlockExplorerAPIURL() string {
-	return "not supported"
-}
-
-func (self *avalanche) GetABIString(address string) (string, error) {
-	res, err := http.Get(fmt.Sprintf("https://cchain.explorer.avax.network/address/%s/contracts", address))
-	if err != nil {
-		return "", err
-	}
-	defer res.Body.Close()
-
-	if res.StatusCode != 200 {
-		return "", fmt.Errorf("getting abi string from avalanche explorer failed: status %d", res.StatusCode)
-	}
-
-	// Load the HTML document
-	doc, err := goquery.NewDocumentFromReader(res.Body)
-
-	if err != nil {
-		return "", fmt.Errorf("avalanche explorer returned with non html page")
-	}
-
-	// Find the review items
-	abiTitleSelection := doc.Find("h3:contains(\"Contract ABI\")")
-	if abiTitleSelection.Size() == 0 {
-		return "", fmt.Errorf("couldn't Contract ABI on avalanche explorer page. The address might not be verified or the explorer page structure changed")
-	}
-
-	codeElem := abiTitleSelection.Parent().Next().Find("code")
-	if codeElem.Size() == 0 {
-		return "", fmt.Errorf("couldn't code element inside Contract ABI section on avalanche explorer page. The explorer page structure changed")
-	}
-	return codeElem.Text(), nil
-}
-
-func (self *avalanche) RecommendedGasPrice() (float64, error) {
-	return 225, nil
+	return self.EtherscanLikeExplorer.Domain
 }
 
 func (self *avalanche) MultiCallContract() string {

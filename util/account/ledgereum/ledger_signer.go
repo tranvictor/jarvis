@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/types"
-	kusb "github.com/karalabe/usb"
+	kusb "github.com/tranvictor/jarvis/util/account/usb"
 )
 
 type LedgerSigner struct {
