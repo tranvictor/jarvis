@@ -15,7 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/google/uuid"
 	"github.com/sahilm/fuzzy"
-	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/account"
 	"golang.org/x/crypto/ssh/terminal"
@@ -99,17 +98,8 @@ func StoreAccountRecord(accDesc AccDesc) error {
 	return ioutil.WriteFile(path, content, 0644)
 }
 
-func UnlockKeystoreAccountWithPassword(ad AccDesc, network networks.Network, pwd string) (*account.Account, error) {
-	reader, err := util.EthReader(network)
-	if err != nil {
-		return nil, err
-	}
-	broadcaster, err := util.EthBroadcaster(network)
-	if err != nil {
-		return nil, err
-	}
-
-	fromAcc, err := account.NewKeystoreAccountGeneric(ad.Keypath, pwd, reader, broadcaster, network.GetChainID())
+func UnlockKeystoreAccountWithPassword(ad AccDesc, pwd string) (*account.Account, error) {
+	fromAcc, err := account.NewKeystoreAccount(ad.Keypath, pwd)
 	if err != nil {
 		fmt.Printf("Unlocking keystore '%s' failed: %s. Abort!\n", ad.Keypath, err)
 		return nil, err
@@ -117,18 +107,9 @@ func UnlockKeystoreAccountWithPassword(ad AccDesc, network networks.Network, pwd
 	return fromAcc, nil
 }
 
-func UnlockAccount(ad AccDesc, network networks.Network) (*account.Account, error) {
+func UnlockAccount(ad AccDesc) (*account.Account, error) {
 	var fromAcc *account.Account
 	var err error
-
-	reader, err := util.EthReader(network)
-	if err != nil {
-		return nil, err
-	}
-	broadcaster, err := util.EthBroadcaster(network)
-	if err != nil {
-		return nil, err
-	}
 
 	switch ad.Kind {
 	case "keystore":
@@ -136,19 +117,19 @@ func UnlockAccount(ad AccDesc, network networks.Network) (*account.Account, erro
 		pwd := getPassword("Enter passphrase: ")
 		fmt.Printf("\n")
 
-		fromAcc, err = account.NewKeystoreAccountGeneric(ad.Keypath, pwd, reader, broadcaster, network.GetChainID())
+		fromAcc, err = account.NewKeystoreAccount(ad.Keypath, pwd)
 		if err != nil {
 			fmt.Printf("Unlocking keystore '%s' failed: %s. Abort!\n", ad.Keypath, err)
 			return nil, err
 		}
 	case "trezor":
-		fromAcc, err = account.NewTrezorAccountGeneric(ad.Derpath, ad.Address, reader, broadcaster, network.GetChainID())
+		fromAcc, err = account.NewTrezorAccount(ad.Derpath, ad.Address)
 		if err != nil {
 			fmt.Printf("Creating trezor instance failed: %s\n", err)
 			return nil, err
 		}
 	case "ledger", "ledger-live":
-		fromAcc, err = account.NewLedgerAccountGeneric(ad.Derpath, ad.Address, reader, broadcaster, network.GetChainID())
+		fromAcc, err = account.NewLedgerAccount(ad.Derpath, ad.Address)
 		if err != nil {
 			fmt.Printf("Creating ledger instance failed: %s\n", err)
 			return nil, err

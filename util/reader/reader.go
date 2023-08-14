@@ -121,33 +121,33 @@ func (self *EthReader) GetCode(address string) (code []byte, err error) {
 func (self *EthReader) TxInfoFromHash(tx string) (TxInfo, error) {
 	txObj, isPending, err := self.TransactionByHash(tx)
 	if err != nil {
-		return TxInfo{"error", nil, nil, nil, nil}, err
+		return TxInfo{"error", nil, nil, nil}, err
 	}
 	if txObj == nil {
-		return TxInfo{"notfound", nil, nil, nil, nil}, nil
+		return TxInfo{"notfound", nil, nil, nil}, nil
 	} else {
 		if isPending {
-			return TxInfo{"pending", txObj, nil, nil, nil}, nil
+			return TxInfo{"pending", txObj, nil, nil}, nil
 		} else {
-			receipt, _ := self.TransactionReceipt(tx)
+			receipt, err := self.TransactionReceipt(tx)
 			if receipt == nil {
-				return TxInfo{"pending", txObj, nil, nil, nil}, nil
+				return TxInfo{"pending", txObj, nil, nil}, err
 			} else {
-				block, _ := self.HeaderByNumber(receipt.BlockNumber.Int64())
+				// block, _ := self.HeaderByNumber(receipt.BlockNumber.Int64())
 				// only byzantium has status field at the moment
 				// mainnet, ropsten are byzantium, other chains such as
 				// devchain, kovan are not.
 				// if PostState is a hash, it is pre-byzantium and all
 				// txs with PostState are considered done
 				if len(receipt.PostState) == len(common.Hash{}) {
-					return TxInfo{"done", txObj, []InternalTx{}, receipt, block}, nil
+					return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
 				} else {
 					if receipt.Status == 1 {
 						// successful tx
-						return TxInfo{"done", txObj, []InternalTx{}, receipt, block}, nil
+						return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
 					}
 					// failed tx
-					return TxInfo{"reverted", txObj, []InternalTx{}, receipt, block}, nil
+					return TxInfo{"reverted", txObj, []InternalTx{}, receipt}, nil
 				}
 			}
 		}
@@ -571,11 +571,11 @@ func (self *EthReader) HistoryERC20Decimal(atBlock int64, caddr string) (int64, 
 	return int64(result), err
 }
 
-func (self *EthReader) ERC20Decimal(caddr string) (int64, error) {
+func (self *EthReader) ERC20Decimal(caddr string) (uint64, error) {
 	abi := GetERC20ABI()
 	var result uint8
 	err := self.ReadContractWithABI(&result, caddr, abi, "decimals")
-	return int64(result), err
+	return uint64(result), err
 }
 
 type headerByNumberResponse struct {

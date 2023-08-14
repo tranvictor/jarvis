@@ -27,7 +27,7 @@ func (self *ethereumMainnet) GetName() string {
 	return "mainnet"
 }
 
-func (self *ethereumMainnet) GetChainID() int64 {
+func (self *ethereumMainnet) GetChainID() uint64 {
 	return 1
 }
 
@@ -39,7 +39,7 @@ func (self *ethereumMainnet) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *ethereumMainnet) GetNativeTokenDecimal() int64 {
+func (self *ethereumMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

@@ -27,7 +27,7 @@ func (self *kovan) GetName() string {
 	return "kovan"
 }
 
-func (self *kovan) GetChainID() int64 {
+func (self *kovan) GetChainID() uint64 {
 	return 42
 }
 
@@ -39,7 +39,7 @@ func (self *kovan) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *kovan) GetNativeTokenDecimal() int64 {
+func (self *kovan) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

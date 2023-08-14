@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -40,7 +39,7 @@ func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult, network 
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
 	result.GasUsed = fmt.Sprintf("%d", txinfo.Receipt.GasUsed)
 	result.GasCost = fmt.Sprintf("%.8f", BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()))
-	result.Timestamp = fmt.Sprintf("%s", time.Unix(int64(txinfo.BlockHeader.Time), 0).String())
+	// result.Timestamp = fmt.Sprintf("%s", time.Unix(int64(txinfo.BlockHeader.Time), 0).String())
 }
 
 func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}) Value {

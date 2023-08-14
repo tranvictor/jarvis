@@ -220,7 +220,7 @@ func (self *Trezoreum) Derive(path accounts.DerivationPath) (common.Address, err
 	return common.Address{}, errors.New("missing derived address")
 }
 
-func (self *Trezoreum) Sign(path accounts.DerivationPath, tx *types.Transaction, chainID *big.Int) (common.Address, *types.Transaction, error) {
+func (self *Trezoreum) Sign(path accounts.DerivationPath, tx *types.Transaction, chainId *big.Int) (common.Address, *types.Transaction, error) {
 	// Create the transaction initiation message
 	data := tx.Data()
 	length := uint32(len(data))
@@ -245,8 +245,8 @@ func (self *Trezoreum) Sign(path accounts.DerivationPath, tx *types.Transaction,
 	} else {
 		request.DataInitialChunk, data = data, nil
 	}
-	if chainID != nil { // EIP-155 transaction, set chain ID explicitly (only 32 bit is supported!?)
-		id := uint32(chainID.Int64())
+	if chainId != nil { // EIP-155 transaction, set chain ID explicitly (only 32 bit is supported!?)
+		id := uint32(chainId.Int64())
 		request.ChainId = &id
 	}
 	// Send the initiation message and stream content until a signature is returned
@@ -270,11 +270,11 @@ func (self *Trezoreum) Sign(path accounts.DerivationPath, tx *types.Transaction,
 
 	// Create the correct signer and signature transform based on the chain ID
 	var signer types.Signer
-	if chainID == nil {
+	if chainId == nil {
 		signer = new(types.HomesteadSigner)
 	} else {
-		signer = types.NewEIP155Signer(chainID)
-		signature[64] -= byte(chainID.Uint64()*2 + 35)
+		signer = types.NewEIP155Signer(chainId)
+		signature[64] -= byte(chainId.Uint64()*2 + 35)
 	}
 	// Inject the final signature into the transaction and sanity check the sender
 	signed, err := tx.WithSignature(signer, signature)

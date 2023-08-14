@@ -27,7 +27,7 @@ func (self *ropsten) GetName() string {
 	return "ropsten"
 }
 
-func (self *ropsten) GetChainID() int64 {
+func (self *ropsten) GetChainID() uint64 {
 	return 3
 }
 
@@ -39,7 +39,7 @@ func (self *ropsten) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *ropsten) GetNativeTokenDecimal() int64 {
+func (self *ropsten) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

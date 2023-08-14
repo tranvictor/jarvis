@@ -72,14 +72,14 @@ func handleMsigSend(
 	}
 
 	fmt.Printf("== Unlock your wallet and send now...\n")
-	account, err := accounts.UnlockAccount(from, config.Network())
+	account, err := accounts.UnlockAccount(from)
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		os.Exit(126)
 	}
 
 	if config.DontBroadcast {
-		signedTx, err := account.SignTx(t)
+		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
 		if err != nil {
 			fmt.Printf("%s", err)
 			return
@@ -91,14 +91,25 @@ func handleMsigSend(
 		}
 		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
 	} else {
-		tx, broadcasted, err := account.SignTxAndBroadcast(t)
+		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
+		if err != nil {
+			fmt.Printf("Signing tx failed: %s\n", err)
+			return
+		}
+		broadcaster, err := util.EthBroadcaster(config.Network())
+		if err != nil {
+			fmt.Printf("Signing tx failed: %s\n", err)
+			return
+		}
+		_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
+
 		if config.DontWaitToBeMined {
 			util.DisplayBroadcastedTx(
-				tx, broadcasted, err, config.Network(),
+				signedTx, broadcasted, err, config.Network(),
 			)
 		} else {
 			util.DisplayWaitAnalyze(
-				reader, analyzer, tx, broadcasted, err, config.Network(),
+				reader, analyzer, signedTx, broadcasted, err, config.Network(),
 				a, nil, config.DegenMode,
 			)
 		}
@@ -174,14 +185,14 @@ func handleSend(
 	}
 
 	fmt.Printf("== Unlock your wallet and send now...\n")
-	account, err := accounts.UnlockAccount(from, config.Network())
+	account, err := accounts.UnlockAccount(from)
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		os.Exit(126)
 	}
 
 	if config.DontBroadcast {
-		signedTx, err := account.SignTx(t)
+		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
 		if err != nil {
 			fmt.Printf("%s", err)
 			return
@@ -193,14 +204,26 @@ func handleSend(
 		}
 		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
 	} else {
-		tx, broadcasted, err := account.SignTxAndBroadcast(t)
+		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
+		if err != nil {
+			fmt.Printf("Signing tx failed: %s\n", err)
+			return
+		}
+
+		broadcaster, err := util.EthBroadcaster(config.Network())
+		if err != nil {
+			fmt.Printf("Signing tx failed: %s\n", err)
+			return
+		}
+
+		_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
 		if config.DontWaitToBeMined {
 			util.DisplayBroadcastedTx(
-				tx, broadcasted, err, config.Network(),
+				signedTx, broadcasted, err, config.Network(),
 			)
 		} else {
 			util.DisplayWaitAnalyze(
-				reader, analyzer, tx, broadcasted, err, config.Network(),
+				reader, analyzer, signedTx, broadcasted, err, config.Network(),
 				a, nil, config.DegenMode,
 			)
 		}

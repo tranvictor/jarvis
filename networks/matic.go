@@ -27,7 +27,7 @@ func (self *matic) GetName() string {
 	return "matic"
 }
 
-func (self *matic) GetChainID() int64 {
+func (self *matic) GetChainID() uint64 {
 	return 137
 }
 
@@ -39,7 +39,7 @@ func (self *matic) GetNativeTokenSymbol() string {
 	return "MATIC"
 }
 
-func (self *matic) GetNativeTokenDecimal() int64 {
+func (self *matic) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"strings"
 	"time"
 
@@ -193,15 +194,21 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 		fmt.Printf("== Unlock your wallet and sign now...\n")
-		account, err := accounts.UnlockAccount(config.FromAcc, config.Network())
+		account, err := accounts.UnlockAccount(config.FromAcc)
 		if err != nil {
 			fmt.Printf("Unlock your wallet failed: %s\n", err)
 			return
 		}
 
-		signedTx, err := account.SignTx(tx)
+		signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
 		if err != nil {
 			fmt.Printf("%s", err)
+			return
+		}
+
+		broadcaster, err := util.EthBroadcaster(config.Network())
+		if err != nil {
+			fmt.Printf("Signing tx failed: %s\n", err)
 			return
 		}
 
@@ -223,7 +230,7 @@ var txContractCmd = &cobra.Command{
 					for {
 						select {
 						case <-ticker.C:
-							tx, broadcasted, err = account.Broadcast(signedTx)
+							_, broadcasted, err = broadcaster.BroadcastTx(signedTx)
 							if broadcasted {
 								broadcastedCh <- nil
 								close(quit)
@@ -252,7 +259,7 @@ var txContractCmd = &cobra.Command{
 				}
 
 			} else {
-				tx, broadcasted, err := account.Broadcast(signedTx)
+				_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
 				if config.DontWaitToBeMined {
 					util.DisplayBroadcastedTx(
 						tx, broadcasted, err, config.Network(),

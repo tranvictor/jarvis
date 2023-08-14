@@ -35,7 +35,7 @@ func ConvertToBig(str string, network Network) (*big.Int, error) {
 
 		tokenName := strings.Join(parts[1:], " ")
 		if strings.ToLower(tokenName) == strings.ToLower(network.GetNativeTokenSymbol()) {
-			return FloatStringToBig(floatStr, int64(network.GetNativeTokenDecimal()))
+			return FloatStringToBig(floatStr, network.GetNativeTokenDecimal())
 		}
 		token, err := ConvertToAddress(fmt.Sprintf("%s token", tokenName))
 		if err != nil {

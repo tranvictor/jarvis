@@ -15,6 +15,11 @@ func RawTxToHash(data string) string {
 	return crypto.Keccak256Hash(hexutil.MustDecode(data)).Hex()
 }
 
+func GetSignerAddressFromTx(tx *types.Transaction, chainID *big.Int) (common.Address, error) {
+	signer := types.LatestSignerForChainID(chainID)
+	return types.Sender(signer, tx)
+}
+
 func BuildExactTx(nonce uint64, to string, ethAmount *big.Int, gasLimit uint64, priceGwei float64, data []byte) (tx *types.Transaction) {
 	toAddress := common.HexToAddress(to)
 	gasPrice := GweiToWei(priceGwei)

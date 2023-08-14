@@ -28,7 +28,8 @@ var supportedNetworks = []Network{
 var globalSupportedNetworks = newSupportedNetworks()
 
 type networks struct {
-	networks map[string]Network
+	networks     map[string]Network
+	networksByID map[uint64]Network
 }
 
 func (n *networks) getSupportedNetworkNames() []string {
@@ -38,6 +39,14 @@ func (n *networks) getSupportedNetworkNames() []string {
 		res = append(res, n.GetAlternativeNames()...)
 	}
 	return res
+}
+
+func (n *networks) getNetworkByID(id uint64) (Network, error) {
+	res, found := n.networksByID[id]
+	if !found {
+		return nil, fmt.Errorf("network id %s is not supported", id)
+	}
+	return res, nil
 }
 
 func (n *networks) getNetwork(name string) (Network, error) {
@@ -51,12 +60,14 @@ func (n *networks) getNetwork(name string) (Network, error) {
 func newSupportedNetworks() *networks {
 	result := networks{
 		map[string]Network{},
+		map[uint64]Network{},
 	}
 	for _, n := range supportedNetworks {
 		if _, found := result.networks[n.GetName()]; found {
 			panic(fmt.Errorf("network with name or alternative name of %s already exists", n.GetName()))
 		}
 		result.networks[n.GetName()] = n
+		result.networksByID[n.GetChainID()] = n
 		for _, an := range n.GetAlternativeNames() {
 			if _, found := result.networks[an]; found {
 				panic(fmt.Errorf("network with name or alternative name of %s already exists", an))
@@ -73,6 +84,10 @@ func GetSupportedNetworks() []Network {
 
 func GetNetwork(name string) (Network, error) {
 	return globalSupportedNetworks.getNetwork(name)
+}
+
+func GetNetworkByID(id uint64) (Network, error) {
+	return globalSupportedNetworks.getNetworkByID(id)
 }
 
 func GetSupportedNetworkNames() []string {
