@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+  "io"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -188,10 +188,9 @@ func PathToAddress(path string) (string, error) {
 
 func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, network Network) {
 	if !broadcasted {
-		fmt.Printf("couldn't broadcast tx:\n")
-		fmt.Printf("error on nodes: %v\n", err)
+    fmt.Printf("Couldn't broadcast tx. Errors: %s\n", err)
 	} else {
-		fmt.Printf("Broadcasted tx: %s\n", t.Hash().Hex())
+    fmt.Printf("BROADCASTED TX:\n%s:%s\n", network.GetName(), t.Hash().Hex())
 	}
 }
 
@@ -205,12 +204,9 @@ func DisplayWaitAnalyze(
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	degenMode bool) {
-	if !broadcasted {
-		fmt.Printf("couldn't broadcast tx:\n")
-		fmt.Printf("error on nodes: %v\n", err)
-	} else {
-		fmt.Printf("Broadcasted tx: %s\n", t.Hash().Hex())
-		fmt.Printf("---------Waiting for the tx to be mined---------\n")
+
+  DisplayBroadcastedTx(t, broadcasted, err, network)
+	if broadcasted {
 		mo, err := EthTxMonitor(network)
 		if err != nil {
 			fmt.Printf("Couldn't monitor the tx: %s\n", err)
@@ -443,7 +439,7 @@ func GetETHPriceInUSD() (float64, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	priceres := coingeckopriceresponse{}
 	err = json.Unmarshal(body, &priceres)
 	if err != nil {
@@ -461,7 +457,7 @@ func GetCoinGeckoRateInUSD(token string) (float64, error) {
 		return 0, err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	priceres := coingeckopriceresponse{}
 	err = json.Unmarshal(body, &priceres)
 	if err != nil {
@@ -488,7 +484,7 @@ func ReadCustomABI(addr string, pathOrAddress string, network Network) (a *abi.A
 }
 
 func GetABIStringFromFile(filepath string) (string, error) {
-	abiBytes, err := ioutil.ReadFile(filepath)
+	abiBytes, err := os.ReadFile(filepath)
 	return string(abiBytes), err
 }
 
@@ -498,7 +494,7 @@ func GetABIStringFromURL(url string) (string, error) {
 		return "", err
 	}
 	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	return string(body), err
 }
 
@@ -754,7 +750,7 @@ func getCustomNode(network Network) (map[string]string, error) {
 			return nil, err
 		}
 	}
-	content, err := ioutil.ReadFile(file)
+	content, err := os.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}

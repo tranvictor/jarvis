@@ -30,7 +30,7 @@ func (self *lineaMainnet) GetName() string {
 	return "linea"
 }
 
-func (self *lineaMainnet) GetChainID() int64 {
+func (self *lineaMainnet) GetChainID() uint64 {
 	return 59144
 }
 
@@ -42,7 +42,7 @@ func (self *lineaMainnet) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *lineaMainnet) GetNativeTokenDecimal() int64 {
+func (self *lineaMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 
