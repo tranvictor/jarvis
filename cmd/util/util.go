@@ -79,22 +79,22 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 				isStandardERC20Call = true
 
 				fmt.Printf(
-					"Sending: %s %s (%s)\nFrom: %s\nTo: %s\n",
+          "From: %s\nSending: %s %s (%s)\nTo: %s\n",
+					VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
 					InfoColor(fmt.Sprintf("%f", StringToFloat(funcCall.Params[1].Value[0].Value, decimal))),
 					InfoColor(symbol),
 					address,
-					VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
 					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, network)),
 				)
 			case "transferFrom":
 				isStandardERC20Call = true
 
 				fmt.Printf(
-					"Sending: %f %s (%s)\nFrom: %s\nTo: %s\n",
+          "From: %s\nSending: %f %s (%s)\nTo: %s\n",
+					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, network)),
 					StringToFloat(funcCall.Params[2].Value[0].Value, decimal),
 					symbol,
 					address,
-					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, network)),
 					VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Value[0].Value, network)),
 				)
 			case "approve":

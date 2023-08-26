@@ -588,7 +588,6 @@ func ConfigToABI(address string, forceERC20ABI bool, customABI string, network N
 		if err != nil {
 			return nil, err
 		}
-		fmt.Printf("Implementation contract: %s\n", impl.Hex())
 		return GetABI(impl.Hex(), network)
 	}
 
@@ -633,6 +632,10 @@ func GetABI(addr string, network Network) (*abi.ABI, error) {
 }
 
 func IsProxyABI(a *abi.ABI) bool {
+  if a.Fallback.String() != "" {
+    return true
+  }
+
 	for _, m := range PROXY_METHODS {
 		_, found := a.Methods[m]
 		if !found {

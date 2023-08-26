@@ -431,7 +431,7 @@ func (self *EthReader) ReadContractToBytes(atBlock int64, from string, caddr str
 	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Address, error) {
+func (self *EthReader) ImplementationOfEIP1967(atBlock int64, caddr string) (common.Address, error) {
 	// eip 1967
 	// bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
 	slotBig := big.NewInt(0).Sub(
@@ -450,10 +450,38 @@ func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Add
 		return addr, nil
 	}
 
-	// old standard: org.zeppelinos.proxy.implementation
-	slotBig = crypto.Keccak256Hash([]byte("org.zeppelinos.proxy.implementation")).Big()
+	// eip 1967
+	// bytes32(uint256(keccak256('eip1967.proxy.beacon')) - 1)
+	slotBig = big.NewInt(0).Sub(
+		crypto.Keccak256Hash([]byte("eip1967.proxy.beacon")).Big(),
+		big.NewInt(1),
+	)
 
 	addrByte, err = self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	if err != nil {
+		return common.Address{}, err
+	}
+
+  beaconAddr := common.BytesToAddress(addrByte)
+
+	if beaconAddr.Big().Cmp(big.NewInt(0)) != 0 {
+    paddr, err := self.AddressFromContractWithABI(beaconAddr.Hex(), GetEIP1967BeaconABI(), "implementation")
+    return *paddr, err
+	}
+
+  return common.Address{}, fmt.Errorf("not an eip1967 proxy contract")
+}
+
+func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Address, error) {
+  addr, err := self.ImplementationOfEIP1967(atBlock, caddr)
+  if err == nil {
+    return addr, nil
+  }
+
+	// old standard: org.zeppelinos.proxy.implementation
+  slotBig := crypto.Keccak256Hash([]byte("org.zeppelinos.proxy.implementation")).Big()
+
+  addrByte, err := self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -629,6 +657,15 @@ func (self *EthReader) ERC20Allowance(caddr string, owner string, spender string
 		HexToAddress(spender),
 	)
 	return result, err
+}
+
+func (self *EthReader) AddressFromContractWithABI(contract string, abi *abi.ABI, method string) (*common.Address, error) {
+	result := common.Address{}
+	err := self.ReadContractWithABI(&result, contract, abi, method)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 func (self *EthReader) AddressFromContract(contract string, method string) (*common.Address, error) {

@@ -14,5 +14,7 @@ build/
 compile_for_windows.sh
 cpuprofile
 dist/
+.idea/
+.null*
 jarvis
 output.json

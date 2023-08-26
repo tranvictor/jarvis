@@ -38,6 +38,11 @@ func GetERC20ABI() *abi.ABI {
 	return &result
 }
 
+func GetEIP1967BeaconABI() *abi.ABI {
+	result, _ := abi.JSON(strings.NewReader(eip1967beacon))
+	return &result
+}
+
 func PackERC20Data(function string, params ...interface{}) ([]byte, error) {
 	return GetERC20ABI().Pack(function, params...)
 }
