@@ -320,6 +320,7 @@ func (cm *ContextManager) GasPrice(network Network) (*GasInfo, error) {
 		if err != nil {
 			return nil, fmt.Errorf("Couldn't get gas price in context manager: %s", err)
 		}
+
 		info := GasInfo{
 			GasPrice:         gasPrice,
 			BaseGasPrice:     nil,

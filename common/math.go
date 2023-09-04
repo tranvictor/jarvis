@@ -32,12 +32,13 @@ func FloatToInt(amount float64) int64 {
 // - FloatToBigInt(1, 4) = 10000
 // - FloatToBigInt(1.234, 4) = 12340
 func FloatToBigInt(amount float64, decimal uint64) *big.Int {
-	// 6 is our smallest precision
-	if decimal < 6 {
+	// 9 is our smallest precision, if amount is < 0.000000001 there will be
+  // precision loss, the return value will be less than amount * 10^decimal
+	if decimal < 9 {
 		return big.NewInt(FloatToInt(amount * math.Pow10(int(decimal))))
 	}
-	result := big.NewInt(FloatToInt(amount * math.Pow10(6)))
-	return result.Mul(result, big.NewInt(0).Exp(big.NewInt(10), big.NewInt(int64(decimal-6)), nil))
+	result := big.NewInt(FloatToInt(amount * math.Pow10(9)))
+	return result.Mul(result, big.NewInt(0).Exp(big.NewInt(10), big.NewInt(int64(decimal-9)), nil))
 }
 
 // BigToFloat converts a big int to float according to its number of decimal digits

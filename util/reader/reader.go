@@ -120,38 +120,43 @@ func (self *EthReader) GetCode(address string) (code []byte, err error) {
 
 func (self *EthReader) TxInfoFromHash(tx string) (TxInfo, error) {
 	txObj, isPending, err := self.TransactionByHash(tx)
+
+  PrintElapseTime(Start, "(L2) after get tx info from hash")
+
 	if err != nil {
 		return TxInfo{"error", nil, nil, nil}, err
 	}
 	if txObj == nil {
 		return TxInfo{"notfound", nil, nil, nil}, nil
-	} else {
-		if isPending {
-			return TxInfo{"pending", txObj, nil, nil}, nil
-		} else {
-			receipt, err := self.TransactionReceipt(tx)
-			if receipt == nil {
-				return TxInfo{"pending", txObj, nil, nil}, err
-			} else {
-				// block, _ := self.HeaderByNumber(receipt.BlockNumber.Int64())
-				// only byzantium has status field at the moment
-				// mainnet, ropsten are byzantium, other chains such as
-				// devchain, kovan are not.
-				// if PostState is a hash, it is pre-byzantium and all
-				// txs with PostState are considered done
-				if len(receipt.PostState) == len(common.Hash{}) {
-					return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
-				} else {
-					if receipt.Status == 1 {
-						// successful tx
-						return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
-					}
-					// failed tx
-					return TxInfo{"reverted", txObj, []InternalTx{}, receipt}, nil
-				}
-			}
-		}
 	}
+  if isPending {
+    return TxInfo{"pending", txObj, nil, nil}, nil
+  }
+
+  receipt, err := self.TransactionReceipt(tx)
+
+  PrintElapseTime(Start, "(L2) after get tx receipt from hash")
+
+  if receipt == nil {
+    return TxInfo{"pending", txObj, nil, nil}, err
+  }
+
+  // block, _ := self.HeaderByNumber(receipt.BlockNumber.Int64())
+  // only byzantium has status field at the moment
+  // mainnet, ropsten are byzantium, other chains such as
+  // devchain, kovan are not.
+  // if PostState is a hash, it is pre-byzantium and all
+  // txs with PostState are considered done
+  if len(receipt.PostState) == len(common.Hash{}) {
+    return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
+  } else {
+    if receipt.Status == 1 {
+      // successful tx
+      return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
+    }
+    // failed tx
+    return TxInfo{"reverted", txObj, []InternalTx{}, receipt}, nil
+  }
 }
 
 type ksresponse struct {
@@ -233,6 +238,7 @@ func (self *EthReader) RecommendedGasPrice() (float64, error) {
 		if err != nil {
 			return 0, err
 		}
+
 		return BigToFloat(priceWei, 9), nil
 	}
 	return price, nil
@@ -390,8 +396,12 @@ func (self *EthReader) TransactionByHash(txHash string) (tx *Transaction, isPend
 				IsPending: ispending,
 				Error:     wrapError(err, n.NodeName()),
 			}
+      PrintElapseTime(Start, fmt.Sprintf("%s - %s", "(L2) after getting response from node", n))
 		}()
 	}
+
+  PrintElapseTime(Start, "(L2) after init calls to nodes")
+
 	errs := []error{}
 	for i := 0; i < len(self.nodes); i++ {
 		result := <-resCh

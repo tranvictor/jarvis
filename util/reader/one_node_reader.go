@@ -167,6 +167,7 @@ func (self *OneNodeReader) transactionByHashOnNode(ctx context.Context, hash com
 	if err != nil {
 		return nil, false, err
 	}
+  PrintElapseTime(Start, fmt.Sprintf("%s - %s", "(L2) about to call on cli", self.nodeURL))
 	err = cli.CallContext(ctx, &json, "eth_getTransactionByHash", hash)
 	if err != nil {
 		return nil, false, err

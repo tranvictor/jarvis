@@ -170,7 +170,11 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		return
 	}
 
+  PrintElapseTime(Start, "init reader")
+
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+
+  PrintElapseTime(Start, "init analyzer")
 
 	var txid *big.Int
 
@@ -189,6 +193,8 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 			}
 		}
 	}
+
+  PrintElapseTime(Start, "find tx hash")
 
 	if txid == nil {
 		if config.TxInfo == nil {
@@ -217,6 +223,8 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		}
 	}
 
+  PrintElapseTime(Start, "get tx info")
+
 	multisigContract, err := msig.NewMultisigContract(
 		config.To,
 		config.Network(),
@@ -228,9 +236,13 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	fc, executed := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
 
+  PrintElapseTime(Start, "after analyzing tx")
+
 	if postProcess != nil && postProcess(fc) != nil {
 		return
 	}
+
+  PrintElapseTime(Start, "after running post hook")
 
 	if executed {
 		return
@@ -249,6 +261,8 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		return
 	}
 
+  PrintElapseTime(Start, "after preparing tx data")
+
 	// var GasLimit uint64
 	if config.GasLimit == 0 {
 		config.GasLimit, err = reader.EstimateExactGas(
@@ -264,6 +278,8 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		}
 	}
 
+  PrintElapseTime(Start, "after estimate gas")
+
 	tx := BuildExactTx(
 		config.Nonce,
 		config.To,
@@ -272,6 +288,8 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		config.GasPrice+config.ExtraGasPrice,
 		data,
 	)
+
+  PrintElapseTime(Start, "after build tx")
 
 	err = PromptTxConfirmation(
 		analyzer,

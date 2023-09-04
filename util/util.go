@@ -292,10 +292,10 @@ func GetNodes(network Network) (map[string]string, error) {
 	if err != nil {
 		nodes = network.GetDefaultNodes()
 	}
-	customNode := strings.Trim(os.Getenv(network.GetNodeVariableName()), " ")
-	if customNode != "" {
-		nodes["custom-node"] = customNode
-	}
+	// customNode := strings.Trim(os.Getenv(network.GetNodeVariableName()), " ")
+	// if customNode != "" {
+	// 	nodes["custom-node"] = customNode
+	// }
 	return nodes, nil
 }
 

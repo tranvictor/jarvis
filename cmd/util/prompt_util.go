@@ -484,7 +484,7 @@ func showTxInfoToConfirm(
 	}
 
 	fmt.Printf(
-		"Nonce: %d  |  Gas: %.4f gwei (%d gas = %.8f %s)\n",
+		"Nonce: %d  |  Gas: %.9f gwei (%d gas = %.9f %s)\n",
 		tx.Nonce(),
 		BigToFloat(tx.GasPrice(), 9),
 		tx.Gas(),

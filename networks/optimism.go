@@ -66,7 +66,7 @@ func (self *optimismMainnet) GetBlockExplorerAPIURL() string {
 }
 
 // func (self *optimismMainnet) RecommendedGasPrice() (float64, error) {
-// 	return 0.01, nil
+// 	return 0.00001, nil
 // }
 
 func (self *optimismMainnet) MultiCallContract() string {

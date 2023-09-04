@@ -273,11 +273,12 @@ var batchApproveMsigCmd = &cobra.Command{
 			fmt.Printf("No txs passed to the first param. Did nothing.\n")
 			return
 		}
+
 		for i, n := range networks {
 			txHash := txs[i]
 			network, err := GetNetwork(n)
 			if err != nil {
-				fmt.Printf("% network is not supported. Skip this tx.\n")
+				fmt.Printf("%s network is not supported. Skip this tx.\n", n)
 				continue
 			}
 			// getting msig info
@@ -684,6 +685,7 @@ func init() {
 
 	batchApproveMsigCmd.PersistentFlags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
 	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
+	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.YesToAllPrompt, "auto-yes", "y", false, "Don't prompt Yes/No before signing.")
 
 	msigCmd.AddCommand(approveMsigCmd)
 	msigCmd.AddCommand(batchApproveMsigCmd)

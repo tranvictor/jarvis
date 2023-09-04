@@ -32,7 +32,7 @@ func (self *ethereumMainnet) GetChainID() uint64 {
 }
 
 func (self *ethereumMainnet) GetAlternativeNames() []string {
-	return []string{}
+	return []string{"ethereum"}
 }
 
 func (self *ethereumMainnet) GetNativeTokenSymbol() string {

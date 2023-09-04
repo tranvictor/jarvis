@@ -6,10 +6,13 @@ import (
 	"path"
 	"runtime"
 	"strings"
+  "time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 )
+
+var Start time.Time
 
 func getABIFromFile(filename string) (*abi.ABI, error) {
 	_, current, _, ok := runtime.Caller(0)
