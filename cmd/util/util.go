@@ -17,13 +17,21 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int, network Network) (fc *FunctionCall, executed bool) {
+func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int, network Network) (fc *FunctionCall, confirmed bool, executed bool) {
 	fmt.Printf("========== What the multisig will do ==========\n")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
 		fmt.Printf("Couldn't get tx info: %s\n", err)
 		return
 	}
+
+  requirement, err := multisigContract.VoteRequirement()
+  if err != nil {
+    fmt.Printf("Couldn't get msig requirement: %s\n", err)
+    return
+  }
+
+  confirmed = len(confirmations) >= int(requirement)
 
 	if len(data) == 0 {
 		fmt.Printf(
@@ -127,6 +135,7 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 	fmt.Printf("===============================================\n\n")
 	fmt.Printf("========== Multisig transaction status ========\n")
 	fmt.Printf("Executed: %t\n", executed)
+  fmt.Printf("Confirmed: %t\n", confirmed)
 	fmt.Printf("Confirmations (among current owners):\n")
 	for i, c := range confirmations {
 		_, name, err := util.GetMatchingAddress(c)
@@ -137,9 +146,6 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 		}
 	}
 
-	if executed {
-		fmt.Printf("This multisig is executed, you don't need to approve it anymore\n")
-	}
 	return
 }
 
@@ -234,7 +240,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		return
 	}
 
-	fc, executed := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
+	fc, _, executed := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
 
   PrintElapseTime(Start, "after analyzing tx")
 

@@ -321,11 +321,16 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
-			_, executed := cmdutil.AnalyzeAndShowMsigTxInfo(multisigContract, txid, network)
+			_, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(multisigContract, txid, network)
 			if executed {
 				fmt.Printf("This tx is already executed. You don't have to approve it anymore. Continue with next tx.\n")
 				continue
 			}
+
+      if confirmed {
+				fmt.Printf("This tx is already confirmed but not yet executed. You should execute it instead of approving it. Continue to next tx.\n")
+				continue
+      }
 
 			data, err := a.Pack("confirmTransaction", txid)
 			if err != nil {
@@ -342,6 +347,11 @@ var batchApproveMsigCmd = &cobra.Command{
 				data,
 				network,
 			)
+
+			if err != nil {
+        fmt.Printf("Couldn't build tx: %s\n", err)
+				continue
+			}
 
 			err = cmdutil.PromptTxConfirmation(
 				cm.Analyzer(network),
