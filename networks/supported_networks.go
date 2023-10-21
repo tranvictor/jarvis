@@ -23,6 +23,7 @@ var supportedNetworks = []Network{
 	EthereumPOW,
 	ScrollMainnet,
 	BaseMainnet,
+	PolygonZkevmMainnet,
 	// Mumbai,
 	LineaMainnet,
 }
