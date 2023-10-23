@@ -21,6 +21,9 @@ var supportedNetworks = []Network{
 	ArbitrumMainnet,
 	BttcMainnet,
 	EthereumPOW,
+	ScrollMainnet,
+	BaseMainnet,
+	PolygonZkevmMainnet,
 	// Mumbai,
 	LineaMainnet,
 }
