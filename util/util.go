@@ -632,6 +632,11 @@ func GetABI(addr string, network Network) (*abi.ABI, error) {
 }
 
 func IsProxyABI(a *abi.ABI) bool {
+  isGnosis, _ := IsGnosisMultisig(a)
+  if isGnosis{
+    return false
+  }
+
   if a.Fallback.String() != "" {
     return true
   }

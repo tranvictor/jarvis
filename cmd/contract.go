@@ -262,11 +262,11 @@ var txContractCmd = &cobra.Command{
 				_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
 				if config.DontWaitToBeMined {
 					util.DisplayBroadcastedTx(
-						tx, broadcasted, err, config.Network(),
+						signedTx, broadcasted, err, config.Network(),
 					)
 				} else {
 					util.DisplayWaitAnalyze(
-						reader, analyzer, tx, broadcasted, err, config.Network(),
+						reader, analyzer, signedTx, broadcasted, err, config.Network(),
 						a, nil, config.DegenMode,
 					)
 				}
