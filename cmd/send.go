@@ -52,7 +52,7 @@ func handleMsigSend(
 
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
 
-	t = BuildExactTx(config.Nonce, to, big.NewInt(0), config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, config.TipGas, txdata, config.TxType, networks.CurrentNetwork().GetChainID())
+	t = BuildExactTx(config.Nonce, to, big.NewInt(0), config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
 
 	err = cmdutil.PromptTxConfirmation(
 		analyzer,
@@ -125,7 +125,7 @@ func handleSend(
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
 
 	if tokenAddr == util.ETH_ADDR {
-		t = BuildExactTx(config.Nonce, to, amountWei, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, config.TipGas, []byte{}, config.TxType, networks.CurrentNetwork().GetChainID())
+		t = BuildExactTx(config.Nonce, to, amountWei, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, []byte{})
 	} else {
 		a = GetERC20ABI()
 		data, err := a.Pack(
@@ -137,7 +137,7 @@ func handleSend(
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
 		}
-		t = BuildExactTx(config.Nonce, tokenAddr, big.NewInt(0), config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, config.TipGas, data, config.TxType, networks.CurrentNetwork().GetChainID())
+		t = BuildExactTx(config.Nonce, tokenAddr, big.NewInt(0), config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
 	}
 
 	err = cmdutil.PromptTxConfirmation(
@@ -568,7 +568,7 @@ exact addresses start with 0x.`,
 
 	sendCmd.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
 	sendCmd.PersistentFlags().Float64VarP(&config.TipGas, "tipgas", "s", 0, "tip in gwei, will be use in dynamic fee tx, default value get from node.")
-	sendCmd.PersistentFlags().StringVarP(&config.TxType, "txtype", "X", "", "override auto detected tx type should be use(legacy|dynamicfee.")
+	sendCmd.PersistentFlags().StringVarP(&config.TxType, "txtype", "T", "", "override auto detected tx type should be use(legacy|dynamicfee.")
 	sendCmd.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
 	sendCmd.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
 	// sendCmd.PersistentFlags().Uint64VarP(&ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")

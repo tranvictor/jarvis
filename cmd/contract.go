@@ -171,8 +171,7 @@ var txContractCmd = &cobra.Command{
 				return
 			}
 		}
-		tx := BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit,
-			config.GasPrice+config.ExtraGasPrice, config.TipGas, data, config.TxType, networks.CurrentNetwork().GetChainID())
+		tx := BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
 		err = cmdutil.PromptTxConfirmation(
 			analyzer,
 			util.GetJarvisAddress(config.From, networks.CurrentNetwork()),
@@ -437,7 +436,7 @@ func init() {
 
 	txContractCmd.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
 	txContractCmd.PersistentFlags().Float64VarP(&config.TipGas, "tipgas", "s", 0, "tip in gwei, will be use in dynamic fee tx, default value get from node.")
-	txContractCmd.PersistentFlags().StringVarP(&config.TxType, "txtype", "X", "", "override auto detected tx type should be use(legacy|dynamicfee.")
+	txContractCmd.PersistentFlags().StringVarP(&config.TxType, "txtype", "T", "", "override auto detected tx type should be use(legacy|dynamicfee.")
 	txContractCmd.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
 	txContractCmd.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
 	txContractCmd.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
