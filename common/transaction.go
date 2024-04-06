@@ -19,13 +19,12 @@ func RawTxToHash(data string) string {
 	return crypto.Keccak256Hash(hexutil.MustDecode(data)).Hex()
 }
 
-func BuildExactTx(nonce uint64, to string, ethAmount *big.Int, gasLimit uint64, priceGwei float64, tipGas float64,
-	data []byte, txType string, chainID int64) (tx *types.Transaction) {
+func BuildExactTx(nonce uint64, to string, ethAmount *big.Int, gasLimit uint64, priceGwei float64, data []byte) (tx *types.Transaction) {
 	toAddress := common.HexToAddress(to)
 	gasPrice := GweiToWei(priceGwei)
-	tipInt := GweiToWei(tipGas)
-	chainIDInt := big.NewInt(chainID)
-	if txType == config.TxTypeDynamicFee {
+	tipInt := GweiToWei(config.TipGas)
+	chainIDInt := big.NewInt(networks.CurrentNetwork().GetChainID())
+	if config.TxType == config.TxTypeDynamicFee {
 		return types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainIDInt,
 			Nonce:     nonce,
@@ -50,20 +49,43 @@ func BuildExactTx(nonce uint64, to string, ethAmount *big.Int, gasLimit uint64, 
 
 func BuildTx(nonce uint64, to string, ethAmount float64, gasLimit uint64, priceGwei float64, data []byte) (tx *types.Transaction) {
 	amount := FloatToBigInt(ethAmount, 18)
-	return BuildExactTx(nonce, to, amount, gasLimit, priceGwei, config.TipGas, data, config.TxType, networks.CurrentNetwork().GetChainID())
+	return BuildExactTx(nonce, to, amount, gasLimit, priceGwei, data)
 }
 
 func BuildExactSendETHTx(nonce uint64, to string, ethAmount *big.Int, gasLimit uint64, priceGwei float64,
 	tipGas float64, txType string, chainID int64,
 ) (tx *types.Transaction) {
-	return BuildExactTx(nonce, to, ethAmount, gasLimit, priceGwei, tipGas, []byte{}, txType, chainID)
+	return BuildExactTx(nonce, to, ethAmount, gasLimit, priceGwei, []byte{})
 }
 
 func BuildContractCreationTx(nonce uint64, ethAmount *big.Int, gasLimit uint64, priceGwei float64, data []byte) (tx *types.Transaction) {
 	gasPrice := GweiToWei(priceGwei)
-	return types.NewContractCreation(nonce, ethAmount, gasLimit, gasPrice, data)
+	tipInt := GweiToWei(config.TipGas)
+	chainIDInt := big.NewInt(networks.CurrentNetwork().GetChainID())
+	if config.TxType == config.TxTypeDynamicFee {
+		return types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainIDInt,
+			Nonce:     nonce,
+			GasTipCap: tipInt,
+			GasFeeCap: gasPrice,
+			Gas:       gasLimit,
+			Value:     ethAmount,
+			Data:      data,
+		})
+	} else {
+		return types.NewTx(&types.LegacyTx{
+			Nonce:    nonce,
+			GasPrice: gasPrice,
+			Gas:      gasLimit,
+			Value:    ethAmount,
+			Data:     data,
+		})
+	}
 }
 
+// CheckDynamicFeeTxAvailable use to detect if current network that connect via node url is support dynamic fee tx,
+// this is done by a trick where we check if block info contain baseFee > 0, that may not always work but should enough
+// for now.
 func CheckDynamicFeeTxAvailable(ethclient *ethclient.Client) bool {
 	block, err := ethclient.BlockByNumber(context.Background(), nil)
 	if err != nil {
