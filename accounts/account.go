@@ -3,6 +3,7 @@ package accounts
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/tranvictor/jarvis/accounts/types"
 	"io/ioutil"
 	"log"
 	"os"
@@ -20,14 +21,6 @@ import (
 	"github.com/tranvictor/jarvis/util/account"
 	"golang.org/x/crypto/ssh/terminal"
 )
-
-type AccDesc struct {
-	Address string
-	Kind    string
-	Keypath string
-	Derpath string
-	Desc    string
-}
 
 func getHomeDir() string {
 	usr, err := user.Current()
@@ -91,7 +84,7 @@ func VerifyKeystore(path string) (string, error) {
 	return "0x" + k.Address, nil
 }
 
-func StoreAccountRecord(accDesc AccDesc) error {
+func StoreAccountRecord(accDesc types.AccDesc) error {
 	dir := filepath.Join(getHomeDir(), ".jarvis")
 	os.MkdirAll(dir, os.ModePerm)
 	path := filepath.Join(dir, fmt.Sprintf("%s.json", accDesc.Address))
@@ -99,7 +92,7 @@ func StoreAccountRecord(accDesc AccDesc) error {
 	return ioutil.WriteFile(path, content, 0644)
 }
 
-func UnlockKeystoreAccountWithPassword(ad AccDesc, network networks.Network, pwd string) (*account.Account, error) {
+func UnlockKeystoreAccountWithPassword(ad types.AccDesc, network networks.Network, pwd string) (*account.Account, error) {
 	reader, err := util.EthReader(network)
 	if err != nil {
 		return nil, err
@@ -117,7 +110,7 @@ func UnlockKeystoreAccountWithPassword(ad AccDesc, network networks.Network, pwd
 	return fromAcc, nil
 }
 
-func UnlockAccount(ad AccDesc, network networks.Network) (*account.Account, error) {
+func UnlockAccount(ad types.AccDesc, network networks.Network) (*account.Account, error) {
 	var fromAcc *account.Account
 	var err error
 
@@ -160,11 +153,11 @@ func UnlockAccount(ad AccDesc, network networks.Network) (*account.Account, erro
 	return fromAcc, nil
 }
 
-func GetAccount(input string) (AccDesc, error) {
+func GetAccount(input string) (types.AccDesc, error) {
 	source := NewFuzzySource()
 	matches := fuzzy.FindFrom(strings.Replace(input, " ", "_", -1), source)
 	if len(matches) == 0 {
-		return AccDesc{}, fmt.Errorf("No account is found with '%s'", input)
+		return types.AccDesc{}, fmt.Errorf("No account is found with '%s'", input)
 	}
 	match := matches[0]
 	return source[match.Index], nil
@@ -174,15 +167,15 @@ func GetAccount(input string) (AccDesc, error) {
 // Each description is stored in a json file whose name is
 // the address and content is the description.
 // All files are kept in ~/.jarvis/
-func GetAccounts() map[string]AccDesc {
+func GetAccounts() map[string]types.AccDesc {
 	paths, err := filepath.Glob(filepath.Join(getHomeDir(), ".jarvis", "*.json"))
 	if err != nil {
 		fmt.Printf("Getting accounts failed: %s.\n", err)
-		return map[string]AccDesc{}
+		return map[string]types.AccDesc{}
 	}
-	result := map[string]AccDesc{}
+	result := map[string]types.AccDesc{}
 	for _, p := range paths {
-		desc := AccDesc{}
+		desc := types.AccDesc{}
 		content, err := ioutil.ReadFile(p)
 		if err == nil {
 			err = json.Unmarshal(content, &desc)

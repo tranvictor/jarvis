@@ -1,7 +1,12 @@
 package util
 
 import (
+	"context"
 	"fmt"
+	types2 "github.com/tranvictor/jarvis/accounts/types"
+	"github.com/tranvictor/jarvis/cmd/ethutil"
+	"github.com/tranvictor/jarvis/config/state"
+	"github.com/tranvictor/jarvis/networks"
 	"math/big"
 	"strings"
 
@@ -40,16 +45,16 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 	} else {
 		config.To, _, err = util.GetAddressFromString(args[0])
 		if err != nil {
-			networks, txs := ScanForTxs(args[0])
+			nwks, txs := ScanForTxs(args[0])
 			if len(txs) == 0 {
 				return fmt.Errorf("can't interpret the contract address")
 			}
 			config.Tx = txs[0]
-			if networks[0] != "" {
-				config.SetNetwork(networks[0])
+			if nwks[0] != "" {
+				networks.SetNetwork(nwks[0])
 			}
 
-			reader, err := util.EthReader(config.Network())
+			reader, err := util.EthReader(networks.CurrentNetwork())
 			if err != nil {
 				return fmt.Errorf("couldn't connect to blockchain\n")
 			}
@@ -58,8 +63,8 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 			if err != nil {
 				return fmt.Errorf("couldn't get tx info from the blockchain: %s\n", err)
 			}
-			config.TxInfo = &txinfo
-			config.To = config.TxInfo.Tx.To().Hex()
+			state.TxInfo = &txinfo
+			config.To = state.TxInfo.Tx.To().Hex()
 		}
 	}
 
@@ -75,12 +80,12 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	a, err := util.GetABI(config.To, config.Network())
+	a, err := util.GetABI(config.To, networks.CurrentNetwork())
 	if err != nil {
 		if config.ForceERC20ABI {
 			a = GetERC20ABI()
 		} else if config.CustomABI != "" {
-			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
+			a, err = util.ReadCustomABI(config.To, config.CustomABI, networks.CurrentNetwork())
 			if err != nil {
 				return fmt.Errorf("reading cusom abi failed: %w", err)
 			}
@@ -100,7 +105,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	if config.From == "" && isGnosisMultisig {
 		multisigContract, err := msig.NewMultisigContract(
 			config.To,
-			config.Network(),
+			networks.CurrentNetwork(),
 		)
 		if err != nil {
 			return err
@@ -110,7 +115,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("getting msig owners failed: %w", err)
 		}
 
-		var acc accounts.AccDesc
+		var acc types2.AccDesc
 		count := 0
 		for _, owner := range owners {
 			a, err := accounts.GetAccount(owner)
@@ -138,7 +143,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-	reader, err := util.EthReader(config.Network())
+	reader, err := util.EthReader(networks.CurrentNetwork())
 	if err != nil {
 		return err
 	}
@@ -161,6 +166,20 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return fmt.Errorf("getting nonce failed: %w", err)
 		}
+	}
+	eClient := ethutil.MustGetETHClient()
+	if config.TxType == "" {
+		if CheckDynamicFeeTxAvailable(eClient) {
+			config.TxType = config.TxTypeDynamicFee
+		}
+	}
+
+	if config.TipGas == 0 && config.TxType == config.TxTypeDynamicFee {
+		suggestTip, err := eClient.SuggestGasTipCap(context.Background())
+		if err != nil {
+			return fmt.Errorf("getting tip gas failed: %w", err)
+		}
+		config.TipGas = BigToFloat(suggestTip, 9)
 	}
 	return nil
 }
