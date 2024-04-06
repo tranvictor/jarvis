@@ -30,7 +30,7 @@ func (self *scrollMainnet) GetName() string {
 	return "scroll"
 }
 
-func (self *scrollMainnet) GetChainID() int64 {
+func (self *scrollMainnet) GetChainID() uint64 {
 	return 534352
 }
 
@@ -42,7 +42,7 @@ func (self *scrollMainnet) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *scrollMainnet) GetNativeTokenDecimal() int64 {
+func (self *scrollMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

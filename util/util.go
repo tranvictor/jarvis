@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-  "io"
+	"io"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+
 	bleve "github.com/tranvictor/jarvis/bleve"
 	. "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
@@ -188,9 +189,9 @@ func PathToAddress(path string) (string, error) {
 
 func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, network Network) {
 	if !broadcasted {
-    fmt.Printf("Couldn't broadcast tx. Errors: %s\n", err)
+		fmt.Printf("Couldn't broadcast tx. Errors: %s\n", err)
 	} else {
-    fmt.Printf("BROADCASTED TX:\n%s:%s\n", network.GetName(), t.Hash().Hex())
+		fmt.Printf("BROADCASTED TX:\n%s:%s\n", network.GetName(), t.Hash().Hex())
 	}
 }
 
@@ -203,9 +204,9 @@ func DisplayWaitAnalyze(
 	network Network,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	degenMode bool) {
-
-  DisplayBroadcastedTx(t, broadcasted, err, network)
+	degenMode bool,
+) {
+	DisplayBroadcastedTx(t, broadcasted, err, network)
 	if broadcasted {
 		mo, err := EthTxMonitor(network)
 		if err != nil {
@@ -213,11 +214,28 @@ func DisplayWaitAnalyze(
 			return
 		}
 		mo.BlockingWait(t.Hash().Hex())
-		AnalyzeAndPrint(reader, analyzer, t.Hash().Hex(), network, false, "", a, customABIs, degenMode)
+		AnalyzeAndPrint(
+			reader,
+			analyzer,
+			t.Hash().Hex(),
+			network,
+			false,
+			"",
+			a,
+			customABIs,
+			degenMode,
+		)
 	}
 }
 
-func AnalyzeMethodCallAndPrint(analyzer TxAnalyzer, value *big.Int, destination string, data []byte, customABIs map[string]*abi.ABI, network Network) (fc *FunctionCall) {
+func AnalyzeMethodCallAndPrint(
+	analyzer TxAnalyzer,
+	value *big.Int,
+	destination string,
+	data []byte,
+	customABIs map[string]*abi.ABI,
+	network Network,
+) (fc *FunctionCall) {
 	fc = analyzer.AnalyzeFunctionCallRecursively(
 		GetABI, value, destination, data, customABIs)
 	PrintFunctionCall(fc)
@@ -233,7 +251,8 @@ func AnalyzeAndPrint(
 	customABI string,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	degenMode bool) *TxResult {
+	degenMode bool,
+) *TxResult {
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
 	}
@@ -292,10 +311,10 @@ func GetNodes(network Network) (map[string]string, error) {
 	if err != nil {
 		nodes = network.GetDefaultNodes()
 	}
-	// customNode := strings.Trim(os.Getenv(network.GetNodeVariableName()), " ")
-	// if customNode != "" {
-	// 	nodes["custom-node"] = customNode
-	// }
+	customNode := strings.Trim(os.Getenv(network.GetNodeVariableName()), " ")
+	if customNode != "" {
+		nodes["custom-node"] = customNode
+	}
 	return nodes, nil
 }
 
@@ -418,7 +437,11 @@ func isHttpURL(path string) bool {
 	return true
 }
 
-func ReadCustomABIString(addr string, pathOrAddress string, network Network) (str string, err error) {
+func ReadCustomABIString(
+	addr string,
+	pathOrAddress string,
+	network Network,
+) (str string, err error) {
 	if isRealAddress(pathOrAddress) {
 		return GetABIString(pathOrAddress, network)
 	} else if isHttpURL(pathOrAddress) {
@@ -434,7 +457,9 @@ func ReadCustomABIString(addr string, pathOrAddress string, network Network) (st
 type coingeckopriceresponse map[string]map[string]float64
 
 func GetETHPriceInUSD() (float64, error) {
-	resp, err := http.Get("https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false")
+	resp, err := http.Get(
+		"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false",
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -452,7 +477,12 @@ func GetCoinGeckoRateInUSD(token string) (float64, error) {
 	if strings.ToLower(token) == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
 		return GetETHPriceInUSD()
 	}
-	resp, err := http.Get(fmt.Sprintf("https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=%s&vs_currencies=USD&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false", token))
+	resp, err := http.Get(
+		fmt.Sprintf(
+			"https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=%s&vs_currencies=USD&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false",
+			token,
+		),
+	)
 	if err != nil {
 		return 0, err
 	}
@@ -479,7 +509,6 @@ func ReadCustomABI(addr string, pathOrAddress string, network Network) (a *abi.A
 
 	cacheKey := fmt.Sprintf("%s_abi", addr)
 	cache.SetCache(cacheKey, str)
-	fmt.Printf("Stored %s abi to cache.\n", addr)
 	return a, nil
 }
 
@@ -524,7 +553,6 @@ func GetABIStringBypassCache(addr string, network Network) (string, error) {
 		cacheKey,
 		abiStr,
 	)
-	fmt.Printf("Stored %s abi to cache.\n", addr)
 	return abiStr, nil
 }
 
@@ -552,7 +580,6 @@ func IsContract(addr string, network Network) (bool, error) {
 			cacheKey,
 			"true",
 		)
-		fmt.Printf("Stored %s contract code to cache.\n", addr)
 	}
 	return isContract, nil
 }
@@ -566,7 +593,12 @@ func GetABIString(addr string, network Network) (string, error) {
 	return GetABIStringBypassCache(addr, network)
 }
 
-func ConfigToABI(address string, forceERC20ABI bool, customABI string, network Network) (*abi.ABI, error) {
+func ConfigToABI(
+	address string,
+	forceERC20ABI bool,
+	customABI string,
+	network Network,
+) (*abi.ABI, error) {
 	if forceERC20ABI {
 		return GetERC20ABI(), nil
 	}
@@ -586,6 +618,7 @@ func ConfigToABI(address string, forceERC20ABI bool, customABI string, network N
 
 		impl, err := r.ImplementationOf(-1, address)
 		if err != nil {
+			fmt.Printf("getting implementation of %s failed: %s\n", address, err)
 			return nil, err
 		}
 		return GetABI(impl.Hex(), network)
@@ -632,14 +665,14 @@ func GetABI(addr string, network Network) (*abi.ABI, error) {
 }
 
 func IsProxyABI(a *abi.ABI) bool {
-  isGnosis, _ := IsGnosisMultisig(a)
-  if isGnosis{
-    return false
-  }
+	isGnosis, _ := IsGnosisMultisig(a)
+	if isGnosis {
+		return false
+	}
 
-  if a.Fallback.String() != "" {
-    return true
-  }
+	if a.Fallback.String() != "" {
+		return true
+	}
 
 	for _, m := range PROXY_METHODS {
 		_, found := a.Methods[m]
@@ -681,11 +714,20 @@ func IsGnosisMultisig(a *abi.ABI) (bool, error) {
 	return true, nil
 }
 
-func GetBalances(wallets []string, tokens []string, network Network) (balances map[common.Address][]*big.Int, block int64, err error) {
+func GetBalances(
+	wallets []string,
+	tokens []string,
+	network Network,
+) (balances map[common.Address][]*big.Int, block int64, err error) {
 	return GetHistoryBalances(-1, wallets, tokens, network)
 }
 
-func GetHistoryBalances(atBlock int64, wallets []string, tokens []string, network Network) (balances map[common.Address][]*big.Int, block int64, err error) {
+func GetHistoryBalances(
+	atBlock int64,
+	wallets []string,
+	tokens []string,
+	network Network,
+) (balances map[common.Address][]*big.Int, block int64, err error) {
 	helperABI := GetMultiCallABI()
 	erc20ABI := GetERC20ABI()
 

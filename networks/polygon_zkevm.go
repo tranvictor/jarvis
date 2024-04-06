@@ -27,10 +27,10 @@ func NewPolygonZkevmMainnet() *polygonZkevmMainnet {
 }
 
 func (self *polygonZkevmMainnet) GetName() string {
-	return "polygonZkevm"
+	return "zkevm"
 }
 
-func (self *polygonZkevmMainnet) GetChainID() int64 {
+func (self *polygonZkevmMainnet) GetChainID() uint64 {
 	return 1101
 }
 
@@ -42,7 +42,7 @@ func (self *polygonZkevmMainnet) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *polygonZkevmMainnet) GetNativeTokenDecimal() int64 {
+func (self *polygonZkevmMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

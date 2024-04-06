@@ -30,7 +30,7 @@ func (self *baseMainnet) GetName() string {
 	return "base"
 }
 
-func (self *baseMainnet) GetChainID() int64 {
+func (self *baseMainnet) GetChainID() uint64 {
 	return 8453
 }
 
@@ -42,7 +42,7 @@ func (self *baseMainnet) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *baseMainnet) GetNativeTokenDecimal() int64 {
+func (self *baseMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

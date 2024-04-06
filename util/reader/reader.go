@@ -13,13 +13,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+
 	. "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/util/explorers"
 )
 
-var (
-	DEFAULT_ADDRESS string = "0x0000000000000000000000000000000000000000"
-)
+var DEFAULT_ADDRESS string = "0x0000000000000000000000000000000000000000"
 
 const (
 	DEFAULT_ETHERSCAN_APIKEY string = "UBB257TI824FC7HUSPT66KZUMGBPRN3IWV"
@@ -63,9 +62,14 @@ type estimateGasResult struct {
 	Error error
 }
 
-func (self *EthReader) EstimateExactGas(from, to string, priceGwei float64, value *big.Int, data []byte) (uint64, error) {
+func (self *EthReader) EstimateExactGas(
+	from, to string,
+	priceGwei float64,
+	value *big.Int,
+	data []byte,
+) (uint64, error) {
 	resCh := make(chan estimateGasResult, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			gas, err := n.EstimateGas(from, to, priceGwei, value, data)
@@ -86,7 +90,11 @@ func (self *EthReader) EstimateExactGas(from, to string, priceGwei float64, valu
 	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) EstimateGas(from, to string, priceGwei, value float64, data []byte) (uint64, error) {
+func (self *EthReader) EstimateGas(
+	from, to string,
+	priceGwei, value float64,
+	data []byte,
+) (uint64, error) {
 	return self.EstimateExactGas(from, to, priceGwei, FloatToBigInt(value, 18), data)
 }
 
@@ -97,7 +105,7 @@ type getCodeResponse struct {
 
 func (self *EthReader) GetCode(address string) (code []byte, err error) {
 	resCh := make(chan getCodeResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			code, err := n.GetCode(address)
@@ -121,7 +129,7 @@ func (self *EthReader) GetCode(address string) (code []byte, err error) {
 func (self *EthReader) TxInfoFromHash(tx string) (TxInfo, error) {
 	txObj, isPending, err := self.TransactionByHash(tx)
 
-  PrintElapseTime(Start, "(L2) after get tx info from hash")
+	PrintElapseTime(Start, "(L2) after get tx info from hash")
 
 	if err != nil {
 		return TxInfo{"error", nil, nil, nil}, err
@@ -129,34 +137,34 @@ func (self *EthReader) TxInfoFromHash(tx string) (TxInfo, error) {
 	if txObj == nil {
 		return TxInfo{"notfound", nil, nil, nil}, nil
 	}
-  if isPending {
-    return TxInfo{"pending", txObj, nil, nil}, nil
-  }
+	if isPending {
+		return TxInfo{"pending", txObj, nil, nil}, nil
+	}
 
-  receipt, err := self.TransactionReceipt(tx)
+	receipt, err := self.TransactionReceipt(tx)
 
-  PrintElapseTime(Start, "(L2) after get tx receipt from hash")
+	PrintElapseTime(Start, "(L2) after get tx receipt from hash")
 
-  if receipt == nil {
-    return TxInfo{"pending", txObj, nil, nil}, err
-  }
+	if receipt == nil {
+		return TxInfo{"pending", txObj, nil, nil}, err
+	}
 
-  // block, _ := self.HeaderByNumber(receipt.BlockNumber.Int64())
-  // only byzantium has status field at the moment
-  // mainnet, ropsten are byzantium, other chains such as
-  // devchain, kovan are not.
-  // if PostState is a hash, it is pre-byzantium and all
-  // txs with PostState are considered done
-  if len(receipt.PostState) == len(common.Hash{}) {
-    return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
-  } else {
-    if receipt.Status == 1 {
-      // successful tx
-      return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
-    }
-    // failed tx
-    return TxInfo{"reverted", txObj, []InternalTx{}, receipt}, nil
-  }
+	// block, _ := self.HeaderByNumber(receipt.BlockNumber.Int64())
+	// only byzantium has status field at the moment
+	// mainnet, ropsten are byzantium, other chains such as
+	// devchain, kovan are not.
+	// if PostState is a hash, it is pre-byzantium and all
+	// txs with PostState are considered done
+	if len(receipt.PostState) == len(common.Hash{}) {
+		return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
+	} else {
+		if receipt.Status == 1 {
+			// successful tx
+			return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
+		}
+		// failed tx
+		return TxInfo{"reverted", txObj, []InternalTx{}, receipt}, nil
+	}
 }
 
 type ksresponse struct {
@@ -251,7 +259,7 @@ type getGasSuggestionResponse struct {
 
 func (self *EthReader) GetGasPriceWeiSuggestion() (*big.Int, error) {
 	resCh := make(chan getGasSuggestionResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			price, err := n.GetGasPriceSuggestion()
@@ -279,7 +287,7 @@ type getBalanceResponse struct {
 
 func (self *EthReader) GetBalance(address string) (balance *big.Int, err error) {
 	resCh := make(chan getBalanceResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			balance, err := n.GetBalance(address)
@@ -307,7 +315,7 @@ type getNonceResponse struct {
 
 func (self *EthReader) GetMinedNonce(address string) (nonce uint64, err error) {
 	resCh := make(chan getNonceResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			nonce, err := n.GetMinedNonce(address)
@@ -330,7 +338,7 @@ func (self *EthReader) GetMinedNonce(address string) (nonce uint64, err error) {
 
 func (self *EthReader) GetPendingNonce(address string) (nonce uint64, err error) {
 	resCh := make(chan getNonceResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			nonce, err := n.GetPendingNonce(address)
@@ -358,7 +366,7 @@ type transactionReceiptResponse struct {
 
 func (self *EthReader) TransactionReceipt(txHash string) (receipt *types.Receipt, err error) {
 	resCh := make(chan transactionReceiptResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			receipt, err := n.TransactionReceipt(txHash)
@@ -385,9 +393,11 @@ type transactionByHashResponse struct {
 	Error     error
 }
 
-func (self *EthReader) TransactionByHash(txHash string) (tx *Transaction, isPending bool, err error) {
+func (self *EthReader) TransactionByHash(
+	txHash string,
+) (tx *Transaction, isPending bool, err error) {
 	resCh := make(chan transactionByHashResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			tx, ispending, err := n.TransactionByHash(txHash)
@@ -396,11 +406,14 @@ func (self *EthReader) TransactionByHash(txHash string) (tx *Transaction, isPend
 				IsPending: ispending,
 				Error:     wrapError(err, n.NodeName()),
 			}
-      PrintElapseTime(Start, fmt.Sprintf("%s - %s", "(L2) after getting response from node", n))
+			PrintElapseTime(
+				Start,
+				fmt.Sprintf("%s - %s", "(L2) after getting response from node", n),
+			)
 		}()
 	}
 
-  PrintElapseTime(Start, "(L2) after init calls to nodes")
+	PrintElapseTime(Start, "(L2) after init calls to nodes")
 
 	errs := []error{}
 	for i := 0; i < len(self.nodes); i++ {
@@ -418,9 +431,16 @@ type readContractToBytesResponse struct {
 	Error error
 }
 
-func (self *EthReader) ReadContractToBytes(atBlock int64, from string, caddr string, abi *abi.ABI, method string, args ...interface{}) ([]byte, error) {
+func (self *EthReader) ReadContractToBytes(
+	atBlock int64,
+	from string,
+	caddr string,
+	abi *abi.ABI,
+	method string,
+	args ...interface{},
+) ([]byte, error) {
 	resCh := make(chan readContractToBytesResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			data, err := n.ReadContractToBytes(atBlock, from, caddr, abi, method, args...)
@@ -441,7 +461,10 @@ func (self *EthReader) ReadContractToBytes(atBlock int64, from string, caddr str
 	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) ImplementationOfEIP1967(atBlock int64, caddr string) (common.Address, error) {
+func (self *EthReader) ImplementationOfEIP1967(
+	atBlock int64,
+	caddr string,
+) (common.Address, error) {
 	// eip 1967
 	// bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
 	slotBig := big.NewInt(0).Sub(
@@ -472,26 +495,30 @@ func (self *EthReader) ImplementationOfEIP1967(atBlock int64, caddr string) (com
 		return common.Address{}, err
 	}
 
-  beaconAddr := common.BytesToAddress(addrByte)
+	beaconAddr := common.BytesToAddress(addrByte)
 
 	if beaconAddr.Big().Cmp(big.NewInt(0)) != 0 {
-    paddr, err := self.AddressFromContractWithABI(beaconAddr.Hex(), GetEIP1967BeaconABI(), "implementation")
-    return *paddr, err
+		paddr, err := self.AddressFromContractWithABI(
+			beaconAddr.Hex(),
+			GetEIP1967BeaconABI(),
+			"implementation",
+		)
+		return *paddr, err
 	}
 
-  return common.Address{}, fmt.Errorf("not an eip1967 proxy contract")
+	return common.Address{}, fmt.Errorf("not an eip1967 proxy contract")
 }
 
 func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Address, error) {
-  addr, err := self.ImplementationOfEIP1967(atBlock, caddr)
-  if err == nil {
-    return addr, nil
-  }
+	addr, err := self.ImplementationOfEIP1967(atBlock, caddr)
+	if err == nil {
+		return addr, nil
+	}
 
 	// old standard: org.zeppelinos.proxy.implementation
-  slotBig := crypto.Keccak256Hash([]byte("org.zeppelinos.proxy.implementation")).Big()
+	slotBig := crypto.Keccak256Hash([]byte("org.zeppelinos.proxy.implementation")).Big()
 
-  addrByte, err := self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	addrByte, err := self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -519,7 +546,7 @@ func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Add
 
 func (self *EthReader) StorageAt(atBlock int64, caddr string, slot string) ([]byte, error) {
 	resCh := make(chan readContractToBytesResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			data, err := n.StorageAt(atBlock, caddr, slot)
@@ -540,7 +567,14 @@ func (self *EthReader) StorageAt(atBlock int64, caddr string, slot string) ([]by
 	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) ReadHistoryContractWithABI(atBlock int64, result interface{}, caddr string, abi *abi.ABI, method string, args ...interface{}) error {
+func (self *EthReader) ReadHistoryContractWithABI(
+	atBlock int64,
+	result interface{},
+	caddr string,
+	abi *abi.ABI,
+	method string,
+	args ...interface{},
+) error {
 	responseBytes, err := self.ReadContractToBytes(
 		int64(atBlock), DEFAULT_ADDRESS, caddr, abi, method, args...)
 	if err != nil {
@@ -549,7 +583,14 @@ func (self *EthReader) ReadHistoryContractWithABI(atBlock int64, result interfac
 	return abi.UnpackIntoInterface(result, method, responseBytes)
 }
 
-func (self *EthReader) ReadContractWithABIAndFrom(result interface{}, from string, caddr string, abi *abi.ABI, method string, args ...interface{}) error {
+func (self *EthReader) ReadContractWithABIAndFrom(
+	result interface{},
+	from string,
+	caddr string,
+	abi *abi.ABI,
+	method string,
+	args ...interface{},
+) error {
 	responseBytes, err := self.ReadContractToBytes(-1, from, caddr, abi, method, args...)
 	if err != nil {
 		return err
@@ -557,7 +598,13 @@ func (self *EthReader) ReadContractWithABIAndFrom(result interface{}, from strin
 	return abi.UnpackIntoInterface(result, method, responseBytes)
 }
 
-func (self *EthReader) ReadContractWithABI(result interface{}, caddr string, abi *abi.ABI, method string, args ...interface{}) error {
+func (self *EthReader) ReadContractWithABI(
+	result interface{},
+	caddr string,
+	abi *abi.ABI,
+	method string,
+	args ...interface{},
+) error {
 	responseBytes, err := self.ReadContractToBytes(-1, DEFAULT_ADDRESS, caddr, abi, method, args...)
 	if err != nil {
 		return err
@@ -565,7 +612,13 @@ func (self *EthReader) ReadContractWithABI(result interface{}, caddr string, abi
 	return abi.UnpackIntoInterface(result, method, responseBytes)
 }
 
-func (self *EthReader) ReadHistoryContract(atBlock int64, result interface{}, caddr string, method string, args ...interface{}) error {
+func (self *EthReader) ReadHistoryContract(
+	atBlock int64,
+	result interface{},
+	caddr string,
+	method string,
+	args ...interface{},
+) error {
 	abi, err := self.GetABI(caddr)
 	if err != nil {
 		return err
@@ -573,7 +626,12 @@ func (self *EthReader) ReadHistoryContract(atBlock int64, result interface{}, ca
 	return self.ReadHistoryContractWithABI(atBlock, result, caddr, abi, method, args...)
 }
 
-func (self *EthReader) ReadContract(result interface{}, caddr string, method string, args ...interface{}) error {
+func (self *EthReader) ReadContract(
+	result interface{},
+	caddr string,
+	method string,
+	args ...interface{},
+) error {
 	abi, err := self.GetABI(caddr)
 	if err != nil {
 		return err
@@ -581,10 +639,21 @@ func (self *EthReader) ReadContract(result interface{}, caddr string, method str
 	return self.ReadContractWithABI(result, caddr, abi, method, args...)
 }
 
-func (self *EthReader) HistoryERC20Balance(atBlock int64, caddr string, user string) (*big.Int, error) {
+func (self *EthReader) HistoryERC20Balance(
+	atBlock int64,
+	caddr string,
+	user string,
+) (*big.Int, error) {
 	abi := GetERC20ABI()
 	result := big.NewInt(0)
-	err := self.ReadHistoryContractWithABI(atBlock, &result, caddr, abi, "balanceOf", HexToAddress(user))
+	err := self.ReadHistoryContractWithABI(
+		atBlock,
+		&result,
+		caddr,
+		abi,
+		"balanceOf",
+		HexToAddress(user),
+	)
 	return result, err
 }
 
@@ -623,7 +692,7 @@ type headerByNumberResponse struct {
 
 func (self *EthReader) HeaderByNumber(number int64) (*types.Header, error) {
 	resCh := make(chan headerByNumberResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			header, err := n.HeaderByNumber(number)
@@ -644,7 +713,12 @@ func (self *EthReader) HeaderByNumber(number int64) (*types.Header, error) {
 	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) HistoryERC20Allowance(atBlock int64, caddr string, owner string, spender string) (*big.Int, error) {
+func (self *EthReader) HistoryERC20Allowance(
+	atBlock int64,
+	caddr string,
+	owner string,
+	spender string,
+) (*big.Int, error) {
 	abi := GetERC20ABI()
 	result := big.NewInt(0)
 	err := self.ReadHistoryContractWithABI(
@@ -657,7 +731,11 @@ func (self *EthReader) HistoryERC20Allowance(atBlock int64, caddr string, owner 
 	return result, err
 }
 
-func (self *EthReader) ERC20Allowance(caddr string, owner string, spender string) (*big.Int, error) {
+func (self *EthReader) ERC20Allowance(
+	caddr string,
+	owner string,
+	spender string,
+) (*big.Int, error) {
 	abi := GetERC20ABI()
 	result := big.NewInt(0)
 	err := self.ReadContractWithABI(
@@ -669,7 +747,11 @@ func (self *EthReader) ERC20Allowance(caddr string, owner string, spender string
 	return result, err
 }
 
-func (self *EthReader) AddressFromContractWithABI(contract string, abi *abi.ABI, method string) (*common.Address, error) {
+func (self *EthReader) AddressFromContractWithABI(
+	contract string,
+	abi *abi.ABI,
+	method string,
+) (*common.Address, error) {
 	result := common.Address{}
 	err := self.ReadContractWithABI(&result, contract, abi, method)
 	if err != nil {
@@ -678,7 +760,10 @@ func (self *EthReader) AddressFromContractWithABI(contract string, abi *abi.ABI,
 	return &result, nil
 }
 
-func (self *EthReader) AddressFromContract(contract string, method string) (*common.Address, error) {
+func (self *EthReader) AddressFromContract(
+	contract string,
+	method string,
+) (*common.Address, error) {
 	result := common.Address{}
 	err := self.ReadContract(&result, contract, method)
 	if err != nil {
@@ -693,9 +778,13 @@ type getLogsResponse struct {
 }
 
 // if toBlock < 0, it will query to the latest block
-func (self *EthReader) GetLogs(fromBlock, toBlock int, addresses []string, topic string) ([]types.Log, error) {
+func (self *EthReader) GetLogs(
+	fromBlock, toBlock int,
+	addresses []string,
+	topic string,
+) ([]types.Log, error) {
 	resCh := make(chan getLogsResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			logs, err := n.GetLogs(fromBlock, toBlock, addresses, topic)
@@ -723,7 +812,7 @@ type getBlockResponse struct {
 
 func (self *EthReader) CurrentBlock() (uint64, error) {
 	resCh := make(chan getBlockResponse, len(self.nodes))
-	for i, _ := range self.nodes {
+	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			block, err := n.CurrentBlock()

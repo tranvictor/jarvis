@@ -10,8 +10,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+
 	"github.com/tranvictor/jarvis/accounts"
 	. "github.com/tranvictor/jarvis/common"
+	"github.com/tranvictor/jarvis/config"
 	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	. "github.com/tranvictor/jarvis/txanalyzer"
@@ -32,14 +34,14 @@ type GasInfo struct {
 }
 
 // ContextManager manages
-// 1. multiple wallets and their informations in its
-//    life time. It basically gives next nonce to do transaction for specific
-//    wallet and specific network.
-//    It queries the node to check the nonce in lazy maner, it also takes mining
-//    txs into account.
-// 2. multiple networks gas price. The gas price will be queried lazily prior to txs
-//    and will be stored as cache for a while
-// 3. txs in the context manager's life time
+//  1. multiple wallets and their informations in its
+//     life time. It basically gives next nonce to do transaction for specific
+//     wallet and specific network.
+//     It queries the node to check the nonce in lazy maner, it also takes mining
+//     txs into account.
+//  2. multiple networks gas price. The gas price will be queried lazily prior to txs
+//     and will be stored as cache for a while
+//  3. txs in the context manager's life time
 type ContextManager struct {
 	lock sync.RWMutex
 
@@ -83,7 +85,9 @@ func (cm *ContextManager) setAccount(acc *account.Account) {
 func (cm *ContextManager) UnlockAccount(addr common.Address) (*account.Account, error) {
 	accDesc, err := accounts.GetAccount(addr.Hex())
 	if err != nil {
-		return nil, fmt.Errorf("You don't control wallet %s yet. You might want to add it to jarvis.\n")
+		return nil, fmt.Errorf(
+			"You don't control wallet %s yet. You might want to add it to jarvis.\n",
+		)
 	}
 	acc, err := accounts.UnlockAccount(accDesc)
 	if err != nil {
@@ -136,7 +140,13 @@ func (cm *ContextManager) Broadcaster(network Network) *Broadcaster {
 	if broadcaster == nil {
 		err := cm.initNetwork(network)
 		if err != nil {
-			panic(fmt.Errorf("couldn't init reader and broadcaster for network: %s, err: %s", network, err))
+			panic(
+				fmt.Errorf(
+					"couldn't init reader and broadcaster for network: %s, err: %s",
+					network,
+					err,
+				),
+			)
 		}
 		return cm.getBroadcaster(network)
 	}
@@ -154,7 +164,13 @@ func (cm *ContextManager) Reader(network Network) *EthReader {
 	if reader == nil {
 		err := cm.initNetwork(network)
 		if err != nil {
-			panic(fmt.Errorf("couldn't init reader and broadcaster for network: %s, err: %s", network, err))
+			panic(
+				fmt.Errorf(
+					"couldn't init reader and broadcaster for network: %s, err: %s",
+					network,
+					err,
+				),
+			)
 		}
 		return cm.getReader(network)
 	}
@@ -172,7 +188,13 @@ func (cm *ContextManager) Analyzer(network Network) *TxAnalyzer {
 	if analyzer == nil {
 		err := cm.initNetwork(network)
 		if err != nil {
-			panic(fmt.Errorf("couldn't init reader and broadcaster for network: %s, err: %s", network, err))
+			panic(
+				fmt.Errorf(
+					"couldn't init reader and broadcaster for network: %s, err: %s",
+					network,
+					err,
+				),
+			)
 		}
 		return cm.getAnalyzer(network)
 	}
@@ -222,21 +244,21 @@ func (cm *ContextManager) PendingNonce(wallet common.Address, network Network) *
 	return walletPendingNonces[network.GetChainID()]
 }
 
-// 1. get remote pending nonce
-// 2. get local pending nonce
-// 2. get mined nonce
-// 3. if mined nonce == remote == local, all good, lets return the mined nonce
-// 4. since mined nonce is always <= remote nonce, if mined nonce > local nonce,
-//    this session doesn't catch up with mined txs (in case there are txs  that
-//    were from other apps and they were mined), return max(mined none, remote nonce)
-//    and set local nonce to max(mined none, remote nonce)
-// 5. if not, means mined nonce is smaller than both remote and local pending nonce
-//    5.1 if remote == local: means all pending txs are from this session, we return
-//        local nonce
-//    5.2 if remote > local: means there is pending txs from another app, we return
-//        remote nonce in order not to mess up with the other txs, but give a warning
-//    5.3 if local > remote: means txs from this session are not broadcasted to the
-//        the notes, return local nonce and give warnings
+//  1. get remote pending nonce
+//  2. get local pending nonce
+//  2. get mined nonce
+//  3. if mined nonce == remote == local, all good, lets return the mined nonce
+//  4. since mined nonce is always <= remote nonce, if mined nonce > local nonce,
+//     this session doesn't catch up with mined txs (in case there are txs  that
+//     were from other apps and they were mined), return max(mined none, remote nonce)
+//     and set local nonce to max(mined none, remote nonce)
+//  5. if not, means mined nonce is smaller than both remote and local pending nonce
+//     5.1 if remote == local: means all pending txs are from this session, we return
+//     local nonce
+//     5.2 if remote > local: means there is pending txs from another app, we return
+//     remote nonce in order not to mess up with the other txs, but give a warning
+//     5.3 if local > remote: means txs from this session are not broadcasted to the
+//     the notes, return local nonce and give warnings
 func (cm *ContextManager) Nonce(wallet common.Address, network Network) (*big.Int, error) {
 	reader := cm.Reader(network)
 	minedNonce, err := reader.GetMinedNonce(wallet.Hex())
@@ -259,7 +281,9 @@ func (cm *ContextManager) Nonce(wallet common.Address, network Network) (*big.In
 	hasPendingTxsOnNodes := minedNonce < remotePendingNonce
 	if !hasPendingTxsOnNodes {
 		if minedNonce > remotePendingNonce {
-			return nil, fmt.Errorf("mined nonce is higher than pending nonce, this is abnormal data from nodes, retry again later")
+			return nil, fmt.Errorf(
+				"mined nonce is higher than pending nonce, this is abnormal data from nodes, retry again later",
+			)
 		}
 		// in this case, minedNonce is supposed to == remotePendingNonce
 		if localPendingNonce <= minedNonce {
@@ -334,10 +358,14 @@ func (cm *ContextManager) GasPrice(network Network) (*GasInfo, error) {
 	return cm.getGasPriceInfo(network), nil
 }
 
-func (cm *ContextManager) BroadcastRawTx(data string) (hash string, successful bool, allErrors error) {
+func (cm *ContextManager) BroadcastRawTx(
+	data string,
+) (hash string, successful bool, allErrors error) {
 	rawTxBytes, err := hex.DecodeString(data)
 	if err != nil {
-		return "", false, fmt.Errorf("couldn't decode hex string. txdata should be in hex format WITHOUT 0x prefix")
+		return "", false, fmt.Errorf(
+			"couldn't decode hex string. txdata should be in hex format WITHOUT 0x prefix",
+		)
 	}
 
 	tx := new(types.Transaction)
@@ -345,7 +373,15 @@ func (cm *ContextManager) BroadcastRawTx(data string) (hash string, successful b
 	return cm.BroadcastTx(tx)
 }
 
-func (cm *ContextManager) BuildLegacyTx(from, to common.Address, nonce *big.Int, value *big.Int, gasLimit uint64, gasPrice float64, data []byte, network Network) (tx *types.Transaction, err error) {
+func (cm *ContextManager) BuildLegacyTx(
+	from, to common.Address,
+	nonce *big.Int,
+	value *big.Int,
+	gasLimit uint64,
+	gasPrice float64,
+	data []byte,
+	network Network,
+) (tx *types.Transaction, err error) {
 	if gasLimit == 0 {
 		gasLimit, err = cm.Reader(network).EstimateExactGas(
 			from.Hex(), to.Hex(),
@@ -354,7 +390,10 @@ func (cm *ContextManager) BuildLegacyTx(from, to common.Address, nonce *big.Int,
 			data,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("Couldn't estimate gas. The tx is meant to revert or network error. Detail: %s", err)
+			return nil, fmt.Errorf(
+				"Couldn't estimate gas. The tx is meant to revert or network error. Detail: %s",
+				err,
+			)
 		}
 	}
 
@@ -373,10 +412,21 @@ func (cm *ContextManager) BuildLegacyTx(from, to common.Address, nonce *big.Int,
 		gasPrice = gasInfo.GasPrice
 	}
 
-	return BuildExactTx(nonce.Uint64(), to.Hex(), value, gasLimit, gasPrice, data), nil
+	return BuildExactTx(
+		nonce.Uint64(),
+		to.Hex(),
+		value,
+		gasLimit+config.ExtraGasLimit,
+		gasPrice+config.ExtraGasPrice,
+		data,
+	), nil
 }
 
-func (cm *ContextManager) SignTx(wallet common.Address, tx *types.Transaction, network Network) (signedTx *types.Transaction, err error) {
+func (cm *ContextManager) SignTx(
+	wallet common.Address,
+	tx *types.Transaction,
+	network Network,
+) (signedTx *types.Transaction, err error) {
 	acc := cm.Account(wallet)
 	if acc == nil {
 		acc, err = cm.UnlockAccount(wallet)
@@ -387,7 +437,11 @@ func (cm *ContextManager) SignTx(wallet common.Address, tx *types.Transaction, n
 	return acc.SignTx(tx, big.NewInt(int64(network.GetChainID())))
 }
 
-func (cm *ContextManager) SignTxAndBroadcast(wallet common.Address, tx *types.Transaction, network Network) (signedTx *types.Transaction, successful bool, allErrors error) {
+func (cm *ContextManager) SignTxAndBroadcast(
+	wallet common.Address,
+	tx *types.Transaction,
+	network Network,
+) (signedTx *types.Transaction, successful bool, allErrors error) {
 	tx, err := cm.SignTx(wallet, tx, network)
 	if err != nil {
 		return tx, false, err
@@ -408,7 +462,9 @@ func (cm *ContextManager) registerBroadcastedTx(tx *types.Transaction, network N
 	return nil
 }
 
-func (cm *ContextManager) BroadcastTx(tx *types.Transaction) (hash string, broadcasted bool, allErrors error) {
+func (cm *ContextManager) BroadcastTx(
+	tx *types.Transaction,
+) (hash string, broadcasted bool, allErrors error) {
 	network, err := GetNetworkByID(tx.ChainId().Uint64())
 	// TODO: handle chainId 0 for old txs
 	if err != nil {

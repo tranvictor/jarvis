@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
+
 	"github.com/tranvictor/jarvis/accounts"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	. "github.com/tranvictor/jarvis/common"
@@ -327,10 +328,10 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
-      if confirmed {
+			if confirmed {
 				fmt.Printf("This tx is already confirmed but not yet executed. You should execute it instead of approving it. Continue to next tx.\n")
 				continue
-      }
+			}
 
 			data, err := a.Pack("confirmTransaction", txid)
 			if err != nil {
@@ -347,9 +348,8 @@ var batchApproveMsigCmd = &cobra.Command{
 				data,
 				network,
 			)
-
 			if err != nil {
-        fmt.Printf("Couldn't build tx: %s\n", err)
+				fmt.Printf("Couldn't build tx: %s\n", err)
 				continue
 			}
 
