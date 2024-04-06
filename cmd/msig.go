@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/tranvictor/jarvis/networks"
 	"math/big"
 	"strings"
 
@@ -31,7 +32,7 @@ var summaryMsigCmd = &cobra.Command{
 
 		multisigContract, err := msig.NewMultisigContract(
 			msigAddress,
-			config.Network(),
+			networks.CurrentNetwork(),
 		)
 		if err != nil {
 			fmt.Printf("Couldn't interact with the contract: %s\n", err)
@@ -96,7 +97,7 @@ var transactionInfoMsigCmd = &cobra.Command{
 
 		multisigContract, err := msig.NewMultisigContract(
 			msigAddress,
-			config.Network(),
+			networks.CurrentNetwork(),
 		)
 		if err != nil {
 			fmt.Printf("Couldn't interact with the contract: %s\n", err)
@@ -115,7 +116,7 @@ var transactionInfoMsigCmd = &cobra.Command{
 			return
 		}
 
-		cmdutil.AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
+		cmdutil.AnalyzeAndShowMsigTxInfo(multisigContract, txid, networks.CurrentNetwork())
 	},
 }
 
@@ -131,7 +132,7 @@ var govInfoMsigCmd = &cobra.Command{
 
 		multisigContract, err := msig.NewMultisigContract(
 			msigAddress,
-			config.Network(),
+			networks.CurrentNetwork(),
 		)
 		if err != nil {
 			fmt.Printf("Couldn't interact with the contract: %s\n", err)
@@ -187,7 +188,7 @@ func getMsigContractFromParams(args []string) (msigAddress string, err error) {
 		msigName = name
 		msigAddress = addr
 	}
-	a, err := util.GetABI(msigAddress, config.Network())
+	a, err := util.GetABI(msigAddress, networks.CurrentNetwork())
 	if err != nil {
 		fmt.Printf("Couldn't get ABI of %s from etherscan\n", msigAddress)
 		return "", err
@@ -242,13 +243,13 @@ var newMsigCmd = &cobra.Command{
 	TraverseChildren:  true,
 	PersistentPreRunE: cmdutil.CommonTxPreprocess,
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(config.Network())
+		reader, err := util.EthReader(networks.CurrentNetwork())
 		if err != nil {
 			fmt.Printf("Couldn't connect to blockchain.\n")
 			return
 		}
 
-		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+		analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
 
 		msigABI := util.GetGnosisMsigABI()
 
@@ -262,7 +263,7 @@ var newMsigCmd = &cobra.Command{
 			config.PrefillMode,
 			msigABI,
 			nil,
-			config.Network(),
+			networks.CurrentNetwork(),
 		)
 		if err != nil {
 			fmt.Printf("Couldn't pack constructor data: %s\n", err)
@@ -291,10 +292,10 @@ var newMsigCmd = &cobra.Command{
 
 		err = cmdutil.PromptTxConfirmation(
 			analyzer,
-			util.GetJarvisAddress(config.From, config.Network()),
+			util.GetJarvisAddress(config.From, networks.CurrentNetwork()),
 			tx,
 			customABIs,
-			config.Network(),
+			networks.CurrentNetwork(),
 		)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
@@ -302,7 +303,7 @@ var newMsigCmd = &cobra.Command{
 		}
 
 		fmt.Printf("== Unlock your wallet and sign now...\n")
-		account, err := accounts.UnlockAccount(config.FromAcc, config.Network())
+		account, err := accounts.UnlockAccount(config.FromAcc, networks.CurrentNetwork())
 		if err != nil {
 			fmt.Printf("Failed: %s\n", err)
 			return
@@ -324,11 +325,11 @@ var newMsigCmd = &cobra.Command{
 			tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 			if config.DontWaitToBeMined {
 				util.DisplayBroadcastedTx(
-					tx, broadcasted, err, config.Network(),
+					tx, broadcasted, err, networks.CurrentNetwork(),
 				)
 			} else {
 				util.DisplayWaitAnalyze(
-					reader, analyzer, tx, broadcasted, err, config.Network(),
+					reader, analyzer, tx, broadcasted, err, networks.CurrentNetwork(),
 					msigABI, customABIs, config.DegenMode,
 				)
 			}
@@ -364,15 +365,15 @@ var initMsigCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		reader, err := util.EthReader(config.Network())
+		reader, err := util.EthReader(networks.CurrentNetwork())
 		if err != nil {
 			fmt.Printf("Couldn't connect to blockchain.\n")
 			return
 		}
 
-		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+		analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
 
-		a, err := util.ConfigToABI(config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network())
+		a, err := util.ConfigToABI(config.MsigTo, config.ForceERC20ABI, config.CustomABI, networks.CurrentNetwork())
 		if err != nil {
 			fmt.Printf("Couldn't get abi for %s: %s. Continue:\n", config.MsigTo, err)
 		}
@@ -387,7 +388,7 @@ var initMsigCmd = &cobra.Command{
 				config.PrefillMode,
 				a,
 				nil,
-				config.Network(),
+				networks.CurrentNetwork(),
 			)
 			if err != nil {
 				fmt.Printf("Couldn't pack multisig calling data: %s\n", err)
@@ -396,7 +397,7 @@ var initMsigCmd = &cobra.Command{
 			}
 		}
 
-		msigABI, err := util.GetABI(config.To, config.Network())
+		msigABI, err := util.GetABI(config.To, networks.CurrentNetwork())
 		if err != nil {
 			fmt.Printf("Couldn't get the multisig's ABI: %s\n", err)
 			return
@@ -405,7 +406,7 @@ var initMsigCmd = &cobra.Command{
 		txdata, err := msigABI.Pack(
 			"submitTransaction",
 			HexToAddress(config.MsigTo),
-			FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()),
+			FloatToBigInt(config.MsigValue, networks.CurrentNetwork().GetNativeTokenDecimal()),
 			data,
 		)
 		if err != nil {
@@ -422,7 +423,7 @@ var initMsigCmd = &cobra.Command{
 			}
 		}
 
-		tx := BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
+		tx := BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, config.TipGas, txdata, config.TxType, networks.CurrentNetwork().GetChainID())
 
 		customABIs := map[string]*abi.ABI{
 			strings.ToLower(config.MsigTo): a,
@@ -430,10 +431,10 @@ var initMsigCmd = &cobra.Command{
 		}
 		err = cmdutil.PromptTxConfirmation(
 			analyzer,
-			util.GetJarvisAddress(config.From, config.Network()),
+			util.GetJarvisAddress(config.From, networks.CurrentNetwork()),
 			tx,
 			customABIs,
-			config.Network(),
+			networks.CurrentNetwork(),
 		)
 		if err != nil {
 			fmt.Printf("Aborted!\n")
@@ -441,7 +442,7 @@ var initMsigCmd = &cobra.Command{
 		}
 
 		fmt.Printf("== Unlock your wallet and sign now...\n")
-		account, err := accounts.UnlockAccount(config.FromAcc, config.Network())
+		account, err := accounts.UnlockAccount(config.FromAcc, networks.CurrentNetwork())
 		if err != nil {
 			fmt.Printf("Failed: %s\n", err)
 			return
@@ -463,11 +464,11 @@ var initMsigCmd = &cobra.Command{
 			tx, broadcasted, err := account.SignTxAndBroadcast(tx)
 			if config.DontWaitToBeMined {
 				util.DisplayBroadcastedTx(
-					tx, broadcasted, err, config.Network(),
+					tx, broadcasted, err, networks.CurrentNetwork(),
 				)
 			} else {
 				util.DisplayWaitAnalyze(
-					reader, analyzer, tx, broadcasted, err, config.Network(),
+					reader, analyzer, tx, broadcasted, err, networks.CurrentNetwork(),
 					msigABI, customABIs, config.DegenMode,
 				)
 			}
@@ -504,6 +505,8 @@ func init() {
 	}
 	for _, c := range writeCmds {
 		c.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
+		c.PersistentFlags().Float64VarP(&config.TipGas, "tipgas", "s", 0, "tip in gwei, will be use in dynamic fee tx, default value get from node.")
+		c.PersistentFlags().StringVarP(&config.TxType, "txtype", "X", "", "override auto detected tx type should be use(legacy|dynamicfee.")
 		c.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
 		c.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
 		c.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")

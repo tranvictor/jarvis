@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/tranvictor/jarvis/networks"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -28,13 +29,13 @@ var txCmd = &cobra.Command{
 			}
 			fmt.Printf("\n\n")
 
-			reader, err := util.EthReader(config.Network())
+			reader, err := util.EthReader(networks.CurrentNetwork())
 			if err != nil {
 				fmt.Printf("Couldn't init eth reader: %s\n", err)
 				return
 			}
 
-			analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+			analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
 
 			results := TxResults{}
 
@@ -49,7 +50,7 @@ var txCmd = &cobra.Command{
 					reader,
 					analyzer,
 					t,
-					config.Network(),
+					networks.CurrentNetwork(),
 					config.ForceERC20ABI,
 					config.CustomABI,
 					nil,

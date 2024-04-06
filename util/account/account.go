@@ -2,6 +2,7 @@ package account
 
 import (
 	"fmt"
+	"github.com/tranvictor/jarvis/config"
 	"math/big"
 	"strings"
 
@@ -22,6 +23,7 @@ type Account struct {
 	reader      *reader.EthReader
 	broadcaster *broadcaster.Broadcaster
 	address     common.Address
+	chainID     int64
 }
 
 func NewKeystoreAccountGeneric(file string, password string, reader *reader.EthReader, broadcaster *broadcaster.Broadcaster, chainID int64) (*Account, error) {
@@ -34,6 +36,7 @@ func NewKeystoreAccountGeneric(file string, password string, reader *reader.EthR
 		reader,
 		broadcaster,
 		crypto.PubkeyToAddress(key.PublicKey),
+		chainID,
 	}, nil
 }
 
@@ -47,6 +50,7 @@ func NewTrezorAccountGeneric(path string, address string, reader *reader.EthRead
 		reader,
 		broadcaster,
 		common.HexToAddress(address),
+		chainID,
 	}, nil
 }
 
@@ -60,6 +64,7 @@ func NewLedgerAccountGeneric(path string, address string, reader *reader.EthRead
 		reader,
 		broadcaster,
 		common.HexToAddress(address),
+		chainID,
 	}, nil
 }
 
@@ -99,8 +104,9 @@ func (self *Account) ListOfPendingNonces() ([]uint64, error) {
 	return result, nil
 }
 
-func (self *Account) SendETHWithNonceAndPrice(nonce uint64, gasLimit uint64, priceGwei float64, ethAmount *big.Int, to string) (tx *types.Transaction, broadcasted bool, errors error) {
-	tx = BuildExactSendETHTx(nonce, to, ethAmount, gasLimit, priceGwei)
+func (self *Account) SendETHWithNonceAndPrice(nonce uint64, gasLimit uint64, priceGwei float64, ethAmount *big.Int, to string,
+) (tx *types.Transaction, broadcasted bool, errors error) {
+	tx = BuildExactSendETHTx(nonce, to, ethAmount, gasLimit, priceGwei, config.TipGas, config.TxType, self.chainID)
 	signedTx, err := self.signer.SignTx(tx)
 	if err != nil {
 		return tx, false, fmt.Errorf("couldn't sign the tx: %s", err)

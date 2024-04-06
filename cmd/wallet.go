@@ -3,6 +3,7 @@ package cmd
 import (
 	// "bufio"
 	"fmt"
+	"github.com/tranvictor/jarvis/accounts/types"
 	"syscall"
 
 	// "os"
@@ -36,8 +37,8 @@ type HW interface {
 	Derive(path gethaccounts.DerivationPath) (common.Address, error)
 }
 
-func getAccDescsFromHW(hw HW, t string, path string) (*accounts.AccDesc, error) {
-	ret := &accounts.AccDesc{
+func getAccDescsFromHW(hw HW, t string, path string) (*types.AccDesc, error) {
+	ret := &types.AccDesc{
 		Kind: t,
 	}
 
@@ -58,8 +59,8 @@ func getAccDescsFromHW(hw HW, t string, path string) (*accounts.AccDesc, error) 
 }
 
 func handleHW(hw HW, t string) {
-	accs := []*accounts.AccDesc{}
-	var accDesc *accounts.AccDesc
+	var accs []*types.AccDesc
+	var accDesc *types.AccDesc
 	var err error
 
 	batch := 0
@@ -174,7 +175,7 @@ func getPassword(prompt string) string {
 }
 
 func handleAddKeystoreGivenPath(keystorePath string) error {
-	accDesc := &accounts.AccDesc{
+	accDesc := &types.AccDesc{
 		Address: "",
 		Kind:    "keystore",
 		Keypath: keystorePath,
