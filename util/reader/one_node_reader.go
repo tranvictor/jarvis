@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
+
 	. "github.com/tranvictor/jarvis/common"
 )
 
@@ -214,6 +215,18 @@ func (self *OneNodeReader) HeaderByNumber(number int64) (*types.Header, error) {
 	return ethcli.HeaderByNumber(timeout, numberBig)
 }
 
+func (self *OneNodeReader) SuggestedGasTipCap() (*big.Int, error) {
+	ethcli, err := self.EthClient()
+	if err != nil {
+		return nil, err
+	}
+
+	timeout, cancel := context.WithTimeout(context.Background(), TIMEOUT)
+	defer cancel()
+
+	return ethcli.SuggestGasTipCap(timeout)
+}
+
 func (self *OneNodeReader) GetLogs(fromBlock, toBlock int, addresses []string, topic string) ([]types.Log, error) {
 	ethcli, err := self.EthClient()
 	if err != nil {
@@ -230,7 +243,7 @@ func (self *OneNodeReader) GetLogs(fromBlock, toBlock int, addresses []string, t
 	}
 	q.Addresses = HexToAddresses(addresses)
 	q.Topics = [][]common.Hash{
-		[]common.Hash{HexToHash(topic)},
+		{HexToHash(topic)},
 	}
 
 	timeout, cancel := context.WithTimeout(context.Background(), TIMEOUT)

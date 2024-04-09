@@ -1,20 +1,19 @@
 package util
 
 import (
-	"context"
 	"fmt"
-	types2 "github.com/tranvictor/jarvis/accounts/types"
-	"github.com/tranvictor/jarvis/cmd/ethutil"
-	"github.com/tranvictor/jarvis/config/state"
-	"github.com/tranvictor/jarvis/networks"
 	"math/big"
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"github.com/tranvictor/jarvis/accounts"
+	types2 "github.com/tranvictor/jarvis/accounts/types"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
+	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -125,10 +124,14 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			}
 		}
 		if count == 0 {
-			return fmt.Errorf("You don't have any wallet which is this multisig signer. Please jarvis wallet add to add the wallet.")
+			return fmt.Errorf(
+				"You don't have any wallet which is this multisig signer. Please jarvis wallet add to add the wallet.",
+			)
 		}
 		if count != 1 {
-			return fmt.Errorf("You have many wallets that are this multisig signers. Please specify only 1.")
+			return fmt.Errorf(
+				"You have many wallets that are this multisig signers. Please specify only 1.",
+			)
 		}
 		config.FromAcc = acc
 		config.From = acc.Address
@@ -167,15 +170,19 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("getting nonce failed: %w", err)
 		}
 	}
-	eClient := ethutil.MustGetETHClient()
 	if config.TxType == "" {
-		if CheckDynamicFeeTxAvailable(eClient) {
+		dynamicFeeAvailable, err := reader.CheckDynamicFeeTxAvailable()
+		if err != nil {
+			return fmt.Errorf("checking if chain has dynamic fee feature failed: %w", err)
+		}
+
+		if dynamicFeeAvailable {
 			config.TxType = config.TxTypeDynamicFee
 		}
 	}
 
 	if config.TipGas == 0 && config.TxType == config.TxTypeDynamicFee {
-		suggestTip, err := eClient.SuggestGasTipCap(context.Background())
+		suggestTip, err := reader.GetSuggestedGasTipCap()
 		if err != nil {
 			return fmt.Errorf("getting tip gas failed: %w", err)
 		}
