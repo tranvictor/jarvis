@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	. "github.com/tranvictor/jarvis/networks"
@@ -27,8 +28,10 @@ const (
 	CONSTRUCTOR_METHOD_INDEX uint64 = 1000000 // assuming there is no contract with more than 1m methods
 )
 
-type NumberValidator func(number *big.Int) error
-type StringValidator func(st string) error
+type (
+	NumberValidator func(number *big.Int) error
+	StringValidator func(st string) error
+)
 
 func PromptInputWithValidation(prompter string, validator StringValidator) string {
 	reader := bufio.NewReader(os.Stdin)
@@ -299,7 +302,8 @@ func PromptTxData(
 	prefillMode bool,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	network Network) ([]byte, error) {
+	network Network,
+) ([]byte, error) {
 	method, params, err := PromptFunctionCallData(
 		analyzer,
 		contractAddress,
@@ -357,7 +361,13 @@ func PromptMethod(a *abi.ABI, methodIndex uint64, mode string) (*abi.Method, str
 		for i, m := range methods {
 			fmt.Printf("%d. %s\n", i+1, m.Name)
 		}
-		methodIndex = uint64(PromptIndex(fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)), 1, len(methods)))
+		methodIndex = uint64(
+			PromptIndex(
+				fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)),
+				1,
+				len(methods),
+			),
+		)
 		method := &methods[methodIndex-1]
 		return method, method.Name, nil
 	} else if methodIndex == CONSTRUCTOR_METHOD_INDEX {
@@ -380,8 +390,8 @@ func PromptFunctionCallData(
 	mode string,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	network Network) (method *abi.Method, params []interface{}, err error) {
-
+	network Network,
+) (method *abi.Method, params []interface{}, err error) {
 	method, methodName, err := PromptMethod(a, methodIndex, mode)
 	if err != nil {
 		return nil, nil, err
@@ -463,23 +473,45 @@ func showTxInfoToConfirm(
 
 	sendingETH := BigToFloatString(tx.Value(), network.GetNativeTokenDecimal())
 	if tx.Value().Cmp(big.NewInt(0)) > 0 {
-		fmt.Printf("Value: %s\n", InfoColor(fmt.Sprintf("%s %s", sendingETH, network.GetNativeTokenSymbol())))
+		fmt.Printf(
+			"Value: %s\n",
+			InfoColor(fmt.Sprintf("%s %s", sendingETH, network.GetNativeTokenSymbol())),
+		)
 	}
 
-	fmt.Printf(
-		"Nonce: %d  |  Gas: %.4f gwei (%d gas = %.8f %s)\n",
-		tx.Nonce(),
-		BigToFloat(tx.GasPrice(), 9),
-		tx.Gas(),
-		BigToFloat(
-			big.NewInt(0).Mul(
-				big.NewInt(int64(tx.Gas())),
-				tx.GasPrice(),
+	switch tx.Type() {
+	case types.LegacyTxType:
+		fmt.Printf(
+			"Nonce: %d  |  Gas Price: %.4f gwei (%d gas = %.8f %s)\n",
+			tx.Nonce(),
+			BigToFloat(tx.GasPrice(), 9),
+			tx.Gas(),
+			BigToFloat(
+				big.NewInt(0).Mul(
+					big.NewInt(int64(tx.Gas())),
+					tx.GasPrice(),
+				),
+				18,
 			),
-			18,
-		),
-		network.GetNativeTokenSymbol(),
-	)
+			network.GetNativeTokenSymbol(),
+		)
+	case types.DynamicFeeTxType:
+		fmt.Printf(
+			"Nonce: %d  |  Max Gas Price: %.4f gwei, Max Tip Price: %.4f gwei (%d gas = %.8f %s)\n",
+			tx.Nonce(),
+			BigToFloat(tx.GasFeeCap(), 9),
+			BigToFloat(tx.GasTipCap(), 9),
+			tx.Gas(),
+			BigToFloat(
+				big.NewInt(0).Mul(
+					big.NewInt(int64(tx.Gas())),
+					tx.GasPrice(),
+				),
+				18,
+			),
+			network.GetNativeTokenSymbol(),
+		)
+	}
 
 	if tx.To() == nil {
 		// TODO: analyzing creation tx

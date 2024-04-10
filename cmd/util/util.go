@@ -2,8 +2,13 @@ package util
 
 import (
 	"fmt"
+	"math/big"
+	"regexp"
+	"strings"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/spf13/cobra"
+
 	"github.com/tranvictor/jarvis/accounts"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
@@ -12,12 +17,13 @@ import (
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
-	"math/big"
-	"regexp"
-	"strings"
 )
 
-func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int, network networks.Network) (fc *FunctionCall, executed bool) {
+func AnalyzeAndShowMsigTxInfo(
+	multisigContract *msig.MultisigContract,
+	txid *big.Int,
+	network networks.Network,
+) (fc *FunctionCall, executed bool) {
 	fmt.Printf("========== What the multisig will do ==========\n")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
@@ -148,7 +154,10 @@ type PostProcessFunc func(fc *FunctionCall) error
 func ScanForTxs(para string) (nwks []string, addresses []string) {
 	networkNames := networks.GetSupportedNetworkNames()
 	regexStr := strings.Join(networkNames, "|")
-	regexStr = fmt.Sprintf("(?i)(?:(?P<network>%s)(?:.{0,}?))?(?P<address>(?:0x)?(?:[0-9a-fA-F]{64}))", regexStr)
+	regexStr = fmt.Sprintf(
+		"(?i)(?:(?P<network>%s)(?:.{0,}?))?(?P<address>(?:0x)?(?:[0-9a-fA-F]{64}))",
+		regexStr,
+	)
 
 	re := regexp.MustCompile(regexStr)
 
@@ -163,7 +172,12 @@ func ScanForTxs(para string) (nwks []string, addresses []string) {
 	return
 }
 
-func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args []string, postProcess PostProcessFunc) {
+func HandleApproveOrRevokeOrExecuteMsig(
+	method string,
+	cmd *cobra.Command,
+	args []string,
+	postProcess PostProcessFunc,
+) {
 	reader, err := util.EthReader(networks.CurrentNetwork())
 	if err != nil {
 		fmt.Printf("Couldn't connect to blockchain.\n")
@@ -212,7 +226,9 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 			}
 		}
 		if txid == nil {
-			fmt.Printf("The provided tx hash is not a gnosis multisig init tx or with a different multisig.\n")
+			fmt.Printf(
+				"The provided tx hash is not a gnosis multisig init tx or with a different multisig.\n",
+			)
 			return
 		}
 	}
@@ -264,7 +280,15 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		}
 	}
 
-	tx := BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
+	tx := BuildExactTx(
+		config.Nonce,
+		config.To,
+		config.Value,
+		config.GasLimit+config.ExtraGasLimit,
+		config.GasPrice+config.ExtraGasPrice,
+		config.TipGas,
+		data,
+	)
 
 	err = PromptTxConfirmation(
 		analyzer,

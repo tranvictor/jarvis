@@ -9,8 +9,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
+
 	"github.com/tranvictor/jarvis/common"
 )
 
@@ -29,17 +29,17 @@ func (self *Broadcaster) GetNodes() map[string]*rpc.Client {
 func (self *Broadcaster) broadcast(
 	ctx context.Context,
 	id string, client *rpc.Client, data string,
-	wg *sync.WaitGroup, failures *sync.Map) {
+	wg *sync.WaitGroup, failures *sync.Map,
+) {
 	defer wg.Done()
 	err := client.CallContext(ctx, nil, "eth_sendRawTransaction", data)
-
 	if err != nil {
 		failures.Store(id, err)
 	}
 }
 
 func (self *Broadcaster) BroadcastTx(tx *types.Transaction) (string, bool, error) {
-	data, err := rlp.EncodeToBytes(tx)
+	data, err := tx.MarshalBinary()
 	if err != nil {
 		return "", false, makeError(map[string]error{
 			"tx": fmt.Errorf("Tx is not valid, couldn't use rlp to encode it"),
@@ -52,7 +52,7 @@ func (self *Broadcaster) BroadcastTx(tx *types.Transaction) (string, bool, error
 func (self *Broadcaster) Broadcast(data string) (string, bool, error) {
 	failures := sync.Map{}
 	wg := sync.WaitGroup{}
-	for id, _ := range self.clients {
+	for id := range self.clients {
 		wg.Add(1)
 		timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 		cli := self.clients[id]
@@ -75,7 +75,12 @@ func (self *Broadcaster) Broadcast(data string) (string, bool, error) {
 		result[k] = err
 		return true
 	})
-	return common.RawTxToHash(data), len(result) != len(self.clients) && len(self.clients) > 0, makeError(result)
+	return common.RawTxToHash(
+			data,
+		), len(result) != len(self.clients) &&
+			len(self.clients) > 0, makeError(
+			result,
+		)
 }
 
 func NewGenericBroadcaster(nodes map[string]string) *Broadcaster {
