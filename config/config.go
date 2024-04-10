@@ -1,22 +1,19 @@
 package config
 
 import (
-	"github.com/tranvictor/jarvis/accounts/types"
 	"math/big"
+
+	"github.com/tranvictor/jarvis/accounts/types"
 )
 
-var Debug bool
-var DegenMode bool
-
-const (
-	TxTypeLegacy     = "legacy"
-	TxTypeDynamicFee = "dynamicfee"
+var (
+	Debug     bool
+	DegenMode bool
 )
 
 var (
 	GasPrice      float64
 	TipGas        float64
-	TxType        string
 	ExtraGasPrice float64
 	GasLimit      uint64
 	ExtraGasLimit uint64
