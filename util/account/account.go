@@ -2,7 +2,6 @@ package account
 
 import (
 	"fmt"
-	"github.com/tranvictor/jarvis/config"
 	"math/big"
 	"strings"
 
@@ -11,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/util/account/ledgereum"
 	"github.com/tranvictor/jarvis/util/account/trezoreum"
@@ -26,7 +26,13 @@ type Account struct {
 	chainID     int64
 }
 
-func NewKeystoreAccountGeneric(file string, password string, reader *reader.EthReader, broadcaster *broadcaster.Broadcaster, chainID int64) (*Account, error) {
+func NewKeystoreAccountGeneric(
+	file string,
+	password string,
+	reader *reader.EthReader,
+	broadcaster *broadcaster.Broadcaster,
+	chainID int64,
+) (*Account, error) {
 	_, key, err := PrivateKeyFromKeystore(file, password)
 	if err != nil {
 		return nil, err
@@ -40,7 +46,13 @@ func NewKeystoreAccountGeneric(file string, password string, reader *reader.EthR
 	}, nil
 }
 
-func NewTrezorAccountGeneric(path string, address string, reader *reader.EthReader, broadcaster *broadcaster.Broadcaster, chainID int64) (*Account, error) {
+func NewTrezorAccountGeneric(
+	path string,
+	address string,
+	reader *reader.EthReader,
+	broadcaster *broadcaster.Broadcaster,
+	chainID int64,
+) (*Account, error) {
 	signer, err := trezoreum.NewTrezorSignerGeneric(path, address, chainID)
 	if err != nil {
 		return nil, err
@@ -54,7 +66,13 @@ func NewTrezorAccountGeneric(path string, address string, reader *reader.EthRead
 	}, nil
 }
 
-func NewLedgerAccountGeneric(path string, address string, reader *reader.EthReader, broadcaster *broadcaster.Broadcaster, chainID int64) (*Account, error) {
+func NewLedgerAccountGeneric(
+	path string,
+	address string,
+	reader *reader.EthReader,
+	broadcaster *broadcaster.Broadcaster,
+	chainID int64,
+) (*Account, error) {
 	signer, err := ledgereum.NewLedgerSignerGeneric(path, address, chainID)
 	if err != nil {
 		return nil, err
@@ -104,9 +122,23 @@ func (self *Account) ListOfPendingNonces() ([]uint64, error) {
 	return result, nil
 }
 
-func (self *Account) SendETHWithNonceAndPrice(nonce uint64, gasLimit uint64, priceGwei float64, ethAmount *big.Int, to string,
+func (self *Account) SendETHWithNonceAndPrice(
+	nonce uint64,
+	gasLimit uint64,
+	priceGwei float64,
+	tipCapGwei float64,
+	ethAmount *big.Int,
+	to string,
 ) (tx *types.Transaction, broadcasted bool, errors error) {
-	tx = BuildExactSendETHTx(nonce, to, ethAmount, gasLimit, priceGwei, config.TipGas, config.TxType, self.chainID)
+	tx = BuildExactSendETHTx(
+		nonce,
+		to,
+		ethAmount,
+		gasLimit,
+		priceGwei,
+		tipCapGwei,
+		self.chainID,
+	)
 	signedTx, err := self.signer.SignTx(tx)
 	if err != nil {
 		return tx, false, fmt.Errorf("couldn't sign the tx: %s", err)
@@ -123,7 +155,11 @@ func (self *Account) ETHBalance() (*big.Int, error) {
 	return self.reader.GetBalance(self.Address())
 }
 
-func (self *Account) SendAllETHWithPrice(priceGwei float64, to string) (tx *types.Transaction, broadcasted bool, errors error) {
+func (self *Account) SendAllETHWithPrice(
+	priceGwei float64,
+	tipCapGwei float64,
+	to string,
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get nonce: %s", err)
@@ -132,11 +168,14 @@ func (self *Account) SendAllETHWithPrice(priceGwei float64, to string) (tx *type
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get balance: %s", err)
 	}
-	amount := balance.Sub(balance, big.NewInt(0).Mul(big.NewInt(30000), FloatToBigInt(priceGwei, 9)))
+	amount := balance.Sub(
+		balance,
+		big.NewInt(0).Mul(big.NewInt(30000), FloatToBigInt(priceGwei, 9)),
+	)
 	if amount.Cmp(big.NewInt(0)) != 1 {
 		return nil, false, fmt.Errorf("not enough to do a tx with gas price: %f gwei", priceGwei)
 	}
-	return self.SendETHWithNonceAndPrice(nonce, 30000, priceGwei, amount, to)
+	return self.SendETHWithNonceAndPrice(nonce, 30000, priceGwei, tipCapGwei, amount, to)
 }
 
 func (self *Account) SendAllETH(to string) (tx *types.Transaction, broadcasted bool, errors error) {
@@ -144,7 +183,7 @@ func (self *Account) SendAllETH(to string) (tx *types.Transaction, broadcasted b
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get nonce: %s", err)
 	}
-	priceGwei, err := self.reader.RecommendedGasPrice()
+	priceGwei, tipCapGwei, err := self.reader.SuggestedGasSettings()
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get recommended gas price: %s", err)
 	}
@@ -152,14 +191,21 @@ func (self *Account) SendAllETH(to string) (tx *types.Transaction, broadcasted b
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get balance: %s", err)
 	}
-	amount := balance.Sub(balance, big.NewInt(0).Mul(big.NewInt(30000), FloatToBigInt(priceGwei, 9)))
+	amount := balance.Sub(
+		balance,
+		big.NewInt(0).Mul(big.NewInt(30000), FloatToBigInt(priceGwei, 9)),
+	)
 	if amount.Cmp(big.NewInt(0)) != 1 {
 		return nil, false, fmt.Errorf("not enough to do a tx with gas price: %f gwei", priceGwei)
 	}
-	return self.SendETHWithNonceAndPrice(nonce, 30000, priceGwei, amount, to)
+	return self.SendETHWithNonceAndPrice(nonce, 30000, priceGwei, tipCapGwei, amount, to)
 }
 
-func (self *Account) SetERC20Allowance(tokenAddr string, spender string, tokenAmount float64) (tx *types.Transaction, broadcasted bool, errors error) {
+func (self *Account) SetERC20Allowance(
+	tokenAddr string,
+	spender string,
+	tokenAmount float64,
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	decimals, err := self.reader.ERC20Decimal(tokenAddr)
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get token decimal: %s", err)
@@ -170,7 +216,10 @@ func (self *Account) SetERC20Allowance(tokenAddr string, spender string, tokenAm
 		HexToAddress(spender), amount)
 }
 
-func (self *Account) SendAllERC20(tokenAddr string, to string) (tx *types.Transaction, broadcasted bool, errors error) {
+func (self *Account) SendAllERC20(
+	tokenAddr string,
+	to string,
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	balance, err := self.ERC20Balance(tokenAddr)
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get token balance: %s", err)
@@ -178,7 +227,11 @@ func (self *Account) SendAllERC20(tokenAddr string, to string) (tx *types.Transa
 	return self.CallERC20Contract(150000, 0, tokenAddr, "transfer", HexToAddress(to), balance)
 }
 
-func (self *Account) SendERC20(tokenAddr string, tokenAmount float64, to string) (tx *types.Transaction, broadcasted bool, errors error) {
+func (self *Account) SendERC20(
+	tokenAddr string,
+	tokenAmount float64,
+	to string,
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	decimals, err := self.reader.ERC20Decimal(tokenAddr)
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get token decimal: %s", err)
@@ -187,28 +240,34 @@ func (self *Account) SendERC20(tokenAddr string, tokenAmount float64, to string)
 	return self.CallERC20Contract(150000, 0, tokenAddr, "transfer", HexToAddress(to), amount)
 }
 
-func (self *Account) SendETH(ethAmount float64, to string) (tx *types.Transaction, broadcasted bool, errors error) {
+func (self *Account) SendETH(
+	ethAmount float64,
+	to string,
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get nonce: %s", err)
 	}
-	priceGwei, err := self.reader.RecommendedGasPrice()
+	priceGwei, tipCapGwei, err := self.reader.SuggestedGasSettings()
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get recommended gas price: %s", err)
 	}
 	amount := FloatToBigInt(ethAmount, 18)
-	return self.SendETHWithNonceAndPrice(nonce, 30000, priceGwei, amount, to)
+	return self.SendETHWithNonceAndPrice(nonce, 30000, priceGwei, tipCapGwei, amount, to)
 }
 
-func (self *Account) SendETHToMultipleAddressesWithPrice(priceGwei float64, amounts []float64, addresses []string) (txs []*types.Transaction, broadcasteds []bool, errors []error) {
+func (self *Account) SendETHToMultipleAddressesWithPrice(
+	priceGwei float64,
+	tipCapGwei float64,
+	amounts []float64,
+	addresses []string,
+) (txs []*types.Transaction, broadcasteds []bool, errors []error) {
 	if len(amounts) != len(addresses) {
 		panic("amounts and addresses must have the same length")
-		return
 	}
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		panic(fmt.Errorf("cannot get nonce: %s", err))
-		return
 	}
 	txs = []*types.Transaction{}
 	broadcasteds = []bool{}
@@ -216,7 +275,14 @@ func (self *Account) SendETHToMultipleAddressesWithPrice(priceGwei float64, amou
 	for i, addr := range addresses {
 		amount := amounts[i]
 		newNonce := nonce + uint64(i)
-		tx, broadcasted, e := self.SendETHWithNonceAndPrice(newNonce, 30000, priceGwei, FloatToBigInt(amount, 18), addr)
+		tx, broadcasted, e := self.SendETHWithNonceAndPrice(
+			newNonce,
+			30000,
+			priceGwei,
+			tipCapGwei,
+			FloatToBigInt(amount, 18),
+			addr,
+		)
 		txs = append(txs, tx)
 		broadcasteds = append(broadcasteds, broadcasted)
 		errors = append(errors, e)
@@ -224,17 +290,18 @@ func (self *Account) SendETHToMultipleAddressesWithPrice(priceGwei float64, amou
 	return txs, broadcasteds, errors
 }
 
-func (self *Account) SendETHToMultipleAddresses(amounts []float64, addresses []string) (txs []*types.Transaction, broadcasteds []bool, errors []error) {
+func (self *Account) SendETHToMultipleAddresses(
+	amounts []float64,
+	addresses []string,
+) (txs []*types.Transaction, broadcasteds []bool, errors []error) {
 	if len(amounts) != len(addresses) {
 		panic("amounts and addresses must have the same length")
-		return
 	}
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		panic(fmt.Errorf("cannot get nonce: %s", err))
-		return
 	}
-	priceGwei, err := self.reader.RecommendedGasPrice()
+	priceGwei, tipCapGwei, err := self.reader.SuggestedGasSettings()
 	if err != nil {
 		panic(fmt.Errorf("cannot get recommended gas price: %s", err))
 	}
@@ -244,7 +311,14 @@ func (self *Account) SendETHToMultipleAddresses(amounts []float64, addresses []s
 	for i, addr := range addresses {
 		amount := amounts[i]
 		newNonce := nonce + uint64(i)
-		tx, broadcasted, e := self.SendETHWithNonceAndPrice(newNonce, 30000, priceGwei, FloatToBigInt(amount, 18), addr)
+		tx, broadcasted, e := self.SendETHWithNonceAndPrice(
+			newNonce,
+			30000,
+			priceGwei,
+			tipCapGwei,
+			FloatToBigInt(amount, 18),
+			addr,
+		)
 		txs = append(txs, tx)
 		broadcasteds = append(broadcasteds, broadcasted)
 		errors = append(errors, e)
@@ -253,57 +327,71 @@ func (self *Account) SendETHToMultipleAddresses(amounts []float64, addresses []s
 }
 
 func (self *Account) CallERC20ContractWithPrice(
-	priceGwei float64, extraGas uint64, value float64, caddr string, function string,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, errors error) {
+	priceGwei float64, tipCapGwei float64, extraGas uint64, value float64,
+	caddr string, function string,
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get nonce: %s", err)
 	}
 	return self.CallERC20ContractWithNonceAndPrice(
-		nonce, priceGwei, extraGas, value, caddr, function, params...)
+		nonce, priceGwei, tipCapGwei, extraGas, value, caddr, function, params...)
 }
 
 func (self *Account) CallContractWithPrice(
-	priceGwei float64, extraGas uint64, value float64, caddr string, function string,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, errors error) {
+	priceGwei float64,
+	tipCapGwei float64,
+	extraGas uint64,
+	value float64,
+	caddr string,
+	function string,
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get nonce: %s", err)
 	}
 	return self.CallContractWithNonceAndPrice(
-		nonce, priceGwei, extraGas, value, caddr, function, params...)
+		nonce, priceGwei, tipCapGwei, extraGas, value, caddr, function, params...)
 }
 
 func (self *Account) CallERC20Contract(
 	extraGas uint64,
 	value float64, caddr string, function string,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, errors error) {
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get nonce: %s", err)
 	}
-	priceGwei, err := self.reader.RecommendedGasPrice()
+
+	priceGwei, tipCapGwei, err := self.reader.SuggestedGasSettings()
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot get recommended gas price: %s", err)
+		return nil, false, fmt.Errorf("cannot get recommended gas settings: %s", err)
 	}
+
 	return self.CallERC20ContractWithNonceAndPrice(
-		nonce, priceGwei, extraGas, value, caddr, function, params...)
+		nonce, priceGwei, tipCapGwei, extraGas, value, caddr, function, params...)
 }
 
 func (self *Account) CallContract(
 	extraGas uint64,
 	value float64, caddr string, function string,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, errors error) {
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get nonce: %s", err)
 	}
-	priceGwei, err := self.reader.RecommendedGasPrice()
+
+	priceGwei, tipCapGwei, err := self.reader.SuggestedGasSettings()
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot get recommended gas price: %s", err)
+		return nil, false, fmt.Errorf("cannot get recommended gas settings: %s", err)
 	}
+
 	return self.CallContractWithNonceAndPrice(
-		nonce, priceGwei, extraGas, value, caddr, function, params...)
+		nonce, priceGwei, tipCapGwei, extraGas, value, caddr, function, params...)
 }
 
 func (self *Account) PackERC20Data(function string, params ...interface{}) ([]byte, error) {
@@ -311,11 +399,19 @@ func (self *Account) PackERC20Data(function string, params ...interface{}) ([]by
 	return abi.Pack(function, params...)
 }
 
-func (self *Account) PackDataWithABI(a *abi.ABI, function string, params ...interface{}) ([]byte, error) {
+func (self *Account) PackDataWithABI(
+	a *abi.ABI,
+	function string,
+	params ...interface{},
+) ([]byte, error) {
 	return a.Pack(function, params...)
 }
 
-func (self *Account) PackData(caddr string, function string, params ...interface{}) ([]byte, error) {
+func (self *Account) PackData(
+	caddr string,
+	function string,
+	params ...interface{},
+) ([]byte, error) {
 	abi, err := self.reader.GetABI(caddr)
 	if err != nil {
 		return []byte{}, fmt.Errorf("Cannot get ABI from scanner for %s", caddr)
@@ -324,9 +420,10 @@ func (self *Account) PackData(caddr string, function string, params ...interface
 }
 
 func (self *Account) CallERC20ContractWithNonceAndPrice(
-	nonce uint64, priceGwei float64, extraGas uint64,
+	nonce uint64, priceGwei float64, tipCapGwei float64, extraGas uint64,
 	value float64, caddr string, function string,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, errors error) {
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	if value < 0 {
 		panic("value must be non-negative")
 	}
@@ -340,7 +437,7 @@ func (self *Account) CallERC20ContractWithNonceAndPrice(
 		return nil, false, fmt.Errorf("Cannot estimate gas: %s", err)
 	}
 	gasLimit += extraGas
-	tx = BuildTx(nonce, caddr, value, gasLimit, priceGwei, data)
+	tx = BuildTx(nonce, caddr, value, gasLimit, priceGwei, tipCapGwei, data)
 	signedTx, err := self.signer.SignTx(tx)
 	if err != nil {
 		return tx, false, fmt.Errorf("couldn't sign the tx: %s", err)
@@ -351,24 +448,30 @@ func (self *Account) CallERC20ContractWithNonceAndPrice(
 
 func (self *Account) DeployContract(
 	extraGas uint64, value float64, abiJson string, bytecode []byte,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, caddr common.Address, errors error) {
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, caddr common.Address, errors error) {
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		return nil, false, common.Address{}, fmt.Errorf("cannot get nonce: %s", err)
 	}
-	priceGwei, err := self.reader.RecommendedGasPrice()
+
+	priceGwei, tipCapGwei, err := self.reader.SuggestedGasSettings()
 	if err != nil {
-		return nil, false, common.Address{}, fmt.Errorf("cannot get recommended gas price: %s", err)
+		return nil, false, common.Address{}, fmt.Errorf(
+			"cannot get recommended gas settings: %s",
+			err,
+		)
 	}
+
 	return self.DeployContractWithNonceAndPrice(
-		nonce, priceGwei, extraGas, value, abiJson, bytecode,
-		params...)
+		nonce, priceGwei, tipCapGwei, extraGas, value, abiJson, bytecode, params...)
 }
 
 func (self *Account) DeployContractWithNonceAndPrice(
-	nonce uint64, priceGwei float64, extraGas uint64,
+	nonce uint64, priceGwei float64, tipCapGwei float64, extraGas uint64,
 	value float64, abiJson string, bytecode []byte,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, caddr common.Address, errors error) {
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, caddr common.Address, errors error) {
 	a, err := abi.JSON(strings.NewReader(abiJson))
 	if err != nil {
 		return nil, false, common.Address{}, err
@@ -388,7 +491,7 @@ func (self *Account) DeployContractWithNonceAndPrice(
 	gasLimit += extraGas
 
 	amount := FloatToBigInt(value, 18)
-	tx = BuildContractCreationTx(nonce, amount, gasLimit, priceGwei, data)
+	tx = BuildContractCreationTx(nonce, amount, gasLimit, priceGwei, tipCapGwei, data)
 	signedTx, err := self.signer.SignTx(tx)
 	if err != nil {
 		return tx, false, common.Address{}, fmt.Errorf("couldn't sign the tx: %s", err)
@@ -401,25 +504,26 @@ func (self *Account) DeployContractWithNonceAndPrice(
 func (self *Account) CallContractWithABI(
 	a *abi.ABI, extraGas uint64,
 	value float64, caddr string, function string,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, errors error) {
-
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	nonce, err := self.GetMinedNonce()
 	if err != nil {
 		return nil, false, fmt.Errorf("cannot get nonce: %s", err)
 	}
-	priceGwei, err := self.reader.RecommendedGasPrice()
+
+	priceGwei, tipCapGwei, err := self.reader.SuggestedGasSettings()
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot get recommended gas price: %s", err)
+		return nil, false, fmt.Errorf("cannot get recommended gas settings: %s", err)
 	}
 	return self.CallContractWithABINonceAndPrice(
-		a, nonce, priceGwei, extraGas, value, caddr, function, params...)
+		a, nonce, priceGwei, tipCapGwei, extraGas, value, caddr, function, params...)
 }
 
 func (self *Account) CallContractWithABINonceAndPrice(
-	a *abi.ABI, nonce uint64, priceGwei float64, extraGas uint64,
+	a *abi.ABI, nonce uint64, priceGwei float64, tipCapGwei float64, extraGas uint64,
 	value float64, caddr string, function string,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, errors error) {
-
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	if value < 0 {
 		panic("value must be non-negative")
 	}
@@ -433,14 +537,15 @@ func (self *Account) CallContractWithABINonceAndPrice(
 		return nil, false, fmt.Errorf("Cannot estimate gas: %s", err)
 	}
 	gasLimit += extraGas
-	tx = BuildTx(nonce, caddr, value, gasLimit, priceGwei, data)
+	tx = BuildTx(nonce, caddr, value, gasLimit, priceGwei, tipCapGwei, data)
 	return self.SignTxAndBroadcast(tx)
 }
 
 func (self *Account) CallContractWithNonceAndPrice(
-	nonce uint64, priceGwei float64, extraGas uint64,
+	nonce uint64, priceGwei float64, tipCapGwei float64, extraGas uint64,
 	value float64, caddr string, function string,
-	params ...interface{}) (tx *types.Transaction, broadcasted bool, errors error) {
+	params ...interface{},
+) (tx *types.Transaction, broadcasted bool, errors error) {
 	if value < 0 {
 		panic("value must be non-negative")
 	}
@@ -454,7 +559,7 @@ func (self *Account) CallContractWithNonceAndPrice(
 		return nil, false, fmt.Errorf("Cannot estimate gas: %s", err)
 	}
 	gasLimit += extraGas
-	tx = BuildTx(nonce, caddr, value, gasLimit, priceGwei, data)
+	tx = BuildTx(nonce, caddr, value, gasLimit, priceGwei, tipCapGwei, data)
 	return self.SignTxAndBroadcast(tx)
 }
 

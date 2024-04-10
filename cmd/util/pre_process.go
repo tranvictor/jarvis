@@ -170,23 +170,18 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("getting nonce failed: %w", err)
 		}
 	}
-	if config.TxType == "" {
-		dynamicFeeAvailable, err := reader.CheckDynamicFeeTxAvailable()
-		if err != nil {
-			return fmt.Errorf("checking if chain has dynamic fee feature failed: %w", err)
-		}
 
-		if dynamicFeeAvailable {
-			config.TxType = config.TxTypeDynamicFee
-		}
+	isDynamicFeeAvailable, err := reader.CheckDynamicFeeTxAvailable()
+	if err != nil {
+		return fmt.Errorf("checking if chain has dynamic fee feature failed: %w", err)
 	}
 
-	if config.TipGas == 0 && config.TxType == config.TxTypeDynamicFee {
-		suggestTip, err := reader.GetSuggestedGasTipCap()
+	if isDynamicFeeAvailable {
+		config.TipGas, err = reader.GetSuggestedGasTipCap()
 		if err != nil {
 			return fmt.Errorf("getting tip gas failed: %w", err)
 		}
-		config.TipGas = BigToFloat(suggestTip, 9)
 	}
+
 	return nil
 }

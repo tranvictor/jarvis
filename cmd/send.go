@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	types2 "github.com/tranvictor/jarvis/accounts/types"
-	"github.com/tranvictor/jarvis/networks"
 	"math/big"
 	"os"
 	"strings"
@@ -13,22 +11,27 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
+
 	"github.com/tranvictor/jarvis/accounts"
+	types2 "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
+	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
-var to string
-var amountStr string
-var amountWei *big.Int
-var value string
-var tokenAddr string
-var currency string
-var err error
+var (
+	to        string
+	amountStr string
+	amountWei *big.Int
+	value     string
+	tokenAddr string
+	currency  string
+	err       error
+)
 
 func handleMsigSend(
 	cmd *cobra.Command, args []string,
@@ -52,7 +55,15 @@ func handleMsigSend(
 
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
 
-	t = BuildExactTx(config.Nonce, to, big.NewInt(0), config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
+	t = BuildExactTx(
+		config.Nonce,
+		to,
+		big.NewInt(0),
+		config.GasLimit+config.ExtraGasLimit,
+		config.GasPrice+config.ExtraGasPrice,
+		config.TipGas,
+		txdata,
+	)
 
 	err = cmdutil.PromptTxConfirmation(
 		analyzer,
@@ -125,7 +136,15 @@ func handleSend(
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
 
 	if tokenAddr == util.ETH_ADDR {
-		t = BuildExactTx(config.Nonce, to, amountWei, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, []byte{})
+		t = BuildExactTx(
+			config.Nonce,
+			to,
+			amountWei,
+			config.GasLimit+config.ExtraGasLimit,
+			config.GasPrice+config.ExtraGasPrice,
+			config.TipGas,
+			[]byte{},
+		)
 	} else {
 		a = GetERC20ABI()
 		data, err := a.Pack(
@@ -137,7 +156,15 @@ func handleSend(
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
 		}
-		t = BuildExactTx(config.Nonce, tokenAddr, big.NewInt(0), config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, data)
+		t = BuildExactTx(
+			config.Nonce,
+			tokenAddr,
+			big.NewInt(0),
+			config.GasLimit+config.ExtraGasLimit,
+			config.GasPrice+config.ExtraGasPrice,
+			config.TipGas,
+			data,
+		)
 	}
 
 	err = cmdutil.PromptTxConfirmation(
@@ -399,7 +426,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 
 func init() {
 	// sendCmd represents the send command
-	var sendCmd = &cobra.Command{
+	sendCmd := &cobra.Command{
 		Use:   "send",
 		Short: "Send eth or erc20 token from your account/multisig to others",
 		Long: `Send eth or erc20 token from your account or multisig to other accounts.
@@ -453,7 +480,6 @@ exact addresses start with 0x.`,
 			}
 
 			reader, err := util.EthReader(networks.CurrentNetwork())
-
 			if err != nil {
 				fmt.Printf("Couldn't establish connection to node: %s\n", err)
 				return
@@ -466,6 +492,27 @@ exact addresses start with 0x.`,
 					return
 				}
 			}
+
+			isDynamicFeeAvailable, err := reader.CheckDynamicFeeTxAvailable()
+			if err != nil {
+				fmt.Printf("Couldn't check if the chain support dynamic fee: %s\n", err)
+				return
+			}
+
+			if !isDynamicFeeAvailable && config.TipGas > 0 {
+				fmt.Printf("The chain doesn't support dynamic fee tx, ignore tip gas parameter.\n")
+			}
+
+			if isDynamicFeeAvailable {
+				if config.TipGas == 0 {
+					config.TipGas, err = reader.GetSuggestedGasTipCap()
+					if err != nil {
+						fmt.Printf("Couldn't estimate recommended gas price: %s\n", err)
+						return
+					}
+				}
+			}
+
 			// var GasLimit uint64
 			if config.GasLimit == 0 {
 				if tokenAddr == util.ETH_ADDR {
@@ -568,7 +615,6 @@ exact addresses start with 0x.`,
 
 	sendCmd.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
 	sendCmd.PersistentFlags().Float64VarP(&config.TipGas, "tipgas", "s", 0, "tip in gwei, will be use in dynamic fee tx, default value get from node.")
-	sendCmd.PersistentFlags().StringVarP(&config.TxType, "txtype", "T", "", "override auto detected tx type should be use(legacy|dynamicfee.")
 	sendCmd.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
 	sendCmd.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
 	// sendCmd.PersistentFlags().Uint64VarP(&ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")

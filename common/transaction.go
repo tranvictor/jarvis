@@ -8,7 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/networks"
 )
 
@@ -24,13 +23,14 @@ func BuildExactTx(
 	ethAmount *big.Int,
 	gasLimit uint64,
 	priceGwei float64,
+	tipCapGwei float64,
 	data []byte,
 ) (tx *types.Transaction) {
 	toAddress := common.HexToAddress(to)
 	gasPrice := GweiToWei(priceGwei)
-	tipInt := GweiToWei(config.TipGas)
+	tipInt := GweiToWei(tipCapGwei)
 	chainIDInt := big.NewInt(networks.CurrentNetwork().GetChainID())
-	if config.TxType == config.TxTypeDynamicFee {
+	if tipInt.Cmp(common.Big0) > 0 { // dynamyc fee tx
 		return types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainIDInt,
 			Nonce:     nonce,
@@ -59,10 +59,11 @@ func BuildTx(
 	ethAmount float64,
 	gasLimit uint64,
 	priceGwei float64,
+	tipCapGwei float64,
 	data []byte,
 ) (tx *types.Transaction) {
 	amount := FloatToBigInt(ethAmount, 18)
-	return BuildExactTx(nonce, to, amount, gasLimit, priceGwei, data)
+	return BuildExactTx(nonce, to, amount, gasLimit, priceGwei, tipCapGwei, data)
 }
 
 func BuildExactSendETHTx(
@@ -71,11 +72,10 @@ func BuildExactSendETHTx(
 	ethAmount *big.Int,
 	gasLimit uint64,
 	priceGwei float64,
-	tipGas float64,
-	txType string,
+	tipCapGwei float64,
 	chainID int64,
 ) (tx *types.Transaction) {
-	return BuildExactTx(nonce, to, ethAmount, gasLimit, priceGwei, []byte{})
+	return BuildExactTx(nonce, to, ethAmount, gasLimit, priceGwei, tipCapGwei, []byte{})
 }
 
 func BuildContractCreationTx(
@@ -83,12 +83,13 @@ func BuildContractCreationTx(
 	ethAmount *big.Int,
 	gasLimit uint64,
 	priceGwei float64,
+	tipCapGwei float64,
 	data []byte,
 ) (tx *types.Transaction) {
 	gasPrice := GweiToWei(priceGwei)
-	tipInt := GweiToWei(config.TipGas)
+	tipInt := GweiToWei(tipCapGwei)
 	chainIDInt := big.NewInt(networks.CurrentNetwork().GetChainID())
-	if config.TxType == config.TxTypeDynamicFee {
+	if tipInt.Cmp(common.Big0) > 0 { // dynamyc fee tx
 		return types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainIDInt,
 			Nonce:     nonce,
