@@ -30,7 +30,7 @@ func (self *arbitrumMainnet) GetName() string {
 	return "arbitrum"
 }
 
-func (self *arbitrumMainnet) GetChainID() int64 {
+func (self *arbitrumMainnet) GetChainID() uint64 {
 	return 42161
 }
 
@@ -42,7 +42,7 @@ func (self *arbitrumMainnet) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *arbitrumMainnet) GetNativeTokenDecimal() int64 {
+func (self *arbitrumMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 
@@ -56,8 +56,9 @@ func (self *arbitrumMainnet) GetNodeVariableName() string {
 
 func (self *arbitrumMainnet) GetDefaultNodes() map[string]string {
 	return map[string]string{
-		"alchemy-arbitrum": "https://arb-mainnet.g.alchemy.com/v2/PGAWvp9KLZbqjvap-iingGj-Id7HM_Yn",
-		"arbitrum.io": "https://arb1.arbitrum.io/rpc",
+		"infura":           "https://arb1.arbitrum.io/rpc",
+		// "alchemy-arbitrum": "https://arb-mainnet.g.alchemy.com/v2/PGAWvp9KLZbqjvap-iingGj-Id7HM_Yn",
+		// "arbitrum.io":      "https://arb1.arbitrum.io/rpc",
 	}
 }
 

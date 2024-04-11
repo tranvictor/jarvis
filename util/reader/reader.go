@@ -128,37 +128,42 @@ func (self *EthReader) GetCode(address string) (code []byte, err error) {
 
 func (self *EthReader) TxInfoFromHash(tx string) (TxInfo, error) {
 	txObj, isPending, err := self.TransactionByHash(tx)
+
+	PrintElapseTime(Start, "(L2) after get tx info from hash")
+
 	if err != nil {
-		return TxInfo{"error", nil, nil, nil, nil}, err
+		return TxInfo{"error", nil, nil, nil}, err
 	}
 	if txObj == nil {
-		return TxInfo{"notfound", nil, nil, nil, nil}, nil
+		return TxInfo{"notfound", nil, nil, nil}, nil
+	}
+	if isPending {
+		return TxInfo{"pending", txObj, nil, nil}, nil
+	}
+
+	receipt, err := self.TransactionReceipt(tx)
+
+	PrintElapseTime(Start, "(L2) after get tx receipt from hash")
+
+	if receipt == nil {
+		return TxInfo{"pending", txObj, nil, nil}, err
+	}
+
+	// block, _ := self.HeaderByNumber(receipt.BlockNumber.Int64())
+	// only byzantium has status field at the moment
+	// mainnet, ropsten are byzantium, other chains such as
+	// devchain, kovan are not.
+	// if PostState is a hash, it is pre-byzantium and all
+	// txs with PostState are considered done
+	if len(receipt.PostState) == len(common.Hash{}) {
+		return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
 	} else {
-		if isPending {
-			return TxInfo{"pending", txObj, nil, nil, nil}, nil
-		} else {
-			receipt, _ := self.TransactionReceipt(tx)
-			if receipt == nil {
-				return TxInfo{"pending", txObj, nil, nil, nil}, nil
-			} else {
-				block, _ := self.HeaderByNumber(receipt.BlockNumber.Int64())
-				// only byzantium has status field at the moment
-				// mainnet, ropsten are byzantium, other chains such as
-				// devchain, kovan are not.
-				// if PostState is a hash, it is pre-byzantium and all
-				// txs with PostState are considered done
-				if len(receipt.PostState) == len(common.Hash{}) {
-					return TxInfo{"done", txObj, []InternalTx{}, receipt, block}, nil
-				} else {
-					if receipt.Status == 1 {
-						// successful tx
-						return TxInfo{"done", txObj, []InternalTx{}, receipt, block}, nil
-					}
-					// failed tx
-					return TxInfo{"reverted", txObj, []InternalTx{}, receipt, block}, nil
-				}
-			}
+		if receipt.Status == 1 {
+			// successful tx
+			return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
 		}
+		// failed tx
+		return TxInfo{"reverted", txObj, []InternalTx{}, receipt}, nil
 	}
 }
 
@@ -241,6 +246,7 @@ func (self *EthReader) RecommendedGasPrice() (float64, error) {
 		if err != nil {
 			return 0, err
 		}
+
 		return BigToFloat(priceWei, 9), nil
 	}
 	return price, nil
@@ -400,8 +406,15 @@ func (self *EthReader) TransactionByHash(
 				IsPending: ispending,
 				Error:     wrapError(err, n.NodeName()),
 			}
+			PrintElapseTime(
+				Start,
+				fmt.Sprintf("%s - %s", "(L2) after getting response from node", n),
+			)
 		}()
 	}
+
+	PrintElapseTime(Start, "(L2) after init calls to nodes")
+
 	errs := []error{}
 	for i := 0; i < len(self.nodes); i++ {
 		result := <-resCh
@@ -448,7 +461,10 @@ func (self *EthReader) ReadContractToBytes(
 	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Address, error) {
+func (self *EthReader) ImplementationOfEIP1967(
+	atBlock int64,
+	caddr string,
+) (common.Address, error) {
 	// eip 1967
 	// bytes32(uint256(keccak256('eip1967.proxy.implementation')) - 1)
 	slotBig := big.NewInt(0).Sub(
@@ -467,10 +483,42 @@ func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Add
 		return addr, nil
 	}
 
-	// old standard: org.zeppelinos.proxy.implementation
-	slotBig = crypto.Keccak256Hash([]byte("org.zeppelinos.proxy.implementation")).Big()
+	// eip 1967
+	// bytes32(uint256(keccak256('eip1967.proxy.beacon')) - 1)
+	slotBig = big.NewInt(0).Sub(
+		crypto.Keccak256Hash([]byte("eip1967.proxy.beacon")).Big(),
+		big.NewInt(1),
+	)
 
 	addrByte, err = self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	beaconAddr := common.BytesToAddress(addrByte)
+
+	if beaconAddr.Big().Cmp(big.NewInt(0)) != 0 {
+		paddr, err := self.AddressFromContractWithABI(
+			beaconAddr.Hex(),
+			GetEIP1967BeaconABI(),
+			"implementation",
+		)
+		return *paddr, err
+	}
+
+	return common.Address{}, fmt.Errorf("not an eip1967 proxy contract")
+}
+
+func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Address, error) {
+	addr, err := self.ImplementationOfEIP1967(atBlock, caddr)
+	if err == nil {
+		return addr, nil
+	}
+
+	// old standard: org.zeppelinos.proxy.implementation
+	slotBig := crypto.Keccak256Hash([]byte("org.zeppelinos.proxy.implementation")).Big()
+
+	addrByte, err := self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -630,11 +678,11 @@ func (self *EthReader) HistoryERC20Decimal(atBlock int64, caddr string) (int64, 
 	return int64(result), err
 }
 
-func (self *EthReader) ERC20Decimal(caddr string) (int64, error) {
+func (self *EthReader) ERC20Decimal(caddr string) (uint64, error) {
 	abi := GetERC20ABI()
 	var result uint8
 	err := self.ReadContractWithABI(&result, caddr, abi, "decimals")
-	return int64(result), err
+	return uint64(result), err
 }
 
 type headerByNumberResponse struct {
@@ -759,6 +807,19 @@ func (self *EthReader) ERC20Allowance(
 		HexToAddress(spender),
 	)
 	return result, err
+}
+
+func (self *EthReader) AddressFromContractWithABI(
+	contract string,
+	abi *abi.ABI,
+	method string,
+) (*common.Address, error) {
+	result := common.Address{}
+	err := self.ReadContractWithABI(&result, contract, abi, method)
+	if err != nil {
+		return nil, err
+	}
+	return &result, nil
 }
 
 func (self *EthReader) AddressFromContract(

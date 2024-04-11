@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/types"
-	kusb "github.com/karalabe/usb"
+	kusb "github.com/tranvictor/jarvis/util/account/usb"
 )
 
 type LedgerSigner struct {
@@ -17,7 +17,6 @@ type LedgerSigner struct {
 	deviceUnlocked bool
 	mu             sync.Mutex
 	devmu          sync.Mutex
-	chainID        int64
 }
 
 func (self *LedgerSigner) Unlock() error {
@@ -50,7 +49,7 @@ func (self *LedgerSigner) Unlock() error {
 	return nil
 }
 
-func (self *LedgerSigner) SignTx(tx *types.Transaction) (*types.Transaction, error) {
+func (self *LedgerSigner) SignTx(tx *types.Transaction, chainId *big.Int) (*types.Transaction, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	fmt.Printf("Going to proceed signing procedure\n")
@@ -61,24 +60,8 @@ func (self *LedgerSigner) SignTx(tx *types.Transaction) (*types.Transaction, err
 			return tx, err
 		}
 	}
-	_, tx, err = self.driver.ledgerSign(self.path, tx, big.NewInt(self.chainID))
+	_, tx, err = self.driver.ledgerSign(self.path, tx, chainId)
 	return tx, err
-}
-
-func NewLedgerSignerGeneric(path string, address string, chainID int64) (*LedgerSigner, error) {
-	p, err := accounts.ParseDerivationPath(path)
-	if err != nil {
-		return nil, err
-	}
-	return &LedgerSigner{
-		p,
-		newLedgerDriver(),
-		nil,
-		false,
-		sync.Mutex{},
-		sync.Mutex{},
-		chainID,
-	}, nil
 }
 
 func NewLedgerSigner(path string, address string) (*LedgerSigner, error) {
@@ -93,26 +76,5 @@ func NewLedgerSigner(path string, address string) (*LedgerSigner, error) {
 		false,
 		sync.Mutex{},
 		sync.Mutex{},
-		1,
-	}, nil
-}
-
-func NewRopstenLedgerSigner(path string, address string) (*LedgerSigner, error) {
-	return NewLedgerSigner(path, address)
-}
-
-func NewTomoLedgerSigner(path string, address string) (*LedgerSigner, error) {
-	p, err := accounts.ParseDerivationPath(path)
-	if err != nil {
-		return nil, err
-	}
-	return &LedgerSigner{
-		p,
-		newLedgerDriver(),
-		nil,
-		false,
-		sync.Mutex{},
-		sync.Mutex{},
-		88,
 	}, nil
 }

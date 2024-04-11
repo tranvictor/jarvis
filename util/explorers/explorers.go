@@ -61,6 +61,13 @@ func NewFtmscan() *EtherscanLikeExplorer {
 	)
 }
 
+func NewSnowtrace() *EtherscanLikeExplorer {
+	return NewEtherscanLikeExplorer(
+		"https://api.snowtrace.io",
+		"NWT5MMCQMAPYH47DGD8K7QIJGP2DHZRMW3",
+	)
+}
+
 func NewMumbaiPolygonscan() *EtherscanLikeExplorer {
 	return nil
 }

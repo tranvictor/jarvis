@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -132,6 +133,8 @@ func PromptParam(input abi.Argument, prefill string, network Network) (interface
 	switch t.T {
 	case abi.SliceTy, abi.ArrayTy:
 		return PromptArray(input, prefill, network)
+	// case abi.TupleTy:
+	// return PromptTuple(input, prefill, network)
 	default:
 		return PromptNonArray(input, prefill, network)
 	}
@@ -227,13 +230,39 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 		}
 		return result, nil
 	case abi.BytesTy:
-		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
+		return nil, fmt.Errorf(
+			"not supported array of type: %s - %s",
+			input.Type.Elem,
+			input.Type.Elem.T,
+		)
 	case abi.FixedBytesTy:
 		return util.ConvertParamStrToFixedByteType(input.Name, *input.Type.Elem, paramsStr, network)
 	case abi.FunctionTy:
-		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
+		return nil, fmt.Errorf(
+			"not supported array of type: %s - %s",
+			input.Type.Elem,
+			input.Type.Elem.T,
+		)
+	case abi.TupleTy:
+		// Create a slice of the tuple type
+		sliceType := reflect.SliceOf(input.Type.Elem.TupleType)
+		result := reflect.MakeSlice(sliceType, 0, 0)
+
+		for _, p := range paramsStr {
+			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+			if err != nil {
+				return nil, err
+			}
+			result = reflect.Append(result, reflect.ValueOf(converted))
+		}
+
+		return result, nil
 	default:
-		return nil, fmt.Errorf("not supported array of type: %s", input.Type.Elem)
+		return nil, fmt.Errorf(
+			"not supported array of type: %s - %s",
+			input.Type.Elem,
+			input.Type.Elem.T,
+		)
 	}
 }
 

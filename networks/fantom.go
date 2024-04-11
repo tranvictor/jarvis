@@ -27,7 +27,7 @@ func (self *fantom) GetName() string {
 	return "fantom"
 }
 
-func (self *fantom) GetChainID() int64 {
+func (self *fantom) GetChainID() uint64 {
 	return 250
 }
 
@@ -39,7 +39,7 @@ func (self *fantom) GetNativeTokenSymbol() string {
 	return "FTM"
 }
 
-func (self *fantom) GetNativeTokenDecimal() int64 {
+func (self *fantom) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

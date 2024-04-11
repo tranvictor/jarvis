@@ -87,11 +87,11 @@ func GetERC20Symbol(addr string, network Network) (string, error) {
 	return result, nil
 }
 
-func GetERC20Decimal(addr string, network Network) (int64, error) {
+func GetERC20Decimal(addr string, network Network) (uint64, error) {
 	cacheKey := fmt.Sprintf("%s_decimal", addr)
-	result, found := cache.GetInt64Cache(cacheKey)
+	v, found := cache.GetInt64Cache(cacheKey)
 	if found {
-		return result, nil
+		return uint64(v), nil
 	}
 
 	reader, err := EthReader(network)
@@ -99,7 +99,7 @@ func GetERC20Decimal(addr string, network Network) (int64, error) {
 		return 0, err
 	}
 
-	result, err = reader.ERC20Decimal(addr)
+	result, err := reader.ERC20Decimal(addr)
 
 	if err != nil {
 		return 0, err
@@ -107,7 +107,7 @@ func GetERC20Decimal(addr string, network Network) (int64, error) {
 
 	cache.SetInt64Cache(
 		cacheKey,
-		result,
+		int64(result),
 	)
 
 	return result, nil

@@ -18,7 +18,6 @@ import (
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
-	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -47,13 +46,13 @@ func handleMsigSend(
 		a *abi.ABI
 	)
 
-	reader, err := util.EthReader(networks.CurrentNetwork())
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		fmt.Printf("init reader failed: %s\n", err)
 		return
 	}
 
-	analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
+	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 	t = BuildExactTx(
 		config.Nonce,
@@ -63,14 +62,15 @@ func handleMsigSend(
 		config.GasPrice+config.ExtraGasPrice,
 		config.TipGas,
 		txdata,
+		config.Network().GetChainID(),
 	)
 
 	err = cmdutil.PromptTxConfirmation(
 		analyzer,
-		util.GetJarvisAddress(config.From, networks.CurrentNetwork()),
+		util.GetJarvisAddress(config.From, config.Network()),
 		t,
 		nil,
-		networks.CurrentNetwork(),
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Aborted!\n")
@@ -78,14 +78,14 @@ func handleMsigSend(
 	}
 
 	fmt.Printf("== Unlock your wallet and send now...\n")
-	account, err := accounts.UnlockAccount(from, networks.CurrentNetwork())
+	account, err := accounts.UnlockAccount(from)
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		os.Exit(126)
 	}
 
 	if config.DontBroadcast {
-		signedTx, err := account.SignTx(t)
+		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
 		if err != nil {
 			fmt.Printf("%s", err)
 			return
@@ -97,14 +97,25 @@ func handleMsigSend(
 		}
 		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
 	} else {
-		tx, broadcasted, err := account.SignTxAndBroadcast(t)
+		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
+		if err != nil {
+			fmt.Printf("Signing tx failed: %s\n", err)
+			return
+		}
+		broadcaster, err := util.EthBroadcaster(config.Network())
+		if err != nil {
+			fmt.Printf("Signing tx failed: %s\n", err)
+			return
+		}
+		_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
+
 		if config.DontWaitToBeMined {
 			util.DisplayBroadcastedTx(
-				tx, broadcasted, err, networks.CurrentNetwork(),
+				signedTx, broadcasted, err, config.Network(),
 			)
 		} else {
 			util.DisplayWaitAnalyze(
-				reader, analyzer, tx, broadcasted, err, networks.CurrentNetwork(),
+				reader, analyzer, signedTx, broadcasted, err, config.Network(),
 				a, nil, config.DegenMode,
 			)
 		}
@@ -127,13 +138,13 @@ func handleSend(
 		a *abi.ABI
 	)
 
-	reader, err := util.EthReader(networks.CurrentNetwork())
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		fmt.Printf("init reader failed: %s\n", err)
 		return
 	}
 
-	analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
+	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 	if tokenAddr == util.ETH_ADDR {
 		t = BuildExactTx(
@@ -144,6 +155,7 @@ func handleSend(
 			config.GasPrice+config.ExtraGasPrice,
 			config.TipGas,
 			[]byte{},
+			config.Network().GetChainID(),
 		)
 	} else {
 		a = GetERC20ABI()
@@ -164,17 +176,18 @@ func handleSend(
 			config.GasPrice+config.ExtraGasPrice,
 			config.TipGas,
 			data,
+			config.Network().GetChainID(),
 		)
 	}
 
 	err = cmdutil.PromptTxConfirmation(
 		analyzer,
-		util.GetJarvisAddress(config.From, networks.CurrentNetwork()),
+		util.GetJarvisAddress(config.From, config.Network()),
 		t,
 		map[string]*abi.ABI{
 			strings.ToLower(tokenAddr): a,
 		},
-		networks.CurrentNetwork(),
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Aborted!\n")
@@ -182,14 +195,14 @@ func handleSend(
 	}
 
 	fmt.Printf("== Unlock your wallet and send now...\n")
-	account, err := accounts.UnlockAccount(from, networks.CurrentNetwork())
+	account, err := accounts.UnlockAccount(from)
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		os.Exit(126)
 	}
 
 	if config.DontBroadcast {
-		signedTx, err := account.SignTx(t)
+		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
 		if err != nil {
 			fmt.Printf("%s", err)
 			return
@@ -201,14 +214,26 @@ func handleSend(
 		}
 		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
 	} else {
-		tx, broadcasted, err := account.SignTxAndBroadcast(t)
+		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
+		if err != nil {
+			fmt.Printf("Signing tx failed: %s\n", err)
+			return
+		}
+
+		broadcaster, err := util.EthBroadcaster(config.Network())
+		if err != nil {
+			fmt.Printf("Signing tx failed: %s\n", err)
+			return
+		}
+
+		_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
 		if config.DontWaitToBeMined {
 			util.DisplayBroadcastedTx(
-				tx, broadcasted, err, networks.CurrentNetwork(),
+				signedTx, broadcasted, err, config.Network(),
 			)
 		} else {
 			util.DisplayWaitAnalyze(
-				reader, analyzer, tx, broadcasted, err, networks.CurrentNetwork(),
+				reader, analyzer, signedTx, broadcasted, err, config.Network(),
 				a, nil, config.DegenMode,
 			)
 		}
@@ -226,7 +251,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 
 	multisigContract, err := msig.NewMultisigContract(
 		config.To,
-		networks.CurrentNetwork(),
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Couldn't read the multisig: %s\n", err)
@@ -266,7 +291,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 	// if value is not an address, we need to look it up
 	// from the token database to get its address
 
-	if currency == util.ETH_ADDR || strings.ToLower(currency) == strings.ToLower(networks.CurrentNetwork().GetNativeTokenSymbol()) {
+	if currency == util.ETH_ADDR || strings.ToLower(currency) == strings.ToLower(config.Network().GetNativeTokenSymbol()) {
 		tokenAddr = util.ETH_ADDR
 	} else {
 		addr, _, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
@@ -291,7 +316,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 		to = toAddr
 	}
 
-	reader, err := util.EthReader(networks.CurrentNetwork())
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't init connection to node: %s\n", err)
 		return
@@ -319,7 +344,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 				}
 				amountWei = ethBalance
 			} else {
-				amountWei, err = FloatStringToBig(amountStr, networks.CurrentNetwork().GetNativeTokenDecimal())
+				amountWei, err = FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
 				if err != nil {
 					fmt.Printf("Couldn't calculate the amount: %s\n", err)
 					return
@@ -454,7 +479,7 @@ exact addresses start with 0x.`,
 			// if value is not an address, we need to look it up
 			// from the token database to get its address
 
-			if currency == util.ETH_ADDR || strings.ToLower(currency) == strings.ToLower(networks.CurrentNetwork().GetNativeTokenSymbol()) {
+			if currency == util.ETH_ADDR || strings.ToLower(currency) == strings.ToLower(config.Network().GetNativeTokenSymbol()) {
 				tokenAddr = util.ETH_ADDR
 			} else {
 				addr, _, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
@@ -479,7 +504,7 @@ exact addresses start with 0x.`,
 				to = toAddr
 			}
 
-			reader, err := util.EthReader(networks.CurrentNetwork())
+			reader, err := util.EthReader(config.Network())
 			if err != nil {
 				fmt.Printf("Couldn't establish connection to node: %s\n", err)
 				return
@@ -526,7 +551,7 @@ exact addresses start with 0x.`,
 
 						ethBalance, err := reader.GetBalance(config.From)
 						if err != nil {
-							fmt.Printf("Couldn't get %s balance: %s\n", networks.CurrentNetwork().GetNativeTokenSymbol(), err)
+							fmt.Printf("Couldn't get %s balance: %s\n", config.Network().GetNativeTokenSymbol(), err)
 							return
 						}
 						gasCost := big.NewInt(0).Mul(
@@ -535,7 +560,7 @@ exact addresses start with 0x.`,
 						)
 						amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
 					} else {
-						amountWei, err = FloatStringToBig(amountStr, networks.CurrentNetwork().GetNativeTokenDecimal())
+						amountWei, err = FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
 						if err != nil {
 							fmt.Printf("Couldn't calculate send amount: %s\n", err)
 							return

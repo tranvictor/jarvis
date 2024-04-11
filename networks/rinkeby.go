@@ -27,7 +27,7 @@ func (self *rinkeby) GetName() string {
 	return "rinkeby"
 }
 
-func (self *rinkeby) GetChainID() int64 {
+func (self *rinkeby) GetChainID() uint64 {
 	return 4
 }
 
@@ -39,7 +39,7 @@ func (self *rinkeby) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *rinkeby) GetNativeTokenDecimal() int64 {
+func (self *rinkeby) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

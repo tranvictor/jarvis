@@ -8,12 +8,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tranvictor/jarvis/accounts"
-	types2 "github.com/tranvictor/jarvis/accounts/types"
+	"github.com/tranvictor/jarvis/accounts/types"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
-	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -29,6 +28,7 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 			config.PrefillParams[i] = strings.Trim(config.PrefillParams[i], " ")
 		}
 	}
+	PrintElapseTime(Start, "after processing prefill string")
 
 	config.Value, err = FloatStringToBig(config.RawValue, 18)
 	if err != nil {
@@ -38,6 +38,8 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 	if config.Value.Cmp(big.NewInt(0)) < 0 {
 		return fmt.Errorf("-v param can't be negative")
 	}
+
+	PrintElapseTime(Start, "after processing config.Value")
 
 	if len(args) == 0 {
 		config.To = "" // this is to indicate a contract creation tx
@@ -50,13 +52,15 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 			}
 			config.Tx = txs[0]
 			if nwks[0] != "" {
-				networks.SetNetwork(nwks[0])
+				config.SetNetwork(nwks[0])
 			}
 
-			reader, err := util.EthReader(networks.CurrentNetwork())
+			reader, err := util.EthReader(config.Network())
 			if err != nil {
 				return fmt.Errorf("couldn't connect to blockchain\n")
 			}
+
+			PrintElapseTime(Start, "after initiating tx hash and ethreader, begin to get txinfo from hash")
 
 			txinfo, err := reader.TxInfoFromHash(config.Tx)
 			if err != nil {
@@ -66,6 +70,8 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 			config.To = state.TxInfo.Tx.To().Hex()
 		}
 	}
+
+	PrintElapseTime(Start, "after processing config.To & config.TxInfo")
 
 	return nil
 }
@@ -79,17 +85,20 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		return err
 	}
 
-	a, err := util.GetABI(config.To, networks.CurrentNetwork())
+	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
 		if config.ForceERC20ABI {
 			a = GetERC20ABI()
 		} else if config.CustomABI != "" {
-			a, err = util.ReadCustomABI(config.To, config.CustomABI, networks.CurrentNetwork())
+			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
 			if err != nil {
 				return fmt.Errorf("reading cusom abi failed: %w", err)
 			}
 		}
 	}
+
+	PrintElapseTime(Start, "after getting abi")
+
 	// loosely check by checking a set of method names
 
 	isGnosisMultisig := false
@@ -101,10 +110,12 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
+	PrintElapseTime(Start, "after checking if address is a msig")
+
 	if config.From == "" && isGnosisMultisig {
 		multisigContract, err := msig.NewMultisigContract(
 			config.To,
-			networks.CurrentNetwork(),
+			config.Network(),
 		)
 		if err != nil {
 			return err
@@ -114,7 +125,9 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("getting msig owners failed: %w", err)
 		}
 
-		var acc types2.AccDesc
+		PrintElapseTime(Start, "after getting msig owner list")
+
+		var acc types.AccDesc
 		count := 0
 		for _, owner := range owners {
 			a, err := accounts.GetAccount(owner)
@@ -135,6 +148,9 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 		config.FromAcc = acc
 		config.From = acc.Address
+
+		PrintElapseTime(Start, "after getting config.From config.FromAcc")
+
 	} else {
 		// process from to get address
 		acc, err := accounts.GetAccount(config.From)
@@ -144,9 +160,12 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			config.FromAcc = acc
 			config.From = acc.Address
 		}
+
+		PrintElapseTime(Start, "after getting config.From config.FromAcc")
+
 	}
 
-	reader, err := util.EthReader(networks.CurrentNetwork())
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		return err
 	}
@@ -162,6 +181,8 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("getting recommended gas price failed: %w", err)
 		}
 	}
+
+	PrintElapseTime(Start, "after getting gas price")
 
 	// var Nonce uint64
 	if config.Nonce == 0 {

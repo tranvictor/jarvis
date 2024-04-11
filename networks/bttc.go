@@ -30,7 +30,7 @@ func (self *bttcMainnet) GetName() string {
 	return "bttc"
 }
 
-func (self *bttcMainnet) GetChainID() int64 {
+func (self *bttcMainnet) GetChainID() uint64 {
 	return 199
 }
 
@@ -42,7 +42,7 @@ func (self *bttcMainnet) GetNativeTokenSymbol() string {
 	return "BTT"
 }
 
-func (self *bttcMainnet) GetNativeTokenDecimal() int64 {
+func (self *bttcMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

@@ -27,7 +27,7 @@ func (self *tomoMainnet) GetName() string {
 	return "tomo"
 }
 
-func (self *tomoMainnet) GetChainID() int64 {
+func (self *tomoMainnet) GetChainID() uint64 {
 	return 88
 }
 
@@ -39,7 +39,7 @@ func (self *tomoMainnet) GetNativeTokenSymbol() string {
 	return "TOMO"
 }
 
-func (self *tomoMainnet) GetNativeTokenDecimal() int64 {
+func (self *tomoMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

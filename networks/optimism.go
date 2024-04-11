@@ -27,7 +27,7 @@ func (self *optimismMainnet) GetName() string {
 	return "optimism"
 }
 
-func (self *optimismMainnet) GetChainID() int64 {
+func (self *optimismMainnet) GetChainID() uint64 {
 	return 10
 }
 
@@ -39,7 +39,7 @@ func (self *optimismMainnet) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *optimismMainnet) GetNativeTokenDecimal() int64 {
+func (self *optimismMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 
@@ -66,7 +66,7 @@ func (self *optimismMainnet) GetBlockExplorerAPIURL() string {
 }
 
 // func (self *optimismMainnet) RecommendedGasPrice() (float64, error) {
-// 	return 0.01, nil
+// 	return 0.00001, nil
 // }
 
 func (self *optimismMainnet) MultiCallContract() string {

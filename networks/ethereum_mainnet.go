@@ -27,19 +27,19 @@ func (self *ethereumMainnet) GetName() string {
 	return "mainnet"
 }
 
-func (self *ethereumMainnet) GetChainID() int64 {
+func (self *ethereumMainnet) GetChainID() uint64 {
 	return 1
 }
 
 func (self *ethereumMainnet) GetAlternativeNames() []string {
-	return []string{}
+	return []string{"ethereum"}
 }
 
 func (self *ethereumMainnet) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *ethereumMainnet) GetNativeTokenDecimal() int64 {
+func (self *ethereumMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 
@@ -53,8 +53,7 @@ func (self *ethereumMainnet) GetNodeVariableName() string {
 
 func (self *ethereumMainnet) GetDefaultNodes() map[string]string {
 	return map[string]string{
-		"mainnet-alchemy": "https://eth-mainnet.alchemyapi.io/v2/YP5f6eM2wC9c2nwJfB0DC1LObdSY7Qfv",
-		"mainnet-infura":  "https://mainnet.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+		"mainnet-kyber": "https://ethereum.kyberengineering.io",
 	}
 }
 

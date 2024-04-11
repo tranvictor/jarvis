@@ -15,10 +15,9 @@ type TrezorSigner struct {
 	devmu          sync.Mutex
 	deviceUnlocked bool
 	trezor         Bridge
-	chainID        int64
 }
 
-func (self *TrezorSigner) SignTx(tx *types.Transaction) (*types.Transaction, error) {
+func (self *TrezorSigner) SignTx(tx *types.Transaction, chainId *big.Int) (*types.Transaction, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	fmt.Printf("Going to proceed signing procedure\n")
@@ -30,46 +29,8 @@ func (self *TrezorSigner) SignTx(tx *types.Transaction) (*types.Transaction, err
 		}
 		self.deviceUnlocked = true
 	}
-	_, tx, err = self.trezor.Sign(self.path, tx, big.NewInt(self.chainID))
+	_, tx, err = self.trezor.Sign(self.path, tx, chainId)
 	return tx, err
-}
-
-func NewRopstenTrezorSigner(path string, address string) (*TrezorSigner, error) {
-	p, err := accounts.ParseDerivationPath(path)
-	if err != nil {
-		return nil, err
-	}
-	trezor, err := NewTrezoreum()
-	if err != nil {
-		return nil, err
-	}
-	return &TrezorSigner{
-		p,
-		sync.Mutex{},
-		sync.Mutex{},
-		false,
-		trezor,
-		1,
-	}, nil
-}
-
-func NewTrezorSignerGeneric(path string, address string, chainID int64) (*TrezorSigner, error) {
-	p, err := accounts.ParseDerivationPath(path)
-	if err != nil {
-		return nil, err
-	}
-	trezor, err := NewTrezoreum()
-	if err != nil {
-		return nil, err
-	}
-	return &TrezorSigner{
-		p,
-		sync.Mutex{},
-		sync.Mutex{},
-		false,
-		trezor,
-		chainID,
-	}, nil
 }
 
 func NewTrezorSigner(path string, address string) (*TrezorSigner, error) {
@@ -87,25 +48,5 @@ func NewTrezorSigner(path string, address string) (*TrezorSigner, error) {
 		sync.Mutex{},
 		false,
 		trezor,
-		1,
-	}, nil
-}
-
-func NewTrezorTomoSigner(path string, address string) (*TrezorSigner, error) {
-	p, err := accounts.ParseDerivationPath(path)
-	if err != nil {
-		return nil, err
-	}
-	trezor, err := NewTrezoreum()
-	if err != nil {
-		return nil, err
-	}
-	return &TrezorSigner{
-		p,
-		sync.Mutex{},
-		sync.Mutex{},
-		false,
-		trezor,
-		88,
 	}, nil
 }

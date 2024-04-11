@@ -31,13 +31,14 @@ func FloatToInt(amount float64) int64 {
 // Example:
 // - FloatToBigInt(1, 4) = 10000
 // - FloatToBigInt(1.234, 4) = 12340
-func FloatToBigInt(amount float64, decimal int64) *big.Int {
-	// 6 is our smallest precision
-	if decimal < 6 {
+func FloatToBigInt(amount float64, decimal uint64) *big.Int {
+	// 9 is our smallest precision, if amount is < 0.000000001 there will be
+  // precision loss, the return value will be less than amount * 10^decimal
+	if decimal < 9 {
 		return big.NewInt(FloatToInt(amount * math.Pow10(int(decimal))))
 	}
-	result := big.NewInt(FloatToInt(amount * math.Pow10(6)))
-	return result.Mul(result, big.NewInt(0).Exp(big.NewInt(10), big.NewInt(decimal-6), nil))
+	result := big.NewInt(FloatToInt(amount * math.Pow10(9)))
+	return result.Mul(result, big.NewInt(0).Exp(big.NewInt(10), big.NewInt(int64(decimal-9)), nil))
 }
 
 // BigToFloat converts a big int to float according to its number of decimal digits
@@ -45,10 +46,10 @@ func FloatToBigInt(amount float64, decimal int64) *big.Int {
 // - BigToFloat(1100, 3) = 1.1
 // - BigToFloat(1100, 2) = 11
 // - BigToFloat(1100, 5) = 0.11
-func BigToFloat(b *big.Int, decimal int64) float64 {
+func BigToFloat(b *big.Int, decimal uint64) float64 {
 	f := new(big.Float).SetInt(b)
 	power := new(big.Float).SetInt(new(big.Int).Exp(
-		big.NewInt(10), big.NewInt(decimal), nil,
+		big.NewInt(10), big.NewInt(int64(decimal)), nil,
 	))
 	res := new(big.Float).Quo(f, power)
 	result, _ := res.Float64()
@@ -63,7 +64,7 @@ func StringToBig(input string) *big.Int {
 	return resultBig
 }
 
-func StringToFloat(input string, decimal int64) float64 {
+func StringToFloat(input string, decimal uint64) float64 {
 	resultBig, ok := big.NewInt(0).SetString(input, 10)
 	if !ok {
 		return 0.0
@@ -89,23 +90,23 @@ func StringToBigInt(str string) (*big.Int, error) {
 	return result, nil
 }
 
-func FloatStringToBig(value string, decimal int64) (*big.Int, error) {
+func FloatStringToBig(value string, decimal uint64) (*big.Int, error) {
 	f, success := new(big.Float).SetString(value)
 	if !success {
 		return nil, fmt.Errorf("couldn't parse string to big int")
 	}
 	power := new(big.Float).SetInt(new(big.Int).Exp(
-		big.NewInt(10), big.NewInt(decimal), nil,
+		big.NewInt(10), big.NewInt(int64(decimal)), nil,
 	))
 	f.Mul(f, power)
 	res, _ := f.Int(nil)
 	return res, nil
 }
 
-func BigToFloatString(value *big.Int, decimal int64) string {
+func BigToFloatString(value *big.Int, decimal uint64) string {
 	f := new(big.Float).SetInt(value)
 	power := new(big.Float).SetInt(new(big.Int).Exp(
-		big.NewInt(10), big.NewInt(decimal), nil,
+		big.NewInt(10), big.NewInt(int64(decimal)), nil,
 	))
 	res := new(big.Float).Quo(f, power)
 	return strings.TrimRight(res.Text('f', int(decimal)), "0")

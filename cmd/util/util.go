@@ -14,7 +14,7 @@ import (
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
-	"github.com/tranvictor/jarvis/networks"
+	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -22,8 +22,8 @@ import (
 func AnalyzeAndShowMsigTxInfo(
 	multisigContract *msig.MultisigContract,
 	txid *big.Int,
-	network networks.Network,
-) (fc *FunctionCall, executed bool) {
+	network Network,
+) (fc *FunctionCall, confirmed bool, executed bool) {
 	fmt.Printf("========== What the multisig will do ==========\n")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
@@ -31,21 +31,29 @@ func AnalyzeAndShowMsigTxInfo(
 		return
 	}
 
+	requirement, err := multisigContract.VoteRequirement()
+	if err != nil {
+		fmt.Printf("Couldn't get msig requirement: %s\n", err)
+		return
+	}
+
+	confirmed = len(confirmations) >= int(requirement)
+
 	if len(data) == 0 {
 		fmt.Printf(
 			"Sending: %f %s to %s\n",
 			BigToFloat(value, network.GetNativeTokenDecimal()),
 			network.GetNativeTokenSymbol(),
-			VerboseAddress(util.GetJarvisAddress(address, networks.CurrentNetwork())),
+			VerboseAddress(util.GetJarvisAddress(address, network)),
 		)
 	} else {
-		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, networks.CurrentNetwork())
+		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
 		if err != nil {
 			fmt.Printf("Couldn't get abi of destination address: %s\n", err)
 			return
 		}
 
-		analyzer, err := txanalyzer.EthAnalyzer(networks.CurrentNetwork())
+		analyzer, err := txanalyzer.EthAnalyzer(network)
 		if err != nil {
 			fmt.Printf("Couldn't analyze tx: %s\n", err)
 			return
@@ -85,29 +93,29 @@ func AnalyzeAndShowMsigTxInfo(
 				isStandardERC20Call = true
 
 				fmt.Printf(
-					"Sending: %s %s (%s)\nFrom: %s\nTo: %s\n",
+					"From: %s\nSending: %s %s (%s)\nTo: %s\n",
+					VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
 					InfoColor(fmt.Sprintf("%f", StringToFloat(funcCall.Params[1].Value[0].Value, decimal))),
 					InfoColor(symbol),
 					address,
-					VerboseAddress(util.GetJarvisAddress(multisigContract.Address, networks.CurrentNetwork())),
-					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, networks.CurrentNetwork())),
+					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, network)),
 				)
 			case "transferFrom":
 				isStandardERC20Call = true
 
 				fmt.Printf(
-					"Sending: %f %s (%s)\nFrom: %s\nTo: %s\n",
+					"From: %s\nSending: %f %s (%s)\nTo: %s\n",
+					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, network)),
 					StringToFloat(funcCall.Params[2].Value[0].Value, decimal),
 					symbol,
 					address,
-					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, networks.CurrentNetwork())),
-					VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Value[0].Value, networks.CurrentNetwork())),
+					VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Value[0].Value, network)),
 				)
 			case "approve":
 				isStandardERC20Call = true
 				fmt.Printf(
 					"Approving %s to spend upto: %f %s (%s) from the multisig\n",
-					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, networks.CurrentNetwork())),
+					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, network)),
 					StringToFloat(funcCall.Params[1].Value[0].Value, decimal),
 					symbol,
 					address,
@@ -116,7 +124,7 @@ func AnalyzeAndShowMsigTxInfo(
 		}
 
 		if !isStandardERC20Call {
-			fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, networks.CurrentNetwork())))
+			fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, network)))
 			fc = util.AnalyzeMethodCallAndPrint(
 				analyzer,
 				value,
@@ -125,7 +133,7 @@ func AnalyzeAndShowMsigTxInfo(
 				map[string]*abi.ABI{
 					strings.ToLower(address): destAbi,
 				},
-				networks.CurrentNetwork(),
+				network,
 			)
 		}
 	}
@@ -133,6 +141,7 @@ func AnalyzeAndShowMsigTxInfo(
 	fmt.Printf("===============================================\n\n")
 	fmt.Printf("========== Multisig transaction status ========\n")
 	fmt.Printf("Executed: %t\n", executed)
+	fmt.Printf("Confirmed: %t\n", confirmed)
 	fmt.Printf("Confirmations (among current owners):\n")
 	for i, c := range confirmations {
 		_, name, err := util.GetMatchingAddress(c)
@@ -143,16 +152,13 @@ func AnalyzeAndShowMsigTxInfo(
 		}
 	}
 
-	if executed {
-		fmt.Printf("This multisig is executed, you don't need to approve it anymore\n")
-	}
 	return
 }
 
 type PostProcessFunc func(fc *FunctionCall) error
 
 func ScanForTxs(para string) (nwks []string, addresses []string) {
-	networkNames := networks.GetSupportedNetworkNames()
+	networkNames := GetSupportedNetworkNames()
 	regexStr := strings.Join(networkNames, "|")
 	regexStr = fmt.Sprintf(
 		"(?i)(?:(?P<network>%s)(?:.{0,}?))?(?P<address>(?:0x)?(?:[0-9a-fA-F]{64}))",
@@ -178,13 +184,17 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	args []string,
 	postProcess PostProcessFunc,
 ) {
-	reader, err := util.EthReader(networks.CurrentNetwork())
+	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't connect to blockchain.\n")
 		return
 	}
 
-	analyzer := txanalyzer.NewGenericAnalyzer(reader, networks.CurrentNetwork())
+	PrintElapseTime(Start, "init reader")
+
+	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+
+	PrintElapseTime(Start, "init analyzer")
 
 	var txid *big.Int
 
@@ -199,10 +209,12 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		} else {
 			config.Tx = txs[0]
 			if nwks[0] != "" {
-				networks.SetNetwork(nwks[0])
+				config.SetNetwork(nwks[0])
 			}
 		}
 	}
+
+	PrintElapseTime(Start, "find tx hash")
 
 	if txid == nil {
 		if state.TxInfo == nil {
@@ -233,27 +245,33 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		}
 	}
 
+	PrintElapseTime(Start, "get tx info")
+
 	multisigContract, err := msig.NewMultisigContract(
 		config.To,
-		networks.CurrentNetwork(),
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Couldn't interact with the contract: %s\n", err)
 		return
 	}
 
-	fc, executed := AnalyzeAndShowMsigTxInfo(multisigContract, txid, networks.CurrentNetwork())
+	fc, _, executed := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
+
+	PrintElapseTime(Start, "after analyzing tx")
 
 	if postProcess != nil && postProcess(fc) != nil {
 		return
 	}
+
+	PrintElapseTime(Start, "after running post hook")
 
 	if executed {
 		return
 	}
 	// TODO: support multiple txs?
 
-	a, err := util.GetABI(config.To, networks.CurrentNetwork())
+	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't get the ABI for %s: %s\n", config.To, err)
 		return
@@ -264,6 +282,8 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		fmt.Printf("Couldn't pack data: %s\n", err)
 		return
 	}
+
+	PrintElapseTime(Start, "after preparing tx data")
 
 	// var GasLimit uint64
 	if config.GasLimit == 0 {
@@ -280,6 +300,8 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		}
 	}
 
+	PrintElapseTime(Start, "after estimate gas")
+
 	tx := BuildExactTx(
 		config.Nonce,
 		config.To,
@@ -288,14 +310,17 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		config.GasPrice+config.ExtraGasPrice,
 		config.TipGas,
 		data,
+		config.Network().GetChainID(),
 	)
+
+	PrintElapseTime(Start, "after build tx")
 
 	err = PromptTxConfirmation(
 		analyzer,
-		util.GetJarvisAddress(config.From, networks.CurrentNetwork()),
+		util.GetJarvisAddress(config.From, config.Network()),
 		tx,
 		nil,
-		networks.CurrentNetwork(),
+		config.Network(),
 	)
 	if err != nil {
 		fmt.Printf("Aborted!\n")
@@ -303,19 +328,32 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	}
 
 	fmt.Printf("== Unlock your wallet and sign now...\n")
-	account, err := accounts.UnlockAccount(config.FromAcc, networks.CurrentNetwork())
+	account, err := accounts.UnlockAccount(config.FromAcc)
 	if err != nil {
 		fmt.Printf("Failed: %s\n", err)
 		return
 	}
-	tx, broadcasted, err := account.SignTxAndBroadcast(tx)
+
+	signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
+	if err != nil {
+		fmt.Printf("Signing tx failed: %s\n", err)
+		return
+	}
+
+	broadcaster, err := util.EthBroadcaster(config.Network())
+	if err != nil {
+		fmt.Printf("Signing tx failed: %s\n", err)
+		return
+	}
+
+	_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
 	if config.DontWaitToBeMined {
 		util.DisplayBroadcastedTx(
-			tx, broadcasted, err, networks.CurrentNetwork(),
+			signedTx, broadcasted, err, config.Network(),
 		)
 	} else {
 		util.DisplayWaitAnalyze(
-			reader, analyzer, tx, broadcasted, err, networks.CurrentNetwork(),
+			reader, analyzer, signedTx, broadcasted, err, config.Network(),
 			a, nil, config.DegenMode,
 		)
 	}

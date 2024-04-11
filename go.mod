@@ -70,8 +70,6 @@ require (
 )
 
 // replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/ethereum/go-ethereum
-// replace github.com/karalabe/usb => /Users/victor/go/src/github.com/tranvictor/usb
-
 // replace github.com/blevesearch/bleve => /Users/victor/go/src/github.com/tranvictor/bleve
 
 go 1.20

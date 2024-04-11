@@ -21,35 +21,13 @@
 package main
 
 import (
-	// "log"
-	// "os"
-	// "runtime"
-	// "runtime/pprof"
+  "time"
 
 	"github.com/tranvictor/jarvis/cmd"
+	"github.com/tranvictor/jarvis/common"
 )
 
 func main() {
-	// runtime.SetBlockProfileRate(1)
-	// f, err := os.Create("cpuprofile")
-	// if err != nil {
-	// 	log.Fatal("could not create CPU profile: ", err)
-	// }
-
-	// bf, err := os.Create("blockingprofile")
-	// if err != nil {
-	// 	log.Fatal("could not create blocking profile: ", err)
-	// }
-
-	// if err := pprof.StartCPUProfile(f); err != nil {
-	// 	log.Fatal("could not start CPU profile: ", err)
-	// }
-
+  common.Start = time.Now()
 	cmd.Execute()
-
-	// pprof.StopCPUProfile()
-	// profile := pprof.Lookup("block")
-	// profile.WriteTo(bf, 0)
-	// f.Close()
-	// bf.Close()
 }

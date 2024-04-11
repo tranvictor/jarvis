@@ -27,7 +27,7 @@ func (self *bscMainnet) GetName() string {
 	return "bsc"
 }
 
-func (self *bscMainnet) GetChainID() int64 {
+func (self *bscMainnet) GetChainID() uint64 {
 	return 56
 }
 
@@ -39,7 +39,7 @@ func (self *bscMainnet) GetNativeTokenSymbol() string {
 	return "BNB"
 }
 
-func (self *bscMainnet) GetNativeTokenDecimal() int64 {
+func (self *bscMainnet) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

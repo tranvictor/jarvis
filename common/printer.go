@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	aurora "github.com/logrusorgru/aurora"
 	indent "github.com/openconfig/goyang/pkg/indent"
@@ -191,4 +192,8 @@ func VerboseAddress(addr Address) string {
 		return fmt.Sprintf("%s (%s)", addr.Address, NameWithColor(fmt.Sprintf("%s - %d", addr.Desc, addr.Decimal)))
 	}
 	return fmt.Sprintf("%s (%s)", addr.Address, NameWithColor(addr.Desc))
+}
+
+func PrintElapseTime(start time.Time, str string) {
+  // fmt.Printf("-------------------------------------profiling-elapsed: %s -- %s\n", time.Since(start), str)
 }

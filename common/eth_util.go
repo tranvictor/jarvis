@@ -6,10 +6,13 @@ import (
 	"path"
 	"runtime"
 	"strings"
+  "time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 )
+
+var Start time.Time
 
 func getABIFromFile(filename string) (*abi.ABI, error) {
 	_, current, _, ok := runtime.Caller(0)
@@ -35,6 +38,11 @@ func GetMultiCallABI() *abi.ABI {
 
 func GetERC20ABI() *abi.ABI {
 	result, _ := abi.JSON(strings.NewReader(erc20abi))
+	return &result
+}
+
+func GetEIP1967BeaconABI() *abi.ABI {
+	result, _ := abi.JSON(strings.NewReader(eip1967beacon))
 	return &result
 }
 

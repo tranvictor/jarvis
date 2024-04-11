@@ -6,10 +6,10 @@ import (
 
 type Network interface {
 	GetName() string
-	GetChainID() int64
+	GetChainID() uint64
 	GetAlternativeNames() []string
 	GetNativeTokenSymbol() string
-	GetNativeTokenDecimal() int64
+	GetNativeTokenDecimal() uint64
 	GetBlockTime() time.Duration // in second
 
 	GetNodeVariableName() string

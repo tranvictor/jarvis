@@ -27,7 +27,7 @@ func (self *mumbai) GetName() string {
 	return "mumbai"
 }
 
-func (self *mumbai) GetChainID() int64 {
+func (self *mumbai) GetChainID() uint64 {
 	return 80001
 }
 
@@ -39,7 +39,7 @@ func (self *mumbai) GetNativeTokenSymbol() string {
 	return "MATIC"
 }
 
-func (self *mumbai) GetNativeTokenDecimal() int64 {
+func (self *mumbai) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 

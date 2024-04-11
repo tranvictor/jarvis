@@ -10,18 +10,17 @@ import (
 )
 
 type KeySigner struct {
-	chainID int64
-	key     *ecdsa.PrivateKey
+	key *ecdsa.PrivateKey
 }
 
-func (self *KeySigner) SignTx(tx *types.Transaction) (*types.Transaction, error) {
-	opts, err := bind.NewKeyedTransactorWithChainID(self.key, big.NewInt(self.chainID))
+func (self *KeySigner) SignTx(tx *types.Transaction, chainId *big.Int) (*types.Transaction, error) {
+	opts, err := bind.NewKeyedTransactorWithChainID(self.key, chainId)
 	if err != nil {
 		return nil, err
 	}
 	return opts.Signer(crypto.PubkeyToAddress(self.key.PublicKey), tx)
 }
 
-func NewKeySigner(key *ecdsa.PrivateKey, chainID int64) *KeySigner {
-	return &KeySigner{chainID, key}
+func NewKeySigner(key *ecdsa.PrivateKey) *KeySigner {
+	return &KeySigner{key}
 }

@@ -27,7 +27,7 @@ func (self *ethereumPOW) GetName() string {
 	return "ethpow"
 }
 
-func (self *ethereumPOW) GetChainID() int64 {
+func (self *ethereumPOW) GetChainID() uint64 {
 	return 10001
 }
 
@@ -39,7 +39,7 @@ func (self *ethereumPOW) GetNativeTokenSymbol() string {
 	return "ETH"
 }
 
-func (self *ethereumPOW) GetNativeTokenDecimal() int64 {
+func (self *ethereumPOW) GetNativeTokenDecimal() uint64 {
 	return 18
 }
 
