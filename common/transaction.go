@@ -73,7 +73,6 @@ func BuildExactSendETHTx(
 	gasLimit uint64,
 	priceGwei float64,
 	tipCapGwei float64,
-	chainID int64,
 ) (tx *types.Transaction) {
 	return BuildExactTx(nonce, to, ethAmount, gasLimit, priceGwei, tipCapGwei, []byte{})
 }
@@ -89,7 +88,7 @@ func BuildContractCreationTx(
 	gasPrice := GweiToWei(priceGwei)
 	tipInt := GweiToWei(tipCapGwei)
 	chainIDInt := big.NewInt(networks.CurrentNetwork().GetChainID())
-	if tipInt.Cmp(common.Big0) > 0 { // dynamyc fee tx
+	if tipInt.Cmp(common.Big0) > 0 { // dynamic fee tx
 		return types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainIDInt,
 			Nonce:     nonce,

@@ -137,7 +137,6 @@ func (self *Account) SendETHWithNonceAndPrice(
 		gasLimit,
 		priceGwei,
 		tipCapGwei,
-		self.chainID,
 	)
 	signedTx, err := self.signer.SignTx(tx)
 	if err != nil {
