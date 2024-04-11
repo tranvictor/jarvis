@@ -8,16 +8,22 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/spf13/cobra"
+
 	"github.com/tranvictor/jarvis/accounts"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
 	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
-func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big.Int, network Network) (fc *FunctionCall, confirmed bool, executed bool) {
+func AnalyzeAndShowMsigTxInfo(
+	multisigContract *msig.MultisigContract,
+	txid *big.Int,
+	network Network,
+) (fc *FunctionCall, confirmed bool, executed bool) {
 	fmt.Printf("========== What the multisig will do ==========\n")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
@@ -25,13 +31,13 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 		return
 	}
 
-  requirement, err := multisigContract.VoteRequirement()
-  if err != nil {
-    fmt.Printf("Couldn't get msig requirement: %s\n", err)
-    return
-  }
+	requirement, err := multisigContract.VoteRequirement()
+	if err != nil {
+		fmt.Printf("Couldn't get msig requirement: %s\n", err)
+		return
+	}
 
-  confirmed = len(confirmations) >= int(requirement)
+	confirmed = len(confirmations) >= int(requirement)
 
 	if len(data) == 0 {
 		fmt.Printf(
@@ -87,7 +93,7 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 				isStandardERC20Call = true
 
 				fmt.Printf(
-          "From: %s\nSending: %s %s (%s)\nTo: %s\n",
+					"From: %s\nSending: %s %s (%s)\nTo: %s\n",
 					VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
 					InfoColor(fmt.Sprintf("%f", StringToFloat(funcCall.Params[1].Value[0].Value, decimal))),
 					InfoColor(symbol),
@@ -98,7 +104,7 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 				isStandardERC20Call = true
 
 				fmt.Printf(
-          "From: %s\nSending: %f %s (%s)\nTo: %s\n",
+					"From: %s\nSending: %f %s (%s)\nTo: %s\n",
 					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Value[0].Value, network)),
 					StringToFloat(funcCall.Params[2].Value[0].Value, decimal),
 					symbol,
@@ -135,7 +141,7 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 	fmt.Printf("===============================================\n\n")
 	fmt.Printf("========== Multisig transaction status ========\n")
 	fmt.Printf("Executed: %t\n", executed)
-  fmt.Printf("Confirmed: %t\n", confirmed)
+	fmt.Printf("Confirmed: %t\n", confirmed)
 	fmt.Printf("Confirmations (among current owners):\n")
 	for i, c := range confirmations {
 		_, name, err := util.GetMatchingAddress(c)
@@ -151,10 +157,13 @@ func AnalyzeAndShowMsigTxInfo(multisigContract *msig.MultisigContract, txid *big
 
 type PostProcessFunc func(fc *FunctionCall) error
 
-func ScanForTxs(para string) (networks []string, addresses []string) {
+func ScanForTxs(para string) (nwks []string, addresses []string) {
 	networkNames := GetSupportedNetworkNames()
 	regexStr := strings.Join(networkNames, "|")
-	regexStr = fmt.Sprintf("(?i)(?:(?P<network>%s)(?:.{0,}?))?(?P<address>(?:0x)?(?:[0-9a-fA-F]{64}))", regexStr)
+	regexStr = fmt.Sprintf(
+		"(?i)(?:(?P<network>%s)(?:.{0,}?))?(?P<address>(?:0x)?(?:[0-9a-fA-F]{64}))",
+		regexStr,
+	)
 
 	re := regexp.MustCompile(regexStr)
 
@@ -162,30 +171,35 @@ func ScanForTxs(para string) (networks []string, addresses []string) {
 	matches := re.FindAllStringSubmatch(para, -1)
 
 	for _, match := range matches {
-		networks = append(networks, strings.ToLower(match[1]))
+		nwks = append(nwks, strings.ToLower(match[1]))
 		addresses = append(addresses, match[2])
 	}
 
 	return
 }
 
-func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args []string, postProcess PostProcessFunc) {
+func HandleApproveOrRevokeOrExecuteMsig(
+	method string,
+	cmd *cobra.Command,
+	args []string,
+	postProcess PostProcessFunc,
+) {
 	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		fmt.Printf("Couldn't connect to blockchain.\n")
 		return
 	}
 
-  PrintElapseTime(Start, "init reader")
+	PrintElapseTime(Start, "init reader")
 
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-  PrintElapseTime(Start, "init analyzer")
+	PrintElapseTime(Start, "init analyzer")
 
 	var txid *big.Int
 
 	if config.Tx == "" {
-		networks, txs := ScanForTxs(args[1])
+		nwks, txs := ScanForTxs(args[1])
 		if len(txs) == 0 {
 			txid, err = util.ParamToBigInt(args[1])
 			if err != nil {
@@ -194,28 +208,28 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 			}
 		} else {
 			config.Tx = txs[0]
-			if networks[0] != "" {
-				config.SetNetwork(networks[0])
+			if nwks[0] != "" {
+				config.SetNetwork(nwks[0])
 			}
 		}
 	}
 
-  PrintElapseTime(Start, "find tx hash")
+	PrintElapseTime(Start, "find tx hash")
 
 	if txid == nil {
-		if config.TxInfo == nil {
+		if state.TxInfo == nil {
 			txinfo, err := reader.TxInfoFromHash(config.Tx)
 			if err != nil {
 				fmt.Printf("Couldn't get tx info from the blockchain: %s\n", err)
 				return
 			}
-			config.TxInfo = &txinfo
+			state.TxInfo = &txinfo
 		}
-		if config.TxInfo.Receipt == nil {
+		if state.TxInfo.Receipt == nil {
 			fmt.Printf("Can't get receipt of the init tx. That tx might still be pending.\n")
 			return
 		}
-		for _, l := range config.TxInfo.Receipt.Logs {
+		for _, l := range state.TxInfo.Receipt.Logs {
 			if strings.ToLower(l.Address.Hex()) == strings.ToLower(config.To) &&
 				l.Topics[0].Hex() == "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51" {
 
@@ -224,12 +238,14 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 			}
 		}
 		if txid == nil {
-			fmt.Printf("The provided tx hash is not a gnosis multisig init tx or with a different multisig.\n")
+			fmt.Printf(
+				"The provided tx hash is not a gnosis multisig init tx or with a different multisig.\n",
+			)
 			return
 		}
 	}
 
-  PrintElapseTime(Start, "get tx info")
+	PrintElapseTime(Start, "get tx info")
 
 	multisigContract, err := msig.NewMultisigContract(
 		config.To,
@@ -242,13 +258,13 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 
 	fc, _, executed := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
 
-  PrintElapseTime(Start, "after analyzing tx")
+	PrintElapseTime(Start, "after analyzing tx")
 
 	if postProcess != nil && postProcess(fc) != nil {
 		return
 	}
 
-  PrintElapseTime(Start, "after running post hook")
+	PrintElapseTime(Start, "after running post hook")
 
 	if executed {
 		return
@@ -267,7 +283,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		return
 	}
 
-  PrintElapseTime(Start, "after preparing tx data")
+	PrintElapseTime(Start, "after preparing tx data")
 
 	// var GasLimit uint64
 	if config.GasLimit == 0 {
@@ -284,7 +300,7 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		}
 	}
 
-  PrintElapseTime(Start, "after estimate gas")
+	PrintElapseTime(Start, "after estimate gas")
 
 	tx := BuildExactTx(
 		config.Nonce,
@@ -292,10 +308,12 @@ func HandleApproveOrRevokeOrExecuteMsig(method string, cmd *cobra.Command, args 
 		config.Value,
 		config.GasLimit+config.ExtraGasLimit,
 		config.GasPrice+config.ExtraGasPrice,
+		config.TipGas,
 		data,
+		config.Network().GetChainID(),
 	)
 
-  PrintElapseTime(Start, "after build tx")
+	PrintElapseTime(Start, "after build tx")
 
 	err = PromptTxConfirmation(
 		analyzer,

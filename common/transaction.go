@@ -20,26 +20,96 @@ func GetSignerAddressFromTx(tx *types.Transaction, chainID *big.Int) (common.Add
 	return types.Sender(signer, tx)
 }
 
-func BuildExactTx(nonce uint64, to string, ethAmount *big.Int, gasLimit uint64, priceGwei float64, data []byte) (tx *types.Transaction) {
+func BuildExactTx(
+	nonce uint64,
+	to string,
+	ethAmount *big.Int,
+	gasLimit uint64,
+	priceGwei float64,
+	tipCapGwei float64,
+	data []byte,
+	chainID uint64,
+) (tx *types.Transaction) {
 	toAddress := common.HexToAddress(to)
 	gasPrice := GweiToWei(priceGwei)
-	return types.NewTransaction(nonce, toAddress, ethAmount, gasLimit, gasPrice, data)
+	tipInt := GweiToWei(tipCapGwei)
+	if tipInt.Cmp(common.Big0) > 0 { // dynamyc fee tx
+		return types.NewTx(&types.DynamicFeeTx{
+			ChainID:   big.NewInt(int64(chainID)),
+			Nonce:     nonce,
+			GasTipCap: tipInt,
+			GasFeeCap: gasPrice,
+			Gas:       gasLimit,
+			To:        &toAddress,
+			Value:     ethAmount,
+			Data:      data,
+		})
+	} else {
+		return types.NewTx(&types.LegacyTx{
+			Nonce:    nonce,
+			GasPrice: gasPrice,
+			Gas:      gasLimit,
+			To:       &toAddress,
+			Value:    ethAmount,
+			Data:     data,
+		})
+	}
 }
 
-func BuildTx(nonce uint64, to string, ethAmount float64, gasLimit uint64, priceGwei float64, data []byte) (tx *types.Transaction) {
+func BuildTx(
+	nonce uint64,
+	to string,
+	ethAmount float64,
+	gasLimit uint64,
+	priceGwei float64,
+	tipCapGwei float64,
+	data []byte,
+	chainID uint64,
+) (tx *types.Transaction) {
 	amount := FloatToBigInt(ethAmount, 18)
-	return BuildExactTx(nonce, to, amount, gasLimit, priceGwei, data)
+	return BuildExactTx(nonce, to, amount, gasLimit, priceGwei, tipCapGwei, data, chainID)
 }
 
-func BuildSendETHTx(nonce uint64, to string, ethAmount float64, priceGwei float64) (tx *types.Transaction) {
-	return BuildTx(nonce, to, ethAmount, 30000, priceGwei, []byte{})
+func BuildExactSendETHTx(
+	nonce uint64,
+	to string,
+	ethAmount *big.Int,
+	gasLimit uint64,
+	priceGwei float64,
+	tipCapGwei float64,
+	chainID uint64,
+) (tx *types.Transaction) {
+	return BuildExactTx(nonce, to, ethAmount, gasLimit, priceGwei, tipCapGwei, []byte{}, chainID)
 }
 
-func BuildExactSendETHTx(nonce uint64, to string, ethAmount *big.Int, gasLimit uint64, priceGwei float64) (tx *types.Transaction) {
-	return BuildExactTx(nonce, to, ethAmount, gasLimit, priceGwei, []byte{})
-}
-
-func BuildContractCreationTx(nonce uint64, ethAmount *big.Int, gasLimit uint64, priceGwei float64, data []byte) (tx *types.Transaction) {
+func BuildContractCreationTx(
+	nonce uint64,
+	ethAmount *big.Int,
+	gasLimit uint64,
+	priceGwei float64,
+	tipCapGwei float64,
+	data []byte,
+	chainID uint64,
+) (tx *types.Transaction) {
 	gasPrice := GweiToWei(priceGwei)
-	return types.NewContractCreation(nonce, ethAmount, gasLimit, gasPrice, data)
+	tipInt := GweiToWei(tipCapGwei)
+	if tipInt.Cmp(common.Big0) > 0 { // dynamic fee tx
+		return types.NewTx(&types.DynamicFeeTx{
+			ChainID:   big.NewInt(int64(chainID)),
+			Nonce:     nonce,
+			GasTipCap: tipInt,
+			GasFeeCap: gasPrice,
+			Gas:       gasLimit,
+			Value:     ethAmount,
+			Data:      data,
+		})
+	} else {
+		return types.NewTx(&types.LegacyTx{
+			Nonce:    nonce,
+			GasPrice: gasPrice,
+			Gas:      gasLimit,
+			Value:    ethAmount,
+			Data:     data,
+		})
+	}
 }

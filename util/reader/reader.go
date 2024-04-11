@@ -713,6 +713,68 @@ func (self *EthReader) HeaderByNumber(number int64) (*types.Header, error) {
 	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
 }
 
+func (self *EthReader) SuggestedGasSettings() (maxGasPriceGwei, maxTipGwei float64, err error) {
+	isDynamicFeeAvailable, err := self.CheckDynamicFeeTxAvailable()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	maxGasPriceGwei, err = self.RecommendedGasPrice()
+	if err != nil {
+		return 0, 0, err
+	}
+
+	if isDynamicFeeAvailable {
+		maxTipGwei, err = self.GetSuggestedGasTipCap()
+		if err != nil {
+			return 0, 0, err
+		}
+	}
+
+	return maxGasPriceGwei, maxTipGwei, nil
+}
+
+// CheckDynamicFeeTxAvailable use to detect if current network that connect via node url is support dynamic fee tx,
+// this is done by a trick where we check if block info contain baseFee > 0, that may not always work but should enough
+// for now.
+func (self *EthReader) CheckDynamicFeeTxAvailable() (bool, error) {
+	header, err := self.HeaderByNumber(-1) // getting latest block header
+	if err != nil {
+		return false, err
+	}
+
+	return header.BaseFee != nil && header.BaseFee.Cmp(common.Big0) > 0, nil
+}
+
+type getSuggestedGasTipCapResponse struct {
+	GasTip *big.Int
+	Error  error
+}
+
+func (self *EthReader) GetSuggestedGasTipCap() (float64, error) {
+	resCh := make(chan getSuggestedGasTipCapResponse, len(self.nodes))
+	for i := range self.nodes {
+		n := self.nodes[i]
+		go func() {
+			gasTip, err := n.SuggestedGasTipCap()
+			resCh <- getSuggestedGasTipCapResponse{
+				GasTip: gasTip,
+				Error:  wrapError(err, n.NodeName()),
+			}
+		}()
+	}
+
+	errs := []error{}
+	for i := 0; i < len(self.nodes); i++ {
+		result := <-resCh
+		if result.Error == nil {
+			return BigToFloat(result.GasTip, 9), result.Error
+		}
+		errs = append(errs, result.Error)
+	}
+	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+}
+
 func (self *EthReader) HistoryERC20Allowance(
 	atBlock int64,
 	caddr string,

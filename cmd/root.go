@@ -25,6 +25,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/networks"
 )
@@ -83,6 +84,7 @@ func SupportedNetworkAndNodesHelpString() string {
 	}
 	return result
 }
+
 func SupportedNetworkAndNodeVariableHelpString() string {
 	result := "\n"
 	for i, n := range networks.GetSupportedNetworks() {
@@ -90,10 +92,16 @@ func SupportedNetworkAndNodeVariableHelpString() string {
 	}
 	return result
 }
+
 func SupportedNetworkAndBlockExplorerVariableHelpString() string {
 	result := "\n"
 	for i, n := range networks.GetSupportedNetworks() {
-		result += fmt.Sprintf("  %d. For %s: %s\n", i+1, n.GetBlockExplorerAPIURL(), n.GetBlockExplorerAPIKeyVariableName())
+		result += fmt.Sprintf(
+			"  %d. For %s: %s\n",
+			i+1,
+			n.GetBlockExplorerAPIURL(),
+			n.GetBlockExplorerAPIKeyVariableName(),
+		)
 	}
 	return result
 }

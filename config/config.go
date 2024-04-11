@@ -5,9 +5,13 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/tranvictor/jarvis/accounts"
-	"github.com/tranvictor/jarvis/common"
+	"github.com/tranvictor/jarvis/accounts/types"
 	"github.com/tranvictor/jarvis/networks"
+)
+
+var (
+	Debug     bool
+	DegenMode bool
 )
 
 var (
@@ -49,27 +53,26 @@ func SetNetwork(networkStr string) {
 }
 
 var NetworkString string
-var Debug bool
-var DegenMode bool
 
 var (
-	GasPrice             float64
-	ExtraGasPrice        float64
-	GasLimit             uint64
-	ExtraGasLimit        uint64
-	Nonce                uint64
-	From                 string
-	FromAcc              accounts.AccDesc
-	To                   string
-	Value                *big.Int
-	RawValue             string
-	MethodIndex          uint64
-	PrefillMode          bool
-	PrefillStr           string
-	PrefillParams        []string
-	NoFuncCall           bool
-	Tx                   string
-	TxInfo               *common.TxInfo
+	GasPrice      float64
+	TipGas        float64
+	ExtraGasPrice float64
+	GasLimit      uint64
+	ExtraGasLimit uint64
+	Nonce         uint64
+	From          string
+	FromAcc       types.AccDesc
+	To            string
+	Value         *big.Int
+	RawValue      string
+	MethodIndex   uint64
+	PrefillMode   bool
+	PrefillStr    string
+	PrefillParams []string
+	NoFuncCall    bool
+	Tx            string
+
 	AllZeroParamsMethods bool
 	AtBlock              int64
 

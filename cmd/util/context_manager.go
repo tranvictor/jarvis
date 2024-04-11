@@ -28,8 +28,8 @@ var GAS_INFO_TTL = 60 * time.Second
 type GasInfo struct {
 	GasPrice         float64
 	BaseGasPrice     *big.Int
-	MaxPriorityPrice *big.Int
-	FeePerGas        *big.Int
+	MaxPriorityPrice float64
+	FeePerGas        float64
 	Timestamp        time.Time
 }
 
@@ -60,7 +60,7 @@ type ContextManager struct {
 	// receipts map[common.Hash]*TxInfo
 
 	// gasPrices map between network => gasinfo
-	gasPrices map[uint64]*GasInfo
+	gasSettings map[uint64]*GasInfo
 }
 
 func NewContextManager() *ContextManager {
@@ -322,40 +322,40 @@ func (cm *ContextManager) Nonce(wallet common.Address, network Network) (*big.In
 	return big.NewInt(int64(localPendingNonce)), nil
 }
 
-func (cm *ContextManager) getGasPriceInfo(network Network) *GasInfo {
+func (cm *ContextManager) getGasSettingInfo(network Network) *GasInfo {
 	cm.lock.RLock()
 	defer cm.lock.RUnlock()
-	return cm.gasPrices[network.GetChainID()]
+	return cm.gasSettings[network.GetChainID()]
 }
 
 func (cm *ContextManager) setGasInfo(network Network, info *GasInfo) {
 	cm.lock.Lock()
 	defer cm.lock.Unlock()
-	cm.gasPrices[network.GetChainID()] = info
+	cm.gasSettings[network.GetChainID()] = info
 }
 
 // implement a cache mechanism to be more efficient
-func (cm *ContextManager) GasPrice(network Network) (*GasInfo, error) {
-	gasInfo := cm.getGasPriceInfo(network)
+func (cm *ContextManager) GasSetting(network Network) (*GasInfo, error) {
+	gasInfo := cm.getGasSettingInfo(network)
 	if gasInfo == nil || time.Since(gasInfo.Timestamp) >= GAS_INFO_TTL {
 		// gasInfo is not initiated or outdated
 		reader := cm.Reader(network)
-		gasPrice, err := reader.RecommendedGasPrice()
+		gasPrice, gasTipCapGwei, err := reader.SuggestedGasSettings()
 		if err != nil {
-			return nil, fmt.Errorf("Couldn't get gas price in context manager: %s", err)
+			return nil, fmt.Errorf("Couldn't get gas settings in context manager: %s", err)
 		}
 
 		info := GasInfo{
 			GasPrice:         gasPrice,
 			BaseGasPrice:     nil,
-			MaxPriorityPrice: nil,
-			FeePerGas:        nil,
+			MaxPriorityPrice: gasTipCapGwei,
+			FeePerGas:        gasPrice,
 			Timestamp:        time.Now(),
 		}
 		cm.setGasInfo(network, &info)
 		return &info, nil
 	}
-	return cm.getGasPriceInfo(network), nil
+	return cm.getGasSettingInfo(network), nil
 }
 
 func (cm *ContextManager) BroadcastRawTx(
@@ -373,12 +373,13 @@ func (cm *ContextManager) BroadcastRawTx(
 	return cm.BroadcastTx(tx)
 }
 
-func (cm *ContextManager) BuildLegacyTx(
+func (cm *ContextManager) BuildTx(
 	from, to common.Address,
 	nonce *big.Int,
 	value *big.Int,
 	gasLimit uint64,
 	gasPrice float64,
+	tipCapGwei float64,
 	data []byte,
 	network Network,
 ) (tx *types.Transaction, err error) {
@@ -405,11 +406,12 @@ func (cm *ContextManager) BuildLegacyTx(
 	}
 
 	if gasPrice == 0 {
-		gasInfo, err := cm.GasPrice(network)
+		gasInfo, err := cm.GasSetting(network)
 		if err != nil {
 			return nil, fmt.Errorf("Couldn't get gas price info from any nodes: %s", err)
 		}
 		gasPrice = gasInfo.GasPrice
+		tipCapGwei = gasInfo.MaxPriorityPrice
 	}
 
 	return BuildExactTx(
@@ -418,7 +420,9 @@ func (cm *ContextManager) BuildLegacyTx(
 		value,
 		gasLimit+config.ExtraGasLimit,
 		gasPrice+config.ExtraGasPrice,
+		tipCapGwei,
 		data,
+		network.GetChainID(),
 	), nil
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
@@ -243,7 +244,7 @@ func GetApproverAccountFromMsig(multisigContract *msig.MultisigContract) (string
 		return "", fmt.Errorf("getting msig owners failed: %w", err)
 	}
 
-	var acc accounts.AccDesc
+	var acc types.AccDesc
 	count := 0
 	for _, owner := range owners {
 		a, err := accounts.GetAccount(owner)
@@ -339,10 +340,11 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
-			tx, err := cm.BuildLegacyTx(
+			tx, err := cm.BuildTx(
 				HexToAddress(from), HexToAddress(msigHex),
 				nil,
 				big.NewInt(0),
+				0,
 				0,
 				0,
 				data,
@@ -433,7 +435,15 @@ var newMsigCmd = &cobra.Command{
 				return
 			}
 		}
-		tx := BuildContractCreationTx(config.Nonce, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, bytecode)
+		tx := BuildContractCreationTx(
+			config.Nonce,
+			config.Value,
+			config.GasLimit+config.ExtraGasLimit,
+			config.GasPrice+config.ExtraGasPrice,
+			config.TipGas,
+			bytecode,
+			config.Network().GetChainID(),
+		)
 
 		err = cmdutil.PromptTxConfirmation(
 			analyzer,
@@ -579,7 +589,16 @@ var initMsigCmd = &cobra.Command{
 			}
 		}
 
-		tx := BuildExactTx(config.Nonce, config.To, config.Value, config.GasLimit+config.ExtraGasLimit, config.GasPrice+config.ExtraGasPrice, txdata)
+		tx := BuildExactTx(
+			config.Nonce,
+			config.To,
+			config.Value,
+			config.GasLimit+config.ExtraGasLimit,
+			config.GasPrice+config.ExtraGasPrice,
+			config.TipGas,
+			txdata,
+			config.Network().GetChainID(),
+		)
 
 		customABIs := map[string]*abi.ABI{
 			strings.ToLower(config.MsigTo): a,
@@ -670,6 +689,7 @@ func init() {
 	}
 	for _, c := range writeCmds {
 		c.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
+		c.PersistentFlags().Float64VarP(&config.TipGas, "tipgas", "s", 0, "tip in gwei, will be use in dynamic fee tx, default value get from node.")
 		c.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
 		c.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
 		c.PersistentFlags().Uint64VarP(&config.ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")

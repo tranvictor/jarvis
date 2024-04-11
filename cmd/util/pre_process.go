@@ -6,9 +6,12 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/accounts/types"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
+	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -25,7 +28,7 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 			config.PrefillParams[i] = strings.Trim(config.PrefillParams[i], " ")
 		}
 	}
-  PrintElapseTime(Start, "after processing prefill string")
+	PrintElapseTime(Start, "after processing prefill string")
 
 	config.Value, err = FloatStringToBig(config.RawValue, 18)
 	if err != nil {
@@ -36,20 +39,20 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 		return fmt.Errorf("-v param can't be negative")
 	}
 
-  PrintElapseTime(Start, "after processing config.Value")
+	PrintElapseTime(Start, "after processing config.Value")
 
 	if len(args) == 0 {
 		config.To = "" // this is to indicate a contract creation tx
 	} else {
 		config.To, _, err = util.GetAddressFromString(args[0])
 		if err != nil {
-			networks, txs := ScanForTxs(args[0])
+			nwks, txs := ScanForTxs(args[0])
 			if len(txs) == 0 {
 				return fmt.Errorf("can't interpret the contract address")
 			}
 			config.Tx = txs[0]
-			if networks[0] != "" {
-				config.SetNetwork(networks[0])
+			if nwks[0] != "" {
+				config.SetNetwork(nwks[0])
 			}
 
 			reader, err := util.EthReader(config.Network())
@@ -57,18 +60,18 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 				return fmt.Errorf("couldn't connect to blockchain\n")
 			}
 
-      PrintElapseTime(Start, "after initiating tx hash and ethreader, begin to get txinfo from hash")
+			PrintElapseTime(Start, "after initiating tx hash and ethreader, begin to get txinfo from hash")
 
 			txinfo, err := reader.TxInfoFromHash(config.Tx)
 			if err != nil {
 				return fmt.Errorf("couldn't get tx info from the blockchain: %s\n", err)
 			}
-			config.TxInfo = &txinfo
-			config.To = config.TxInfo.Tx.To().Hex()
+			state.TxInfo = &txinfo
+			config.To = state.TxInfo.Tx.To().Hex()
 		}
 	}
 
-  PrintElapseTime(Start, "after processing config.To & config.TxInfo")
+	PrintElapseTime(Start, "after processing config.To & config.TxInfo")
 
 	return nil
 }
@@ -94,7 +97,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-  PrintElapseTime(Start, "after getting abi")
+	PrintElapseTime(Start, "after getting abi")
 
 	// loosely check by checking a set of method names
 
@@ -107,7 +110,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-  PrintElapseTime(Start, "after checking if address is a msig")
+	PrintElapseTime(Start, "after checking if address is a msig")
 
 	if config.From == "" && isGnosisMultisig {
 		multisigContract, err := msig.NewMultisigContract(
@@ -122,10 +125,9 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("getting msig owners failed: %w", err)
 		}
 
-    PrintElapseTime(Start, "after getting msig owner list")
+		PrintElapseTime(Start, "after getting msig owner list")
 
-
-		var acc accounts.AccDesc
+		var acc types.AccDesc
 		count := 0
 		for _, owner := range owners {
 			a, err := accounts.GetAccount(owner)
@@ -135,15 +137,19 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			}
 		}
 		if count == 0 {
-			return fmt.Errorf("You don't have any wallet which is this multisig signer. Please jarvis wallet add to add the wallet.")
+			return fmt.Errorf(
+				"You don't have any wallet which is this multisig signer. Please jarvis wallet add to add the wallet.",
+			)
 		}
 		if count != 1 {
-			return fmt.Errorf("You have many wallets that are this multisig signers. Please specify only 1.")
+			return fmt.Errorf(
+				"You have many wallets that are this multisig signers. Please specify only 1.",
+			)
 		}
 		config.FromAcc = acc
 		config.From = acc.Address
 
-    PrintElapseTime(Start, "after getting config.From config.FromAcc")
+		PrintElapseTime(Start, "after getting config.From config.FromAcc")
 
 	} else {
 		// process from to get address
@@ -155,7 +161,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			config.From = acc.Address
 		}
 
-    PrintElapseTime(Start, "after getting config.From config.FromAcc")
+		PrintElapseTime(Start, "after getting config.From config.FromAcc")
 
 	}
 
@@ -176,7 +182,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-  PrintElapseTime(Start, "after getting gas price")
+	PrintElapseTime(Start, "after getting gas price")
 
 	// var Nonce uint64
 	if config.Nonce == 0 {
@@ -186,7 +192,17 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-  PrintElapseTime(Start, "after getting nonce")
+	isDynamicFeeAvailable, err := reader.CheckDynamicFeeTxAvailable()
+	if err != nil {
+		return fmt.Errorf("checking if chain has dynamic fee feature failed: %w", err)
+	}
+
+	if isDynamicFeeAvailable {
+		config.TipGas, err = reader.GetSuggestedGasTipCap()
+		if err != nil {
+			return fmt.Errorf("getting tip gas failed: %w", err)
+		}
+	}
 
 	return nil
 }
