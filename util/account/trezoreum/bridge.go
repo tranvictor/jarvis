@@ -4,9 +4,10 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/usbwallet/trezor"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+
+	"github.com/tranvictor/jarvis/util/account/trezoreum/trezor"
 )
 
 type TrezorState int
@@ -28,5 +29,9 @@ type Bridge interface {
 
 	Derive(path accounts.DerivationPath) (common.Address, error)
 
-	Sign(path accounts.DerivationPath, tx *types.Transaction, chainID *big.Int) (common.Address, *types.Transaction, error)
+	Sign(
+		path accounts.DerivationPath,
+		tx *types.Transaction,
+		chainID *big.Int,
+	) (common.Address, *types.Transaction, error)
 }

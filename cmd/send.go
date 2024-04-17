@@ -7,9 +7,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
 
 	"github.com/tranvictor/jarvis/accounts"
@@ -84,41 +82,15 @@ func handleMsigSend(
 		os.Exit(126)
 	}
 
-	if config.DontBroadcast {
-		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
-		if err != nil {
-			fmt.Printf("%s", err)
-			return
-		}
-		data, err := rlp.EncodeToBytes(signedTx)
-		if err != nil {
-			fmt.Printf("Couldn't encode the signed tx: %s", err)
-			return
-		}
-		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
-	} else {
-		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
-		if err != nil {
-			fmt.Printf("Signing tx failed: %s\n", err)
-			return
-		}
-		broadcaster, err := util.EthBroadcaster(config.Network())
-		if err != nil {
-			fmt.Printf("Signing tx failed: %s\n", err)
-			return
-		}
-		_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
+	signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
+	if err != nil {
+		fmt.Printf("Failed to sign tx: %s\n", err)
+		return
+	}
 
-		if config.DontWaitToBeMined {
-			util.DisplayBroadcastedTx(
-				signedTx, broadcasted, err, config.Network(),
-			)
-		} else {
-			util.DisplayWaitAnalyze(
-				reader, analyzer, signedTx, broadcasted, err, config.Network(),
-				a, nil, config.DegenMode,
-			)
-		}
+	_, err = cmdutil.HandlePostSign(signedTx, reader, analyzer, a)
+	if err != nil {
+		fmt.Printf("Failed to proceed after signing the tx: %s. Aborted.\n", err)
 	}
 }
 
@@ -201,42 +173,15 @@ func handleSend(
 		os.Exit(126)
 	}
 
-	if config.DontBroadcast {
-		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
-		if err != nil {
-			fmt.Printf("%s", err)
-			return
-		}
-		data, err := rlp.EncodeToBytes(signedTx)
-		if err != nil {
-			fmt.Printf("Couldn't encode the signed tx: %s", err)
-			return
-		}
-		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
-	} else {
-		signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
-		if err != nil {
-			fmt.Printf("Signing tx failed: %s\n", err)
-			return
-		}
+	signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
+	if err != nil {
+		fmt.Printf("Failed to sign tx: %s\n", err)
+		return
+	}
 
-		broadcaster, err := util.EthBroadcaster(config.Network())
-		if err != nil {
-			fmt.Printf("Signing tx failed: %s\n", err)
-			return
-		}
-
-		_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
-		if config.DontWaitToBeMined {
-			util.DisplayBroadcastedTx(
-				signedTx, broadcasted, err, config.Network(),
-			)
-		} else {
-			util.DisplayWaitAnalyze(
-				reader, analyzer, signedTx, broadcasted, err, config.Network(),
-				a, nil, config.DegenMode,
-			)
-		}
+	_, err = cmdutil.HandlePostSign(signedTx, reader, analyzer, a)
+	if err != nil {
+		fmt.Printf("Failed to proceed after signing the tx: %s. Aborted.\n", err)
 	}
 }
 

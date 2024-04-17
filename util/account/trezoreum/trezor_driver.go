@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ethereum/go-ethereum/accounts/usbwallet/trezor"
 	"github.com/golang/protobuf/proto"
+
+	"github.com/tranvictor/jarvis/util/account/trezoreum/trezor"
 )
 
 type CallMode int

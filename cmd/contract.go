@@ -6,12 +6,9 @@ import (
 	"io/ioutil"
 	"math/big"
 	"strings"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
 
 	"github.com/tranvictor/jarvis/accounts"
@@ -208,71 +205,9 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 
-		broadcaster, err := util.EthBroadcaster(config.Network())
+		_, err = cmdutil.HandlePostSign(signedTx, reader, analyzer, a)
 		if err != nil {
-			fmt.Printf("Signing tx failed: %s\n", err)
-			return
-		}
-
-		if config.DontBroadcast {
-			data, err := rlp.EncodeToBytes(signedTx)
-			if err != nil {
-				fmt.Printf("Couldn't encode the signed tx: %s", err)
-				return
-			}
-			fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
-		} else {
-			var broadcasted bool
-
-			if config.RetryBroadcast {
-				ticker := time.NewTicker(500 * time.Millisecond)
-				quit := make(chan struct{})
-				broadcastedCh := make(chan *struct{})
-				go func() {
-					for {
-						select {
-						case <-ticker.C:
-							_, broadcasted, err = broadcaster.BroadcastTx(signedTx)
-							if broadcasted {
-								broadcastedCh <- nil
-								close(quit)
-							} else {
-								fmt.Printf("Couldn't broadcast tx: %s. Retry in a while.\n", err)
-							}
-						case <-quit:
-							ticker.Stop()
-							return
-						}
-					}
-				}()
-
-				select {
-				case <-broadcastedCh:
-					if config.DontWaitToBeMined {
-						util.DisplayBroadcastedTx(
-							tx, broadcasted, err, config.Network(),
-						)
-					} else {
-						util.DisplayWaitAnalyze(
-							reader, analyzer, tx, broadcasted, err, config.Network(),
-							a, nil, config.DegenMode,
-						)
-					}
-				}
-
-			} else {
-				_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
-				if config.DontWaitToBeMined {
-					util.DisplayBroadcastedTx(
-						tx, broadcasted, err, config.Network(),
-					)
-				} else {
-					util.DisplayWaitAnalyze(
-						reader, analyzer, tx, broadcasted, err, config.Network(),
-						a, nil, config.DegenMode,
-					)
-				}
-			}
+			fmt.Printf("Failed to proceed after signing the tx: %s. Aborted.\n", err)
 		}
 	},
 }
@@ -292,11 +227,9 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 		fmt.Printf("Couldn't unpack response to go types: %s\n", err)
 		return contractReadResult{}, err
 	}
-	analyzer, err := txanalyzer.EthAnalyzer(config.Network())
-	if err != nil {
-		fmt.Printf("Couldn't init analyzer: %s\n", err)
-		return contractReadResult{}, err
-	}
+
+	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+
 	fmt.Printf("Output:\n")
 	result := contractReadResult{}
 	for i, output := range method.Outputs {

@@ -7,10 +7,11 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts"
-	"github.com/ethereum/go-ethereum/accounts/usbwallet/trezor"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/protobuf/proto"
+
+	"github.com/tranvictor/jarvis/util/account/trezoreum/trezor"
 	"github.com/tranvictor/jarvis/util/account/usb"
 )
 
@@ -49,7 +50,12 @@ func (self *Trezoreum) Unlock() error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Firmware version: %d.%d.%d\n", *info.MajorVersion, *info.MinorVersion, *info.PatchVersion)
+	fmt.Printf(
+		"Firmware version: %d.%d.%d\n",
+		*info.MajorVersion,
+		*info.MinorVersion,
+		*info.PatchVersion,
+	)
 	for state != Ready {
 		if state == WaitingForPin {
 			pin := PromptPINFromStdin()
@@ -119,7 +125,6 @@ func (self *Trezoreum) GetDevice() ([]usb.DeviceInfo, error) {
 
 func (self *Trezoreum) Init() (trezor.Features, TrezorState, error) {
 	devices, err := self.GetDevice()
-
 	if err != nil {
 		return trezor.Features{}, Unexpected, err
 	}
@@ -155,10 +160,8 @@ func (self *Trezoreum) Init() (trezor.Features, TrezorState, error) {
 		return trezor.Features{}, Unexpected, err
 	}
 
-	askPin := true
-	askPassphrase := true
 	res, err := self.trezorExchange(
-		&trezor.Ping{PinProtection: &askPin, PassphraseProtection: &askPassphrase},
+		&trezor.Ping{},
 		new(trezor.PinMatrixRequest),
 		new(trezor.PassphraseRequest),
 		new(trezor.Success),
@@ -211,16 +214,94 @@ func (self *Trezoreum) Derive(path accounts.DerivationPath) (common.Address, err
 	if _, err := self.trezorExchange(&trezor.EthereumGetAddress{AddressN: path}, address); err != nil {
 		return common.Address{}, err
 	}
-	if addr := address.GetAddressBin(); len(addr) > 0 { // Older firmwares use binary fomats
-		return common.BytesToAddress(addr), nil
-	}
-	if addr := address.GetAddressHex(); len(addr) > 0 { // Newer firmwares use hexadecimal fomats
+	if addr := address.GetAddress(); len(addr) > 0 { // Older firmwares use binary fomats
 		return common.HexToAddress(addr), nil
 	}
 	return common.Address{}, errors.New("missing derived address")
 }
 
-func (self *Trezoreum) Sign(path accounts.DerivationPath, tx *types.Transaction, chainId *big.Int) (common.Address, *types.Transaction, error) {
+func (self *Trezoreum) SignDynamicFeeTx(
+	path accounts.DerivationPath,
+	tx *types.Transaction,
+	chainId *big.Int,
+) (common.Address, *types.Transaction, error) {
+	// Create the transaction initiation message
+	data := tx.Data()
+	length := uint32(len(data))
+
+	request := &trezor.EthereumSignTxEIP1559{
+		AddressN:       path,
+		Nonce:          new(big.Int).SetUint64(tx.Nonce()).Bytes(),
+		MaxGasFee:      tx.GasFeeCap().Bytes(),
+		MaxPriorityFee: tx.GasTipCap().Bytes(),
+		GasLimit:       new(big.Int).SetUint64(tx.Gas()).Bytes(),
+		Value:          tx.Value().Bytes(),
+		DataLength:     &length,
+	}
+	if to := tx.To(); to != nil {
+		// Non contract deploy, set recipient explicitly
+		hex := to.Hex()
+		request.To = &hex // Newer firmwares (old will ignore)
+		// request.ToBin = (*to)[:] // Older firmwares (new will ignore)
+	}
+	if length > 1024 { // Send the data chunked if that was requested
+		request.DataInitialChunk, data = data[:1024], data[1024:]
+	} else {
+		request.DataInitialChunk, data = data, nil
+	}
+	if chainId != nil { // EIP-155 transaction, set chain ID explicitly (only 32 bit is supported!?)
+		id := chainId.Uint64()
+		request.ChainId = &id
+	}
+	// Send the initiation message and stream content until a signature is returned
+	response := new(trezor.EthereumTxRequest)
+	if _, err := self.trezorExchange(request, response); err != nil {
+		return common.Address{}, nil, err
+	}
+	for response.DataLength != nil && int(*response.DataLength) <= len(data) {
+		chunk := data[:*response.DataLength]
+		data = data[*response.DataLength:]
+
+		if _, err := self.trezorExchange(&trezor.EthereumTxAck{DataChunk: chunk}, response); err != nil {
+			return common.Address{}, nil, err
+		}
+	}
+
+	// Extract the Ethereum signature and do a sanity validation
+	if len(response.GetSignatureR()) == 0 || len(response.GetSignatureS()) == 0 {
+		return common.Address{}, nil, errors.New("reply lacks signature")
+	}
+	signature := append(
+		append(response.GetSignatureR(), response.GetSignatureS()...),
+		byte(response.GetSignatureV()),
+	)
+
+	// Create the correct signer and signature transform based on the chain ID
+	var signer types.Signer
+	if chainId == nil {
+		signer = new(types.HomesteadSigner)
+	} else {
+		signer = types.LatestSignerForChainID(chainId)
+		// signature[64] -= byte(chainId.Uint64()*2 + 35)
+	}
+
+	// Inject the final signature into the transaction and sanity check the sender
+	signed, err := tx.WithSignature(signer, signature)
+	if err != nil {
+		return common.Address{}, nil, err
+	}
+	sender, err := types.Sender(signer, signed)
+	if err != nil {
+		return common.Address{}, nil, err
+	}
+	return sender, signed, nil
+}
+
+func (self *Trezoreum) SignLegacyTx(
+	path accounts.DerivationPath,
+	tx *types.Transaction,
+	chainId *big.Int,
+) (common.Address, *types.Transaction, error) {
 	// Create the transaction initiation message
 	data := tx.Data()
 	length := uint32(len(data))
@@ -236,9 +317,8 @@ func (self *Trezoreum) Sign(path accounts.DerivationPath, tx *types.Transaction,
 	if to := tx.To(); to != nil {
 		// Non contract deploy, set recipient explicitly
 		hex := to.Hex()
-		// fmt.Printf("hex: %s\n", hex)
-		request.ToHex = &hex     // Newer firmwares (old will ignore)
-		request.ToBin = (*to)[:] // Older firmwares (new will ignore)
+		request.To = &hex // Newer firmwares (old will ignore)
+		// request.ToBin = (*to)[:] // Older firmwares (new will ignore)
 	}
 	if length > 1024 { // Send the data chunked if that was requested
 		request.DataInitialChunk, data = data[:1024], data[1024:]
@@ -246,7 +326,7 @@ func (self *Trezoreum) Sign(path accounts.DerivationPath, tx *types.Transaction,
 		request.DataInitialChunk, data = data, nil
 	}
 	if chainId != nil { // EIP-155 transaction, set chain ID explicitly (only 32 bit is supported!?)
-		id := uint32(chainId.Int64())
+		id := chainId.Uint64()
 		request.ChainId = &id
 	}
 	// Send the initiation message and stream content until a signature is returned
@@ -263,19 +343,24 @@ func (self *Trezoreum) Sign(path accounts.DerivationPath, tx *types.Transaction,
 		}
 	}
 	// Extract the Ethereum signature and do a sanity validation
-	if len(response.GetSignatureR()) == 0 || len(response.GetSignatureS()) == 0 || response.GetSignatureV() == 0 {
+	if len(response.GetSignatureR()) == 0 || len(response.GetSignatureS()) == 0 ||
+		response.GetSignatureV() == 0 {
 		return common.Address{}, nil, errors.New("reply lacks signature")
 	}
-	signature := append(append(response.GetSignatureR(), response.GetSignatureS()...), byte(response.GetSignatureV()))
+	signature := append(
+		append(response.GetSignatureR(), response.GetSignatureS()...),
+		byte(response.GetSignatureV()),
+	)
 
 	// Create the correct signer and signature transform based on the chain ID
 	var signer types.Signer
 	if chainId == nil {
 		signer = new(types.HomesteadSigner)
 	} else {
-		signer = types.NewEIP155Signer(chainId)
+		signer = types.LatestSignerForChainID(chainId)
 		signature[64] -= byte(chainId.Uint64()*2 + 35)
 	}
+
 	// Inject the final signature into the transaction and sanity check the sender
 	signed, err := tx.WithSignature(signer, signature)
 	if err != nil {
@@ -286,4 +371,18 @@ func (self *Trezoreum) Sign(path accounts.DerivationPath, tx *types.Transaction,
 		return common.Address{}, nil, err
 	}
 	return sender, signed, nil
+}
+
+func (self *Trezoreum) Sign(
+	path accounts.DerivationPath,
+	tx *types.Transaction,
+	chainId *big.Int,
+) (common.Address, *types.Transaction, error) {
+	if tx.Type() == types.LegacyTxType {
+		return self.SignLegacyTx(path, tx, chainId)
+	} else if tx.Type() == types.DynamicFeeTxType {
+		return self.SignDynamicFeeTx(path, tx, chainId)
+	}
+
+	return common.Address{}, nil, fmt.Errorf("not supported type - trezoreum can't sign")
 }

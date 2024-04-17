@@ -5,8 +5,12 @@ import (
 	"math/big"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/spf13/cobra"
 
 	"github.com/tranvictor/jarvis/accounts"
@@ -17,6 +21,7 @@ import (
 	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/util/reader"
 )
 
 func AnalyzeAndShowMsigTxInfo(
@@ -356,5 +361,80 @@ func HandleApproveOrRevokeOrExecuteMsig(
 			reader, analyzer, signedTx, broadcasted, err, config.Network(),
 			a, nil, config.DegenMode,
 		)
+	}
+}
+
+func HandlePostSign(
+	signedTx *types.Transaction,
+	reader *reader.EthReader,
+	analyzer *txanalyzer.TxAnalyzer,
+	a *abi.ABI,
+) (broadcasted bool, err error) {
+	broadcaster, err := util.EthBroadcaster(config.Network())
+	if err != nil {
+		return false, err
+	}
+
+	if config.DontBroadcast {
+		data, err := rlp.EncodeToBytes(signedTx)
+		if err != nil {
+			fmt.Printf("Couldn't encode the signed tx: %s", err)
+			return false, fmt.Errorf("Couldn't encode the signed tx: %w", err)
+		}
+		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
+		return false, nil
+	}
+
+	if !config.RetryBroadcast {
+		_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
+		if config.DontWaitToBeMined {
+			util.DisplayBroadcastedTx(
+				signedTx, broadcasted, err, config.Network(),
+			)
+			return broadcasted, err
+		}
+
+		util.DisplayWaitAnalyze(
+			reader, analyzer, signedTx, broadcasted, err, config.Network(),
+			a, nil, config.DegenMode,
+		)
+		return broadcasted, err
+	}
+
+	ticker := time.NewTicker(500 * time.Millisecond)
+	quit := make(chan struct{})
+	broadcastedCh := make(chan *struct{})
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				_, broadcasted, err = broadcaster.BroadcastTx(signedTx)
+				if broadcasted {
+					broadcastedCh <- nil
+					close(quit)
+				} else {
+					fmt.Printf("Couldn't broadcast tx: %s. Retry in a while.\n", err)
+				}
+			case <-quit:
+				ticker.Stop()
+				return
+			}
+		}
+	}()
+
+	select {
+	case <-broadcastedCh:
+		if config.DontWaitToBeMined {
+			util.DisplayBroadcastedTx(
+				signedTx, broadcasted, err, config.Network(),
+			)
+			return broadcasted, err
+		}
+
+		util.DisplayWaitAnalyze(
+			reader, analyzer, signedTx, broadcasted, err, config.Network(),
+			a, nil, config.DegenMode,
+		)
+		return broadcasted, err
 	}
 }

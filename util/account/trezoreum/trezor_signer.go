@@ -17,7 +17,10 @@ type TrezorSigner struct {
 	trezor         Bridge
 }
 
-func (self *TrezorSigner) SignTx(tx *types.Transaction, chainId *big.Int) (*types.Transaction, error) {
+func (self *TrezorSigner) SignTx(
+	tx *types.Transaction,
+	chainId *big.Int,
+) (*types.Transaction, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	fmt.Printf("Going to proceed signing procedure\n")
@@ -30,6 +33,7 @@ func (self *TrezorSigner) SignTx(tx *types.Transaction, chainId *big.Int) (*type
 		self.deviceUnlocked = true
 	}
 	_, tx, err = self.trezor.Sign(self.path, tx, chainId)
+
 	return tx, err
 }
 
