@@ -26,6 +26,7 @@ type EthereumNode interface {
 	TransactionByHash(txHash string) (tx *common.Transaction, isPending bool, err error)
 	// Call(result interface{}, method string, args ...interface{}) error
 	GetGasPriceSuggestion() (*big.Int, error)
+	SuggestedGasPrice() (*big.Int, error)
 	SuggestedGasTipCap() (*big.Int, error)
 	ReadContractToBytes(
 		atBlock int64,

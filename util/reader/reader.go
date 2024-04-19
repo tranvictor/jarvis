@@ -1,12 +1,8 @@
 package reader
 
 import (
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
-	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -165,91 +161,6 @@ func (self *EthReader) TxInfoFromHash(tx string) (TxInfo, error) {
 		// failed tx
 		return TxInfo{"reverted", txObj, []InternalTx{}, receipt}, nil
 	}
-}
-
-type ksresponse struct {
-	Data struct {
-		Fast     string
-		Standard string
-		Low      string
-		Default  string
-	}
-	Success bool
-}
-
-func (self *EthReader) RecommendedGasPriceFromKyberSwap() (low, average, fast float64, err error) {
-	resp, err := http.Get("https://production-cache.kyber.network/gasPrice")
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	prices := ksresponse{}
-	err = json.Unmarshal(body, &prices)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	if !prices.Success {
-		return 0, 0, 0, fmt.Errorf("failed response from kyberswap")
-	}
-
-	fastFloat, err := strconv.ParseFloat(prices.Data.Fast, 64)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	standardFloat, err := strconv.ParseFloat(prices.Data.Standard, 64)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	lowFloat, err := strconv.ParseFloat(prices.Data.Low, 64)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-
-	return lowFloat, standardFloat, fastFloat, nil
-}
-
-// gas station response
-type gsresponse struct {
-	Average float64 `json:"average"`
-	Fast    float64 `json:"fast"`
-	Fastest float64 `json:"fastest"`
-	SafeLow float64 `json:"safeLow"`
-}
-
-// func (self *EthReader) RecommendedGasPriceFromEthGasStation(link string) (low, average, fast float64, err error) {
-// 	resp, err := http.Get(link)
-// 	if err != nil {
-// 		return 0, 0, 0, err
-// 	}
-// 	defer resp.Body.Close()
-// 	body, err := ioutil.ReadAll(resp.Body)
-// 	if err != nil {
-// 		return 0, 0, 0, err
-// 	}
-// 	prices := gsresponse{}
-// 	err = json.Unmarshal(body, &prices)
-// 	if err != nil {
-// 		return 0, 0, 0, err
-// 	}
-// 	return prices.SafeLow / 10, prices.Average / 10, prices.Fast / 10, nil
-// }
-
-// return gwei
-func (self *EthReader) RecommendedGasPrice() (float64, error) {
-	price, err := self.be.RecommendedGasPrice()
-	if err != nil {
-		priceWei, err := self.GetGasPriceWeiSuggestion()
-		if err != nil {
-			return 0, err
-		}
-
-		return BigToFloat(priceWei, 9), nil
-	}
-	return price, nil
 }
 
 type getGasSuggestionResponse struct {
@@ -746,20 +657,20 @@ func (self *EthReader) CheckDynamicFeeTxAvailable() (bool, error) {
 	return header.BaseFee != nil && header.BaseFee.Cmp(common.Big0) > 0, nil
 }
 
-type getSuggestedGasTipCapResponse struct {
-	GasTip *big.Int
-	Error  error
+type getSuggestedGasResponse struct {
+	Gas   *big.Int
+	Error error
 }
 
 func (self *EthReader) GetSuggestedGasTipCap() (float64, error) {
-	resCh := make(chan getSuggestedGasTipCapResponse, len(self.nodes))
+	resCh := make(chan getSuggestedGasResponse, len(self.nodes))
 	for i := range self.nodes {
 		n := self.nodes[i]
 		go func() {
 			gasTip, err := n.SuggestedGasTipCap()
-			resCh <- getSuggestedGasTipCapResponse{
-				GasTip: gasTip,
-				Error:  wrapError(err, n.NodeName()),
+			resCh <- getSuggestedGasResponse{
+				Gas:   gasTip,
+				Error: wrapError(err, n.NodeName()),
 			}
 		}()
 	}
@@ -768,7 +679,31 @@ func (self *EthReader) GetSuggestedGasTipCap() (float64, error) {
 	for i := 0; i < len(self.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
-			return BigToFloat(result.GasTip, 9), result.Error
+			return BigToFloat(result.Gas, 9), result.Error
+		}
+		errs = append(errs, result.Error)
+	}
+	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+}
+
+func (self *EthReader) RecommendedGasPrice() (float64, error) {
+	resCh := make(chan getSuggestedGasResponse, len(self.nodes))
+	for i := range self.nodes {
+		n := self.nodes[i]
+		go func() {
+			gasTip, err := n.SuggestedGasPrice()
+			resCh <- getSuggestedGasResponse{
+				Gas:   gasTip,
+				Error: wrapError(err, n.NodeName()),
+			}
+		}()
+	}
+
+	errs := []error{}
+	for i := 0; i < len(self.nodes); i++ {
+		result := <-resCh
+		if result.Error == nil {
+			return BigToFloat(result.Gas, 9), result.Error
 		}
 		errs = append(errs, result.Error)
 	}

@@ -9,6 +9,7 @@ import (
 
 	aurora "github.com/logrusorgru/aurora"
 	indent "github.com/openconfig/goyang/pkg/indent"
+
 	. "github.com/tranvictor/jarvis/networks"
 )
 
@@ -134,7 +135,7 @@ func printFunctionCallToWriter(fc *FunctionCall, w io.Writer, level int) {
 
 func ReadableNumber(value string) string {
 	digits := []string{}
-	for i, _ := range value {
+	for i := range value {
 		digits = append([]string{string(value[len(value)-1-i])}, digits...)
 		if (i+1)%3 == 0 && i < len(value)-1 {
 			if (i+1)%9 == 0 {
@@ -189,11 +190,19 @@ func PrintVerboseValueToWriter(writer io.Writer, values []Value) {
 
 func VerboseAddress(addr Address) string {
 	if addr.Decimal != 0 {
-		return fmt.Sprintf("%s (%s)", addr.Address, NameWithColor(fmt.Sprintf("%s - %d", addr.Desc, addr.Decimal)))
+		return fmt.Sprintf(
+			"%s (%s)",
+			addr.Address,
+			NameWithColor(fmt.Sprintf("%s - %d", addr.Desc, addr.Decimal)),
+		)
 	}
 	return fmt.Sprintf("%s (%s)", addr.Address, NameWithColor(addr.Desc))
 }
 
 func PrintElapseTime(start time.Time, str string) {
-  // fmt.Printf("-------------------------------------profiling-elapsed: %s -- %s\n", time.Since(start), str)
+	fmt.Printf(
+		"-------------------------------------profiling-elapsed: %s -- %s\n",
+		time.Since(start),
+		str,
+	)
 }

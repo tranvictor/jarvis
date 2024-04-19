@@ -168,7 +168,7 @@ func (self *OneNodeReader) transactionByHashOnNode(ctx context.Context, hash com
 	if err != nil {
 		return nil, false, err
 	}
-  PrintElapseTime(Start, fmt.Sprintf("%s - %s", "(L2) about to call on cli", self.nodeURL))
+	PrintElapseTime(Start, fmt.Sprintf("%s - %s", "(L2) about to call on cli", self.nodeURL))
 	err = cli.CallContext(ctx, &json, "eth_getTransactionByHash", hash)
 	if err != nil {
 		return nil, false, err
@@ -214,6 +214,18 @@ func (self *OneNodeReader) HeaderByNumber(number int64) (*types.Header, error) {
 	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	return ethcli.HeaderByNumber(timeout, numberBig)
+}
+
+func (self *OneNodeReader) SuggestedGasPrice() (*big.Int, error) {
+	ethcli, err := self.EthClient()
+	if err != nil {
+		return nil, err
+	}
+
+	timeout, cancel := context.WithTimeout(context.Background(), TIMEOUT)
+	defer cancel()
+
+	return ethcli.SuggestGasPrice(timeout)
 }
 
 func (self *OneNodeReader) SuggestedGasTipCap() (*big.Int, error) {

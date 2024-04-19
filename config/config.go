@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	Debug     bool
+	Debug     bool = true
 	DegenMode bool
 )
 
