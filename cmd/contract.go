@@ -205,8 +205,8 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 
-		_, err = cmdutil.HandlePostSign(signedTx, reader, analyzer, a)
-		if err != nil {
+		broadcasted, err := cmdutil.HandlePostSign(signedTx, reader, analyzer, a)
+		if err != nil && !broadcasted {
 			fmt.Printf("Failed to proceed after signing the tx: %s. Aborted.\n", err)
 		}
 	},
