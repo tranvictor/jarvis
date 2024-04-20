@@ -128,13 +128,21 @@ func PromptFilePath(prompter string) string {
 	return PromptInput(prompter)
 }
 
-func PromptParam(input abi.Argument, prefill string, network Network) (interface{}, error) {
+func PromptParam(
+	interactiveMode bool,
+	input abi.Argument,
+	prefill string,
+	network Network,
+) (interface{}, error) {
 	t := input.Type
 	switch t.T {
 	case abi.SliceTy, abi.ArrayTy:
 		return PromptArray(input, prefill, network)
 	// case abi.TupleTy:
-	// return PromptTuple(input, prefill, network)
+	// 	if interactiveMode {
+	// 		return PromptTuple(input, prefill, network)
+	// 	}
+	// 	return PromptNonArray(input, prefill, network)
 	default:
 		return PromptNonArray(input, prefill, network)
 	}
@@ -447,7 +455,7 @@ func PromptFunctionCallData(
 		var inputParam interface{}
 		fmt.Printf("%d. %s (%s)", pi+1, input.Name, input.Type.String())
 		if !prefillMode || prefills[pi] == "?" {
-			inputParam, err = PromptParam(input, "", network)
+			inputParam, err = PromptParam(true, input, "", network) // interactive prompt
 			if err != nil {
 				fmt.Printf("Your input is not valid: %s\n", err)
 				continue
@@ -458,7 +466,7 @@ func PromptFunctionCallData(
 				indent(8, VerboseValues(analyzer.ParamAsJarvisValues(input.Type, inputParam))),
 			)
 		} else {
-			inputParam, err = PromptParam(input, prefills[pi], network)
+			inputParam, err = PromptParam(false, input, prefills[pi], network) // not interactive prompt
 			if err != nil {
 				fmt.Printf("Your input is not valid: %s\n", err)
 				continue

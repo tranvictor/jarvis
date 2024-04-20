@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+
 	. "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
@@ -32,13 +33,19 @@ type TxAnalyzer struct {
 
 func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult, network Network) {
 	result.From = util.GetJarvisAddress(txinfo.Tx.Extra.From.Hex(), self.Network)
-	result.Value = fmt.Sprintf("%s", BigToFloatString(txinfo.Tx.Value(), network.GetNativeTokenDecimal()))
+	result.Value = fmt.Sprintf(
+		"%s",
+		BigToFloatString(txinfo.Tx.Value(), network.GetNativeTokenDecimal()),
+	)
 	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%.4f", BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
 	result.GasUsed = fmt.Sprintf("%d", txinfo.Receipt.GasUsed)
-	result.GasCost = fmt.Sprintf("%.8f", BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()))
+	result.GasCost = fmt.Sprintf(
+		"%.8f",
+		BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()),
+	)
 	// result.Timestamp = fmt.Sprintf("%s", time.Unix(int64(txinfo.BlockHeader.Time), 0).String())
 }
 
@@ -109,14 +116,18 @@ func (self *TxAnalyzer) ParamAsJarvisValues(t abi.Type, value interface{}) []Val
 		realVal := reflect.ValueOf(value)
 		result := []Value{}
 		for i := 0; i < realVal.Len(); i++ {
-			result = append(result, self.ParamAsJarvisValues(*t.Elem, realVal.Index(i).Interface())...)
+			result = append(
+				result,
+				self.ParamAsJarvisValues(*t.Elem, realVal.Index(i).Interface())...)
 		}
 		return result
 	case abi.ArrayTy:
 		realVal := reflect.ValueOf(value)
 		result := []Value{}
 		for i := 0; i < realVal.Len(); i++ {
-			result = append(result, self.ParamAsJarvisValues(*t.Elem, realVal.Index(i).Interface())...)
+			result = append(
+				result,
+				self.ParamAsJarvisValues(*t.Elem, realVal.Index(i).Interface())...)
 		}
 		return result
 	default:
@@ -162,7 +173,9 @@ func LooksLikeTxData(params []ParamResult) bool {
 	return false
 }
 
-func GetTxDatasFromFunctionCallParams(params []ParamResult) (destinations []string, values []string, data []string) {
+func GetTxDatasFromFunctionCallParams(
+	params []ParamResult,
+) (destinations []string, values []string, data []string) {
 	destinations = []string{}
 	values = []string{}
 	data = []string{}
@@ -201,7 +214,13 @@ func GetTxDatasFromFunctionCallParams(params []ParamResult) (destinations []stri
 	return
 }
 
-func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(lookupABI ABIDatabase, value *big.Int, destination string, data []byte, customABIs map[string]*abi.ABI) (fc *FunctionCall) {
+func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(
+	lookupABI ABIDatabase,
+	value *big.Int,
+	destination string,
+	data []byte,
+	customABIs map[string]*abi.ABI,
+) (fc *FunctionCall) {
 	fc = &FunctionCall{}
 	fc.Destination = util.GetJarvisAddress(destination, self.Network)
 	fc.Value = value
@@ -239,7 +258,10 @@ func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(lookupABI ABIDatabase, va
 	return fc
 }
 
-func (self *TxAnalyzer) AnalyzeMethodCall(a *abi.ABI, data []byte) (method string, params []ParamResult, err error) {
+func (self *TxAnalyzer) AnalyzeMethodCall(
+	a *abi.ABI,
+	data []byte,
+) (method string, params []ParamResult, err error) {
 	if _, err := a.MethodById(data); err != nil {
 		a = GetERC20ABI()
 	}
@@ -256,7 +278,7 @@ func (self *TxAnalyzer) AnalyzeMethodCall(a *abi.ABI, data []byte) (method strin
 	params = []ParamResult{}
 	for i, input := range m.Inputs {
 		if input.Type.T == abi.TupleTy {
-			fmt.Printf("going to analyze tuple: %s, %s\n", input.Name, input.Type.TupleRawName)
+			DebugPrintf("going to analyze tuple: %s, %s\n", input.Name, input.Type.TupleRawName)
 			params = append(params, ParamResult{
 				Name:  input.Name,
 				Type:  input.Type.TupleRawName,
@@ -274,7 +296,11 @@ func (self *TxAnalyzer) AnalyzeMethodCall(a *abi.ABI, data []byte) (method strin
 	return method, params, nil
 }
 
-func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log, network Network) (LogResult, error) {
+func (self *TxAnalyzer) AnalyzeLog(
+	customABIs map[string]*abi.ABI,
+	l *types.Log,
+	network Network,
+) (LogResult, error) {
 	logResult := LogResult{
 		Name:   "",
 		Topics: []TopicResult{},
@@ -318,7 +344,13 @@ func (self *TxAnalyzer) AnalyzeLog(customABIs map[string]*abi.ABI, l *types.Log,
 	return logResult, nil
 }
 
-func (self *TxAnalyzer) analyzeContractTx(txinfo TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, result *TxResult, network Network) {
+func (self *TxAnalyzer) analyzeContractTx(
+	txinfo TxInfo,
+	lookupABI ABIDatabase,
+	customABIs map[string]*abi.ABI,
+	result *TxResult,
+	network Network,
+) {
 	result.FunctionCall = self.AnalyzeFunctionCallRecursively(
 		lookupABI,
 		txinfo.Tx.Value(),
@@ -408,7 +440,13 @@ func (self *TxAnalyzer) analyzeContractTx(txinfo TxInfo, lookupABI ABIDatabase, 
 // 	return result
 // }
 
-func (self *TxAnalyzer) AnalyzeOffline(txinfo *TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI, isContract bool, network Network) *TxResult {
+func (self *TxAnalyzer) AnalyzeOffline(
+	txinfo *TxInfo,
+	lookupABI ABIDatabase,
+	customABIs map[string]*abi.ABI,
+	isContract bool,
+	network Network,
+) *TxResult {
 	result := NewTxResult()
 	result.Network = self.Network.GetName()
 	// fmt.Printf("==========================================Transaction info===============================================================\n")

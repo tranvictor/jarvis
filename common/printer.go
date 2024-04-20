@@ -10,6 +10,7 @@ import (
 	aurora "github.com/logrusorgru/aurora"
 	indent "github.com/openconfig/goyang/pkg/indent"
 
+	"github.com/tranvictor/jarvis/config"
 	. "github.com/tranvictor/jarvis/networks"
 )
 
@@ -200,9 +201,17 @@ func VerboseAddress(addr Address) string {
 }
 
 func PrintElapseTime(start time.Time, str string) {
-	fmt.Printf(
+	DebugPrintf(
 		"-------------------------------------profiling-elapsed: %s -- %s\n",
 		time.Since(start),
 		str,
 	)
+}
+
+func DebugPrintf(format string, a ...any) (n int, err error) {
+	if config.Debug {
+		return fmt.Printf(format, a)
+	}
+
+	return 0, nil
 }

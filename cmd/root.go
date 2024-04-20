@@ -136,6 +136,14 @@ func Execute() {
 		"Automatically Yes to all Y/N prompts",
 	)
 
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.Debug,
+		"debug",
+		"B",
+		false,
+		"print debug logs to screen, helpful to diagnose performance issues",
+	)
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)

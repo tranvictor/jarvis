@@ -2,8 +2,10 @@ package util
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+
 	. "github.com/tranvictor/jarvis/networks"
 )
 
@@ -54,4 +56,41 @@ func InterpretInput(input string, network Network) (string, error) {
 		// else return as is
 		return input, nil
 	}
+}
+
+func SplitInputParamStr(input string) (result []string, err error) {
+	var currentToken strings.Builder
+	inParenthesesCount := 0
+
+	for _, char := range input {
+		switch char {
+		case '(':
+			inParenthesesCount += 1
+			currentToken.WriteRune(char)
+		case ')':
+			if inParenthesesCount == 0 {
+				return nil, fmt.Errorf("invalid input, your input has more ) than prior (")
+			}
+			inParenthesesCount -= 1
+			currentToken.WriteRune(char)
+		case ',':
+			if inParenthesesCount > 0 {
+				// If inside parentheses, treat comma as a normal character
+				currentToken.WriteRune(char)
+			} else {
+				// Otherwise, it's a delimiter
+				result = append(result, currentToken.String())
+				currentToken.Reset()
+			}
+		default:
+			currentToken.WriteRune(char)
+		}
+	}
+
+	// Append the last token
+	if currentToken.Len() > 0 {
+		result = append(result, currentToken.String())
+	}
+
+	return result, nil
 }

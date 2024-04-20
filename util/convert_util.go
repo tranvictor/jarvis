@@ -3,12 +3,14 @@ package util
 import (
 	"fmt"
 	"math/big"
+	"reflect"
 	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+
 	. "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/networks"
 )
@@ -106,7 +108,12 @@ func ConvertToUintOrBig(str string, size int, network Network) (interface{}, err
 	}
 }
 
-func ConvertParamStrToFixedByteType(name string, t abi.Type, strs []string, network Network) (interface{}, error) {
+func ConvertParamStrToFixedByteType(
+	name string,
+	t abi.Type,
+	strs []string,
+	network Network,
+) (interface{}, error) {
 	switch t.Size {
 	case 1:
 		res := [][1]byte{}
@@ -500,17 +507,60 @@ func ConvertEthereumTypeToInputString(t abi.Type, value interface{}) (string, er
 	return "", fmt.Errorf("not implmeneted")
 }
 
-func ConvertParamStrToTupleType(name string, t abi.Type, str string, network Network) (interface{}, error) {
-	fmt.Printf("value str: %s\n", str)
-	fmt.Printf("input name: %s\n", name)
-	fmt.Printf("input type: %v\n", t)
-	fmt.Printf("input tuple type: %v\n", t.TupleType)
-	fmt.Printf("input tuple raw name: %v\n", t.TupleRawName)
-	fmt.Printf("input tuple elems: %v\n", t.TupleElems)
-	return nil, fmt.Errorf("not supported type: %s", t)
+func ConvertParamStrToTupleType(
+	name string,
+	t abi.Type,
+	str string,
+	network Network,
+) (interface{}, error) {
+	DebugPrintf("value str: %s\n", str)
+	DebugPrintf("input name: %s\n", name)
+	DebugPrintf("input type: %v\n", t)
+	DebugPrintf("input tuple type: %v\n", t.TupleType)
+	DebugPrintf("input tuple raw name: %v\n", t.TupleRawName)
+	DebugPrintf("input tuple elems: %v\n", t.TupleElems)
+	if len(str) < 2 || str[0] != '(' || str[len(str)-1] != ')' {
+		return nil, fmt.Errorf("input for a tuple must start with ( and end with )")
+	}
+
+	inputElems, err := SplitInputParamStr(str[1 : len(str)-2])
+	if err != nil {
+		return nil, err
+	}
+
+	if len(inputElems) != t.TupleType.NumField() {
+		return nil, fmt.Errorf("your input doesn't have enough field for the tuple")
+	}
+
+	tupleInstance := reflect.New(t.TupleType).Elem()
+	for i := 0; i < t.TupleType.NumField(); i++ {
+		field := t.TupleType.Field(i)
+		DebugPrintf("Input for field %s (%s): %s\n", field.Name, field.Type, inputElems[i])
+
+		name := ""
+		if t.TupleElems[i].T == abi.AddressTy {
+			// TODO: try to see if we can handle token name here
+		}
+
+		value, err := ConvertParamStrToType(name, *t.TupleElems[i], inputElems[i], network)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"couldn't parse field %s (%s), index %d with input \"%s\"",
+				i, field.Name, field.Type, inputElems[i])
+		}
+
+		tupleInstance.FieldByIndex([]int{i}).Set(reflect.ValueOf(value))
+	}
+
+	return tupleInstance.Interface(), nil
 }
 
-func ConvertParamStrToArray(name string, t abi.Type, str string, network Network) ([]interface{}, error) {
+func ConvertParamStrToArray(
+	name string,
+	t abi.Type,
+	str string,
+	network Network,
+) ([]interface{}, error) {
 	// split to get the elements
 	//   if element type is tuple or slice or array
 	//       using regex to extract elements including []
@@ -532,7 +582,12 @@ func ConvertParamStrToArray(name string, t abi.Type, str string, network Network
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func ConvertParamStrToType(name string, t abi.Type, str string, network Network) (interface{}, error) {
+func ConvertParamStrToType(
+	name string,
+	t abi.Type,
+	str string,
+	network Network,
+) (interface{}, error) {
 	switch t.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
 		return ConvertToString(str)
