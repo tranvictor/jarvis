@@ -48,6 +48,7 @@ require (
 	github.com/gorilla/websocket v1.4.2 // indirect
 	github.com/holiman/uint256 v1.2.4 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+	github.com/karalabe/hid v1.0.1-0.20240306101548-573246063e52 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
 	github.com/mmcloughlin/addchain v0.4.0 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
@@ -70,6 +71,6 @@ require (
 )
 
 // replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/ethereum/go-ethereum
-// replace github.com/blevesearch/bleve => /Users/victor/go/src/github.com/tranvictor/bleve
+// replace github.com/karalabe/hid => /Users/victor/go/src/github.com/tranvictor/hid
 
 go 1.20
