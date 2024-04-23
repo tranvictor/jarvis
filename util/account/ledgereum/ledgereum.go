@@ -8,7 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	kusb "github.com/karalabe/hid"
+	kusb "github.com/tranvictor/jarvis/util/account/usb"
 )
 
 const (
@@ -18,27 +18,18 @@ const (
 )
 
 var LEDGER_PRODUCT_IDS []uint16 = []uint16{
-	// Device definitions taken from
-	// https://github.com/LedgerHQ/ledger-live/blob/38012bc8899e0f07149ea9cfe7e64b2c146bc92b/libs/ledgerjs/packages/devices/src/index.ts
-
 	// Original product IDs
 	0x0000, /* Ledger Blue */
 	0x0001, /* Ledger Nano S */
 	0x0004, /* Ledger Nano X */
-	0x0005, /* Ledger Nano S Plus */
-	0x0006, /* Ledger Nano FTS */
 
+	// Upcoming product IDs: https://www.ledger.com/2019/05/17/windows-10-update-sunsetting-u2f-tunnel-transport-for-ledger-devices/
 	0x0015, /* HID + U2F + WebUSB Ledger Blue */
 	0x1015, /* HID + U2F + WebUSB Ledger Nano S */
 	0x4015, /* HID + U2F + WebUSB Ledger Nano X */
-	0x5015, /* HID + U2F + WebUSB Ledger Nano S Plus */
-	0x6015, /* HID + U2F + WebUSB Ledger Nano FTS */
-
 	0x0011, /* HID + WebUSB Ledger Blue */
 	0x1011, /* HID + WebUSB Ledger Nano S */
 	0x4011, /* HID + WebUSB Ledger Nano X */
-	0x5011, /* HID + WebUSB Ledger Nano S Plus */
-	0x6011, /* HID + WebUSB Ledger Nano FTS */
 }
 
 type Ledgereum struct {
@@ -57,16 +48,14 @@ func NewLedgereum() (*Ledgereum, error) {
 	}, nil
 }
 
-func (self *Ledgereum) Unlock() (err error) {
+func (self *Ledgereum) Unlock() error {
 	self.devmu.Lock()
 	defer self.devmu.Unlock()
-	infos, err := kusb.Enumerate(LEDGER_VENDOR_ID, 0)
+	// infos, err := kusb.Enumerate(LEDGER_VENDOR_ID, 0)
+	infos, err := kusb.Enumerate(0, 0)
 	if err != nil {
-		return fmt.Errorf(
-			"Couldn't check connected devices. Something is wrong with cables or the OS itself",
-		)
+		return err
 	}
-
 	if len(infos) == 0 {
 		return fmt.Errorf("Ledger device is not found")
 	} else {
@@ -95,10 +84,6 @@ func (self *Ledgereum) Derive(path accounts.DerivationPath) (common.Address, err
 	return self.driver.Derive(path)
 }
 
-func (self *Ledgereum) Sign(
-	path accounts.DerivationPath,
-	tx *types.Transaction,
-	chainID *big.Int,
-) (common.Address, *types.Transaction, error) {
+func (self *Ledgereum) Sign(path accounts.DerivationPath, tx *types.Transaction, chainID *big.Int) (common.Address, *types.Transaction, error) {
 	return self.driver.SignTx(path, tx, chainID)
 }

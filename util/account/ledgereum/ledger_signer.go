@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/types"
-	kusb "github.com/karalabe/hid"
+	kusb "github.com/tranvictor/jarvis/util/account/usb"
 )
 
 type LedgerSigner struct {
@@ -19,16 +19,13 @@ type LedgerSigner struct {
 	devmu          sync.Mutex
 }
 
-func (self *LedgerSigner) Unlock() (err error) {
+func (self *LedgerSigner) Unlock() error {
 	self.devmu.Lock()
 	defer self.devmu.Unlock()
 	infos, err := kusb.Enumerate(LEDGER_VENDOR_ID, 0)
 	if err != nil {
-		return fmt.Errorf(
-			"Couldn't check connected devices. Something is wrong with the cable or the OS itself",
-		)
+		return err
 	}
-
 	if len(infos) == 0 {
 		return fmt.Errorf("Ledger device is not found")
 	} else {
@@ -52,10 +49,7 @@ func (self *LedgerSigner) Unlock() (err error) {
 	return nil
 }
 
-func (self *LedgerSigner) SignTx(
-	tx *types.Transaction,
-	chainId *big.Int,
-) (*types.Transaction, error) {
+func (self *LedgerSigner) SignTx(tx *types.Transaction, chainId *big.Int) (*types.Transaction, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	fmt.Printf("Going to proceed signing procedure\n")

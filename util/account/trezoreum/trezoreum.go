@@ -10,9 +10,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/golang/protobuf/proto"
-	usb "github.com/karalabe/hid"
 
 	"github.com/tranvictor/jarvis/util/account/trezoreum/trezor"
+	"github.com/tranvictor/jarvis/util/account/usb"
 )
 
 const (
@@ -108,10 +108,7 @@ func (self *Trezoreum) GetDevice() ([]usb.DeviceInfo, error) {
 
 	infos, err := usb.Enumerate(vendor, 0)
 	if err != nil {
-		return nil, fmt.Errorf(
-			"Couldn't check connected devices. Something is wrong with the cable or the OS: %w",
-			err,
-		)
+		return devices, err
 	}
 
 	for _, info := range infos {
