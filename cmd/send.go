@@ -31,6 +31,7 @@ var (
 )
 
 func handleMsigSend(
+	txType uint8,
 	cmd *cobra.Command, args []string,
 	basePrice, extraPrice float64,
 	baseGas, extraGas uint64,
@@ -53,6 +54,7 @@ func handleMsigSend(
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 	t = BuildExactTx(
+		txType,
 		config.Nonce,
 		to,
 		big.NewInt(0),
@@ -96,6 +98,7 @@ func handleMsigSend(
 
 // currency here is supposed to be either ETH or address of an ERC20 token
 func handleSend(
+	txType uint8,
 	cmd *cobra.Command, args []string,
 	basePrice, extraPrice float64,
 	baseGas, extraGas uint64,
@@ -120,6 +123,7 @@ func handleSend(
 
 	if tokenAddr == util.ETH_ADDR {
 		t = BuildExactTx(
+			txType,
 			config.Nonce,
 			to,
 			amountWei,
@@ -141,6 +145,7 @@ func handleSend(
 			return
 		}
 		t = BuildExactTx(
+			txType,
 			config.Nonce,
 			tokenAddr,
 			big.NewInt(0),
@@ -384,6 +389,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 	}
 
 	handleMsigSend(
+		config.TxType,
 		cmd, args,
 		config.GasPrice, config.ExtraGasPrice,
 		config.GasLimit, config.ExtraGasLimit,
@@ -463,17 +469,18 @@ exact addresses start with 0x.`,
 				}
 			}
 
-			isDynamicFeeAvailable, err := reader.CheckDynamicFeeTxAvailable()
+			config.TxType, err = cmdutil.ValidTxType(reader, config.Network())
 			if err != nil {
-				fmt.Printf("Couldn't check if the chain support dynamic fee: %s\n", err)
+				fmt.Printf("Couldn't determine proper tx type: %s\n", err)
 				return
 			}
 
-			if !isDynamicFeeAvailable && config.TipGas > 0 {
-				fmt.Printf("The chain doesn't support dynamic fee tx, ignore tip gas parameter.\n")
+			if config.TxType == types.LegacyTxType && config.TipGas > 0 {
+				fmt.Printf("We are doing legacy tx hence we ignore tip gas parameter.\n")
+				return
 			}
 
-			if isDynamicFeeAvailable {
+			if config.TxType == types.DynamicFeeTxType {
 				if config.TipGas == 0 {
 					config.TipGas, err = reader.GetSuggestedGasTipCap()
 					if err != nil {
@@ -570,7 +577,9 @@ exact addresses start with 0x.`,
 					return
 				}
 			}
+
 			handleSend(
+				config.TxType,
 				cmd, args,
 				config.GasPrice, config.ExtraGasPrice,
 				config.GasLimit, config.ExtraGasLimit,
@@ -592,6 +601,8 @@ exact addresses start with 0x.`,
 	sendCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
 	sendCmd.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
 	sendCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
+	sendCmd.PersistentFlags().BoolVarP(&config.RetryBroadcast, "retry-broadcast", "r", false, "Retry broadcasting as soon as possible.")
+	sendCmd.PersistentFlags().BoolVarP(&config.ForceLegacy, "legacy-tx", "L", false, "Force using legacy transaction")
 	sendCmd.Flags().StringVarP(&to, "to", "t", "", "Account to send eth to. It can be ethereum address or a hint string to look it up in the address database. See jarvis addr for all of the known addresses")
 	sendCmd.Flags().StringVarP(&value, "amount", "v", "0", "Amount of eth to send. It is in eth/token value, not wei/twei. If a float number is passed, it will be interpreted as ETH, otherwise, it must be in the form of `float|ALL address` or `float|ALL name`. In the later case, `name` will be used to look for the token address. Eg. 0.01, 0.01 knc, 0.01 0xdd974d5c2e2928dea5f71b9825b8b646686bd200, ALL KNC are valid values.")
 	sendCmd.MarkFlagRequired("to")

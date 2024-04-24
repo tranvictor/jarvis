@@ -169,7 +169,9 @@ var txContractCmd = &cobra.Command{
 				return
 			}
 		}
+
 		tx := BuildExactTx(
+			config.TxType,
 			config.Nonce,
 			config.To,
 			config.Value,
@@ -396,6 +398,7 @@ func init() {
 	txContractCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	txContractCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
 	txContractCmd.PersistentFlags().BoolVarP(&config.RetryBroadcast, "retry-broadcast", "r", false, "Retry broadcasting as soon as possible.")
+	txContractCmd.PersistentFlags().BoolVarP(&config.ForceLegacy, "legacy-tx", "L", false, "Force using legacy transaction")
 	txContractCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
 	txContractCmd.Flags().StringVarP(&config.RawValue, "amount", "v", "0", "Amount of eth to send. It is in eth value, not wei.")
 	txContractCmd.MarkFlagRequired("from")

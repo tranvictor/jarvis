@@ -56,8 +56,6 @@ type ContextManager struct {
 	pendingNonces map[common.Address]map[uint64]*big.Int
 	// txs map between (address, network, nonce) => tx
 	txs map[common.Address]map[uint64]map[uint64]*types.Transaction
-	// txs info hash => receipt
-	// receipts map[common.Hash]*TxInfo
 
 	// gasPrices map between network => gasinfo
 	gasSettings map[uint64]*GasInfo
@@ -374,6 +372,7 @@ func (cm *ContextManager) BroadcastRawTx(
 }
 
 func (cm *ContextManager) BuildTx(
+	txType uint8,
 	from, to common.Address,
 	nonce *big.Int,
 	value *big.Int,
@@ -415,6 +414,7 @@ func (cm *ContextManager) BuildTx(
 	}
 
 	return BuildExactTx(
+		txType,
 		nonce.Uint64(),
 		to.Hex(),
 		value,

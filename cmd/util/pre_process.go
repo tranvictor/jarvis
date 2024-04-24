@@ -5,10 +5,11 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/spf13/cobra"
 
 	"github.com/tranvictor/jarvis/accounts"
-	"github.com/tranvictor/jarvis/accounts/types"
+	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/config/state"
@@ -127,7 +128,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 
 		PrintElapseTime(Start, "after getting msig owner list")
 
-		var acc types.AccDesc
+		var acc jtypes.AccDesc
 		count := 0
 		for _, owner := range owners {
 			a, err := accounts.GetAccount(owner)
@@ -192,15 +193,21 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-	isDynamicFeeAvailable, err := reader.CheckDynamicFeeTxAvailable()
+	config.TxType, err = ValidTxType(reader, config.Network())
 	if err != nil {
-		return fmt.Errorf("checking if chain has dynamic fee feature failed: %w", err)
+		return fmt.Errorf("Couldn't determine proper tx type: %s\n", err)
 	}
 
-	if isDynamicFeeAvailable {
-		config.TipGas, err = reader.GetSuggestedGasTipCap()
-		if err != nil {
-			return fmt.Errorf("getting tip gas failed: %w", err)
+	if config.TxType == types.LegacyTxType && config.TipGas > 0 {
+		return fmt.Errorf("We are doing legacy tx hence we ignore tip gas parameter.\n")
+	}
+
+	if config.TxType == types.DynamicFeeTxType {
+		if config.TipGas == 0 {
+			config.TipGas, err = reader.GetSuggestedGasTipCap()
+			if err != nil {
+				return fmt.Errorf("Couldn't estimate recommended gas price: %s\n", err)
+			}
 		}
 	}
 

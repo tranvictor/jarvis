@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/core/types"
+
 	kusb "github.com/tranvictor/jarvis/util/account/usb"
 )
 
@@ -49,7 +50,10 @@ func (self *LedgerSigner) Unlock() error {
 	return nil
 }
 
-func (self *LedgerSigner) SignTx(tx *types.Transaction, chainId *big.Int) (*types.Transaction, error) {
+func (self *LedgerSigner) SignTx(
+	tx *types.Transaction,
+	chainId *big.Int,
+) (*types.Transaction, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	fmt.Printf("Going to proceed signing procedure\n")

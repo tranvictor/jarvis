@@ -308,6 +308,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	PrintElapseTime(Start, "after estimate gas")
 
 	tx := BuildExactTx(
+		config.TxType,
 		config.Nonce,
 		config.To,
 		config.Value,

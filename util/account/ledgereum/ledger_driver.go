@@ -30,9 +30,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rlp"
+
+	. "github.com/tranvictor/jarvis/common"
 )
 
 // ledgerOpcode is an enumeration encoding the supported Ledger opcodes.
@@ -332,10 +333,18 @@ func (w *ledgerDriver) ledgerSign(
 		if txrlp, err = rlp.EncodeToBytes([]interface{}{tx.Nonce(), tx.GasPrice(), tx.Gas(), tx.To(), tx.Value(), tx.Data()}); err != nil {
 			return common.Address{}, nil, err
 		}
-	} else {
+	} else if tx.Type() == types.LegacyTxType {
 		if txrlp, err = rlp.EncodeToBytes([]interface{}{tx.Nonce(), tx.GasPrice(), tx.Gas(), tx.To(), tx.Value(), tx.Data(), chainId, big.NewInt(0), big.NewInt(0)}); err != nil {
 			return common.Address{}, nil, err
 		}
+	} else if tx.Type() == types.DynamicFeeTxType {
+		return common.Address{}, nil, fmt.Errorf("ledger doesn't support dynamic fee tx yet")
+		// if txrlp, err = rlp.EncodeToBytes([]interface{}{tx.Nonce(), tx.GasFeeCap(), tx.GasTipCap(), tx.Gas(), tx.To(), tx.Value(), tx.Data(), chainId}); err != nil {
+		// 	return common.Address{}, nil, err
+		// }
+		// txrlp = append([]byte{0x02}, txrlp...)
+	} else {
+		return common.Address{}, nil, fmt.Errorf("ledger doesn't support this tx type yet")
 	}
 	payload := append(path, txrlp...)
 
@@ -369,18 +378,28 @@ func (w *ledgerDriver) ledgerSign(
 	var signer types.Signer
 	if chainId == nil {
 		signer = new(types.HomesteadSigner)
-	} else {
+	} else if tx.Type() == types.LegacyTxType {
 		signer = types.NewEIP155Signer(chainId)
 		signature[64] -= byte(chainId.Uint64()*2 + 35)
+	} else if tx.Type() == types.DynamicFeeTxType {
+		signer = types.LatestSignerForChainID(chainId)
 	}
+
+	DebugPrintf("got signature from device, forming signed tx...")
 	signed, err := tx.WithSignature(signer, signature)
 	if err != nil {
+		DebugPrintf("failed, err: %s\n", err)
 		return common.Address{}, nil, err
 	}
+	DebugPrintf("successful.\n")
+
+	DebugPrintf("verifying sender from signed tx...")
 	sender, err := types.Sender(signer, signed)
 	if err != nil {
+		DebugPrintf("failed, err: %s\n", err)
 		return common.Address{}, nil, err
 	}
+	DebugPrintf("successful.\n")
 	return sender, signed, nil
 }
 
@@ -448,8 +467,6 @@ func (w *ledgerDriver) ledgerExchange(
 			apdu = nil
 		}
 		// Send over to the device
-		fmt.Printf("Data chunk sent to the Ledger: %s\n", hexutil.Bytes(chunk))
-		fmt.Printf("driver instance: %w\n", w.device)
 		if _, err := w.device.Write(chunk); err != nil {
 			return nil, err
 		}

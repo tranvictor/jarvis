@@ -72,6 +72,7 @@ var (
 	PrefillParams []string
 	NoFuncCall    bool
 	Tx            string
+	TxType        uint8
 
 	AllZeroParamsMethods bool
 	AtBlock              int64
@@ -84,6 +85,7 @@ var (
 	ForceERC20ABI     bool
 	RetryBroadcast    bool
 	YesToAllPrompt    bool
+	ForceLegacy       bool
 
 	CustomABI      string
 	JSONOutputFile string

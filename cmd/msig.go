@@ -6,11 +6,12 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/spf13/cobra"
 
 	"github.com/tranvictor/jarvis/accounts"
-	"github.com/tranvictor/jarvis/accounts/types"
+	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
@@ -242,7 +243,7 @@ func GetApproverAccountFromMsig(multisigContract *msig.MultisigContract) (string
 		return "", fmt.Errorf("getting msig owners failed: %w", err)
 	}
 
-	var acc types.AccDesc
+	var acc jtypes.AccDesc
 	count := 0
 	for _, owner := range owners {
 		a, err := accounts.GetAccount(owner)
@@ -338,7 +339,29 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
+			config.TxType, err = cmdutil.ValidTxType(cm.Reader(network), network)
+			if err != nil {
+				fmt.Printf("Couldn't determine proper tx type: %s\n", err)
+				return
+			}
+
+			if config.TxType == types.LegacyTxType && config.TipGas > 0 {
+				fmt.Printf("We are doing legacy tx hence we ignore tip gas parameter.\n")
+				return
+			}
+
+			if config.TxType == types.DynamicFeeTxType {
+				if config.TipGas == 0 {
+					config.TipGas, err = cm.Reader(network).GetSuggestedGasTipCap()
+					if err != nil {
+						fmt.Printf("Couldn't estimate recommended gas price: %s\n", err)
+						return
+					}
+				}
+			}
+
 			tx, err := cm.BuildTx(
+				config.TxType,
 				HexToAddress(from), HexToAddress(msigHex),
 				nil,
 				big.NewInt(0),
@@ -434,6 +457,7 @@ var newMsigCmd = &cobra.Command{
 			}
 		}
 		tx := BuildContractCreationTx(
+			config.TxType,
 			config.Nonce,
 			config.Value,
 			config.GasLimit+config.ExtraGasLimit,
@@ -562,6 +586,7 @@ var initMsigCmd = &cobra.Command{
 		}
 
 		tx := BuildExactTx(
+			config.TxType,
 			config.Nonce,
 			config.To,
 			config.Value,
@@ -646,6 +671,8 @@ func init() {
 		c.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
 		c.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 		c.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
+		c.PersistentFlags().BoolVarP(&config.RetryBroadcast, "retry-broadcast", "r", false, "Retry broadcasting as soon as possible.")
+		c.PersistentFlags().BoolVarP(&config.ForceLegacy, "legacy-tx", "L", false, "Force using legacy transaction")
 	}
 
 	newMsigCmd.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
@@ -662,6 +689,7 @@ func init() {
 	batchApproveMsigCmd.PersistentFlags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
 	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.YesToAllPrompt, "auto-yes", "y", false, "Don't prompt Yes/No before signing.")
+	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.ForceLegacy, "legacy-tx", "L", false, "Force using legacy transaction")
 
 	msigCmd.AddCommand(approveMsigCmd)
 	msigCmd.AddCommand(batchApproveMsigCmd)

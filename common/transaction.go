@@ -21,6 +21,7 @@ func GetSignerAddressFromTx(tx *types.Transaction, chainID *big.Int) (common.Add
 }
 
 func BuildExactTx(
+	txType uint8,
 	nonce uint64,
 	to string,
 	ethAmount *big.Int,
@@ -33,7 +34,7 @@ func BuildExactTx(
 	toAddress := common.HexToAddress(to)
 	gasPrice := GweiToWei(priceGwei)
 	tipInt := GweiToWei(tipCapGwei)
-	if tipInt.Cmp(common.Big0) > 0 { // dynamyc fee tx
+	if txType == types.DynamicFeeTxType {
 		return types.NewTx(&types.DynamicFeeTx{
 			ChainID:   big.NewInt(int64(chainID)),
 			Nonce:     nonce,
@@ -44,7 +45,7 @@ func BuildExactTx(
 			Value:     ethAmount,
 			Data:      data,
 		})
-	} else {
+	} else if txType == types.LegacyTxType {
 		return types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,
 			GasPrice: gasPrice,
@@ -53,10 +54,13 @@ func BuildExactTx(
 			Value:    ethAmount,
 			Data:     data,
 		})
+	} else {
+		panic("can't build tx for this tx type")
 	}
 }
 
 func BuildTx(
+	txType uint8,
 	nonce uint64,
 	to string,
 	ethAmount float64,
@@ -67,10 +71,11 @@ func BuildTx(
 	chainID uint64,
 ) (tx *types.Transaction) {
 	amount := FloatToBigInt(ethAmount, 18)
-	return BuildExactTx(nonce, to, amount, gasLimit, priceGwei, tipCapGwei, data, chainID)
+	return BuildExactTx(txType, nonce, to, amount, gasLimit, priceGwei, tipCapGwei, data, chainID)
 }
 
 func BuildExactSendETHTx(
+	txType uint8,
 	nonce uint64,
 	to string,
 	ethAmount *big.Int,
@@ -79,10 +84,21 @@ func BuildExactSendETHTx(
 	tipCapGwei float64,
 	chainID uint64,
 ) (tx *types.Transaction) {
-	return BuildExactTx(nonce, to, ethAmount, gasLimit, priceGwei, tipCapGwei, []byte{}, chainID)
+	return BuildExactTx(
+		txType,
+		nonce,
+		to,
+		ethAmount,
+		gasLimit,
+		priceGwei,
+		tipCapGwei,
+		[]byte{},
+		chainID,
+	)
 }
 
 func BuildContractCreationTx(
+	txType uint8,
 	nonce uint64,
 	ethAmount *big.Int,
 	gasLimit uint64,
@@ -93,7 +109,7 @@ func BuildContractCreationTx(
 ) (tx *types.Transaction) {
 	gasPrice := GweiToWei(priceGwei)
 	tipInt := GweiToWei(tipCapGwei)
-	if tipInt.Cmp(common.Big0) > 0 { // dynamic fee tx
+	if txType == types.DynamicFeeTxType {
 		return types.NewTx(&types.DynamicFeeTx{
 			ChainID:   big.NewInt(int64(chainID)),
 			Nonce:     nonce,
@@ -103,7 +119,7 @@ func BuildContractCreationTx(
 			Value:     ethAmount,
 			Data:      data,
 		})
-	} else {
+	} else if txType == types.LegacyTxType {
 		return types.NewTx(&types.LegacyTx{
 			Nonce:    nonce,
 			GasPrice: gasPrice,
@@ -111,5 +127,7 @@ func BuildContractCreationTx(
 			Value:    ethAmount,
 			Data:     data,
 		})
+	} else {
+		panic("can't build tx for this tx type")
 	}
 }
