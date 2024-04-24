@@ -13,6 +13,7 @@
 // You should have received a copy of the GNU Lesser General Public License along
 // with the library. If not, see <http://www.gnu.org/licenses/>.
 
+//go:build (freebsd && cgo) || (linux && cgo) || (darwin && !ios && cgo) || (windows && cgo)
 // +build freebsd,cgo linux,cgo darwin,!ios,cgo windows,cgo
 
 package usb
@@ -32,9 +33,9 @@ import (
 
 // enumerateHid returns a list of all the HID devices attached to the system which
 // match the vendor and product id:
-//  - If the vendor id is set to 0 then any vendor matches.
-//  - If the product id is set to 0 then any product matches.
-//  - If the vendor and product id are both 0, all HID devices are returned.
+//   - If the vendor id is set to 0 then any vendor matches.
+//   - If the product id is set to 0 then any product matches.
+//   - If the vendor and product id are both 0, all HID devices are returned.
 func enumerateHid(vendorID uint16, productID uint16) ([]DeviceInfo, error) {
 	// Gather all device infos and ensure they are freed before returning
 	head := C.hid_enumerate(C.ushort(vendorID), C.ushort(productID))

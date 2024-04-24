@@ -54,14 +54,12 @@ func Enumerate(vendorID uint16, productID uint16) ([]DeviceInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	// fmt.Printf("raw devices: %v\n", raws)
 	// Enumerate all the HID USB devices
 	hids, err := enumerateHid(vendorID, productID)
 	if err != nil {
 		return nil, err
 	}
 	return append(raws, hids...), nil
-	// return hids, nil
 }
 
 // EnumerateRaw returns a list of all the USB devices attached to the system which
