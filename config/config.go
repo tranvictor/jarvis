@@ -56,8 +56,9 @@ var NetworkString string
 
 var (
 	GasPrice      float64
-	TipGas        float64
 	ExtraGasPrice float64
+	TipGas        float64
+	ExtraTipGas   float64
 	GasLimit      uint64
 	ExtraGasLimit uint64
 	Nonce         uint64

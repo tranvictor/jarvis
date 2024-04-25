@@ -60,7 +60,7 @@ func handleMsigSend(
 		big.NewInt(0),
 		config.GasLimit+config.ExtraGasLimit,
 		config.GasPrice+config.ExtraGasPrice,
-		config.TipGas,
+		config.TipGas+config.ExtraTipGas,
 		txdata,
 		config.Network().GetChainID(),
 	)
@@ -129,7 +129,7 @@ func handleSend(
 			amountWei,
 			config.GasLimit+config.ExtraGasLimit,
 			config.GasPrice+config.ExtraGasPrice,
-			config.TipGas,
+			config.TipGas+config.ExtraTipGas,
 			[]byte{},
 			config.Network().GetChainID(),
 		)
@@ -151,7 +151,7 @@ func handleSend(
 			big.NewInt(0),
 			config.GasLimit+config.ExtraGasLimit,
 			config.GasPrice+config.ExtraGasPrice,
-			config.TipGas,
+			config.TipGas+config.ExtraTipGas,
 			data,
 			config.Network().GetChainID(),
 		)
@@ -410,6 +410,12 @@ The token and accounts can be specified either by memorable name or
 exact addresses start with 0x.`,
 		TraverseChildren: true,
 		Run: func(cmd *cobra.Command, args []string) {
+			// if extra gas is set to default value, we force it to 0 to ensure sending ETH
+			// will leave no dust
+			if config.ExtraGasLimit == 250000 {
+				config.ExtraGasLimit = 0
+			}
+
 			// process from to get address
 			acc, err := accounts.GetAccount(config.From)
 			if err != nil {
@@ -592,17 +598,7 @@ exact addresses start with 0x.`,
 		},
 	}
 
-	sendCmd.PersistentFlags().Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
-	sendCmd.PersistentFlags().Float64VarP(&config.TipGas, "tipgas", "s", 0, "tip in gwei, will be use in dynamic fee tx, default value get from node.")
-	sendCmd.PersistentFlags().Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
-	sendCmd.PersistentFlags().Uint64VarP(&config.GasLimit, "gas", "g", 0, "Base gas limit for the tx. If default value is used, we will use ethereum nodes to estimate the gas limit. The gas limit to be used in the tx is gas limit + extra gas limit")
-	// sendCmd.PersistentFlags().Uint64VarP(&ExtraGasLimit, "extragas", "G", 250000, "Extra gas limit for the tx. The gas limit to be used in the tx is gas limit + extra gas limit")
-	sendCmd.PersistentFlags().Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
-	sendCmd.PersistentFlags().StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
-	sendCmd.PersistentFlags().BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
-	sendCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
-	sendCmd.PersistentFlags().BoolVarP(&config.RetryBroadcast, "retry-broadcast", "r", false, "Retry broadcasting as soon as possible.")
-	sendCmd.PersistentFlags().BoolVarP(&config.ForceLegacy, "legacy-tx", "L", false, "Force using legacy transaction")
+	AddCommonFlagsToTransactionalCmds(sendCmd)
 	sendCmd.Flags().StringVarP(&to, "to", "t", "", "Account to send eth to. It can be ethereum address or a hint string to look it up in the address database. See jarvis addr for all of the known addresses")
 	sendCmd.Flags().StringVarP(&value, "amount", "v", "0", "Amount of eth to send. It is in eth/token value, not wei/twei. If a float number is passed, it will be interpreted as ETH, otherwise, it must be in the form of `float|ALL address` or `float|ALL name`. In the later case, `name` will be used to look for the token address. Eg. 0.01, 0.01 knc, 0.01 0xdd974d5c2e2928dea5f71b9825b8b646686bd200, ALL KNC are valid values.")
 	sendCmd.MarkFlagRequired("to")
