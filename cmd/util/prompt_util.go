@@ -357,6 +357,7 @@ func PromptTxData(
 	if method.Type == abi.Constructor {
 		return method.Inputs.Pack(params...)
 	}
+
 	return a.Pack(method.Name, params...)
 }
 

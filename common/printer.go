@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -214,4 +215,39 @@ func DebugPrintf(format string, a ...any) (n int, err error) {
 	}
 
 	return 0, nil
+}
+
+func DebugObjPrint(obj interface{}) {
+	if !config.Debug {
+		return
+	}
+	v := reflect.ValueOf(obj)
+	// Handle the case where obj might be a pointer
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	switch v.Kind() {
+	case reflect.Struct:
+		t := v.Type()
+		fmt.Println("Struct fields and tags:")
+		for i := 0; i < t.NumField(); i++ {
+			field := t.Field(i)
+			value := v.Field(i)
+			fmt.Printf("Field: %-10s Value: %-10v Tag: '%s'\n", field.Name, value, field.Tag)
+		}
+	case reflect.Slice, reflect.Array:
+		fmt.Printf("Slice or Array of %s:\n", v.Type().Elem())
+		maxElements := v.Len()
+		if maxElements > 10 {
+			maxElements = 10
+		}
+		for i := 0; i < maxElements; i++ {
+			fmt.Printf("Element %d: ", i)
+			DebugObjPrint(v.Index(i).Interface()) // Recursively print elements
+		}
+	default:
+		// Handle basic non-struct types
+		fmt.Printf("Type: %s, Value: %v\n", v.Type(), v.Interface())
+	}
 }

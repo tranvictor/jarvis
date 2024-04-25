@@ -523,7 +523,7 @@ func ConvertParamStrToTupleType(
 		return nil, fmt.Errorf("input for a tuple must start with ( and end with )")
 	}
 
-	inputElems, err := SplitInputParamStr(str[1 : len(str)-2])
+	inputElems, err := SplitInputParamStr(str[1 : len(str)-1])
 	if err != nil {
 		return nil, err
 	}

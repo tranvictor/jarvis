@@ -157,6 +157,9 @@ var txContractCmd = &cobra.Command{
 			nil,
 			config.Network(),
 		)
+
+		DebugPrintf("calling data: %x\n", data)
+
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return

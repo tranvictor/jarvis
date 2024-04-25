@@ -1,7 +1,6 @@
 module github.com/tranvictor/jarvis
 
 require (
-	github.com/PuerkitoBio/goquery v1.7.1
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/blevesearch/bleve v1.0.14
 	github.com/ethereum/go-ethereum v1.13.14
@@ -14,13 +13,13 @@ require (
 	github.com/spf13/cobra v1.5.0
 	golang.org/x/crypto v0.17.0
 	golang.org/x/sys v0.16.0
+	google.golang.org/protobuf v1.28.1
 )
 
 require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect
 	github.com/RoaringBitmap/roaring v0.9.4 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
-	github.com/andybalholm/cascadia v1.2.0 // indirect
 	github.com/bits-and-blooms/bitset v1.10.0 // indirect
 	github.com/blevesearch/go-porterstemmer v1.0.3 // indirect
 	github.com/blevesearch/mmap-go v1.0.4 // indirect
@@ -61,15 +60,14 @@ require (
 	go.etcd.io/bbolt v1.3.5 // indirect
 	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
 	golang.org/x/mod v0.14.0 // indirect
-	golang.org/x/net v0.18.0 // indirect
 	golang.org/x/sync v0.5.0 // indirect
 	golang.org/x/term v0.15.0 // indirect
 	golang.org/x/tools v0.15.0 // indirect
-	google.golang.org/protobuf v1.28.1 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
-// replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/ethereum/go-ethereum
+// replace github.com/ethereum/go-ethereum => /Users/victor/go/src/github.com/tranvictor/go-ethereum
+
 // replace github.com/blevesearch/bleve => /Users/victor/go/src/github.com/tranvictor/bleve
 
 go 1.20
