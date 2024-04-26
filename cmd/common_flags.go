@@ -31,4 +31,6 @@ func AddCommonFlagsToTransactionalCmds(c *cobra.Command) {
 		BoolVarP(&config.RetryBroadcast, "retry-broadcast", "r", false, "Retry broadcasting as soon as possible.")
 	c.PersistentFlags().
 		BoolVarP(&config.ForceLegacy, "legacy-tx", "L", false, "Force using legacy transaction")
+	c.PersistentFlags().
+		StringVarP(&config.JSONOutputFile, "json-output", "o", "", "write signed transaction info to json file. It will not create or write the file if the transaction wasn't signed")
 }

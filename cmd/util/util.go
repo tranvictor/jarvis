@@ -1,7 +1,9 @@
 package util
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/big"
 	"regexp"
 	"strings"
@@ -365,24 +367,59 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	}
 }
 
+type signedTxResultJSON struct {
+	Tx            *types.Transaction `json:"transaction"`
+	TxHash        string             `json:"txHash"`
+	SenderAddress string             `json:"senderAddress"`
+	SignedHex     string             `json:"signedHex"`
+}
+
+func (s *signedTxResultJSON) Write(filepath string) {
+	data, _ := json.MarshalIndent(s, "", "  ")
+	err := ioutil.WriteFile(filepath, data, 0644)
+	if err != nil {
+		fmt.Printf("Writing to json file failed: %s\n", err)
+	}
+}
+
 func HandlePostSign(
 	signedTx *types.Transaction,
 	reader *reader.EthReader,
 	analyzer *txanalyzer.TxAnalyzer,
 	a *abi.ABI,
 ) (broadcasted bool, err error) {
+	signedData, err := rlp.EncodeToBytes(signedTx)
+	if err != nil {
+		fmt.Printf("Couldn't encode the signed tx: %s", err)
+		return false, fmt.Errorf("Couldn't encode the signed tx: %w", err)
+	}
+	signedHex := hexutil.Encode(signedData)
+
+	signerHex, err := GetSignerAddressFromTx(
+		signedTx,
+		big.NewInt(int64(config.Network().GetChainID())),
+	)
+	if err != nil {
+		return false, fmt.Errorf("Couldn't derive sender address from signed tx: %w", err)
+	}
+
+	resultJSON := signedTxResultJSON{
+		Tx:            signedTx,
+		TxHash:        signedTx.Hash().Hex(),
+		SenderAddress: signerHex.Hex(),
+		SignedHex:     signedHex,
+	}
+	if config.JSONOutputFile != "" {
+		defer resultJSON.Write(config.JSONOutputFile)
+	}
+
 	broadcaster, err := util.EthBroadcaster(config.Network())
 	if err != nil {
 		return false, err
 	}
 
 	if config.DontBroadcast {
-		data, err := rlp.EncodeToBytes(signedTx)
-		if err != nil {
-			fmt.Printf("Couldn't encode the signed tx: %s", err)
-			return false, fmt.Errorf("Couldn't encode the signed tx: %w", err)
-		}
-		fmt.Printf("Signed tx: %s\n", hexutil.Encode(data))
+		fmt.Printf("Signed tx: %s\n", signedHex)
 		return false, nil
 	}
 
