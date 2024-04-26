@@ -17,6 +17,8 @@ import (
 	"github.com/blevesearch/bleve"
 	"github.com/blevesearch/bleve/analysis/lang/en"
 	"github.com/blevesearch/bleve/mapping"
+
+	. "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/db"
 )
 
@@ -241,7 +243,7 @@ func indexAddresses(i bleve.Index, addrs map[string]string) error {
 	startTime := time.Now().UnixNano()
 	batch := i.NewBatch()
 	batchCount := 0
-	fmt.Printf("indexing %d addresses\n", len(addrs))
+	DebugPrintf("indexing %d addresses\n", len(addrs))
 	for addr, desc := range addrs {
 		batch.Index(addr, AddressDesc{
 			Address: addr,
@@ -266,6 +268,6 @@ func indexAddresses(i bleve.Index, addrs map[string]string) error {
 		}
 	}
 	endTime := time.Now().UnixNano()
-	fmt.Printf("Total index time: %d ms\n", (endTime-startTime)/1000000)
+	DebugPrintf("Total index time: %d ms\n", (endTime-startTime)/1000000)
 	return nil
 }
