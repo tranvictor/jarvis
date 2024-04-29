@@ -516,6 +516,11 @@ exact addresses start with 0x.`,
 							big.NewInt(int64(config.GasLimit)),
 							FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
 						)
+
+						if ethBalance.Cmp(gasCost) == -1 {
+							fmt.Printf("Wallet doesn't have enough token to cover gas. Aborted.\n")
+							return
+						}
 						amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
 					} else {
 						amountWei, err = FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())

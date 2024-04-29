@@ -318,6 +318,7 @@ func (w *ledgerDriver) ledgerSign(
 	tx *types.Transaction,
 	chainId *big.Int,
 ) (common.Address, *types.Transaction, error) {
+	DebugPrintf("derivation path: %s\n", derivationPath)
 	// Flatten the derivation path into the Ledger request
 	path := make([]byte, 1+4*len(derivationPath))
 	path[0] = byte(len(derivationPath))
@@ -338,11 +339,10 @@ func (w *ledgerDriver) ledgerSign(
 			return common.Address{}, nil, err
 		}
 	} else if tx.Type() == types.DynamicFeeTxType {
-		return common.Address{}, nil, fmt.Errorf("ledger doesn't support dynamic fee tx yet")
-		// if txrlp, err = rlp.EncodeToBytes([]interface{}{tx.Nonce(), tx.GasFeeCap(), tx.GasTipCap(), tx.Gas(), tx.To(), tx.Value(), tx.Data(), chainId}); err != nil {
-		// 	return common.Address{}, nil, err
-		// }
-		// txrlp = append([]byte{0x02}, txrlp...)
+		if txrlp, err = rlp.EncodeToBytes([]interface{}{chainId, tx.Nonce(), tx.GasTipCap(), tx.GasFeeCap(), tx.Gas(), tx.To(), tx.Value(), tx.Data(), types.AccessList{}}); err != nil {
+			return common.Address{}, nil, err
+		}
+		txrlp = append([]byte{types.DynamicFeeTxType}, txrlp...)
 	} else {
 		return common.Address{}, nil, fmt.Errorf("ledger doesn't support this tx type yet")
 	}
@@ -359,6 +359,8 @@ func (w *ledgerDriver) ledgerSign(
 		if chunk > len(payload) {
 			chunk = len(payload)
 		}
+
+		DebugPrintf("Sending payload over ledger device: %x\n", payload[:chunk])
 		// Send the chunk over, ensuring it's processed correctly
 		reply, err = w.ledgerExchange(ledgerOpSignTransaction, op, 0, payload[:chunk])
 		if err != nil {
@@ -399,7 +401,7 @@ func (w *ledgerDriver) ledgerSign(
 		DebugPrintf("failed, err: %s\n", err)
 		return common.Address{}, nil, err
 	}
-	DebugPrintf("successful.\n")
+	DebugPrintf("successful. Sender is: %s\n", sender.Hex())
 	return sender, signed, nil
 }
 
