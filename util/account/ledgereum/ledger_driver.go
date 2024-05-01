@@ -318,7 +318,7 @@ func (w *ledgerDriver) ledgerSign(
 	tx *types.Transaction,
 	chainId *big.Int,
 ) (common.Address, *types.Transaction, error) {
-	DebugPrintf("derivation path: %s\n", derivationPath)
+	DebugPrintf("derivation path: %x\n", derivationPath)
 	// Flatten the derivation path into the Ledger request
 	path := make([]byte, 1+4*len(derivationPath))
 	path[0] = byte(len(derivationPath))

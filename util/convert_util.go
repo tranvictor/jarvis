@@ -545,7 +545,7 @@ func ConvertParamStrToTupleType(
 		value, err := ConvertParamStrToType(name, *t.TupleElems[i], inputElems[i], network)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"couldn't parse field %s (%s), index %d with input \"%s\"",
+				"couldn't parse field %d (%s), index %d with input \"%s\"",
 				i, field.Name, field.Type, inputElems[i])
 		}
 

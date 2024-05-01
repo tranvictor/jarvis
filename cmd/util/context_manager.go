@@ -85,6 +85,7 @@ func (cm *ContextManager) UnlockAccount(addr common.Address) (*account.Account, 
 	if err != nil {
 		return nil, fmt.Errorf(
 			"You don't control wallet %s yet. You might want to add it to jarvis.\n",
+			addr.Hex(),
 		)
 	}
 	acc, err := accounts.UnlockAccount(accDesc)

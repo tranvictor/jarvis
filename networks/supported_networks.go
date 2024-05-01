@@ -47,7 +47,7 @@ func (n *networks) getSupportedNetworkNames() []string {
 func (n *networks) getNetworkByID(id uint64) (Network, error) {
 	res, found := n.networksByID[id]
 	if !found {
-		return nil, fmt.Errorf("network id %s is not supported", id)
+		return nil, fmt.Errorf("network id %d is not supported", id)
 	}
 	return res, nil
 }
@@ -67,7 +67,12 @@ func newSupportedNetworks() *networks {
 	}
 	for _, n := range supportedNetworks {
 		if _, found := result.networks[n.GetName()]; found {
-			panic(fmt.Errorf("network with name or alternative name of %s already exists", n.GetName()))
+			panic(
+				fmt.Errorf(
+					"network with name or alternative name of %s already exists",
+					n.GetName(),
+				),
+			)
 		}
 		result.networks[n.GetName()] = n
 		result.networksByID[n.GetChainID()] = n

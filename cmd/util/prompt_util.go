@@ -239,7 +239,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 		return result, nil
 	case abi.BytesTy:
 		return nil, fmt.Errorf(
-			"not supported array of type: %s - %s",
+			"not supported array of type: %s - %x",
 			input.Type.Elem,
 			input.Type.Elem.T,
 		)
@@ -247,7 +247,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 		return util.ConvertParamStrToFixedByteType(input.Name, *input.Type.Elem, paramsStr, network)
 	case abi.FunctionTy:
 		return nil, fmt.Errorf(
-			"not supported array of type: %s - %s",
+			"not supported array of type: %s - %x",
 			input.Type.Elem,
 			input.Type.Elem.T,
 		)
@@ -267,7 +267,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 		return result, nil
 	default:
 		return nil, fmt.Errorf(
-			"not supported array of type: %s - %s",
+			"not supported array of type: %s - %x",
 			input.Type.Elem,
 			input.Type.Elem.T,
 		)

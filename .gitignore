@@ -18,3 +18,7 @@ dist/
 .null*
 jarvis
 output.json
+approve.sh
+migrate_signer_in_multiple_msig.sh
+scan_multisig_for_signers.sh
+test.json
