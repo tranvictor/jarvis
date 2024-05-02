@@ -3,17 +3,17 @@ module github.com/tranvictor/jarvis
 require (
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/blevesearch/bleve v1.0.14
-	github.com/ethereum/go-ethereum v1.13.14
-	github.com/golang/protobuf v1.5.3
+	github.com/ethereum/go-ethereum v1.14.0
+	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.3.0
 	github.com/karalabe/usb v0.0.2
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/openconfig/goyang v0.2.4
 	github.com/sahilm/fuzzy v0.1.0
 	github.com/spf13/cobra v1.5.0
-	golang.org/x/crypto v0.17.0
-	golang.org/x/sys v0.16.0
-	google.golang.org/protobuf v1.28.1
+	golang.org/x/crypto v0.22.0
+	golang.org/x/sys v0.19.0
+	google.golang.org/protobuf v1.33.0
 )
 
 require (
@@ -30,21 +30,22 @@ require (
 	github.com/blevesearch/zap/v13 v13.0.6 // indirect
 	github.com/blevesearch/zap/v14 v14.0.5 // indirect
 	github.com/blevesearch/zap/v15 v15.0.3 // indirect
-	github.com/btcsuite/btcd v0.22.0-beta.0.20220111032746-97732e52810c // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
+	github.com/btcsuite/btcd/chaincfg/chainhash v1.1.0 // indirect
 	github.com/cespare/cp v1.1.1 // indirect
 	github.com/consensys/bavard v0.1.13 // indirect
 	github.com/consensys/gnark-crypto v0.12.1 // indirect
 	github.com/couchbase/vellum v1.0.2 // indirect
-	github.com/crate-crypto/go-kzg-4844 v0.7.0 // indirect
+	github.com/crate-crypto/go-kzg-4844 v1.0.0 // indirect
 	github.com/deckarep/golang-set/v2 v2.1.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0 // indirect
-	github.com/ethereum/c-kzg-4844 v0.4.0 // indirect
+	github.com/ethereum/c-kzg-4844 v1.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/gballet/go-libpcsclite v0.0.0-20191108122812-4678299bea08 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/golang/snappy v0.0.5-0.20220116011046-fa5810519dcb // indirect
-	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/google/go-cmp v0.5.8 // indirect
+	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/holiman/uint256 v1.2.4 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/mattn/go-isatty v0.0.17 // indirect
@@ -58,11 +59,10 @@ require (
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/willf/bitset v1.1.10 // indirect
 	go.etcd.io/bbolt v1.3.5 // indirect
-	golang.org/x/exp v0.0.0-20231110203233-9a3e6036ecaa // indirect
-	golang.org/x/mod v0.14.0 // indirect
-	golang.org/x/sync v0.5.0 // indirect
-	golang.org/x/term v0.15.0 // indirect
-	golang.org/x/tools v0.15.0 // indirect
+	golang.org/x/mod v0.17.0 // indirect
+	golang.org/x/sync v0.7.0 // indirect
+	golang.org/x/term v0.19.0 // indirect
+	golang.org/x/tools v0.20.0 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
 
@@ -70,4 +70,6 @@ require (
 
 // replace github.com/blevesearch/bleve => /Users/victor/go/src/github.com/tranvictor/bleve
 
-go 1.20
+go 1.21
+
+toolchain go1.22.2
