@@ -71,5 +71,3 @@ require (
 // replace github.com/blevesearch/bleve => /Users/victor/go/src/github.com/tranvictor/bleve
 
 go 1.21
-
-toolchain go1.22.2
