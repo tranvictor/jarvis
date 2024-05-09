@@ -339,29 +339,26 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
-			config.TxType, err = cmdutil.ValidTxType(cm.Reader(network), network)
+			txType, err := cmdutil.ValidTxType(cm.Reader(network), network)
 			if err != nil {
 				fmt.Printf("Couldn't determine proper tx type: %s\n", err)
 				return
 			}
 
-			if config.TxType == types.LegacyTxType && config.TipGas > 0 {
-				fmt.Printf("We are doing legacy tx hence we ignore tip gas parameter.\n")
-				return
+			if txType == types.LegacyTxType && config.TxType == types.DynamicFeeTxType {
+				DebugPrintf("The %s network doesn't support dynamic fee transaction, ignore tx type in cmd parameters", network.GetName())
 			}
 
-			if config.TxType == types.DynamicFeeTxType {
-				if config.TipGas == 0 {
-					config.TipGas, err = cm.Reader(network).GetSuggestedGasTipCap()
-					if err != nil {
-						fmt.Printf("Couldn't estimate recommended gas price: %s\n", err)
-						return
-					}
-				}
+			if txType == types.DynamicFeeTxType && config.TxType == types.LegacyTxType {
+				txType = config.TxType
+			}
+
+			if config.TxType == types.LegacyTxType && config.TipGas > 0 {
+				fmt.Printf("We are doing legacy tx hence we ignore tip gas parameter.\n")
 			}
 
 			tx, err := cm.BuildTx(
-				config.TxType,
+				txType,
 				HexToAddress(from), HexToAddress(msigHex),
 				nil,
 				big.NewInt(0),
