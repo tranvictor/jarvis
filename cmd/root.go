@@ -115,7 +115,7 @@ func Execute() {
 		"k",
 		networks.EthereumMainnet.GetName(),
 		fmt.Sprintf(
-			"ethereum network. Valid values: %s. If the network is not supported, fall back to mainnet.",
+			"ethereum network. Valid values: %s. If the network is not supported, we stop.",
 			networks.GetSupportedNetworkNames(),
 		),
 	)

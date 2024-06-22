@@ -24,12 +24,15 @@ func Network() networks.Network {
 		return cachedNetwork
 	}
 
-	SetNetwork(NetworkString)
+	err := SetNetwork(NetworkString)
+	if err != nil {
+		panic(err)
+	}
 
 	return cachedNetwork
 }
 
-func SetNetwork(networkStr string) {
+func SetNetwork(networkStr string) error {
 	mu.Lock()
 	defer mu.Unlock()
 
@@ -42,14 +45,15 @@ func SetNetwork(networkStr string) {
 
 	cachedNetwork, err = networks.GetNetwork(networkStr)
 	if err != nil {
-		cachedNetwork = networks.EthereumMainnet
-	} else {
-		if inited {
-			fmt.Printf("Switched to network: %s\n", cachedNetwork.GetName())
-		} else {
-			fmt.Printf("Network: %s\n", cachedNetwork.GetName())
-		}
+		return err
 	}
+
+	if inited {
+		fmt.Printf("Switched to network: %s\n", cachedNetwork.GetName())
+	} else {
+		fmt.Printf("Network: %s\n", cachedNetwork.GetName())
+	}
+	return nil
 }
 
 var NetworkString string

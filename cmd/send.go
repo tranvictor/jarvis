@@ -84,9 +84,16 @@ func handleMsigSend(
 		os.Exit(126)
 	}
 
-	signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
+	signedAddr, signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
 	if err != nil {
 		fmt.Printf("Failed to sign tx: %s\n", err)
+		return
+	}
+	if signedAddr.Cmp(HexToAddress(from.Address)) != 0 {
+		fmt.Printf("Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
+			from.Address,
+			signedAddr.Hex(),
+		)
 		return
 	}
 
@@ -178,9 +185,16 @@ func handleSend(
 		os.Exit(126)
 	}
 
-	signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
+	signedAddr, signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
 	if err != nil {
 		fmt.Printf("Failed to sign tx: %s\n", err)
+		return
+	}
+	if signedAddr.Cmp(HexToAddress(from.Address)) != 0 {
+		fmt.Printf("Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
+			from.Address,
+			signedAddr.Hex(),
+		)
 		return
 	}
 
@@ -410,6 +424,11 @@ The token and accounts can be specified either by memorable name or
 exact addresses start with 0x.`,
 		TraverseChildren: true,
 		Run: func(cmd *cobra.Command, args []string) {
+			err := config.SetNetwork(config.NetworkString)
+			if err != nil {
+				fmt.Printf("network param is wrong: %s\n", err)
+				return
+			}
 			// if extra gas is set to default value, we force it to 0 to ensure sending ETH
 			// will leave no dust
 			if config.ExtraGasLimit == 250000 {

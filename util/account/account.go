@@ -58,10 +58,13 @@ func (self *Account) AddressHex() string {
 	return self.address.Hex()
 }
 
-func (self *Account) SignTx(tx *types.Transaction, chainId *big.Int) (*types.Transaction, error) {
-	signedTx, err := self.signer.SignTx(tx, chainId)
+func (self *Account) SignTx(
+	tx *types.Transaction,
+	chainId *big.Int,
+) (common.Address, *types.Transaction, error) {
+	addr, signedTx, err := self.signer.SignTx(tx, chainId)
 	if err != nil {
-		return tx, fmt.Errorf("Couldn't sign the tx: %s", err)
+		return addr, tx, fmt.Errorf("Couldn't sign the tx: %s", err)
 	}
-	return signedTx, nil
+	return addr, signedTx, nil
 }

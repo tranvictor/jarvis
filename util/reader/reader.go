@@ -662,6 +662,8 @@ type getSuggestedGasResponse struct {
 	Error error
 }
 
+// add 20% tip to miners compared to what returned from the node to improve UX
+// a bit more
 func (self *EthReader) GetSuggestedGasTipCap() (float64, error) {
 	resCh := make(chan getSuggestedGasResponse, len(self.nodes))
 	for i := range self.nodes {
@@ -679,13 +681,15 @@ func (self *EthReader) GetSuggestedGasTipCap() (float64, error) {
 	for i := 0; i < len(self.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
-			return BigToFloat(result.Gas, 9), result.Error
+			return BigToFloat(result.Gas, 9) * 1.2, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
 	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
 }
 
+// add 50% to max gas price because the next blocks based price can be increased
+// according to ethereum protocol
 func (self *EthReader) RecommendedGasPrice() (float64, error) {
 	resCh := make(chan getSuggestedGasResponse, len(self.nodes))
 	for i := range self.nodes {
@@ -703,7 +707,7 @@ func (self *EthReader) RecommendedGasPrice() (float64, error) {
 	for i := 0; i < len(self.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
-			return BigToFloat(result.Gas, 9), result.Error
+			return BigToFloat(result.Gas, 9) * 1.5, result.Error
 		}
 		errs = append(errs, result.Error)
 	}

@@ -21,6 +21,10 @@ import (
 // initiate config's variables in a conventional way across many Function Call alike
 // commands.
 func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error) {
+	if err = config.SetNetwork(config.NetworkString); err != nil {
+		return err
+	}
+
 	config.PrefillStr = strings.Trim(config.PrefillStr, " ")
 	if config.PrefillStr != "" {
 		config.PrefillMode = true
@@ -53,7 +57,10 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 			}
 			config.Tx = txs[0]
 			if nwks[0] != "" {
-				config.SetNetwork(nwks[0])
+				err = config.SetNetwork(nwks[0])
+				if err != nil {
+					return err
+				}
 			}
 
 			reader, err := util.EthReader(config.Network())
@@ -81,6 +88,10 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 // initiate config's variables in a conventional way across many commands
 // that do txs.
 func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
+	if err = config.SetNetwork(config.NetworkString); err != nil {
+		return err
+	}
+
 	err = CommonFunctionCallPreprocess(cmd, args)
 	if err != nil {
 		return err

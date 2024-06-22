@@ -77,11 +77,14 @@ func (self *Trezoreum) Unlock() error {
 // method will also return the index of the destination object used.
 func (self *Trezoreum) trezorExchange(req proto.Message, results ...proto.Message) (int, error) {
 	results = append(results, new(trezor.PinMatrixRequest))
+	results = append(results, new(trezor.PassphraseRequest))
 	resIndex, err := self.core.Exchange(req, results...)
 	if err != nil {
 		return resIndex, err
 	}
-	if resIndex == len(results)-1 {
+
+	// if response is a matrix request
+	if resIndex == len(results)-2 {
 		pin := PromptPINFromStdin()
 		resIndex, err = self.UnlockByPin(pin, results...)
 		if err != nil {
@@ -90,7 +93,22 @@ func (self *Trezoreum) trezorExchange(req proto.Message, results ...proto.Messag
 		}
 		return resIndex, nil
 	}
+
+	// if response is a passphrse request
+	if resIndex == len(results)-1 {
+		return self.PromptAndProvidePassphrase(results...)
+	}
 	return resIndex, err
+}
+
+func (self *Trezoreum) PromptAndProvidePassphrase(results ...proto.Message) (int, error) {
+	passphrase := getPassword("Enter passphrase for this session: ")
+	resIndex, err := self.ProvidePassphrase(passphrase, results...)
+	if err != nil {
+		fmt.Printf("Passphrase error: %s\n", err)
+		return resIndex, err
+	}
+	return resIndex, nil
 }
 
 func (self *Trezoreum) GetDevice() ([]usb.DeviceInfo, error) {
@@ -154,17 +172,24 @@ func (self *Trezoreum) Init() (trezor.Features, TrezorState, error) {
 	// test init device
 	initMsg := trezor.Initialize{}
 	features := trezor.Features{}
+	success := trezor.Success{}
 
-	_, err = self.trezorExchange(&initMsg, &features)
+	// fmt.Printf("DEBUG trezor comms: init message, expecting features message\n")
+	_, err = self.trezorExchange(&initMsg, &features, &success)
 	if err != nil {
 		return trezor.Features{}, Unexpected, err
 	}
+
+	// fmt.Printf(
+	// 	"DEBUG trezor comms: ping message, expecting pinMatrix, passphrase, success message\n",
+	// )
 
 	res, err := self.trezorExchange(
 		&trezor.Ping{},
 		new(trezor.PinMatrixRequest),
 		new(trezor.PassphraseRequest),
 		new(trezor.Success),
+		&features,
 	)
 	if err != nil {
 		return trezor.Features{}, Unexpected, err
@@ -182,6 +207,8 @@ func (self *Trezoreum) Init() (trezor.Features, TrezorState, error) {
 		// 	return features, WaitingForPin, nil
 		// }
 		return features, Ready, nil
+	case 3:
+		return features, Ready, nil
 	default:
 		return features, Ready, nil
 	}
@@ -191,6 +218,7 @@ func (self *Trezoreum) UnlockByPin(pin string, results ...proto.Message) (int, e
 	// res, err := self.trezorExchange(&trezor.PinMatrixAck{Pin: &pin}, new(trezor.Success), new(trezor.PassphraseRequest))
 	results = append(results, new(trezor.Success))
 	results = append(results, new(trezor.PassphraseRequest))
+	// fmt.Printf("DEBUG trezor comms: PinMatrixAck message, expecting passphrase, success message\n")
 	res, err := self.core.Exchange(
 		&trezor.PinMatrixAck{Pin: &pin},
 		results...,
@@ -199,18 +227,37 @@ func (self *Trezoreum) UnlockByPin(pin string, results ...proto.Message) (int, e
 		return 0, err
 	}
 	if res == len(results)-1 {
+		return self.PromptAndProvidePassphrase(results...)
+	}
+	return res, nil
+}
+
+func (self *Trezoreum) ProvidePassphrase(passphrase string, results ...proto.Message) (int, error) {
+	results = append(results, new(trezor.Success))
+	results = append(results, new(trezor.PassphraseRequest))
+	// fmt.Printf(
+	// 	"DEBUG trezor comms: PassphraseAck message, expecting passphrase, success message and original requested messages\n",
+	// )
+	res, err := self.core.Exchange(
+		&trezor.PassphraseAck{
+			Passphrase: &passphrase,
+		},
+		results...,
+	)
+	if err != nil {
+		return 0, err
+	}
+
+	if res == len(results)-1 {
 		// this is to handle passphrase
 		return 0, fmt.Errorf("passphrase is not supported")
 	}
 	return res, nil
 }
 
-func (self *Trezoreum) UnlockByPassphrase(passphrase string) (TrezorState, error) {
-	return Unexpected, fmt.Errorf("Not implemented")
-}
-
 func (self *Trezoreum) Derive(path accounts.DerivationPath) (common.Address, error) {
 	address := new(trezor.EthereumAddress)
+	// fmt.Printf("DEBUG trezor comms: getAddress message, expecting EthereumAddress message\n")
 	if _, err := self.trezorExchange(&trezor.EthereumGetAddress{AddressN: path}, address); err != nil {
 		return common.Address{}, err
 	}
@@ -255,6 +302,9 @@ func (self *Trezoreum) SignDynamicFeeTx(
 	}
 	// Send the initiation message and stream content until a signature is returned
 	response := new(trezor.EthereumTxRequest)
+	// fmt.Printf(
+	// 	"DEBUG trezor comms: EthereumSignTxEIP1559 message, expecting EthereumTxRequest message\n",
+	// )
 	if _, err := self.trezorExchange(request, response); err != nil {
 		return common.Address{}, nil, err
 	}
@@ -262,6 +312,9 @@ func (self *Trezoreum) SignDynamicFeeTx(
 		chunk := data[:*response.DataLength]
 		data = data[*response.DataLength:]
 
+		// fmt.Printf(
+		// 	"DEBUG trezor comms: EthereumTxAck message, expecting EthereumTxRequest message\n",
+		// )
 		if _, err := self.trezorExchange(&trezor.EthereumTxAck{DataChunk: chunk}, response); err != nil {
 			return common.Address{}, nil, err
 		}
@@ -331,6 +384,7 @@ func (self *Trezoreum) SignLegacyTx(
 	}
 	// Send the initiation message and stream content until a signature is returned
 	response := new(trezor.EthereumTxRequest)
+	// fmt.Printf("DEBUG trezor comms: EthereumSignTx message, expecting EthereumTxRequest message\n")
 	if _, err := self.trezorExchange(request, response); err != nil {
 		return common.Address{}, nil, err
 	}
@@ -338,6 +392,9 @@ func (self *Trezoreum) SignLegacyTx(
 		chunk := data[:*response.DataLength]
 		data = data[*response.DataLength:]
 
+		// fmt.Printf(
+		// 	"DEBUG trezor comms: EthereumTxAck message, expecting EthereumTxRequest message\n",
+		// )
 		if _, err := self.trezorExchange(&trezor.EthereumTxAck{DataChunk: chunk}, response); err != nil {
 			return common.Address{}, nil, err
 		}

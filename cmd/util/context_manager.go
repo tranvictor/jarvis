@@ -431,12 +431,14 @@ func (cm *ContextManager) SignTx(
 	wallet common.Address,
 	tx *types.Transaction,
 	network Network,
-) (signedTx *types.Transaction, err error) {
+) (signedAddr common.Address, signedTx *types.Transaction, err error) {
 	acc := cm.Account(wallet)
 	if acc == nil {
 		acc, err = cm.UnlockAccount(wallet)
 		if err != nil {
-			return nil, fmt.Errorf("the wallet to sign txs is not registered in context manager")
+			return common.Address{}, nil, fmt.Errorf(
+				"the wallet to sign txs is not registered in context manager",
+			)
 		}
 	}
 	return acc.SignTx(tx, big.NewInt(int64(network.GetChainID())))
@@ -447,9 +449,16 @@ func (cm *ContextManager) SignTxAndBroadcast(
 	tx *types.Transaction,
 	network Network,
 ) (signedTx *types.Transaction, successful bool, allErrors error) {
-	tx, err := cm.SignTx(wallet, tx, network)
+	signedAddr, tx, err := cm.SignTx(wallet, tx, network)
 	if err != nil {
 		return tx, false, err
+	}
+	if signedAddr.Cmp(wallet) != 0 {
+		return tx, false, fmt.Errorf(
+			"signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
+			wallet.Hex(),
+			signedAddr.Hex(),
+		)
 	}
 	_, broadcasted, allErrors := cm.BroadcastTx(tx)
 	return tx, broadcasted, allErrors

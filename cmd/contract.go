@@ -204,9 +204,16 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 
-		signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
+		signedAddr, signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
 		if err != nil {
 			fmt.Printf("%s", err)
+			return
+		}
+		if signedAddr.Cmp(HexToAddress(config.FromAcc.Address)) != 0 {
+			fmt.Printf("Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
+				config.FromAcc.Address,
+				signedAddr.Hex(),
+			)
 			return
 		}
 

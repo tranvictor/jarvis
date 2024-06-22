@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -20,7 +21,7 @@ type TrezorSigner struct {
 func (self *TrezorSigner) SignTx(
 	tx *types.Transaction,
 	chainId *big.Int,
-) (*types.Transaction, error) {
+) (common.Address, *types.Transaction, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	fmt.Printf("Going to proceed signing procedure\n")
@@ -28,13 +29,11 @@ func (self *TrezorSigner) SignTx(
 	if !self.deviceUnlocked {
 		err = self.trezor.Unlock()
 		if err != nil {
-			return tx, err
+			return common.Address{}, tx, err
 		}
 		self.deviceUnlocked = true
 	}
-	_, tx, err = self.trezor.Sign(self.path, tx, chainId)
-
-	return tx, err
+	return self.trezor.Sign(self.path, tx, chainId)
 }
 
 func NewTrezorSigner(path string, address string) (*TrezorSigner, error) {

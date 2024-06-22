@@ -5,6 +5,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -13,12 +14,17 @@ type KeySigner struct {
 	key *ecdsa.PrivateKey
 }
 
-func (self *KeySigner) SignTx(tx *types.Transaction, chainId *big.Int) (*types.Transaction, error) {
+func (self *KeySigner) SignTx(
+	tx *types.Transaction,
+	chainId *big.Int,
+) (common.Address, *types.Transaction, error) {
 	opts, err := bind.NewKeyedTransactorWithChainID(self.key, chainId)
 	if err != nil {
-		return nil, err
+		return common.Address{}, nil, err
 	}
-	return opts.Signer(crypto.PubkeyToAddress(self.key.PublicKey), tx)
+	addr := crypto.PubkeyToAddress(self.key.PublicKey)
+	signedTx, err := opts.Signer(addr, tx)
+	return addr, signedTx, err
 }
 
 func NewKeySigner(key *ecdsa.PrivateKey) *KeySigner {

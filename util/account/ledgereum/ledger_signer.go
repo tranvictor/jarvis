@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
 	kusb "github.com/tranvictor/jarvis/util/account/usb"
@@ -53,7 +54,7 @@ func (self *LedgerSigner) Unlock() error {
 func (self *LedgerSigner) SignTx(
 	tx *types.Transaction,
 	chainId *big.Int,
-) (*types.Transaction, error) {
+) (common.Address, *types.Transaction, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	fmt.Printf("Going to proceed signing procedure\n")
@@ -61,11 +62,10 @@ func (self *LedgerSigner) SignTx(
 	if !self.deviceUnlocked {
 		err = self.Unlock()
 		if err != nil {
-			return tx, err
+			return common.Address{}, tx, err
 		}
 	}
-	_, tx, err = self.driver.ledgerSign(self.path, tx, chainId)
-	return tx, err
+	return self.driver.ledgerSign(self.path, tx, chainId)
 }
 
 func NewLedgerSigner(path string, address string) (*LedgerSigner, error) {
