@@ -4,7 +4,9 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	ethereum "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ethclient/gethclient"
 
 	"github.com/tranvictor/jarvis/common"
 )
@@ -36,6 +38,7 @@ type EthereumNode interface {
 		method string,
 		args ...interface{},
 	) ([]byte, error)
+	EthCall(from string, to string, data []byte, overrides *map[ethereum.Address]gethclient.OverrideAccount) ([]byte, error)
 	StorageAt(atBlock int64, caddr string, slot string) ([]byte, error)
 	HeaderByNumber(number int64) (*types.Header, error)
 	GetLogs(fromBlock, toBlock int, addresses []string, topic string) ([]types.Log, error)

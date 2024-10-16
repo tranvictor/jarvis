@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ethclient/gethclient"
 
 	. "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/util/explorers"
@@ -355,6 +356,29 @@ func (self *EthReader) ReadContractToBytes(
 		n := self.nodes[i]
 		go func() {
 			data, err := n.ReadContractToBytes(atBlock, from, caddr, abi, method, args...)
+			resCh <- readContractToBytesResponse{
+				Data:  data,
+				Error: wrapError(err, n.NodeName()),
+			}
+		}()
+	}
+	errs := []error{}
+	for i := 0; i < len(self.nodes); i++ {
+		result := <-resCh
+		if result.Error == nil {
+			return result.Data, result.Error
+		}
+		errs = append(errs, result.Error)
+	}
+	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+}
+
+func (self *EthReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
+	resCh := make(chan readContractToBytesResponse, len(self.nodes))
+	for i := range self.nodes {
+		n := self.nodes[i]
+		go func() {
+			data, err := n.EthCall(from, to, data, overrides)
 			resCh <- readContractToBytesResponse{
 				Data:  data,
 				Error: wrapError(err, n.NodeName()),
