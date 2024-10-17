@@ -569,6 +569,22 @@ var initMsigCmd = &cobra.Command{
 			fmt.Printf("Couldn't get the multisig's ABI: %s\n", err)
 			return
 		}
+			
+		if config.Simulate {
+			multisigContract, err := msig.NewMultisigContract(
+				config.To,
+				config.Network(),
+			)
+			if err != nil {
+				fmt.Printf("Couldn't interact with the contract: %s\n", err)
+				return
+			}
+			err = multisigContract.SimulateSubmit(config.From, config.MsigTo, FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()), data)
+			if err != nil {
+				fmt.Printf("Could not simulate interact with the contract: %s\n", err)
+				return
+			}
+		}
 
 		txdata, err := msigABI.Pack(
 			"submitTransaction",
@@ -662,6 +678,7 @@ func init() {
 	initMsigCmd.Flags().Uint64VarP(&config.MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
 	initMsigCmd.Flags().BoolVarP(&config.NoFuncCall, "no-func-call", "N", false, "True: will not send any data to multisig destination.")
 	initMsigCmd.Flags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
+	initMsigCmd.Flags().BoolVarP(&config.Simulate, "simulate", "S", false, "True: Simulate execution of underlying call.")
 	initMsigCmd.MarkFlagRequired("msig-to")
 
 	writeCmds := []*cobra.Command{

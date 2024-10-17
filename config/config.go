@@ -94,4 +94,6 @@ var (
 
 	CustomABI      string
 	JSONOutputFile string
+
+	Simulate bool
 )
