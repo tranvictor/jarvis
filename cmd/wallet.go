@@ -1,22 +1,19 @@
 package cmd
 
 import (
-	// "bufio"
 	"fmt"
-	"github.com/tranvictor/jarvis/accounts/types"
 	"syscall"
-
-	// "os"
-	// "strings"
 
 	gethaccounts "github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
+	"golang.org/x/crypto/ssh/terminal"
+
 	"github.com/tranvictor/jarvis/accounts"
+	"github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/util/account/ledgereum"
 	"github.com/tranvictor/jarvis/util/account/trezoreum"
-	"golang.org/x/crypto/ssh/terminal"
 )
 
 const (

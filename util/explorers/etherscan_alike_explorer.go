@@ -61,7 +61,11 @@ func (ee *EtherscanLikeExplorer) getGasPrice() (low, average, fast float64, err 
 	prices := etherscanGasResponse{}
 	err = json.Unmarshal(body, &prices)
 	if err != nil {
-		return 0, 0, 0, fmt.Errorf("couldn't unmarshal %s to gas price struct, err: %w", string(body), err)
+		return 0, 0, 0, fmt.Errorf(
+			"couldn't unmarshal %s to gas price struct, err: %w",
+			string(body),
+			err,
+		)
 	}
 	low, err = strconv.ParseFloat(prices.Result.SafeGasPrice, 64)
 	if err != nil {
@@ -96,10 +100,9 @@ func (ee *EtherscanLikeExplorer) RecommendedGasPrice() (float64, error) {
 
 func (ee *EtherscanLikeExplorer) GetABIStringAPIURL(address string) string {
 	return fmt.Sprintf(
-		"%s/api?module=contract&action=getabi&address=%s&apikey=%s",
+		"%s/api?module=contract&action=getabi&address=%s",
 		ee.Domain,
 		address,
-		ee.APIKey,
 	)
 }
 
