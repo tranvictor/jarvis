@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/ethereum/go-ethereum/ethclient/gethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 
 	. "github.com/tranvictor/jarvis/common"
@@ -20,20 +21,22 @@ import (
 const TIMEOUT time.Duration = 4 * time.Second
 
 type OneNodeReader struct {
-	nodeName  string
-	nodeURL   string
-	client    *rpc.Client
-	ethClient *ethclient.Client
-	mu        sync.Mutex
+	nodeName   string
+	nodeURL    string
+	client     *rpc.Client
+	ethClient  *ethclient.Client
+	gethClient *gethclient.Client
+	mu         sync.Mutex
 }
 
 func NewOneNodeReader(name, url string) *OneNodeReader {
 	return &OneNodeReader{
-		nodeName:  name,
-		nodeURL:   url,
-		client:    nil,
-		ethClient: nil,
-		mu:        sync.Mutex{},
+		nodeName:   name,
+		nodeURL:    url,
+		client:     nil,
+		ethClient:  nil,
+		gethClient: nil,
+		mu:         sync.Mutex{},
 	}
 }
 
@@ -54,6 +57,7 @@ func (self *OneNodeReader) initConnection() error {
 	}
 	self.client = client
 	self.ethClient = ethclient.NewClient(self.client)
+	self.gethClient = gethclient.New(self.client)
 	return nil
 }
 
@@ -71,6 +75,14 @@ func (self *OneNodeReader) EthClient() (*ethclient.Client, error) {
 	}
 	err := self.initConnection()
 	return self.ethClient, err
+}
+
+func (self *OneNodeReader) GEthClient() (*gethclient.Client, error) {
+	if self.gethClient != nil {
+		return self.gethClient, nil
+	}
+	err := self.initConnection()
+	return self.gethClient, err
 }
 
 func (self *OneNodeReader) EstimateGas(from, to string, priceGwei float64, value *big.Int, data []byte) (uint64, error) {
@@ -290,6 +302,26 @@ func (self *OneNodeReader) ReadContractToBytes(atBlock int64, from string, caddr
 		Value:    nil,
 		Data:     data,
 	}, blockBig)
+}
+
+func (self *OneNodeReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
+	gethcli, err := self.GEthClient()
+	if err != nil {
+		return nil, err
+	}
+
+	contract := HexToAddress(to)
+
+	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	return gethcli.CallContract(timeout, ethereum.CallMsg{
+		From:     HexToAddress(from),
+		To:       &contract,
+		Gas:      0,
+		GasPrice: nil,
+		Value:    nil,
+		Data:     data,
+	}, nil, overrides)
 }
 
 func (self *OneNodeReader) CurrentBlock() (uint64, error) {
