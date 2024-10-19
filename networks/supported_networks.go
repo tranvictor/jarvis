@@ -26,6 +26,7 @@ var supportedNetworks = []Network{
 	PolygonZkevmMainnet,
 	// Mumbai,
 	LineaMainnet,
+	BitfiTestnet,
 }
 
 var globalSupportedNetworks = newSupportedNetworks()

@@ -53,7 +53,7 @@ func (self *matic) GetNodeVariableName() string {
 
 func (self *matic) GetDefaultNodes() map[string]string {
 	return map[string]string{
-		"infura":     "https://polygon-mainnet.infura.io/v3/683ba91d845e4bf2853828c85fd7145b",
+		"infura":     "https://polygon-mainnet.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
 		"maticvigil": "https://rpc-mainnet.maticvigil.com",
 	}
 }
