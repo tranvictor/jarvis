@@ -74,7 +74,7 @@ func NewContextManager() *ContextManager {
 	}
 }
 
-func (cm *ContextManager) setAccount(acc *account.Account) {
+func (cm *ContextManager) SetAccount(acc *account.Account) {
 	cm.lock.Lock()
 	defer cm.lock.Unlock()
 	cm.accounts[acc.Address()] = acc
@@ -92,7 +92,7 @@ func (cm *ContextManager) UnlockAccount(addr common.Address) (*account.Account, 
 	if err != nil {
 		return nil, fmt.Errorf("Unlocking wallet failed: %s.\n", err)
 	}
-	cm.setAccount(acc)
+	cm.SetAccount(acc)
 	return acc, nil
 }
 
