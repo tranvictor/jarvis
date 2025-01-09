@@ -621,7 +621,11 @@ func ConfigToABI(
 			fmt.Printf("getting implementation of %s failed: %s\n", address, err)
 			return nil, err
 		}
-		return GetABI(impl.Hex(), network)
+		a, err := GetABI(impl.Hex(), network)
+		if err != nil {
+			fmt.Printf("getting abi for implementation %s of %s failed: %s\n", impl.Hex(), address, err)
+		}
+		return a, err
 	}
 
 	return a, nil
