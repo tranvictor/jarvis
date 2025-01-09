@@ -33,7 +33,6 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 			config.PrefillParams[i] = strings.Trim(config.PrefillParams[i], " ")
 		}
 	}
-	PrintElapseTime(Start, "after processing prefill string")
 
 	config.Value, err = FloatStringToBig(config.RawValue, 18)
 	if err != nil {
@@ -43,8 +42,6 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 	if config.Value.Cmp(big.NewInt(0)) < 0 {
 		return fmt.Errorf("-v param can't be negative")
 	}
-
-	PrintElapseTime(Start, "after processing config.Value")
 
 	if len(args) == 0 {
 		config.To = "" // this is to indicate a contract creation tx
@@ -68,8 +65,6 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 				return fmt.Errorf("couldn't connect to blockchain\n")
 			}
 
-			PrintElapseTime(Start, "after initiating tx hash and ethreader, begin to get txinfo from hash")
-
 			txinfo, err := reader.TxInfoFromHash(config.Tx)
 			if err != nil {
 				return fmt.Errorf("couldn't get tx info from the blockchain: %s\n", err)
@@ -78,8 +73,6 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 			config.To = state.TxInfo.Tx.To().Hex()
 		}
 	}
-
-	PrintElapseTime(Start, "after processing config.To & config.TxInfo")
 
 	return nil
 }
@@ -109,8 +102,6 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 	}
 
-	PrintElapseTime(Start, "after getting abi")
-
 	// loosely check by checking a set of method names
 
 	isGnosisMultisig := false
@@ -121,8 +112,6 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("checking if the address is gnosis multisig classic failed: %w", err)
 		}
 	}
-
-	PrintElapseTime(Start, "after checking if address is a msig")
 
 	if config.From == "" && isGnosisMultisig {
 		multisigContract, err := msig.NewMultisigContract(
@@ -136,8 +125,6 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		if err != nil {
 			return fmt.Errorf("getting msig owners failed: %w", err)
 		}
-
-		PrintElapseTime(Start, "after getting msig owner list")
 
 		var acc jtypes.AccDesc
 		count := 0
@@ -161,8 +148,6 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		config.FromAcc = acc
 		config.From = acc.Address
 
-		PrintElapseTime(Start, "after getting config.From config.FromAcc")
-
 	} else {
 		// process from to get address
 		acc, err := accounts.GetAccount(config.From)
@@ -172,8 +157,6 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			config.FromAcc = acc
 			config.From = acc.Address
 		}
-
-		PrintElapseTime(Start, "after getting config.From config.FromAcc")
 
 	}
 
@@ -193,8 +176,6 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 			return fmt.Errorf("getting recommended gas price failed: %w", err)
 		}
 	}
-
-	PrintElapseTime(Start, "after getting gas price")
 
 	// var Nonce uint64
 	if config.Nonce == 0 {

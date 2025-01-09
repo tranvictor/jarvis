@@ -126,8 +126,6 @@ func (self *EthReader) GetCode(address string) (code []byte, err error) {
 func (self *EthReader) TxInfoFromHash(tx string) (TxInfo, error) {
 	txObj, isPending, err := self.TransactionByHash(tx)
 
-	PrintElapseTime(Start, "(L2) after get tx info from hash")
-
 	if err != nil {
 		return TxInfo{"error", nil, nil, nil}, err
 	}
@@ -139,8 +137,6 @@ func (self *EthReader) TxInfoFromHash(tx string) (TxInfo, error) {
 	}
 
 	receipt, err := self.TransactionReceipt(tx)
-
-	PrintElapseTime(Start, "(L2) after get tx receipt from hash")
 
 	if receipt == nil {
 		return TxInfo{"pending", txObj, nil, nil}, err
@@ -318,14 +314,8 @@ func (self *EthReader) TransactionByHash(
 				IsPending: ispending,
 				Error:     wrapError(err, n.NodeName()),
 			}
-			PrintElapseTime(
-				Start,
-				fmt.Sprintf("%s - %s", "(L2) after getting response from node", n),
-			)
 		}()
 	}
-
-	PrintElapseTime(Start, "(L2) after init calls to nodes")
 
 	errs := []error{}
 	for i := 0; i < len(self.nodes); i++ {

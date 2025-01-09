@@ -3,7 +3,6 @@ package accounts
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/user"
@@ -15,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/google/uuid"
 	"github.com/sahilm/fuzzy"
-	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 
 	"github.com/tranvictor/jarvis/accounts/types"
 	"github.com/tranvictor/jarvis/util"
@@ -32,7 +31,7 @@ func getHomeDir() string {
 
 func getPassword(prompt string) string {
 	fmt.Print(prompt)
-	bytePassword, _ := terminal.ReadPassword(int(syscall.Stdin))
+	bytePassword, _ := term.ReadPassword(int(syscall.Stdin))
 	return string(bytePassword)
 }
 
@@ -68,11 +67,11 @@ func StorePrivateKeyWithKeystore(privateKey string, passphrase string) (string, 
 	dir := filepath.Join(getHomeDir(), ".jarvis", "keystores")
 	os.MkdirAll(dir, os.ModePerm)
 	path := filepath.Join(dir, fmt.Sprintf("%s.json", key.Address))
-	return path, ioutil.WriteFile(path, keystoreJson, 0644)
+	return path, os.WriteFile(path, keystoreJson, 0644)
 }
 
 func VerifyKeystore(path string) (string, error) {
-	content, err := ioutil.ReadFile(path)
+	content, err := os.ReadFile(path)
 	if err != nil {
 		return "", err
 	}
@@ -89,7 +88,7 @@ func StoreAccountRecord(accDesc types.AccDesc) error {
 	os.MkdirAll(dir, os.ModePerm)
 	path := filepath.Join(dir, fmt.Sprintf("%s.json", accDesc.Address))
 	content, _ := json.Marshal(accDesc)
-	return ioutil.WriteFile(path, content, 0644)
+	return os.WriteFile(path, content, 0644)
 }
 
 func UnlockKeystoreAccountWithPassword(ad types.AccDesc, pwd string) (*account.Account, error) {
@@ -158,7 +157,7 @@ func GetAccounts() map[string]types.AccDesc {
 	result := map[string]types.AccDesc{}
 	for _, p := range paths {
 		desc := types.AccDesc{}
-		content, err := ioutil.ReadFile(p)
+		content, err := os.ReadFile(p)
 		if err == nil {
 			err = json.Unmarshal(content, &desc)
 			if err != nil {
