@@ -15,10 +15,8 @@ type baseMainnet struct {
 }
 
 func NewBaseMainnet() *baseMainnet {
-	result := &baseMainnet{NewEtherscanLikeExplorer(
-		"https://api.basescan.org",
-		"KGU9B686UEDCRMMMMEDA3Q4M4EM9GMTVKA",
-	)}
+	result := &baseMainnet{NewEtherscanV2()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey
@@ -61,7 +59,7 @@ func (self *baseMainnet) GetDefaultNodes() map[string]string {
 }
 
 func (self *baseMainnet) GetBlockExplorerAPIKeyVariableName() string {
-	return "BASESCAN_API_KEY"
+	return "ETHERSCAN_API_KEY"
 }
 
 func (self *baseMainnet) GetBlockExplorerAPIURL() string {

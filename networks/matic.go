@@ -17,6 +17,7 @@ type matic struct {
 func NewMatic() *matic {
 	result := &matic{NewPolygonscan()}
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
+	result.ChainID = result.GetChainID()
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey
 	}
@@ -53,12 +54,12 @@ func (self *matic) GetNodeVariableName() string {
 
 func (self *matic) GetDefaultNodes() map[string]string {
 	return map[string]string{
-		"kyber":     "https://polygon.kyberengineering.io",
+		"kyber": "https://polygon.kyberengineering.io",
 	}
 }
 
 func (self *matic) GetBlockExplorerAPIKeyVariableName() string {
-	return "POLYGONSCAN_API_KEY"
+	return "ETHERSCAN_API_KEY"
 }
 
 func (self *matic) GetBlockExplorerAPIURL() string {

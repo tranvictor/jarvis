@@ -16,6 +16,7 @@ type bscMainnet struct {
 
 func NewBSCMainnet() *bscMainnet {
 	result := &bscMainnet{NewBscscan()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey
@@ -60,7 +61,7 @@ func (self *bscMainnet) GetDefaultNodes() map[string]string {
 }
 
 func (self *bscMainnet) GetBlockExplorerAPIKeyVariableName() string {
-	return "BSCSCAN_API_KEY"
+	return "ETHERSCAN_API_KEY"
 }
 
 func (self *bscMainnet) GetBlockExplorerAPIURL() string {

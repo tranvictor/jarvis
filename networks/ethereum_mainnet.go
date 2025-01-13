@@ -16,6 +16,7 @@ type ethereumMainnet struct {
 
 func NewEthereumMainnet() *ethereumMainnet {
 	result := &ethereumMainnet{NewMainnetEtherscan()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey

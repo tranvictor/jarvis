@@ -15,10 +15,8 @@ type bttcMainnet struct {
 }
 
 func NewBttcMainnet() *bttcMainnet {
-	result := &bttcMainnet{NewEtherscanLikeExplorer(
-		"https://api.bttcscan.com",
-		"W56TCSJ96BRMTU7ZZ4HNEETMIDM8CHCJYR",
-	)}
+	result := &bttcMainnet{NewEtherscanV2()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey
@@ -61,7 +59,7 @@ func (self *bttcMainnet) GetDefaultNodes() map[string]string {
 }
 
 func (self *bttcMainnet) GetBlockExplorerAPIKeyVariableName() string {
-	return "BTTCSCAN_API_KEY"
+	return "ETHERSCAN_API_KEY"
 }
 
 func (self *bttcMainnet) GetBlockExplorerAPIURL() string {

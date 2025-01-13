@@ -16,6 +16,7 @@ type ethereumPOW struct {
 
 func NewEthereumPOW() *ethereumPOW {
 	result := &ethereumPOW{NewMainnetEtherscan()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey
@@ -58,7 +59,7 @@ func (self *ethereumPOW) GetDefaultNodes() map[string]string {
 }
 
 func (self *ethereumPOW) GetBlockExplorerAPIKeyVariableName() string {
-	return "ETHERPOWSCAN_API_KEY"
+	return "ETHERSCAN_API_KEY"
 }
 
 func (self *ethereumPOW) GetBlockExplorerAPIURL() string {

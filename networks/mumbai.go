@@ -58,7 +58,7 @@ func (self *mumbai) GetDefaultNodes() map[string]string {
 }
 
 func (self *mumbai) GetBlockExplorerAPIKeyVariableName() string {
-	return "POLYGONSCAN_API_KEY"
+	return "ETHERSCAN_API_KEY"
 }
 
 func (self *mumbai) GetBlockExplorerAPIURL() string {

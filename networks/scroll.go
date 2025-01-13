@@ -15,10 +15,8 @@ type scrollMainnet struct {
 }
 
 func NewScrollMainnet() *scrollMainnet {
-	result := &scrollMainnet{NewEtherscanLikeExplorer(
-		"https://api.scrollscan.com",
-		"PY7TDTR7V8FHZSUCGI2R12WZZYGFIAF9QT",
-	)}
+	result := &scrollMainnet{NewEtherscanV2()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey

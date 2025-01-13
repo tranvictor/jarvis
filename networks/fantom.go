@@ -16,6 +16,7 @@ type fantom struct {
 
 func NewFantom() *fantom {
 	result := &fantom{NewFtmscan()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey
@@ -58,7 +59,7 @@ func (self *fantom) GetDefaultNodes() map[string]string {
 }
 
 func (self *fantom) GetBlockExplorerAPIKeyVariableName() string {
-	return "FTMSCAN_API_KEY"
+	return "ETHERSCAN_API_KEY"
 }
 
 func (self *fantom) GetBlockExplorerAPIURL() string {

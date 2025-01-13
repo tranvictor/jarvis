@@ -15,10 +15,8 @@ type arbitrumMainnet struct {
 }
 
 func NewArbitrumMainnet() *arbitrumMainnet {
-	result := &arbitrumMainnet{NewEtherscanLikeExplorer(
-		"https://api.arbiscan.io",
-		"IE1GI7ZUG4HTRUI1AHX51IW2KR41D96EWN",
-	)}
+	result := &arbitrumMainnet{NewEtherscanV2()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey
@@ -56,14 +54,14 @@ func (self *arbitrumMainnet) GetNodeVariableName() string {
 
 func (self *arbitrumMainnet) GetDefaultNodes() map[string]string {
 	return map[string]string{
-		"infura":           "https://arb1.arbitrum.io/rpc",
+		"infura": "https://arb1.arbitrum.io/rpc",
 		// "alchemy-arbitrum": "https://arb-mainnet.g.alchemy.com/v2/PGAWvp9KLZbqjvap-iingGj-Id7HM_Yn",
 		// "arbitrum.io":      "https://arb1.arbitrum.io/rpc",
 	}
 }
 
 func (self *arbitrumMainnet) GetBlockExplorerAPIKeyVariableName() string {
-	return "ARBISCAN_API_KEY"
+	return "ETHERSCAN_API_KEY"
 }
 
 func (self *arbitrumMainnet) GetBlockExplorerAPIURL() string {
