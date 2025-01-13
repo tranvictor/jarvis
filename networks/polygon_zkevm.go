@@ -15,10 +15,8 @@ type polygonZkevmMainnet struct {
 }
 
 func NewPolygonZkevmMainnet() *polygonZkevmMainnet {
-	result := &polygonZkevmMainnet{NewEtherscanLikeExplorer(
-		"https://api.zkevm.polygonscan.com",
-		"DCMI8XG5WU2W1GX52ZEYN14PY9894YTW9A",
-	)}
+	result := &polygonZkevmMainnet{NewEtherscanV2()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey

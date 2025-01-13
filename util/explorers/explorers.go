@@ -5,73 +5,56 @@ type BlockExplorer interface {
 	GetABIString(address string) (string, error)
 }
 
-func NewMainnetEtherscan() *EtherscanLikeExplorer {
+func NewEtherscanV2() *EtherscanLikeExplorer {
 	return NewEtherscanLikeExplorer(
-		"https://api.etherscan.io",
+		"https://api.etherscan.io/v2",
 		"UBB257TI824FC7HUSPT66KZUMGBPRN3IWV",
 	)
+}
+
+func NewMainnetEtherscan() *EtherscanLikeExplorer {
+	return NewEtherscanV2()
 }
 
 func NewRopstenEtherscan() *EtherscanLikeExplorer {
-	return NewEtherscanLikeExplorer(
-		"https://api-ropsten.etherscan.io",
-		"UBB257TI824FC7HUSPT66KZUMGBPRN3IWV",
-	)
+	return NewEtherscanV2()
 }
 
 func NewRinkebyEtherscan() *EtherscanLikeExplorer {
-	return NewEtherscanLikeExplorer(
-		"https://api-rinkeby.etherscan.io",
-		"UBB257TI824FC7HUSPT66KZUMGBPRN3IWV",
-	)
+	return NewEtherscanV2()
 }
 
 func NewKovanEtherscan() *EtherscanLikeExplorer {
-	return NewEtherscanLikeExplorer(
-		"https://api-kovan.etherscan.io",
-		"UBB257TI824FC7HUSPT66KZUMGBPRN3IWV",
-	)
+	return NewEtherscanV2()
 }
 
 func NewBscscan() *EtherscanLikeExplorer {
-	return NewEtherscanLikeExplorer(
-		"https://api.bscscan.com",
-		"62TU8Z81F7ESNJT38ZVRBSX7CNN4QZSP5I",
-	)
+	return NewEtherscanV2()
 }
 
 func NewTestnetBscscan() *EtherscanLikeExplorer {
-	return NewEtherscanLikeExplorer(
-		"https://api-testnet.bscscan.com",
-		"62TU8Z81F7ESNJT38ZVRBSX7CNN4QZSP5I",
-	)
+	return NewEtherscanV2()
 }
 
 func NewPolygonscan() *EtherscanLikeExplorer {
-	return NewEtherscanLikeExplorer(
-		"https://api.polygonscan.com",
-		"AE61PSRHNZ7WS1R1BZUXZXDGE52MMNC22U",
-	)
+	return NewEtherscanV2()
 }
 
 func NewFtmscan() *EtherscanLikeExplorer {
-	return NewEtherscanLikeExplorer(
-		"https://api.ftmscan.com",
-		"IDMTDBFTDKE7SSHX2V2FYKWWQ9WTVW73HR",
-	)
+	return NewEtherscanV2()
+}
+
+func NewMumbaiPolygonscan() *EtherscanLikeExplorer {
+	return NewEtherscanV2()
+}
+
+func NewTomoBlockExplorer() *EtherscanLikeExplorer {
+	return NewEtherscanV2()
 }
 
 func NewSnowtrace() *EtherscanLikeExplorer {
 	return NewEtherscanLikeExplorer(
-		"https://api.snowtrace.io",
+		"https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/",
 		"NWT5MMCQMAPYH47DGD8K7QIJGP2DHZRMW3",
 	)
-}
-
-func NewMumbaiPolygonscan() *EtherscanLikeExplorer {
-	return nil
-}
-
-func NewTomoBlockExplorer() *EtherscanLikeExplorer {
-	return nil
 }

@@ -15,10 +15,8 @@ type lineaMainnet struct {
 }
 
 func NewlineaMainnet() *lineaMainnet {
-	result := &lineaMainnet{NewEtherscanLikeExplorer(
-		"https://api.lineascan.build",
-		"97MYPVEHAHR7YFRBHB27YQZSQFM6RJH54C",
-	)}
+	result := &lineaMainnet{NewEtherscanV2()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey
@@ -61,7 +59,7 @@ func (self *lineaMainnet) GetDefaultNodes() map[string]string {
 }
 
 func (self *lineaMainnet) GetBlockExplorerAPIKeyVariableName() string {
-	return "LINEASCAN_API_KEY"
+	return "ETHERSCAN_API_KEY"
 }
 
 func (self *lineaMainnet) GetBlockExplorerAPIURL() string {

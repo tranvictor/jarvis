@@ -16,6 +16,7 @@ type rinkeby struct {
 
 func NewRinkeby() *rinkeby {
 	result := &rinkeby{NewRinkebyEtherscan()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey

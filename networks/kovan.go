@@ -16,6 +16,7 @@ type kovan struct {
 
 func NewKovan() *kovan {
 	result := &kovan{NewKovanEtherscan()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey

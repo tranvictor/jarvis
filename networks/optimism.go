@@ -15,7 +15,7 @@ type optimismMainnet struct {
 }
 
 func NewOptimismMainnet() *optimismMainnet {
-	result := &optimismMainnet{NewEtherscanLikeExplorer("https://api-optimistic.etherscan.io", "RU33HVN77Q51YNQIANP7GXZRAZ423CETB8")}
+	result := &optimismMainnet{NewEtherscanV2()}
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey

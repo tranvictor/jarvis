@@ -16,6 +16,7 @@ type EtherscanLikeExplorer struct {
 	gpmu              sync.Mutex
 	latestGasPrice    float64
 	gasPriceTimestamp int64
+	ChainID           uint64
 
 	Domain string
 	APIKey string
@@ -31,8 +32,9 @@ func NewEtherscanLikeExplorer(domain string, apiKey string) *EtherscanLikeExplor
 
 func (ee *EtherscanLikeExplorer) RecommendedGasPriceAPIURL() string {
 	return fmt.Sprintf(
-		"%s/api?module=gastracker&action=gasoracle&apikey=%s",
+		"%s/api?chainid=%dmodule=gastracker&action=gasoracle&apikey=%s",
 		ee.Domain,
+		ee.ChainID,
 		ee.APIKey,
 	)
 }
@@ -100,9 +102,11 @@ func (ee *EtherscanLikeExplorer) RecommendedGasPrice() (float64, error) {
 
 func (ee *EtherscanLikeExplorer) GetABIStringAPIURL(address string) string {
 	return fmt.Sprintf(
-		"%s/api?module=contract&action=getabi&address=%s",
+		"%s/api?chainid=%d&module=contract&action=getabi&address=%s&apikey=%s",
 		ee.Domain,
+		ee.ChainID,
 		address,
+		ee.APIKey,
 	)
 }
 

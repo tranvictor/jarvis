@@ -16,6 +16,7 @@ type ropsten struct {
 
 func NewRopsten() *ropsten {
 	result := &ropsten{NewRopstenEtherscan()}
+	result.ChainID = result.GetChainID()
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
 		result.EtherscanLikeExplorer.APIKey = apiKey
