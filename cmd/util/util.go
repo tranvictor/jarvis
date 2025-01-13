@@ -197,11 +197,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	PrintElapseTime(Start, "init reader")
-
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
-
-	PrintElapseTime(Start, "init analyzer")
 
 	var txid *big.Int
 
@@ -223,8 +219,6 @@ func HandleApproveOrRevokeOrExecuteMsig(
 			}
 		}
 	}
-
-	PrintElapseTime(Start, "find tx hash")
 
 	if txid == nil {
 		if state.TxInfo == nil {
@@ -255,8 +249,6 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		}
 	}
 
-	PrintElapseTime(Start, "get tx info")
-
 	multisigContract, err := msig.NewMultisigContract(
 		config.To,
 		config.Network(),
@@ -268,13 +260,9 @@ func HandleApproveOrRevokeOrExecuteMsig(
 
 	fc, _, executed := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
 
-	PrintElapseTime(Start, "after analyzing tx")
-
 	if postProcess != nil && postProcess(fc) != nil {
 		return
 	}
-
-	PrintElapseTime(Start, "after running post hook")
 
 	if executed {
 		return
@@ -293,8 +281,6 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	PrintElapseTime(Start, "after preparing tx data")
-
 	// var GasLimit uint64
 	if config.GasLimit == 0 {
 		config.GasLimit, err = reader.EstimateExactGas(
@@ -310,8 +296,6 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		}
 	}
 
-	PrintElapseTime(Start, "after estimate gas")
-
 	tx := BuildExactTx(
 		config.TxType,
 		config.Nonce,
@@ -323,8 +307,6 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		data,
 		config.Network().GetChainID(),
 	)
-
-	PrintElapseTime(Start, "after build tx")
 
 	err = PromptTxConfirmation(
 		analyzer,
