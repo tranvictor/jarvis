@@ -28,6 +28,7 @@ var (
 	tokenAddr string
 	currency  string
 	err       error
+	data      string
 )
 
 func handleMsigSend(
@@ -137,7 +138,7 @@ func handleSend(
 			config.GasLimit+config.ExtraGasLimit,
 			config.GasPrice+config.ExtraGasPrice,
 			config.TipGas+config.ExtraTipGas,
-			[]byte{},
+			cmdutil.StringParamToBytes(data),
 			config.Network().GetChainID(),
 		)
 	} else {
@@ -320,7 +321,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 				"submitTransaction",
 				HexToAddress(to),
 				amountWei,
-				[]byte{},
+				cmdutil.StringParamToBytes(data),
 			)
 
 			if err != nil {
@@ -519,7 +520,7 @@ exact addresses start with 0x.`,
 			if config.GasLimit == 0 {
 				if tokenAddr == util.ETH_ADDR {
 					if amountStr == "ALL" {
-						config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, big.NewInt(1), []byte{})
+						config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, big.NewInt(1), cmdutil.StringParamToBytes(data))
 						if err != nil {
 							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
 							return
@@ -547,7 +548,7 @@ exact addresses start with 0x.`,
 							fmt.Printf("Couldn't calculate send amount: %s\n", err)
 							return
 						}
-						config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, amountWei, []byte{})
+						config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, amountWei, cmdutil.StringParamToBytes(data))
 						if err != nil {
 							fmt.Printf("Getting estimated gas for the tx failed: %s\n", err)
 							return
@@ -625,6 +626,7 @@ exact addresses start with 0x.`,
 	AddCommonFlagsToTransactionalCmds(sendCmd)
 	sendCmd.Flags().StringVarP(&to, "to", "t", "", "Account to send eth to. It can be ethereum address or a hint string to look it up in the address database. See jarvis addr for all of the known addresses")
 	sendCmd.Flags().StringVarP(&value, "amount", "v", "0", "Amount of eth to send. It is in eth/token value, not wei/twei. If a float number is passed, it will be interpreted as ETH, otherwise, it must be in the form of `float|ALL address` or `float|ALL name`. In the later case, `name` will be used to look for the token address. Eg. 0.01, 0.01 knc, 0.01 0xdd974d5c2e2928dea5f71b9825b8b646686bd200, ALL KNC are valid values.")
+	sendCmd.Flags().StringVarP(&data, "data", "D", "", "Data to send along with the transaction. It is in hex format.")
 	sendCmd.MarkFlagRequired("to")
 	sendCmd.MarkFlagRequired("amount")
 

@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -471,4 +472,21 @@ func HandlePostSign(
 		)
 		return broadcasted, err
 	}
+}
+
+func StringParamToBytes(data string) []byte {
+	if data == "" {
+		return []byte{}
+	}
+
+	if strings.HasPrefix(data, "0x") {
+		dataBytes, err := hex.DecodeString(data[2:])
+		if err != nil {
+			fmt.Printf("Couldn't decode data: %s. Hex data must start with 0x and be a valid hex string. Ignore this param.\n", err)
+			return []byte{}
+		}
+		return dataBytes
+	}
+
+	return []byte(data)
 }

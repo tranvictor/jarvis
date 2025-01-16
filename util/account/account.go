@@ -17,6 +17,17 @@ type Account struct {
 	address common.Address
 }
 
+func NewPrivateKeyAccount(privateKey string) (*Account, error) {
+	key, err := crypto.HexToECDSA(privateKey)
+	if err != nil {
+		return nil, err
+	}
+	return &Account{
+		NewKeySigner(key),
+		crypto.PubkeyToAddress(key.PublicKey),
+	}, nil
+}
+
 func NewKeystoreAccount(file string, password string) (*Account, error) {
 	_, key, err := PrivateKeyFromKeystore(file, password)
 	if err != nil {

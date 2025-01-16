@@ -42,7 +42,11 @@ func (self TxMonitor) periodicCheck(tx string, info chan common.TxInfo) {
 			continue
 		case "notfound":
 			if t.Sub(startTime) > 3*time.Minute && !isOnNode {
-				info <- common.TxInfo{"lost", tx, []common.InternalTx{}, receipt}
+				info <- common.TxInfo{
+					Status:  "lost",
+					Tx:      tx,
+					Receipt: receipt,
+				}
 				return
 			} else {
 				continue
@@ -51,10 +55,18 @@ func (self TxMonitor) periodicCheck(tx string, info chan common.TxInfo) {
 			isOnNode = true
 			continue
 		case "reverted":
-			info <- common.TxInfo{"reverted", tx, []common.InternalTx{}, receipt}
+			info <- common.TxInfo{
+				Status:  "reverted",
+				Tx:      tx,
+				Receipt: receipt,
+			}
 			return
 		case "done":
-			info <- common.TxInfo{"done", tx, []common.InternalTx{}, receipt}
+			info <- common.TxInfo{
+				Status:  "done",
+				Tx:      tx,
+				Receipt: receipt,
+			}
 			return
 		}
 	}
