@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -58,38 +59,84 @@ func InterpretInput(input string, network Network) (string, error) {
 	}
 }
 
-func SplitInputParamStr(input string) (result []string, err error) {
-	var currentToken strings.Builder
-	inParenthesesCount := 0
+func SplitArrayOrTupleStringInput(input string) ([]string, error) {
+	input = strings.TrimSpace(input)
+	if len(input) < 2 {
+		return nil, errors.New("invalid input, too short to be array/tuple")
+	}
 
-	for _, char := range input {
-		switch char {
-		case '(':
-			inParenthesesCount += 1
-			currentToken.WriteRune(char)
-		case ')':
-			if inParenthesesCount == 0 {
-				return nil, fmt.Errorf("invalid input, your input has more ) than prior (")
+	// Check first and last characters
+	first, last := input[0], input[len(input)-1]
+
+	// Confirm it's either parentheses or square brackets
+	validEnclosing :=
+		(first == '(' && last == ')') ||
+			(first == '[' && last == ']')
+	if !validEnclosing {
+		return nil, fmt.Errorf("input must start with '(' or '[' and end with corresponding ')' or ']'")
+	}
+
+	// Strip the outermost brackets/parentheses
+	content := strings.TrimSpace(input[1 : len(input)-1])
+	if len(content) == 0 {
+		// Empty array/tuple
+		return []string{}, nil
+	}
+
+	var result []string
+	var current strings.Builder
+
+	bracketLevel := 0 // nesting level for square brackets [ ]
+	parenLevel := 0   // nesting level for parentheses ( )
+
+	for i, r := range content {
+		switch r {
+		case '[':
+			bracketLevel++
+			current.WriteRune(r)
+		case ']':
+			bracketLevel--
+			if bracketLevel < 0 {
+				return nil, fmt.Errorf("mismatched ']' at position %d", i)
 			}
-			inParenthesesCount -= 1
-			currentToken.WriteRune(char)
+			current.WriteRune(r)
+		case '(':
+			parenLevel++
+			current.WriteRune(r)
+		case ')':
+			parenLevel--
+			if parenLevel < 0 {
+				return nil, fmt.Errorf("mismatched ')' at position %d", i)
+			}
+			current.WriteRune(r)
 		case ',':
-			if inParenthesesCount > 0 {
-				// If inside parentheses, treat comma as a normal character
-				currentToken.WriteRune(char)
+			// Only split on comma if top-level
+			if bracketLevel == 0 && parenLevel == 0 {
+				// finish current token, add to result
+				trimmed := strings.TrimSpace(current.String())
+				if trimmed != "" {
+					result = append(result, trimmed)
+				}
+				current.Reset()
 			} else {
-				// Otherwise, it's a delimiter
-				result = append(result, currentToken.String())
-				currentToken.Reset()
+				current.WriteRune(r)
 			}
 		default:
-			currentToken.WriteRune(char)
+			current.WriteRune(r)
 		}
 	}
 
-	// Append the last token
-	if currentToken.Len() > 0 {
-		result = append(result, currentToken.String())
+	// Add the last element
+	if current.Len() > 0 {
+		trimmed := strings.TrimSpace(current.String())
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+
+	// If we haven't closed all brackets or parentheses, it's malformed
+	if bracketLevel != 0 || parenLevel != 0 {
+		return nil, errors.New("unbalanced brackets or parentheses")
 	}
 
 	return result, nil

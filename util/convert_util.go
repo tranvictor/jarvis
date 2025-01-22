@@ -519,11 +519,8 @@ func ConvertParamStrToTupleType(
 	DebugPrintf("input tuple type: %v\n", t.TupleType)
 	DebugPrintf("input tuple raw name: %v\n", t.TupleRawName)
 	DebugPrintf("input tuple elems: %v\n", t.TupleElems)
-	if len(str) < 2 || str[0] != '(' || str[len(str)-1] != ')' {
-		return nil, fmt.Errorf("input for a tuple must start with ( and end with )")
-	}
 
-	inputElems, err := SplitInputParamStr(str[1 : len(str)-1])
+	inputElems, err := SplitArrayOrTupleStringInput(str)
 	if err != nil {
 		return nil, err
 	}
@@ -548,6 +545,8 @@ func ConvertParamStrToTupleType(
 				"couldn't parse field %d (%s), index %d with input \"%s\"",
 				i, field.Name, field.Type, inputElems[i])
 		}
+
+		DebugPrintf("parsed value for field %s: %+v\n", field.Name, value)
 
 		tupleInstance.FieldByIndex([]int{i}).Set(reflect.ValueOf(value))
 	}

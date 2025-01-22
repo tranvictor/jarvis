@@ -160,21 +160,16 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 	if err != nil {
 		return nil, err
 	}
-	if len(inpStr) < 2 || inpStr[0] != '[' || inpStr[len(inpStr)-1] != ']' {
-		return nil, fmt.Errorf("input must be wrapped by []")
-	}
-	arrayContent := strings.Trim(inpStr[1:len(inpStr)-1], " ")
-	paramsStr := []string{}
-	for _, p := range strings.Split(arrayContent, ",") {
-		if strings.Trim(p, " ") != "" {
-			paramsStr = append(paramsStr, p)
-		}
+
+	paramsStr, err := util.SplitArrayOrTupleStringInput(inpStr)
+	if err != nil {
+		return nil, err
 	}
 
 	switch input.Type.Elem.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
 		result := []string{}
-		if len(arrayContent) == 0 {
+		if len(paramsStr) == 0 {
 			return result, nil
 		}
 		for _, p := range paramsStr {
@@ -187,7 +182,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 		return result, nil
 	case abi.IntTy, abi.UintTy:
 		result := []*big.Int{}
-		if len(arrayContent) == 0 {
+		if len(paramsStr) == 0 {
 			return result, nil
 		}
 		for _, p := range paramsStr {
@@ -200,7 +195,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 		return result, nil
 	case abi.BoolTy:
 		result := []bool{}
-		if len(arrayContent) == 0 {
+		if len(paramsStr) == 0 {
 			return result, nil
 		}
 		for _, p := range paramsStr {
@@ -213,7 +208,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 		return result, nil
 	case abi.AddressTy:
 		result := []common.Address{}
-		if len(arrayContent) == 0 {
+		if len(paramsStr) == 0 {
 			return result, nil
 		}
 		for _, p := range paramsStr {
@@ -226,7 +221,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 		return result, nil
 	case abi.HashTy:
 		result := []common.Hash{}
-		if len(arrayContent) == 0 {
+		if len(paramsStr) == 0 {
 			return result, nil
 		}
 		for _, p := range paramsStr {
@@ -264,7 +259,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 			result = reflect.Append(result, reflect.ValueOf(converted))
 		}
 
-		return result, nil
+		return result.Interface(), nil
 	default:
 		return nil, fmt.Errorf(
 			"not supported array of type: %s - %x",
@@ -354,6 +349,11 @@ func PromptTxData(
 	if err != nil {
 		return []byte{}, err
 	}
+
+	for _, param := range params {
+		DebugPrintf("param: %+v\n", param)
+	}
+
 	if method.Type == abi.Constructor {
 		return method.Inputs.Pack(params...)
 	}
@@ -443,7 +443,7 @@ func PromptFunctionCallData(
 	fmt.Printf("Method: %s\n", methodName)
 	inputs := method.Inputs
 	if prefillMode && len(inputs) != len(prefills) {
-		return nil, nil, fmt.Errorf("You must specify enough params in prefilled mode")
+		return nil, nil, fmt.Errorf("you must specify enough params in prefilled mode")
 	}
 	fmt.Printf("Input:\n")
 	params = []interface{}{}
@@ -462,10 +462,9 @@ func PromptFunctionCallData(
 				continue
 			}
 
-			fmt.Printf(
-				"    You entered: %s\n",
-				indent(8, VerboseValues(analyzer.ParamAsJarvisValues(input.Type, inputParam))),
-			)
+			fmt.Printf("    You entered:\n")
+			PrintVerboseParamResultToWriter(os.Stdout, analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam), 2, true)
+			fmt.Printf("\n")
 		} else {
 			inputParam, err = PromptParam(false, input, prefills[pi], network) // not interactive prompt
 			if err != nil {
@@ -473,10 +472,9 @@ func PromptFunctionCallData(
 				continue
 			}
 
-			fmt.Printf(
-				": %s\n",
-				indent(8, VerboseValues(analyzer.ParamAsJarvisValues(input.Type, inputParam))),
-			)
+			fmt.Printf(":\n")
+			PrintVerboseParamResultToWriter(os.Stdout, analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam), 2, true)
+			fmt.Printf("\n")
 		}
 		params = append(params, inputParam)
 		pi++

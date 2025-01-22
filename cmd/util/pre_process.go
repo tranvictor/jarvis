@@ -97,7 +97,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		} else if config.CustomABI != "" {
 			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
 			if err != nil {
-				return fmt.Errorf("reading cusom abi failed: %w", err)
+				return fmt.Errorf("reading custom abi failed: %w", err)
 			}
 		}
 	}

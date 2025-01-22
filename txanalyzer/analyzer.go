@@ -11,6 +11,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 
 	. "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/networks"
@@ -79,60 +81,78 @@ func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}
 	return util.GetJarvisValue(valueStr, self.Network)
 }
 
-func (self *TxAnalyzer) ParamAsJarvisTuple(t abi.Type, value interface{}) []ParamResult {
-	result := []ParamResult{}
-	realVal := reflect.ValueOf(value)
+func (ta *TxAnalyzer) ParamAsJarvisTuple(t abi.Type, value interface{}) TupleParamResult {
+	result := TupleParamResult{
+		Name: t.TupleRawName,
+		Type: t.String(),
+	}
+
+	realVal, ok := value.(reflect.Value)
+	if !ok {
+		// value is not a reflect.Value
+		realVal = reflect.ValueOf(value)
+	}
+
 	for i, field := range t.TupleElems {
-		if field.T == abi.TupleTy {
-			result = append(result, ParamResult{
-				Name: t.TupleRawNames[i],
-				Type: field.TupleRawName,
-				Tuple: self.ParamAsJarvisTuple(
-					*field,
-					reflect.Indirect(realVal).FieldByName(
-						strings.Title(field.TupleRawName),
-					).Interface(),
-				),
-			})
-		} else {
-			result = append(result, ParamResult{
-				Name: t.TupleRawNames[i],
-				Type: field.String(),
-				Value: self.ParamAsJarvisValues(
-					*field,
-					reflect.Indirect(realVal).FieldByName(
-						strings.Title(t.TupleRawNames[i]),
-					).Interface(),
-				),
-			})
-		}
+		result.Values = append(result.Values, ta.ParamAsJarvisParamResult(
+			t.TupleRawNames[i],
+			*field,
+			reflect.Indirect(realVal).FieldByName(
+				cases.Title(language.Und, cases.NoLower).String(t.TupleRawNames[i]),
+			).Interface(),
+		))
 	}
 	return result
 }
 
-func (self *TxAnalyzer) ParamAsJarvisValues(t abi.Type, value interface{}) []Value {
-	switch t.T {
-	case abi.SliceTy:
-		realVal := reflect.ValueOf(value)
-		result := []Value{}
-		for i := 0; i < realVal.Len(); i++ {
-			result = append(
-				result,
-				self.ParamAsJarvisValues(*t.Elem, realVal.Index(i).Interface())...)
-		}
-		return result
-	case abi.ArrayTy:
-		realVal := reflect.ValueOf(value)
-		result := []Value{}
-		for i := 0; i < realVal.Len(); i++ {
-			result = append(
-				result,
-				self.ParamAsJarvisValues(*t.Elem, realVal.Index(i).Interface())...)
-		}
-		return result
-	default:
-		return []Value{self.nonArrayParamAsJarvisValue(t, value)}
+func (ta *TxAnalyzer) ParamAsJarvisParamResult(name string, t abi.Type, value interface{}) ParamResult {
+	result := ParamResult{
+		Name: name,
 	}
+
+	switch t.T {
+	case abi.SliceTy, abi.ArrayTy:
+		result.Type = t.String()
+
+		realVal, ok := value.(reflect.Value)
+		if !ok {
+			// value is not a reflect.Value
+			realVal = reflect.ValueOf(value)
+		}
+
+		// check to see if element of this argument is either slice, array, tuple or arbitrary types
+		if t.Elem.T == abi.SliceTy || t.Elem.T == abi.ArrayTy {
+			// if the element is a slice, array or tuple, we need to populate the result's tuples
+			result.Arrays = []ParamResult{}
+			for i := 0; i < realVal.Len(); i++ {
+				result.Arrays = append(
+					result.Arrays,
+					ta.ParamAsJarvisParamResult(fmt.Sprintf("%s[%d]", name, i), *t.Elem, realVal.Index(i).Interface()))
+			}
+		} else if t.Elem.T == abi.TupleTy {
+			result.Tuples = []TupleParamResult{}
+			for i := 0; i < realVal.Len(); i++ {
+				result.Tuples = append(
+					result.Tuples,
+					ta.ParamAsJarvisTuple(*t.Elem, realVal.Index(i).Interface()))
+			}
+		} else {
+			result.Values = []Value{}
+			for i := 0; i < realVal.Len(); i++ {
+				result.Values = append(
+					result.Values,
+					ta.nonArrayParamAsJarvisValue(*t.Elem, realVal.Index(i).Interface()))
+			}
+		}
+		return result
+	case abi.TupleTy:
+		result.Type = t.TupleRawName
+		result.Tuples = []TupleParamResult{ta.ParamAsJarvisTuple(t, value)}
+	default:
+		result.Type = t.String()
+		result.Values = []Value{ta.nonArrayParamAsJarvisValue(t, value)}
+	}
+	return result
 }
 
 func findEventById(a *abi.ABI, topic []byte) (*abi.Event, error) {
@@ -198,13 +218,13 @@ func GetTxDatasFromFunctionCallParams(
 	if isThereAddress && isThereUint && isThereBytes {
 		for _, p := range params {
 			if p.Type == "address" {
-				destinations = append(destinations, p.Value[0].Value)
+				destinations = append(destinations, p.Values[0].Value)
 			}
 			if p.Type == "bytes" {
-				data = append(data, p.Value[0].Value)
+				data = append(data, p.Values[0].Value)
 			}
 			if p.Type == "uint256" {
-				values = append(values, p.Value[0].Value)
+				values = append(values, p.Values[0].Value)
 			}
 		}
 		return
@@ -277,20 +297,7 @@ func (self *TxAnalyzer) AnalyzeMethodCall(
 
 	params = []ParamResult{}
 	for i, input := range m.Inputs {
-		if input.Type.T == abi.TupleTy {
-			DebugPrintf("going to analyze tuple: %s, %s\n", input.Name, input.Type.TupleRawName)
-			params = append(params, ParamResult{
-				Name:  input.Name,
-				Type:  input.Type.TupleRawName,
-				Tuple: self.ParamAsJarvisTuple(input.Type, ps[i]),
-			})
-		} else {
-			params = append(params, ParamResult{
-				Name:  input.Name,
-				Type:  input.Type.String(),
-				Value: self.ParamAsJarvisValues(input.Type, ps[i]),
-			})
-		}
+		params = append(params, self.ParamAsJarvisParamResult(input.Name, input.Type, ps[i]))
 	}
 
 	return method, params, nil
@@ -335,11 +342,7 @@ func (self *TxAnalyzer) AnalyzeLog(
 		return logResult, err
 	}
 	for i, input := range niArgs {
-		logResult.Data = append(logResult.Data, ParamResult{
-			Name:  input.Name,
-			Type:  input.Type.String(),
-			Value: self.ParamAsJarvisValues(input.Type, params[i]),
-		})
+		logResult.Data = append(logResult.Data, self.ParamAsJarvisParamResult(input.Name, input.Type, params[i]))
 	}
 	return logResult, nil
 }

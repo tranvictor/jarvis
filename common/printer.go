@@ -38,14 +38,127 @@ func PrintTxSuccessSummary(result *TxResult, network Network, writer io.Writer) 
 		fmt.Fprintf(writer, "Log %d: %s\n", i+1, l.Name)
 		for j, topic := range l.Topics {
 			fmt.Fprintf(writer, "    Topic %d - %s: ", j+1, topic.Name)
-			PrintVerboseValueToWriter(writer, topic.Value)
+			PrintVerboseTopicToWriter(writer, topic)
 		}
 		fmt.Fprintf(writer, "    Data:\n")
 		for _, param := range l.Data {
-			fmt.Fprintf(writer, "    %s (%s): ", param.Name, param.Type)
-			PrintVerboseValueToWriter(writer, param.Value)
+			PrintVerboseParamResultToWriter(writer, param, 1, true)
 		}
 	}
+}
+
+func PrintVerboseTopicToWriter(writer io.Writer, topic TopicResult) {
+	PrintVerboseValueToWriter(writer, topic.Value)
+	fmt.Fprintf(writer, "\n")
+}
+
+func PrintVerboseParamResultToWriter(writer io.Writer, param ParamResult, indentLevel int, includeFieldNames bool) {
+	indentation := ""
+	for i := 0; i < indentLevel; i++ {
+		indentation = indentation + "    "
+	}
+
+	if includeFieldNames {
+		fmt.Fprintf(writer, "%s%s (%s): ", indentation, param.Name, param.Type)
+	} else {
+		fmt.Fprintf(writer, "%s", indentation)
+	}
+
+	// in case the param is an array of values
+	if param.Values != nil {
+		PrintVerboseValueToWriter(writer, param.Values)
+		return
+	}
+	// in case the param is an array of tubples
+	if param.Tuples != nil {
+		PrintVerboseTuplesToWriter(writer, param.Tuples, indentLevel)
+		return
+	}
+	// in case the param is an array of another array
+	if param.Arrays != nil {
+		PrintVerboseArraysToWriter(writer, param.Arrays, 0)
+		return
+	}
+}
+
+func PrintVerboseTuplesToWriter(writer io.Writer, tuples []TupleParamResult, indentLevel int) {
+	indentation := ""
+	for i := 0; i < indentLevel; i++ {
+		indentation = indentation + "    "
+	}
+
+	if len(tuples) == 0 {
+		fmt.Fprintf(writer, "\n")
+		return
+	}
+
+	if len(tuples) == 1 {
+		PrintVerboseTupleToWriter(writer, tuples[0], indentLevel, false)
+		return
+	}
+
+	// print the first tuple's field signature
+	// PrintTupleFieldNamesToWriter(writer, tuples[0], indentLevel)
+	fmt.Fprintf(writer, "[")
+	for i, tuple := range tuples {
+		PrintVerboseTupleToWriter(writer, tuple, indentLevel, false)
+		if i < len(tuples)-1 {
+			fmt.Fprintf(writer, ", ")
+		}
+	}
+	fmt.Fprintf(writer, "]")
+}
+
+func PrintTupleFieldNamesToWriter(writer io.Writer, tuple TupleParamResult, indentLevel int) {
+	indentation := ""
+	for i := 0; i < indentLevel; i++ {
+		indentation = indentation + "    "
+	}
+	fmt.Fprintf(writer, "(")
+	for i, field := range tuple.Values {
+		fmt.Fprintf(writer, "%s", field.Name)
+		if i < len(tuple.Values)-1 {
+			fmt.Fprintf(writer, ", ")
+		}
+	}
+	fmt.Fprintf(writer, ")")
+}
+
+func PrintVerboseTupleToWriter(writer io.Writer, tuple TupleParamResult, indentLevel int, includeFieldNames bool) {
+	indentation := ""
+	for i := 0; i < indentLevel; i++ {
+		indentation = indentation + "    "
+	}
+
+	if includeFieldNames {
+		fmt.Fprintf(writer, "%s(", tuple.Name)
+	} else {
+		fmt.Fprintf(writer, "(")
+	}
+
+	for i, field := range tuple.Values {
+		PrintVerboseParamResultToWriter(writer, field, 0, includeFieldNames)
+		if i < len(tuple.Values)-1 {
+			fmt.Fprintf(writer, ", ")
+		}
+	}
+	fmt.Fprintf(writer, ")")
+}
+
+func PrintVerboseArraysToWriter(writer io.Writer, arrays []ParamResult, indentLevel int) {
+	indentation := ""
+	for i := 0; i < indentLevel; i++ {
+		indentation = indentation + "    "
+	}
+
+	fmt.Fprintf(writer, "%s[", indentation)
+	for i, array := range arrays {
+		PrintVerboseParamResultToWriter(writer, array, 0, true)
+		if i < len(arrays)-1 {
+			fmt.Fprintf(writer, ", ")
+		}
+	}
+	fmt.Fprintf(writer, "]")
 }
 
 func PrintTxDetails(result *TxResult, network Network, writer io.Writer) {
@@ -82,27 +195,11 @@ func PrintTxDetails(result *TxResult, network Network, writer io.Writer) {
 		for j, topic := range l.Topics {
 			fmt.Fprintf(writer, "    Topic %d - %s: ", j+1, topic.Name)
 			PrintVerboseValueToWriter(writer, topic.Value)
+			fmt.Fprintf(writer, "\n")
 		}
 		fmt.Fprintf(writer, "    Data:\n")
 		for _, param := range l.Data {
-			fmt.Fprintf(writer, "    %s (%s): ", param.Name, param.Type)
-			PrintVerboseValueToWriter(writer, param.Value)
-		}
-	}
-}
-
-func printParamToWriter(p ParamResult, w io.Writer, parentw io.Writer, level int) {
-	indentation := ""
-	for i := 0; i < level; i++ {
-		indentation = indentation + "    "
-	}
-	writer := indent.NewWriter(w, indentation)
-
-	fmt.Fprintf(writer, "    %s (%s): ", p.Name, p.Type)
-	PrintVerboseValueToWriter(writer, p.Value)
-	if len(p.Tuple) > 0 {
-		for _, f := range p.Tuple {
-			printParamToWriter(f, writer, parentw, level+1)
+			PrintVerboseParamResultToWriter(writer, param, 1, true)
 		}
 	}
 }
@@ -128,7 +225,8 @@ func printFunctionCallToWriter(fc *FunctionCall, w io.Writer, level int) {
 	fmt.Fprintf(writer, "| Method: %s\n", fc.Method)
 	fmt.Fprintf(writer, "| Params:\n")
 	for _, param := range fc.Params {
-		printParamToWriter(param, writer, w, 0)
+		PrintVerboseParamResultToWriter(writer, param, 1, true)
+		fmt.Fprintf(writer, "\n")
 	}
 	for _, dfc := range fc.DecodedFunctionCalls {
 		printFunctionCallToWriter(dfc, w, level+1)
@@ -136,6 +234,10 @@ func printFunctionCallToWriter(fc *FunctionCall, w io.Writer, level int) {
 }
 
 func ReadableNumber(value string) string {
+	if len(value) <= 4 {
+		return value
+	}
+
 	digits := []string{}
 	for i := range value {
 		digits = append([]string{string(value[len(value)-1-i])}, digits...)
@@ -179,13 +281,15 @@ func VerboseValues(values []Value) []string {
 func PrintVerboseValueToWriter(writer io.Writer, values []Value) {
 	verboseValues := VerboseValues(values)
 	if len(verboseValues) == 0 {
-		fmt.Fprintf(writer, "\n")
+		fmt.Fprintf(writer, "")
 	} else if len(verboseValues) == 1 {
-		fmt.Fprintf(writer, "%s\n", verboseValues[0])
+		fmt.Fprintf(writer, "%s", verboseValues[0])
 	} else {
-		fmt.Fprintf(writer, "\n")
 		for i, value := range values {
-			fmt.Fprintf(writer, "        %d. %s\n", i+1, verboseValue(value))
+			fmt.Fprintf(writer, "%d. %s", i+1, verboseValue(value))
+			if i < len(values)-1 {
+				fmt.Fprintf(writer, ", ")
+			}
 		}
 	}
 }

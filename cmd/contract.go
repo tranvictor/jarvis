@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"math/big"
+	"os"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -245,35 +246,85 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 	fmt.Printf("Output:\n")
 	result := contractReadResult{}
 	for i, output := range method.Outputs {
-		values := analyzer.ParamAsJarvisValues(output.Type, ps[i])
-		valueStrs := []string{}
-		for _, v := range values {
-			valueStrs = append(valueStrs, v.Value)
-		}
-		result = append(result, returnVariable{
-			Name:        output.Name,
-			Values:      valueStrs,
-			HumanValues: VerboseValues(values),
-		})
+		oneOutputParamResult := analyzer.ParamAsJarvisParamResult(output.Name, output.Type, ps[i])
+		oneVerboseParamResult := convertToVerboseParamResult(oneOutputParamResult)
+		result = append(result, oneVerboseParamResult)
 
-		fmt.Printf(
-			"%d. %s (%s): %s\n",
-			i+1,
-			output.Name,
-			output.Type.String(),
-			indent(8, VerboseValues(values)),
-		)
+		// 	returnVariable{
+		// 	Name:        output.Name,
+		// 	Values:      valueStrs,
+		// 	HumanValues: VerboseValues(values),
+		// })
+
+		fmt.Printf("%d. ", i+1)
+		PrintVerboseParamResultToWriter(os.Stdout, oneOutputParamResult, 0, true)
 	}
 	return result, nil
 }
 
-type returnVariable struct {
-	Name        string   `json:"name"`
-	Values      []string `json:"values"`
-	HumanValues []string `json:"human_values"`
+func convertToVerboseParamResult(oneOutputParamResult ParamResult) verboseParamResult {
+	result := verboseParamResult{
+		Name: oneOutputParamResult.Name,
+		Type: oneOutputParamResult.Type,
+	}
+
+	if oneOutputParamResult.Values != nil {
+		result.Values = []string{}
+		for _, v := range oneOutputParamResult.Values {
+			result.Values = append(result.Values, v.Value)
+		}
+		result.HumanValues = VerboseValues(oneOutputParamResult.Values)
+	}
+
+	if oneOutputParamResult.Tuples != nil {
+		result.Tuples = []verboseTupleParamResult{}
+		for _, t := range oneOutputParamResult.Tuples {
+			result.Tuples = append(result.Tuples, convertToVerboseTupleParamResult(t))
+		}
+	}
+
+	if oneOutputParamResult.Arrays != nil {
+		result.Arrays = []verboseParamResult{}
+		for _, a := range oneOutputParamResult.Arrays {
+			result.Arrays = append(result.Arrays, convertToVerboseParamResult(a))
+		}
+	}
+
+	return result
 }
 
-type contractReadResult []returnVariable
+func convertToVerboseTupleParamResult(oneTupleParamResult TupleParamResult) verboseTupleParamResult {
+	result := verboseTupleParamResult{
+		Name: oneTupleParamResult.Name,
+		Type: oneTupleParamResult.Type,
+	}
+
+	if oneTupleParamResult.Values != nil {
+		result.Values = []verboseParamResult{}
+		for _, v := range oneTupleParamResult.Values {
+			result.Values = append(result.Values, convertToVerboseParamResult(v))
+		}
+	}
+
+	return result
+}
+
+type verboseParamResult struct {
+	Name        string                    `json:"name"`
+	Type        string                    `json:"type"`
+	Values      []string                  `json:"values"`
+	Tuples      []verboseTupleParamResult `json:"tuples"`
+	Arrays      []verboseParamResult      `json:"arrays"`
+	HumanValues []string                  `json:"human_values"`
+}
+
+type verboseTupleParamResult struct {
+	Name   string               `json:"name"`
+	Type   string               `json:"type"`
+	Values []verboseParamResult `json:"values"`
+}
+
+type contractReadResult []verboseParamResult
 
 type contractReadResultJSON struct {
 	Result contractReadResult `json:"result"`
