@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -22,65 +21,42 @@ type Broadcaster struct {
 	clients map[string]*rpc.Client
 }
 
-func (self *Broadcaster) GetNodes() map[string]*rpc.Client {
-	return self.clients
+func (b *Broadcaster) GetNodes() map[string]*rpc.Client {
+	return b.clients
 }
 
-func (self *Broadcaster) broadcast(
+func (b *Broadcaster) broadcast(
 	ctx context.Context,
-	id string, client *rpc.Client, data string,
-	wg *sync.WaitGroup, failures *sync.Map,
-) {
-	defer wg.Done()
-	err := client.CallContext(ctx, nil, "eth_sendRawTransaction", data)
-	if err != nil {
-		failures.Store(id, err)
-	}
+	client *rpc.Client, data string,
+) error {
+	return client.CallContext(ctx, nil, "eth_sendRawTransaction", data)
 }
 
-func (self *Broadcaster) BroadcastTx(tx *types.Transaction) (string, bool, error) {
+func (b *Broadcaster) BroadcastTx(tx *types.Transaction) (string, bool, error) {
 	data, err := tx.MarshalBinary()
 	if err != nil {
-		return "", false, makeError(map[string]error{
-			"tx": fmt.Errorf("Tx is not valid, couldn't use rlp to encode it"),
-		})
+		return "", false, fmt.Errorf("tx is not valid, couldn't use rlp to encode it: %w", err)
 	}
-	return self.Broadcast(hexutil.Encode(data))
+	return b.Broadcast(hexutil.Encode(data))
 }
 
 // data must be hex encoded of the signed tx
-func (self *Broadcaster) Broadcast(data string) (string, bool, error) {
-	failures := sync.Map{}
-	wg := sync.WaitGroup{}
-	for id := range self.clients {
-		wg.Add(1)
-		timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-		cli := self.clients[id]
-		go self.broadcast(timeout, id, cli, data, &wg, &failures)
-		defer cancel()
+func (b *Broadcaster) Broadcast(data string) (string, bool, error) {
+	parallelTasks := []func() error{}
+	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	for id := range b.clients {
+		cli := b.clients[id]
+		parallelTasks = append(parallelTasks, func() error {
+			return b.broadcast(timeout, cli, data)
+		})
 	}
-	wg.Wait()
-	result := map[string]error{}
-	failures.Range(func(key, value interface{}) bool {
-		k, ok := key.(string)
-		if !ok {
-			log.Printf("Broadcast: key (%v) cannot be asserted to string", key)
-			return true
-		}
-		err, ok := value.(error)
-		if !ok {
-			log.Printf("Broadcast: value (%v) cannot be asserted to error", value)
-			return true
-		}
-		result[k] = err
-		return true
-	})
-	return common.RawTxToHash(
-			data,
-		), len(result) != len(self.clients) &&
-			len(self.clients) > 0, makeError(
-			result,
-		)
+	err := common.RunParallel(parallelTasks...)
+	if err != nil {
+		return common.RawTxToHash(data), false, err
+	}
+
+	return common.RawTxToHash(data), true, nil
 }
 
 func NewGenericBroadcaster(nodes map[string]string) *Broadcaster {

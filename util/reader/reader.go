@@ -1,6 +1,7 @@
 package reader
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -39,19 +40,11 @@ func NewEthReaderGeneric(nodes map[string]string, be jarvisnetworks.BlockExplore
 	}
 }
 
-func errorInfo(errs []error) string {
-	estrs := []string{}
-	for i, e := range errs {
-		estrs = append(estrs, fmt.Sprintf("%d. %s", i+1, e))
-	}
-	return strings.Join(estrs, "\n")
-}
-
 func wrapError(e error, name string) error {
 	if e == nil {
 		return nil
 	}
-	return fmt.Errorf("%s: %s", name, e)
+	return fmt.Errorf("%s: %w", name, e)
 }
 
 type estimateGasResult struct {
@@ -84,7 +77,7 @@ func (er *EthReader) EstimateExactGas(
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 func (er *EthReader) EstimateGas(
@@ -120,7 +113,7 @@ func (er *EthReader) GetCode(address string) (code []byte, err error) {
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 func (er *EthReader) TxInfoFromHash(tx string) (jarviscommon.TxInfo, error) {
@@ -220,7 +213,7 @@ func (er *EthReader) GetGasPriceWeiSuggestion() (*big.Int, error) {
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 type getBalanceResponse struct {
@@ -248,7 +241,7 @@ func (er *EthReader) GetBalance(address string) (balance *big.Int, err error) {
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 type getNonceResponse struct {
@@ -276,7 +269,7 @@ func (er *EthReader) GetMinedNonce(address string) (nonce uint64, err error) {
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 func (er *EthReader) GetPendingNonce(address string) (nonce uint64, err error) {
@@ -299,7 +292,7 @@ func (er *EthReader) GetPendingNonce(address string) (nonce uint64, err error) {
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 type transactionReceiptResponse struct {
@@ -327,7 +320,7 @@ func (er *EthReader) TransactionReceipt(txHash string) (receipt *types.Receipt, 
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 type transactionByHashResponse struct {
@@ -360,7 +353,7 @@ func (er *EthReader) TransactionByHash(
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, false, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, false, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 type readContractToBytesResponse struct {
@@ -395,7 +388,7 @@ func (er *EthReader) ReadContractToBytes(
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 func (er *EthReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
@@ -418,7 +411,7 @@ func (er *EthReader) EthCall(from string, to string, data []byte, overrides *map
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 func (er *EthReader) ImplementationOfEIP1967(
@@ -524,7 +517,7 @@ func (er *EthReader) StorageAt(atBlock int64, caddr string, slot string) ([]byte
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 func (er *EthReader) ReadHistoryContractWithABI(
@@ -670,7 +663,7 @@ func (er *EthReader) HeaderByNumber(number int64) (*types.Header, error) {
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 func (er *EthReader) SuggestedGasSettings() (maxGasPriceGwei, maxTipGwei float64, err error) {
@@ -734,7 +727,7 @@ func (er *EthReader) GetSuggestedGasTipCap() (float64, error) {
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 // add 50% to max gas price because the next blocks based price can be increased
@@ -760,7 +753,7 @@ func (er *EthReader) RecommendedGasPrice() (float64, error) {
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 func (er *EthReader) HistoryERC20Allowance(
@@ -852,7 +845,7 @@ func (er *EthReader) GetLogs(
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 type getBlockResponse struct {
@@ -880,7 +873,7 @@ func (er *EthReader) CurrentBlock() (uint64, error) {
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 func (er *EthReader) GetABIString(address string) (string, error) {
