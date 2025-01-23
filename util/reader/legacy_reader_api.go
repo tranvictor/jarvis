@@ -1,27 +1,27 @@
 package reader
 
 import (
-	. "github.com/tranvictor/jarvis/util/explorers"
+	"github.com/tranvictor/jarvis/util/explorers"
 )
 
 func NewBSCReaderWithCustomNodes(nodes map[string]string) *EthReader {
-	return NewEthReaderGeneric(nodes, NewBscscan())
+	return NewEthReaderGeneric(nodes, explorers.NewBscscan())
 }
 
 func NewBSCTestnetReaderWithCustomNodes(nodes map[string]string) *EthReader {
-	return NewEthReaderGeneric(nodes, NewTestnetBscscan())
+	return NewEthReaderGeneric(nodes, explorers.NewTestnetBscscan())
 }
 
 func NewKovanReaderWithCustomNodes(nodes map[string]string) *EthReader {
-	return NewEthReaderGeneric(nodes, NewKovanEtherscan())
+	return NewEthReaderGeneric(nodes, explorers.NewKovanEtherscan())
 }
 
 func NewRinkebyReaderWithCustomNodes(nodes map[string]string) *EthReader {
-	return NewEthReaderGeneric(nodes, NewRinkebyEtherscan())
+	return NewEthReaderGeneric(nodes, explorers.NewRinkebyEtherscan())
 }
 
 func NewRopstenReaderWithCustomNodes(nodes map[string]string) *EthReader {
-	return NewEthReaderGeneric(nodes, NewRopstenEtherscan())
+	return NewEthReaderGeneric(nodes, explorers.NewRopstenEtherscan())
 }
 
 func NewKovanReader() *EthReader {
@@ -64,7 +64,7 @@ func NewRopstenReader() *EthReader {
 }
 
 func NewTomoReaderWithCustomNodes(nodes map[string]string) *EthReader {
-	return NewEthReaderGeneric(nodes, NewTomoBlockExplorer())
+	return NewEthReaderGeneric(nodes, explorers.NewTomoBlockExplorer())
 }
 
 func NewTomoReader() *EthReader {
@@ -75,7 +75,7 @@ func NewTomoReader() *EthReader {
 }
 
 func NewMaticReaderWithCustomNodes(nodes map[string]string) *EthReader {
-	return NewEthReaderGeneric(nodes, NewPolygonscan())
+	return NewEthReaderGeneric(nodes, explorers.NewPolygonscan())
 }
 
 func NewMaticReader() *EthReader {
@@ -86,7 +86,7 @@ func NewMaticReader() *EthReader {
 }
 
 func NewMumbaiReaderWithCustomNodes(nodes map[string]string) *EthReader {
-	return NewEthReaderGeneric(nodes, NewMumbaiPolygonscan())
+	return NewEthReaderGeneric(nodes, explorers.NewMumbaiPolygonscan())
 }
 
 func NewMumbaiReader() *EthReader {
@@ -97,7 +97,7 @@ func NewMumbaiReader() *EthReader {
 }
 
 func NewEthReaderWithCustomNodes(nodes map[string]string) *EthReader {
-	return NewEthReaderGeneric(nodes, NewMainnetEtherscan())
+	return NewEthReaderGeneric(nodes, explorers.NewMainnetEtherscan())
 }
 
 func NewEthReader() *EthReader {

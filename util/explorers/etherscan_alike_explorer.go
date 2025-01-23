@@ -130,13 +130,16 @@ func (ee *EtherscanLikeExplorer) GetABIString(address string) (string, error) {
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("error reading body from %s: %w", url, err)
+	}
 	abiresp := abiresponse{}
 	err = json.Unmarshal(body, &abiresp)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error unmarshalling body from %s: %w", url, err)
 	}
 	if abiresp.Status != "1" {
 		return "", fmt.Errorf("error from %s: %s", url, abiresp.Result)
 	}
-	return abiresp.Result, err
+	return abiresp.Result, nil
 }

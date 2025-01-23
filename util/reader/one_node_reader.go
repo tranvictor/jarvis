@@ -15,7 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient/gethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 
-	. "github.com/tranvictor/jarvis/common"
+	jarviscommon "github.com/tranvictor/jarvis/common"
 )
 
 const TIMEOUT time.Duration = 4 * time.Second
@@ -40,60 +40,60 @@ func NewOneNodeReader(name, url string) *OneNodeReader {
 	}
 }
 
-func (self *OneNodeReader) NodeName() string {
-	return self.nodeName
+func (onr *OneNodeReader) NodeName() string {
+	return onr.nodeName
 }
 
-func (self *OneNodeReader) NodeURL() string {
-	return self.nodeURL
+func (onr *OneNodeReader) NodeURL() string {
+	return onr.nodeURL
 }
 
-func (self *OneNodeReader) initConnection() error {
-	self.mu.Lock()
-	defer self.mu.Unlock()
-	client, err := rpc.Dial(self.NodeURL())
+func (onr *OneNodeReader) initConnection() error {
+	onr.mu.Lock()
+	defer onr.mu.Unlock()
+	client, err := rpc.Dial(onr.NodeURL())
 	if err != nil {
-		return fmt.Errorf("Couldn't connect to %s: %w", self.nodeName, err)
+		return fmt.Errorf("couldn't connect to %s: %w", onr.nodeName, err)
 	}
-	self.client = client
-	self.ethClient = ethclient.NewClient(self.client)
-	self.gethClient = gethclient.New(self.client)
+	onr.client = client
+	onr.ethClient = ethclient.NewClient(onr.client)
+	onr.gethClient = gethclient.New(onr.client)
 	return nil
 }
 
-func (self *OneNodeReader) Client() (*rpc.Client, error) {
-	if self.client != nil {
-		return self.client, nil
+func (onr *OneNodeReader) Client() (*rpc.Client, error) {
+	if onr.client != nil {
+		return onr.client, nil
 	}
-	err := self.initConnection()
-	return self.client, err
+	err := onr.initConnection()
+	return onr.client, err
 }
 
-func (self *OneNodeReader) EthClient() (*ethclient.Client, error) {
-	if self.ethClient != nil {
-		return self.ethClient, nil
+func (onr *OneNodeReader) EthClient() (*ethclient.Client, error) {
+	if onr.ethClient != nil {
+		return onr.ethClient, nil
 	}
-	err := self.initConnection()
-	return self.ethClient, err
+	err := onr.initConnection()
+	return onr.ethClient, err
 }
 
-func (self *OneNodeReader) GEthClient() (*gethclient.Client, error) {
-	if self.gethClient != nil {
-		return self.gethClient, nil
+func (onr *OneNodeReader) GEthClient() (*gethclient.Client, error) {
+	if onr.gethClient != nil {
+		return onr.gethClient, nil
 	}
-	err := self.initConnection()
-	return self.gethClient, err
+	err := onr.initConnection()
+	return onr.gethClient, err
 }
 
-func (self *OneNodeReader) EstimateGas(from, to string, priceGwei float64, value *big.Int, data []byte) (uint64, error) {
+func (onr *OneNodeReader) EstimateGas(from, to string, priceGwei float64, value *big.Int, data []byte) (uint64, error) {
 	fromAddr := common.HexToAddress(from)
 	var toAddrPtr *common.Address
 	if to != "" {
 		toAddr := common.HexToAddress(to)
 		toAddrPtr = &toAddr
 	}
-	price := FloatToBigInt(priceGwei, 9)
-	ethcli, err := self.EthClient()
+	price := jarviscommon.FloatToBigInt(priceGwei, 9)
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return 0, err
 	}
@@ -109,9 +109,9 @@ func (self *OneNodeReader) EstimateGas(from, to string, priceGwei float64, value
 	})
 }
 
-func (self *OneNodeReader) GetCode(address string) (code []byte, err error) {
+func (onr *OneNodeReader) GetCode(address string) (code []byte, err error) {
 	addr := common.HexToAddress(address)
-	ethcli, err := self.EthClient()
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +120,8 @@ func (self *OneNodeReader) GetCode(address string) (code []byte, err error) {
 	return ethcli.CodeAt(timeout, addr, nil)
 }
 
-func (self *OneNodeReader) GetGasPriceSuggestion() (*big.Int, error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) GetGasPriceSuggestion() (*big.Int, error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return nil, err
 	}
@@ -130,8 +130,8 @@ func (self *OneNodeReader) GetGasPriceSuggestion() (*big.Int, error) {
 	return ethcli.SuggestGasPrice(timeout)
 }
 
-func (self *OneNodeReader) GetBalance(address string) (balance *big.Int, err error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) GetBalance(address string) (balance *big.Int, err error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return nil, err
 	}
@@ -141,8 +141,8 @@ func (self *OneNodeReader) GetBalance(address string) (balance *big.Int, err err
 	return ethcli.BalanceAt(timeout, acc, nil)
 }
 
-func (self *OneNodeReader) GetMinedNonce(address string) (nonce uint64, err error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) GetMinedNonce(address string) (nonce uint64, err error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return 0, err
 	}
@@ -152,8 +152,8 @@ func (self *OneNodeReader) GetMinedNonce(address string) (nonce uint64, err erro
 	return ethcli.NonceAt(timeout, acc, nil)
 }
 
-func (self *OneNodeReader) GetPendingNonce(address string) (nonce uint64, err error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) GetPendingNonce(address string) (nonce uint64, err error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return 0, err
 	}
@@ -163,8 +163,8 @@ func (self *OneNodeReader) GetPendingNonce(address string) (nonce uint64, err er
 	return ethcli.PendingNonceAt(timeout, acc)
 }
 
-func (self *OneNodeReader) TransactionReceipt(txHash string) (receipt *types.Receipt, err error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) TransactionReceipt(txHash string) (receipt *types.Receipt, err error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return nil, err
 	}
@@ -174,9 +174,9 @@ func (self *OneNodeReader) TransactionReceipt(txHash string) (receipt *types.Rec
 	return ethcli.TransactionReceipt(timeout, hash)
 }
 
-func (self *OneNodeReader) transactionByHashOnNode(ctx context.Context, hash common.Hash, client *rpc.Client) (tx *Transaction, isPending bool, err error) {
-	var json *Transaction
-	cli, err := self.Client()
+func (onr *OneNodeReader) transactionByHashOnNode(ctx context.Context, hash common.Hash) (tx *jarviscommon.Transaction, isPending bool, err error) {
+	var json *jarviscommon.Transaction
+	cli, err := onr.Client()
 	if err != nil {
 		return nil, false, err
 	}
@@ -191,20 +191,15 @@ func (self *OneNodeReader) transactionByHashOnNode(ctx context.Context, hash com
 	return json, json.Extra.BlockNumber == nil, nil
 }
 
-func (self *OneNodeReader) TransactionByHash(txHash string) (tx *Transaction, isPending bool, err error) {
-	cli, err := self.Client()
-	if err != nil {
-		return nil, false, err
-	}
-
+func (onr *OneNodeReader) TransactionByHash(txHash string) (tx *jarviscommon.Transaction, isPending bool, err error) {
 	hash := common.HexToHash(txHash)
 	timeout, cancel := context.WithTimeout(context.Background(), TIMEOUT)
 	defer cancel()
-	return self.transactionByHashOnNode(timeout, hash, cli)
+	return onr.transactionByHashOnNode(timeout, hash)
 }
 
-// func (self *OneNodeReader) Call(result interface{}, method string, args ...interface{}) error {
-// 	cli, err := self.Client()
+// func (onr *OneNodeReader) Call(result interface{}, method string, args ...interface{}) error {
+// 	cli, err := onr.Client()
 // 	if err != nil {
 // 		return err
 // 	}
@@ -213,8 +208,8 @@ func (self *OneNodeReader) TransactionByHash(txHash string) (tx *Transaction, is
 // 	return cli.CallContext(timeout, result, method, args)
 // }
 
-func (self *OneNodeReader) HeaderByNumber(number int64) (*types.Header, error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) HeaderByNumber(number int64) (*types.Header, error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return nil, err
 	}
@@ -227,8 +222,8 @@ func (self *OneNodeReader) HeaderByNumber(number int64) (*types.Header, error) {
 	return ethcli.HeaderByNumber(timeout, numberBig)
 }
 
-func (self *OneNodeReader) SuggestedGasPrice() (*big.Int, error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) SuggestedGasPrice() (*big.Int, error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return nil, err
 	}
@@ -239,8 +234,8 @@ func (self *OneNodeReader) SuggestedGasPrice() (*big.Int, error) {
 	return ethcli.SuggestGasPrice(timeout)
 }
 
-func (self *OneNodeReader) SuggestedGasTipCap() (*big.Int, error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) SuggestedGasTipCap() (*big.Int, error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return nil, err
 	}
@@ -251,8 +246,8 @@ func (self *OneNodeReader) SuggestedGasTipCap() (*big.Int, error) {
 	return ethcli.SuggestGasTipCap(timeout)
 }
 
-func (self *OneNodeReader) GetLogs(fromBlock, toBlock int, addresses []string, topic string) ([]types.Log, error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) GetLogs(fromBlock, toBlock int, addresses []string, topic string) ([]types.Log, error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return nil, err
 	}
@@ -265,9 +260,9 @@ func (self *OneNodeReader) GetLogs(fromBlock, toBlock int, addresses []string, t
 	} else {
 		q.ToBlock = big.NewInt(int64(toBlock))
 	}
-	q.Addresses = HexToAddresses(addresses)
+	q.Addresses = jarviscommon.HexToAddresses(addresses)
 	q.Topics = [][]common.Hash{
-		{HexToHash(topic)},
+		{jarviscommon.HexToHash(topic)},
 	}
 
 	timeout, cancel := context.WithTimeout(context.Background(), TIMEOUT)
@@ -275,13 +270,13 @@ func (self *OneNodeReader) GetLogs(fromBlock, toBlock int, addresses []string, t
 	return ethcli.FilterLogs(timeout, *q)
 }
 
-func (self *OneNodeReader) ReadContractToBytes(atBlock int64, from string, caddr string, abi *abi.ABI, method string, args ...interface{}) ([]byte, error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) ReadContractToBytes(atBlock int64, from string, caddr string, abi *abi.ABI, method string, args ...interface{}) ([]byte, error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return nil, err
 	}
 
-	contract := HexToAddress(caddr)
+	contract := jarviscommon.HexToAddress(caddr)
 	data, err := abi.Pack(method, args...)
 	if err != nil {
 		return nil, err
@@ -294,7 +289,7 @@ func (self *OneNodeReader) ReadContractToBytes(atBlock int64, from string, caddr
 	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	return ethcli.CallContract(timeout, ethereum.CallMsg{
-		From:     HexToAddress(from),
+		From:     jarviscommon.HexToAddress(from),
 		To:       &contract,
 		Gas:      0,
 		GasPrice: nil,
@@ -303,18 +298,18 @@ func (self *OneNodeReader) ReadContractToBytes(atBlock int64, from string, caddr
 	}, blockBig)
 }
 
-func (self *OneNodeReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
-	gethcli, err := self.GEthClient()
+func (onr *OneNodeReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
+	gethcli, err := onr.GEthClient()
 	if err != nil {
 		return nil, err
 	}
 
-	contract := HexToAddress(to)
+	contract := jarviscommon.HexToAddress(to)
 
 	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	return gethcli.CallContract(timeout, ethereum.CallMsg{
-		From:     HexToAddress(from),
+		From:     jarviscommon.HexToAddress(from),
 		To:       &contract,
 		Gas:      0,
 		GasPrice: nil,
@@ -323,8 +318,8 @@ func (self *OneNodeReader) EthCall(from string, to string, data []byte, override
 	}, nil, overrides)
 }
 
-func (self *OneNodeReader) CurrentBlock() (uint64, error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) CurrentBlock() (uint64, error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return 0, err
 	}
@@ -337,15 +332,15 @@ func (self *OneNodeReader) CurrentBlock() (uint64, error) {
 	return header.Number.Uint64(), nil
 }
 
-func (self *OneNodeReader) StorageAt(atBlock int64, contractAddr string, slot string) ([]byte, error) {
-	ethcli, err := self.EthClient()
+func (onr *OneNodeReader) StorageAt(atBlock int64, contractAddr string, slot string) ([]byte, error) {
+	ethcli, err := onr.EthClient()
 	if err != nil {
 		return []byte{}, err
 	}
 	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 
-	contract := HexToAddress(contractAddr)
+	contract := jarviscommon.HexToAddress(contractAddr)
 	hash := common.HexToHash(slot)
 	var blockBig *big.Int
 	if atBlock > 0 {

@@ -14,7 +14,7 @@ import (
 
 	"github.com/tranvictor/jarvis/accounts"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
-	. "github.com/tranvictor/jarvis/common"
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
@@ -159,7 +159,7 @@ var txContractCmd = &cobra.Command{
 			config.Network(),
 		)
 
-		DebugPrintf("calling data: %x\n", data)
+		jarviscommon.DebugPrintf("calling data: %x\n", data)
 
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
@@ -174,7 +174,7 @@ var txContractCmd = &cobra.Command{
 			}
 		}
 
-		tx := BuildExactTx(
+		tx := jarviscommon.BuildExactTx(
 			config.TxType,
 			config.Nonce,
 			config.To,
@@ -210,7 +210,7 @@ var txContractCmd = &cobra.Command{
 			fmt.Printf("%s", err)
 			return
 		}
-		if signedAddr.Cmp(HexToAddress(config.FromAcc.Address)) != 0 {
+		if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
 			fmt.Printf("Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
 				config.FromAcc.Address,
 				signedAddr.Hex(),
@@ -257,12 +257,12 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 		// })
 
 		fmt.Printf("%d. ", i+1)
-		PrintVerboseParamResultToWriter(os.Stdout, oneOutputParamResult, 0, true)
+		jarviscommon.PrintVerboseParamResultToWriter(os.Stdout, oneOutputParamResult, 0, true)
 	}
 	return result, nil
 }
 
-func convertToVerboseParamResult(oneOutputParamResult ParamResult) verboseParamResult {
+func convertToVerboseParamResult(oneOutputParamResult jarviscommon.ParamResult) verboseParamResult {
 	result := verboseParamResult{
 		Name: oneOutputParamResult.Name,
 		Type: oneOutputParamResult.Type,
@@ -273,7 +273,7 @@ func convertToVerboseParamResult(oneOutputParamResult ParamResult) verboseParamR
 		for _, v := range oneOutputParamResult.Values {
 			result.Values = append(result.Values, v.Value)
 		}
-		result.HumanValues = VerboseValues(oneOutputParamResult.Values)
+		result.HumanValues = jarviscommon.VerboseValues(oneOutputParamResult.Values)
 	}
 
 	if oneOutputParamResult.Tuples != nil {
@@ -293,7 +293,7 @@ func convertToVerboseParamResult(oneOutputParamResult ParamResult) verboseParamR
 	return result
 }
 
-func convertToVerboseTupleParamResult(oneTupleParamResult TupleParamResult) verboseTupleParamResult {
+func convertToVerboseTupleParamResult(oneTupleParamResult jarviscommon.TupleParamResult) verboseTupleParamResult {
 	result := verboseTupleParamResult{
 		Name: oneTupleParamResult.Name,
 		Type: oneTupleParamResult.Type,

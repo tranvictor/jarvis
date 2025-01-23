@@ -13,10 +13,10 @@ import (
 	"github.com/tranvictor/jarvis/accounts"
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
-	. "github.com/tranvictor/jarvis/common"
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
-	. "github.com/tranvictor/jarvis/networks"
+	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -253,10 +253,10 @@ func GetApproverAccountFromMsig(multisigContract *msig.MultisigContract) (string
 		}
 	}
 	if count == 0 {
-		return "", fmt.Errorf("You don't have any wallet which is this multisig signer. Please jarvis wallet add to add the wallet.")
+		return "", fmt.Errorf("you don't have any wallet which is this multisig signer. please jarvis wallet add to add the wallet")
 	}
 	if count != 1 {
-		fmt.Printf("You have many wallets that are this multisig signers. Select the last one.")
+		fmt.Printf("you have many wallets that are this multisig signers. select the last one")
 	}
 	return acc.Address, nil
 }
@@ -277,7 +277,7 @@ var batchApproveMsigCmd = &cobra.Command{
 
 		for i, n := range networks {
 			txHash := txs[i]
-			network, err := GetNetwork(n)
+			network, err := jarvisnetworks.GetNetwork(n)
 			if err != nil {
 				fmt.Printf("%s network is not supported. Skip this tx.\n", n)
 				continue
@@ -295,8 +295,8 @@ var batchApproveMsigCmd = &cobra.Command{
 			var txid *big.Int
 			msigHex := txinfo.Tx.To().Hex()
 			for _, l := range txinfo.Receipt.Logs {
-				if strings.ToLower(l.Address.Hex()) == strings.ToLower(msigHex) &&
-					l.Topics[0].Hex() == "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51" {
+				if strings.EqualFold(l.Address.Hex(), msigHex) &&
+					strings.EqualFold(l.Topics[0].Hex(), "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51") {
 
 					txid = l.Topics[1].Big()
 					break
@@ -346,7 +346,7 @@ var batchApproveMsigCmd = &cobra.Command{
 			}
 
 			if txType == types.LegacyTxType && config.TxType == types.DynamicFeeTxType {
-				DebugPrintf("The %s network doesn't support dynamic fee transaction, ignore tx type in cmd parameters", network.GetName())
+				jarviscommon.DebugPrintf("The %s network doesn't support dynamic fee transaction, ignore tx type in cmd parameters", network.GetName())
 			}
 
 			if txType == types.DynamicFeeTxType && config.TxType == types.LegacyTxType {
@@ -359,7 +359,7 @@ var batchApproveMsigCmd = &cobra.Command{
 
 			tx, err := cm.BuildTx(
 				txType,
-				HexToAddress(from), HexToAddress(msigHex),
+				jarviscommon.HexToAddress(from), jarviscommon.HexToAddress(msigHex),
 				nil,
 				big.NewInt(0),
 				0,
@@ -385,7 +385,7 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
-			signedTx, broadcasted, err := cm.SignTxAndBroadcast(HexToAddress(from), tx, network)
+			signedTx, broadcasted, err := cm.SignTxAndBroadcast(jarviscommon.HexToAddress(from), tx, network)
 
 			if config.DontWaitToBeMined {
 				util.DisplayBroadcastedTx(
@@ -418,7 +418,7 @@ var newMsigCmd = &cobra.Command{
 
 		msigABI := util.GetGnosisMsigABI()
 
-		cAddr := crypto.CreateAddress(HexToAddress(config.From), config.Nonce).Hex()
+		cAddr := crypto.CreateAddress(jarviscommon.HexToAddress(config.From), config.Nonce).Hex()
 
 		data, err := cmdutil.PromptTxData(
 			analyzer,
@@ -453,7 +453,7 @@ var newMsigCmd = &cobra.Command{
 				return
 			}
 		}
-		tx := BuildContractCreationTx(
+		tx := jarviscommon.BuildContractCreationTx(
 			config.TxType,
 			config.Nonce,
 			config.Value,
@@ -488,7 +488,7 @@ var newMsigCmd = &cobra.Command{
 			fmt.Printf("Failed to sign tx: %s\n", err)
 			return
 		}
-		if signedAddr.Cmp(HexToAddress(config.FromAcc.Address)) != 0 {
+		if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
 			fmt.Printf(
 				"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
 				config.FromAcc.Address,
@@ -569,7 +569,7 @@ var initMsigCmd = &cobra.Command{
 			fmt.Printf("Couldn't get the multisig's ABI: %s\n", err)
 			return
 		}
-			
+
 		if config.Simulate {
 			multisigContract, err := msig.NewMultisigContract(
 				config.To,
@@ -579,7 +579,7 @@ var initMsigCmd = &cobra.Command{
 				fmt.Printf("Couldn't interact with the contract: %s\n", err)
 				return
 			}
-			err = multisigContract.SimulateSubmit(config.From, config.MsigTo, FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()), data)
+			err = multisigContract.SimulateSubmit(config.From, config.MsigTo, jarviscommon.FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()), data)
 			if err != nil {
 				fmt.Printf("Could not simulate interact with the contract: %s\n", err)
 				return
@@ -588,8 +588,8 @@ var initMsigCmd = &cobra.Command{
 
 		txdata, err := msigABI.Pack(
 			"submitTransaction",
-			HexToAddress(config.MsigTo),
-			FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()),
+			jarviscommon.HexToAddress(config.MsigTo),
+			jarviscommon.FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()),
 			data,
 		)
 		if err != nil {
@@ -606,7 +606,7 @@ var initMsigCmd = &cobra.Command{
 			}
 		}
 
-		tx := BuildExactTx(
+		tx := jarviscommon.BuildExactTx(
 			config.TxType,
 			config.Nonce,
 			config.To,
@@ -646,7 +646,7 @@ var initMsigCmd = &cobra.Command{
 			fmt.Printf("Failed to sign tx: %s\n", err)
 			return
 		}
-		if signedAddr.Cmp(HexToAddress(config.FromAcc.Address)) != 0 {
+		if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
 			fmt.Printf("Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
 				config.FromAcc.Address,
 				signedAddr.Hex(),

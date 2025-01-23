@@ -6,7 +6,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	. "github.com/tranvictor/jarvis/common"
+
+	jarviscommon "github.com/tranvictor/jarvis/common"
 )
 
 var DO_NOTHING_MC_ONE_RESULT_HANDLER MCOneResultHandler = func(result interface{}) error { return nil }
@@ -29,7 +30,7 @@ func NewMultiCall(r *EthReader, mcContract string) *MultipleCall {
 	return &MultipleCall{
 		r,
 		mcContract,
-		GetMultiCallABI(),
+		jarviscommon.GetMultiCallABI(),
 		[]interface{}{},
 		[]string{},
 		[]*abi.ABI{},
@@ -93,7 +94,7 @@ func (mc *MultipleCall) callMCContract(atBlock int64) (block int64, err error) {
 			return 0, err
 		}
 
-		calls = append(calls, call{HexToAddress(caddr), data})
+		calls = append(calls, call{jarviscommon.HexToAddress(caddr), data})
 	}
 
 	err = mc.r.ReadHistoryContract(
@@ -108,7 +109,7 @@ func (mc *MultipleCall) callMCContract(atBlock int64) (block int64, err error) {
 		return 0, fmt.Errorf("reading mc.aggregate failed: %w", err)
 	}
 
-	for i, _ := range mc.results {
+	for i := range mc.results {
 		err = mc.abis[i].UnpackIntoInterface(
 			mc.results[i],
 			mc.methods[i],

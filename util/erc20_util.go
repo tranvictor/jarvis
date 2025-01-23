@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	. "github.com/tranvictor/jarvis/networks"
+	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util/cache"
 )
 
@@ -26,7 +26,7 @@ var PROXY_METHODS = [...]string{
 	"upgradeToAndCall",
 }
 
-func queryToCheckERC20(addr string, network Network) (bool, error) {
+func queryToCheckERC20(addr string, network jarvisnetworks.Network) (bool, error) {
 	_, err := GetERC20Decimal(addr, network)
 	if err != nil {
 		if strings.Contains(fmt.Sprintf("%s", err), "abi: attempting to unmarshall an empty string while arguments are expected") {
@@ -38,7 +38,7 @@ func queryToCheckERC20(addr string, network Network) (bool, error) {
 	return true, nil
 }
 
-func IsERC20(addr string, network Network) (bool, error) {
+func IsERC20(addr string, network jarvisnetworks.Network) (bool, error) {
 	if !isRealAddress(addr) {
 		return false, nil
 	}
@@ -61,7 +61,7 @@ func IsERC20(addr string, network Network) (bool, error) {
 	return isERC20, nil
 }
 
-func GetERC20Symbol(addr string, network Network) (string, error) {
+func GetERC20Symbol(addr string, network jarvisnetworks.Network) (string, error) {
 	cacheKey := fmt.Sprintf("%s_symbol", addr)
 	result, found := cache.GetCache(cacheKey)
 	if found {
@@ -87,7 +87,7 @@ func GetERC20Symbol(addr string, network Network) (string, error) {
 	return result, nil
 }
 
-func GetERC20Decimal(addr string, network Network) (uint64, error) {
+func GetERC20Decimal(addr string, network jarvisnetworks.Network) (uint64, error) {
 	cacheKey := fmt.Sprintf("%s_decimal", addr)
 	v, found := cache.GetInt64Cache(cacheKey)
 	if found {

@@ -11,8 +11,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient/gethclient"
 
-	. "github.com/tranvictor/jarvis/common"
-	. "github.com/tranvictor/jarvis/util/explorers"
+	jarviscommon "github.com/tranvictor/jarvis/common"
+	jarvisnetworks "github.com/tranvictor/jarvis/util/explorers"
 )
 
 var DEFAULT_ADDRESS string = "0x0000000000000000000000000000000000000000"
@@ -25,10 +25,10 @@ const (
 
 type EthReader struct {
 	nodes map[string]EthereumNode
-	be    BlockExplorer
+	be    jarvisnetworks.BlockExplorer
 }
 
-func NewEthReaderGeneric(nodes map[string]string, be BlockExplorer) *EthReader {
+func NewEthReaderGeneric(nodes map[string]string, be jarvisnetworks.BlockExplorer) *EthReader {
 	ns := map[string]EthereumNode{}
 	for name, c := range nodes {
 		ns[name] = NewOneNodeReader(name, c)
@@ -59,15 +59,15 @@ type estimateGasResult struct {
 	Error error
 }
 
-func (self *EthReader) EstimateExactGas(
+func (er *EthReader) EstimateExactGas(
 	from, to string,
 	priceGwei float64,
 	value *big.Int,
 	data []byte,
 ) (uint64, error) {
-	resCh := make(chan estimateGasResult, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+	resCh := make(chan estimateGasResult, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			gas, err := n.EstimateGas(from, to, priceGwei, value, data)
 			resCh <- estimateGasResult{
@@ -77,22 +77,22 @@ func (self *EthReader) EstimateExactGas(
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Gas, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) EstimateGas(
+func (er *EthReader) EstimateGas(
 	from, to string,
 	priceGwei, value float64,
 	data []byte,
 ) (uint64, error) {
-	return self.EstimateExactGas(from, to, priceGwei, FloatToBigInt(value, 18), data)
+	return er.EstimateExactGas(from, to, priceGwei, jarviscommon.FloatToBigInt(value, 18), data)
 }
 
 type getCodeResponse struct {
@@ -100,10 +100,10 @@ type getCodeResponse struct {
 	Error error
 }
 
-func (self *EthReader) GetCode(address string) (code []byte, err error) {
-	resCh := make(chan getCodeResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) GetCode(address string) (code []byte, err error) {
+	resCh := make(chan getCodeResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			code, err := n.GetCode(address)
 			resCh <- getCodeResponse{
@@ -113,50 +113,85 @@ func (self *EthReader) GetCode(address string) (code []byte, err error) {
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Code, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) TxInfoFromHash(tx string) (TxInfo, error) {
-	txObj, isPending, err := self.TransactionByHash(tx)
+func (er *EthReader) TxInfoFromHash(tx string) (jarviscommon.TxInfo, error) {
+	txObj, isPending, err := er.TransactionByHash(tx)
 
 	if err != nil {
-		return TxInfo{"error", nil, nil, nil}, err
+		return jarviscommon.TxInfo{
+			Status:      "error",
+			Tx:          nil,
+			InternalTxs: []jarviscommon.InternalTx{},
+			Receipt:     nil,
+		}, err
 	}
 	if txObj == nil {
-		return TxInfo{"notfound", nil, nil, nil}, nil
+		return jarviscommon.TxInfo{
+			Status:      "notfound",
+			Tx:          nil,
+			InternalTxs: []jarviscommon.InternalTx{},
+			Receipt:     nil,
+		}, nil
 	}
 	if isPending {
-		return TxInfo{"pending", txObj, nil, nil}, nil
+		return jarviscommon.TxInfo{
+			Status:      "pending",
+			Tx:          txObj,
+			InternalTxs: []jarviscommon.InternalTx{},
+			Receipt:     nil,
+		}, nil
 	}
 
-	receipt, err := self.TransactionReceipt(tx)
+	receipt, err := er.TransactionReceipt(tx)
 
 	if receipt == nil {
-		return TxInfo{"pending", txObj, nil, nil}, err
+		return jarviscommon.TxInfo{
+			Status:      "pending",
+			Tx:          txObj,
+			InternalTxs: []jarviscommon.InternalTx{},
+			Receipt:     nil,
+		}, err
 	}
 
-	// block, _ := self.HeaderByNumber(receipt.BlockNumber.Int64())
+	// block, _ := er.HeaderByNumber(receipt.BlockNumber.Int64())
 	// only byzantium has status field at the moment
 	// mainnet, ropsten are byzantium, other chains such as
 	// devchain, kovan are not.
 	// if PostState is a hash, it is pre-byzantium and all
 	// txs with PostState are considered done
 	if len(receipt.PostState) == len(common.Hash{}) {
-		return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
+		return jarviscommon.TxInfo{
+			Status:      "done",
+			Tx:          txObj,
+			InternalTxs: []jarviscommon.InternalTx{},
+			Receipt:     receipt,
+		}, nil
 	} else {
 		if receipt.Status == 1 {
 			// successful tx
-			return TxInfo{"done", txObj, []InternalTx{}, receipt}, nil
+			return jarviscommon.TxInfo{
+				Status:      "done",
+				Tx:          txObj,
+				InternalTxs: []jarviscommon.InternalTx{},
+				Receipt:     receipt,
+			}, nil
 		}
 		// failed tx
-		return TxInfo{"reverted", txObj, []InternalTx{}, receipt}, nil
+		return jarviscommon.TxInfo{
+			Status:      "reverted",
+			Tx:          txObj,
+			InternalTxs: []jarviscommon.InternalTx{},
+			Receipt:     receipt,
+		}, nil
 	}
 }
 
@@ -165,10 +200,10 @@ type getGasSuggestionResponse struct {
 	Error    error
 }
 
-func (self *EthReader) GetGasPriceWeiSuggestion() (*big.Int, error) {
-	resCh := make(chan getGasSuggestionResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) GetGasPriceWeiSuggestion() (*big.Int, error) {
+	resCh := make(chan getGasSuggestionResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			price, err := n.GetGasPriceSuggestion()
 			resCh <- getGasSuggestionResponse{
@@ -178,14 +213,14 @@ func (self *EthReader) GetGasPriceWeiSuggestion() (*big.Int, error) {
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.GasPrice, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
 type getBalanceResponse struct {
@@ -193,10 +228,10 @@ type getBalanceResponse struct {
 	Error   error
 }
 
-func (self *EthReader) GetBalance(address string) (balance *big.Int, err error) {
-	resCh := make(chan getBalanceResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) GetBalance(address string) (balance *big.Int, err error) {
+	resCh := make(chan getBalanceResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			balance, err := n.GetBalance(address)
 			resCh <- getBalanceResponse{
@@ -206,14 +241,14 @@ func (self *EthReader) GetBalance(address string) (balance *big.Int, err error) 
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Balance, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
 type getNonceResponse struct {
@@ -221,10 +256,10 @@ type getNonceResponse struct {
 	Error error
 }
 
-func (self *EthReader) GetMinedNonce(address string) (nonce uint64, err error) {
-	resCh := make(chan getNonceResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) GetMinedNonce(address string) (nonce uint64, err error) {
+	resCh := make(chan getNonceResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			nonce, err := n.GetMinedNonce(address)
 			resCh <- getNonceResponse{
@@ -234,20 +269,20 @@ func (self *EthReader) GetMinedNonce(address string) (nonce uint64, err error) {
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Nonce, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) GetPendingNonce(address string) (nonce uint64, err error) {
-	resCh := make(chan getNonceResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) GetPendingNonce(address string) (nonce uint64, err error) {
+	resCh := make(chan getNonceResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			nonce, err := n.GetPendingNonce(address)
 			resCh <- getNonceResponse{
@@ -257,14 +292,14 @@ func (self *EthReader) GetPendingNonce(address string) (nonce uint64, err error)
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Nonce, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
 type transactionReceiptResponse struct {
@@ -272,10 +307,10 @@ type transactionReceiptResponse struct {
 	Error   error
 }
 
-func (self *EthReader) TransactionReceipt(txHash string) (receipt *types.Receipt, err error) {
-	resCh := make(chan transactionReceiptResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) TransactionReceipt(txHash string) (receipt *types.Receipt, err error) {
+	resCh := make(chan transactionReceiptResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			receipt, err := n.TransactionReceipt(txHash)
 			resCh <- transactionReceiptResponse{
@@ -285,28 +320,28 @@ func (self *EthReader) TransactionReceipt(txHash string) (receipt *types.Receipt
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Receipt, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
 type transactionByHashResponse struct {
-	Tx        *Transaction
+	Tx        *jarviscommon.Transaction
 	IsPending bool
 	Error     error
 }
 
-func (self *EthReader) TransactionByHash(
+func (er *EthReader) TransactionByHash(
 	txHash string,
-) (tx *Transaction, isPending bool, err error) {
-	resCh := make(chan transactionByHashResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+) (tx *jarviscommon.Transaction, isPending bool, err error) {
+	resCh := make(chan transactionByHashResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			tx, ispending, err := n.TransactionByHash(txHash)
 			resCh <- transactionByHashResponse{
@@ -318,14 +353,14 @@ func (self *EthReader) TransactionByHash(
 	}
 
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Tx, result.IsPending, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, false, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, false, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
 type readContractToBytesResponse struct {
@@ -333,7 +368,7 @@ type readContractToBytesResponse struct {
 	Error error
 }
 
-func (self *EthReader) ReadContractToBytes(
+func (er *EthReader) ReadContractToBytes(
 	atBlock int64,
 	from string,
 	caddr string,
@@ -341,9 +376,9 @@ func (self *EthReader) ReadContractToBytes(
 	method string,
 	args ...interface{},
 ) ([]byte, error) {
-	resCh := make(chan readContractToBytesResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+	resCh := make(chan readContractToBytesResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			data, err := n.ReadContractToBytes(atBlock, from, caddr, abi, method, args...)
 			resCh <- readContractToBytesResponse{
@@ -353,20 +388,20 @@ func (self *EthReader) ReadContractToBytes(
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Data, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
-	resCh := make(chan readContractToBytesResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
+	resCh := make(chan readContractToBytesResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			data, err := n.EthCall(from, to, data, overrides)
 			resCh <- readContractToBytesResponse{
@@ -376,17 +411,17 @@ func (self *EthReader) EthCall(from string, to string, data []byte, overrides *m
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Data, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) ImplementationOfEIP1967(
+func (er *EthReader) ImplementationOfEIP1967(
 	atBlock int64,
 	caddr string,
 ) (common.Address, error) {
@@ -397,7 +432,7 @@ func (self *EthReader) ImplementationOfEIP1967(
 		big.NewInt(1),
 	)
 
-	addrByte, err := self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	addrByte, err := er.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -415,7 +450,7 @@ func (self *EthReader) ImplementationOfEIP1967(
 		big.NewInt(1),
 	)
 
-	addrByte, err = self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	addrByte, err = er.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -423,9 +458,9 @@ func (self *EthReader) ImplementationOfEIP1967(
 	beaconAddr := common.BytesToAddress(addrByte)
 
 	if beaconAddr.Big().Cmp(big.NewInt(0)) != 0 {
-		paddr, err := self.AddressFromContractWithABI(
+		paddr, err := er.AddressFromContractWithABI(
 			beaconAddr.Hex(),
-			GetEIP1967BeaconABI(),
+			jarviscommon.GetEIP1967BeaconABI(),
 			"implementation",
 		)
 		return *paddr, err
@@ -434,8 +469,8 @@ func (self *EthReader) ImplementationOfEIP1967(
 	return common.Address{}, fmt.Errorf("not an eip1967 proxy contract")
 }
 
-func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Address, error) {
-	addr, err := self.ImplementationOfEIP1967(atBlock, caddr)
+func (er *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Address, error) {
+	addr, err := er.ImplementationOfEIP1967(atBlock, caddr)
 	if err == nil {
 		return addr, nil
 	}
@@ -443,7 +478,7 @@ func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Add
 	// old standard: org.zeppelinos.proxy.implementation
 	slotBig := crypto.Keccak256Hash([]byte("org.zeppelinos.proxy.implementation")).Big()
 
-	addrByte, err := self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	addrByte, err := er.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -461,7 +496,7 @@ func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Add
 		big.NewInt(1),
 	)
 
-	addrByte, err = self.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
+	addrByte, err = er.StorageAt(atBlock, caddr, common.BigToHash(slotBig).Hex())
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -469,10 +504,10 @@ func (self *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Add
 	return common.BytesToAddress(addrByte), nil
 }
 
-func (self *EthReader) StorageAt(atBlock int64, caddr string, slot string) ([]byte, error) {
-	resCh := make(chan readContractToBytesResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) StorageAt(atBlock int64, caddr string, slot string) ([]byte, error) {
+	resCh := make(chan readContractToBytesResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			data, err := n.StorageAt(atBlock, caddr, slot)
 			resCh <- readContractToBytesResponse{
@@ -482,17 +517,17 @@ func (self *EthReader) StorageAt(atBlock int64, caddr string, slot string) ([]by
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Data, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) ReadHistoryContractWithABI(
+func (er *EthReader) ReadHistoryContractWithABI(
 	atBlock int64,
 	result interface{},
 	caddr string,
@@ -500,7 +535,7 @@ func (self *EthReader) ReadHistoryContractWithABI(
 	method string,
 	args ...interface{},
 ) error {
-	responseBytes, err := self.ReadContractToBytes(
+	responseBytes, err := er.ReadContractToBytes(
 		int64(atBlock), DEFAULT_ADDRESS, caddr, abi, method, args...)
 	if err != nil {
 		return err
@@ -508,7 +543,7 @@ func (self *EthReader) ReadHistoryContractWithABI(
 	return abi.UnpackIntoInterface(result, method, responseBytes)
 }
 
-func (self *EthReader) ReadContractWithABIAndFrom(
+func (er *EthReader) ReadContractWithABIAndFrom(
 	result interface{},
 	from string,
 	caddr string,
@@ -516,97 +551,97 @@ func (self *EthReader) ReadContractWithABIAndFrom(
 	method string,
 	args ...interface{},
 ) error {
-	responseBytes, err := self.ReadContractToBytes(-1, from, caddr, abi, method, args...)
+	responseBytes, err := er.ReadContractToBytes(-1, from, caddr, abi, method, args...)
 	if err != nil {
 		return err
 	}
 	return abi.UnpackIntoInterface(result, method, responseBytes)
 }
 
-func (self *EthReader) ReadContractWithABI(
+func (er *EthReader) ReadContractWithABI(
 	result interface{},
 	caddr string,
 	abi *abi.ABI,
 	method string,
 	args ...interface{},
 ) error {
-	responseBytes, err := self.ReadContractToBytes(-1, DEFAULT_ADDRESS, caddr, abi, method, args...)
+	responseBytes, err := er.ReadContractToBytes(-1, DEFAULT_ADDRESS, caddr, abi, method, args...)
 	if err != nil {
 		return err
 	}
 	return abi.UnpackIntoInterface(result, method, responseBytes)
 }
 
-func (self *EthReader) ReadHistoryContract(
+func (er *EthReader) ReadHistoryContract(
 	atBlock int64,
 	result interface{},
 	caddr string,
 	method string,
 	args ...interface{},
 ) error {
-	abi, err := self.GetABI(caddr)
+	abi, err := er.GetABI(caddr)
 	if err != nil {
 		return err
 	}
-	return self.ReadHistoryContractWithABI(atBlock, result, caddr, abi, method, args...)
+	return er.ReadHistoryContractWithABI(atBlock, result, caddr, abi, method, args...)
 }
 
-func (self *EthReader) ReadContract(
+func (er *EthReader) ReadContract(
 	result interface{},
 	caddr string,
 	method string,
 	args ...interface{},
 ) error {
-	abi, err := self.GetABI(caddr)
+	abi, err := er.GetABI(caddr)
 	if err != nil {
 		return err
 	}
-	return self.ReadContractWithABI(result, caddr, abi, method, args...)
+	return er.ReadContractWithABI(result, caddr, abi, method, args...)
 }
 
-func (self *EthReader) HistoryERC20Balance(
+func (er *EthReader) HistoryERC20Balance(
 	atBlock int64,
 	caddr string,
 	user string,
 ) (*big.Int, error) {
-	abi := GetERC20ABI()
+	abi := jarviscommon.GetERC20ABI()
 	result := big.NewInt(0)
-	err := self.ReadHistoryContractWithABI(
+	err := er.ReadHistoryContractWithABI(
 		atBlock,
 		&result,
 		caddr,
 		abi,
 		"balanceOf",
-		HexToAddress(user),
+		jarviscommon.HexToAddress(user),
 	)
 	return result, err
 }
 
-func (self *EthReader) ERC20Symbol(caddr string) (string, error) {
-	abi := GetERC20ABI()
+func (er *EthReader) ERC20Symbol(caddr string) (string, error) {
+	abi := jarviscommon.GetERC20ABI()
 	var result string
-	err := self.ReadContractWithABI(&result, caddr, abi, "symbol")
+	err := er.ReadContractWithABI(&result, caddr, abi, "symbol")
 	return result, err
 }
 
-func (self *EthReader) ERC20Balance(caddr string, user string) (*big.Int, error) {
-	abi := GetERC20ABI()
+func (er *EthReader) ERC20Balance(caddr string, user string) (*big.Int, error) {
+	abi := jarviscommon.GetERC20ABI()
 	result := big.NewInt(0)
-	err := self.ReadContractWithABI(&result, caddr, abi, "balanceOf", HexToAddress(user))
+	err := er.ReadContractWithABI(&result, caddr, abi, "balanceOf", jarviscommon.HexToAddress(user))
 	return result, err
 }
 
-func (self *EthReader) HistoryERC20Decimal(atBlock int64, caddr string) (int64, error) {
-	abi := GetERC20ABI()
+func (er *EthReader) HistoryERC20Decimal(atBlock int64, caddr string) (int64, error) {
+	abi := jarviscommon.GetERC20ABI()
 	var result uint8
-	err := self.ReadHistoryContractWithABI(atBlock, &result, caddr, abi, "decimals")
+	err := er.ReadHistoryContractWithABI(atBlock, &result, caddr, abi, "decimals")
 	return int64(result), err
 }
 
-func (self *EthReader) ERC20Decimal(caddr string) (uint64, error) {
-	abi := GetERC20ABI()
+func (er *EthReader) ERC20Decimal(caddr string) (uint64, error) {
+	abi := jarviscommon.GetERC20ABI()
 	var result uint8
-	err := self.ReadContractWithABI(&result, caddr, abi, "decimals")
+	err := er.ReadContractWithABI(&result, caddr, abi, "decimals")
 	return uint64(result), err
 }
 
@@ -615,10 +650,10 @@ type headerByNumberResponse struct {
 	Error  error
 }
 
-func (self *EthReader) HeaderByNumber(number int64) (*types.Header, error) {
-	resCh := make(chan headerByNumberResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) HeaderByNumber(number int64) (*types.Header, error) {
+	resCh := make(chan headerByNumberResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			header, err := n.HeaderByNumber(number)
 			resCh <- headerByNumberResponse{
@@ -628,29 +663,29 @@ func (self *EthReader) HeaderByNumber(number int64) (*types.Header, error) {
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Header, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) SuggestedGasSettings() (maxGasPriceGwei, maxTipGwei float64, err error) {
-	isDynamicFeeAvailable, err := self.CheckDynamicFeeTxAvailable()
+func (er *EthReader) SuggestedGasSettings() (maxGasPriceGwei, maxTipGwei float64, err error) {
+	isDynamicFeeAvailable, err := er.CheckDynamicFeeTxAvailable()
 	if err != nil {
 		return 0, 0, err
 	}
 
-	maxGasPriceGwei, err = self.RecommendedGasPrice()
+	maxGasPriceGwei, err = er.RecommendedGasPrice()
 	if err != nil {
 		return 0, 0, err
 	}
 
 	if isDynamicFeeAvailable {
-		maxTipGwei, err = self.GetSuggestedGasTipCap()
+		maxTipGwei, err = er.GetSuggestedGasTipCap()
 		if err != nil {
 			return 0, 0, err
 		}
@@ -662,8 +697,8 @@ func (self *EthReader) SuggestedGasSettings() (maxGasPriceGwei, maxTipGwei float
 // CheckDynamicFeeTxAvailable use to detect if current network that connect via node url is support dynamic fee tx,
 // this is done by a trick where we check if block info contain baseFee > 0, that may not always work but should enough
 // for now.
-func (self *EthReader) CheckDynamicFeeTxAvailable() (bool, error) {
-	header, err := self.HeaderByNumber(-1) // getting latest block header
+func (er *EthReader) CheckDynamicFeeTxAvailable() (bool, error) {
+	header, err := er.HeaderByNumber(-1) // getting latest block header
 	if err != nil {
 		return false, err
 	}
@@ -678,10 +713,10 @@ type getSuggestedGasResponse struct {
 
 // add 20% tip to miners compared to what returned from the node to improve UX
 // a bit more
-func (self *EthReader) GetSuggestedGasTipCap() (float64, error) {
-	resCh := make(chan getSuggestedGasResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) GetSuggestedGasTipCap() (float64, error) {
+	resCh := make(chan getSuggestedGasResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			gasTip, err := n.SuggestedGasTipCap()
 			resCh <- getSuggestedGasResponse{
@@ -692,22 +727,22 @@ func (self *EthReader) GetSuggestedGasTipCap() (float64, error) {
 	}
 
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
-			return BigToFloat(result.Gas, 9) * 1.2, result.Error
+			return jarviscommon.BigToFloat(result.Gas, 9) * 1.2, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
 // add 50% to max gas price because the next blocks based price can be increased
 // according to ethereum protocol
-func (self *EthReader) RecommendedGasPrice() (float64, error) {
-	resCh := make(chan getSuggestedGasResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) RecommendedGasPrice() (float64, error) {
+	resCh := make(chan getSuggestedGasResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			gasTip, err := n.SuggestedGasPrice()
 			resCh <- getSuggestedGasResponse{
@@ -718,69 +753,69 @@ func (self *EthReader) RecommendedGasPrice() (float64, error) {
 	}
 
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
-			return BigToFloat(result.Gas, 9) * 1.5, result.Error
+			return jarviscommon.BigToFloat(result.Gas, 9) * 1.5, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) HistoryERC20Allowance(
+func (er *EthReader) HistoryERC20Allowance(
 	atBlock int64,
 	caddr string,
 	owner string,
 	spender string,
 ) (*big.Int, error) {
-	abi := GetERC20ABI()
+	abi := jarviscommon.GetERC20ABI()
 	result := big.NewInt(0)
-	err := self.ReadHistoryContractWithABI(
+	err := er.ReadHistoryContractWithABI(
 		atBlock,
 		&result, caddr, abi,
 		"allowance",
-		HexToAddress(owner),
-		HexToAddress(spender),
+		jarviscommon.HexToAddress(owner),
+		jarviscommon.HexToAddress(spender),
 	)
 	return result, err
 }
 
-func (self *EthReader) ERC20Allowance(
+func (er *EthReader) ERC20Allowance(
 	caddr string,
 	owner string,
 	spender string,
 ) (*big.Int, error) {
-	abi := GetERC20ABI()
+	abi := jarviscommon.GetERC20ABI()
 	result := big.NewInt(0)
-	err := self.ReadContractWithABI(
+	err := er.ReadContractWithABI(
 		&result, caddr, abi,
 		"allowance",
-		HexToAddress(owner),
-		HexToAddress(spender),
+		jarviscommon.HexToAddress(owner),
+		jarviscommon.HexToAddress(spender),
 	)
 	return result, err
 }
 
-func (self *EthReader) AddressFromContractWithABI(
+func (er *EthReader) AddressFromContractWithABI(
 	contract string,
 	abi *abi.ABI,
 	method string,
 ) (*common.Address, error) {
 	result := common.Address{}
-	err := self.ReadContractWithABI(&result, contract, abi, method)
+	err := er.ReadContractWithABI(&result, contract, abi, method)
 	if err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
-func (self *EthReader) AddressFromContract(
+func (er *EthReader) AddressFromContract(
 	contract string,
 	method string,
 ) (*common.Address, error) {
 	result := common.Address{}
-	err := self.ReadContract(&result, contract, method)
+	err := er.ReadContract(&result, contract, method)
 	if err != nil {
 		return nil, err
 	}
@@ -793,14 +828,14 @@ type getLogsResponse struct {
 }
 
 // if toBlock < 0, it will query to the latest block
-func (self *EthReader) GetLogs(
+func (er *EthReader) GetLogs(
 	fromBlock, toBlock int,
 	addresses []string,
 	topic string,
 ) ([]types.Log, error) {
-	resCh := make(chan getLogsResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+	resCh := make(chan getLogsResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			logs, err := n.GetLogs(fromBlock, toBlock, addresses, topic)
 			resCh <- getLogsResponse{
@@ -810,14 +845,14 @@ func (self *EthReader) GetLogs(
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Logs, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return nil, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return nil, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
 type getBlockResponse struct {
@@ -825,10 +860,10 @@ type getBlockResponse struct {
 	Error error
 }
 
-func (self *EthReader) CurrentBlock() (uint64, error) {
-	resCh := make(chan getBlockResponse, len(self.nodes))
-	for i := range self.nodes {
-		n := self.nodes[i]
+func (er *EthReader) CurrentBlock() (uint64, error) {
+	resCh := make(chan getBlockResponse, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
 		go func() {
 			block, err := n.CurrentBlock()
 			resCh <- getBlockResponse{
@@ -838,22 +873,22 @@ func (self *EthReader) CurrentBlock() (uint64, error) {
 		}()
 	}
 	errs := []error{}
-	for i := 0; i < len(self.nodes); i++ {
+	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
 			return result.Block, result.Error
 		}
 		errs = append(errs, result.Error)
 	}
-	return 0, fmt.Errorf("Couldn't read from any nodes: %s", errorInfo(errs))
+	return 0, fmt.Errorf("couldn't read from any nodes: %s", errorInfo(errs))
 }
 
-func (self *EthReader) GetABIString(address string) (string, error) {
-	return self.be.GetABIString(address)
+func (er *EthReader) GetABIString(address string) (string, error) {
+	return er.be.GetABIString(address)
 }
 
-func (self *EthReader) GetABI(address string) (*abi.ABI, error) {
-	body, err := self.GetABIString(address)
+func (er *EthReader) GetABI(address string) (*abi.ABI, error) {
+	body, err := er.GetABIString(address)
 	if err != nil {
 		return nil, err
 	}

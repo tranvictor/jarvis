@@ -11,11 +11,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
-	. "github.com/tranvictor/jarvis/common"
-	. "github.com/tranvictor/jarvis/networks"
+	jarviscommon "github.com/tranvictor/jarvis/common"
+	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 )
 
-func ConvertToBig(str string, network Network) (*big.Int, error) {
+func ConvertToBig(str string, network jarvisnetworks.Network) (*big.Int, error) {
 	str = strings.Trim(str, " ")
 	parts := strings.Split(str, " ")
 	if len(parts) == 0 {
@@ -36,8 +36,8 @@ func ConvertToBig(str string, network Network) (*big.Int, error) {
 		floatStr := parts[0]
 
 		tokenName := strings.Join(parts[1:], " ")
-		if strings.ToLower(tokenName) == strings.ToLower(network.GetNativeTokenSymbol()) {
-			return FloatStringToBig(floatStr, network.GetNativeTokenDecimal())
+		if strings.EqualFold(tokenName, network.GetNativeTokenSymbol()) {
+			return jarviscommon.FloatStringToBig(floatStr, network.GetNativeTokenDecimal())
 		}
 		token, err := ConvertToAddress(fmt.Sprintf("%s token", tokenName))
 		if err != nil {
@@ -47,7 +47,7 @@ func ConvertToBig(str string, network Network) (*big.Int, error) {
 		if err != nil {
 			return nil, err
 		}
-		return FloatStringToBig(floatStr, decimal)
+		return jarviscommon.FloatStringToBig(floatStr, decimal)
 	}
 }
 
@@ -72,13 +72,13 @@ func ConvertToAddress(str string) (common.Address, error) {
 		if len(addresses) > 1 {
 			return common.Address{}, fmt.Errorf("too many addresses provided")
 		}
-		return HexToAddress(addresses[0]), nil
+		return jarviscommon.HexToAddress(addresses[0]), nil
 	} else {
 		addr, _, err := GetMatchingAddress(str)
 		if err != nil {
 			return common.Address{}, fmt.Errorf("address alias not found")
 		}
-		return HexToAddress(addr), nil
+		return jarviscommon.HexToAddress(addr), nil
 	}
 }
 
@@ -87,10 +87,10 @@ func ConvertToHash(str string) (common.Hash, error) {
 	if len(str) < 2 || str[0:2] != "0x" {
 		return common.Hash{}, fmt.Errorf("hash must begin with 0x")
 	}
-	return HexToHash(str), nil
+	return jarviscommon.HexToHash(str), nil
 }
 
-func ConvertToIntOrBig(str string, size int, network Network) (interface{}, error) {
+func ConvertToIntOrBig(str string, size int, network jarvisnetworks.Network) (interface{}, error) {
 	switch size {
 	case 8, 16, 32, 64:
 		return ConvertToInt(str, size)
@@ -99,7 +99,7 @@ func ConvertToIntOrBig(str string, size int, network Network) (interface{}, erro
 	}
 }
 
-func ConvertToUintOrBig(str string, size int, network Network) (interface{}, error) {
+func ConvertToUintOrBig(str string, size int, network jarvisnetworks.Network) (interface{}, error) {
 	switch size {
 	case 8, 16, 32, 64:
 		return ConvertToUint(str, size)
@@ -112,7 +112,7 @@ func ConvertParamStrToFixedByteType(
 	name string,
 	t abi.Type,
 	strs []string,
-	network Network,
+	network jarvisnetworks.Network,
 ) (interface{}, error) {
 	switch t.Size {
 	case 1:
@@ -511,14 +511,14 @@ func ConvertParamStrToTupleType(
 	name string,
 	t abi.Type,
 	str string,
-	network Network,
+	network jarvisnetworks.Network,
 ) (interface{}, error) {
-	DebugPrintf("value str: %s\n", str)
-	DebugPrintf("input name: %s\n", name)
-	DebugPrintf("input type: %v\n", t)
-	DebugPrintf("input tuple type: %v\n", t.TupleType)
-	DebugPrintf("input tuple raw name: %v\n", t.TupleRawName)
-	DebugPrintf("input tuple elems: %v\n", t.TupleElems)
+	jarviscommon.DebugPrintf("value str: %s\n", str)
+	jarviscommon.DebugPrintf("input name: %s\n", name)
+	jarviscommon.DebugPrintf("input type: %v\n", t)
+	jarviscommon.DebugPrintf("input tuple type: %v\n", t.TupleType)
+	jarviscommon.DebugPrintf("input tuple raw name: %v\n", t.TupleRawName)
+	jarviscommon.DebugPrintf("input tuple elems: %v\n", t.TupleElems)
 
 	inputElems, err := SplitArrayOrTupleStringInput(str)
 	if err != nil {
@@ -532,7 +532,7 @@ func ConvertParamStrToTupleType(
 	tupleInstance := reflect.New(t.TupleType).Elem()
 	for i := 0; i < t.TupleType.NumField(); i++ {
 		field := t.TupleType.Field(i)
-		DebugPrintf("Input for field %s (%s): %s\n", field.Name, field.Type, inputElems[i])
+		jarviscommon.DebugPrintf("Input for field %s (%s): %s\n", field.Name, field.Type, inputElems[i])
 
 		name := ""
 		if t.TupleElems[i].T == abi.AddressTy {
@@ -546,7 +546,7 @@ func ConvertParamStrToTupleType(
 				i, field.Name, field.Type, inputElems[i])
 		}
 
-		DebugPrintf("parsed value for field %s: %+v\n", field.Name, value)
+		jarviscommon.DebugPrintf("parsed value for field %s: %+v\n", field.Name, value)
 
 		tupleInstance.FieldByIndex([]int{i}).Set(reflect.ValueOf(value))
 	}
@@ -558,7 +558,7 @@ func ConvertParamStrToArray(
 	name string,
 	t abi.Type,
 	str string,
-	network Network,
+	network jarvisnetworks.Network,
 ) ([]interface{}, error) {
 	// split to get the elements
 	//   if element type is tuple or slice or array
@@ -585,7 +585,7 @@ func ConvertParamStrToType(
 	name string,
 	t abi.Type,
 	str string,
-	network Network,
+	network jarvisnetworks.Network,
 ) (interface{}, error) {
 	switch t.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes

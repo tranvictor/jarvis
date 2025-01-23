@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	. "github.com/tranvictor/jarvis/common"
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
@@ -37,7 +37,7 @@ var txCmd = &cobra.Command{
 
 			analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-			results := TxResults{}
+			results := jarviscommon.TxResults{}
 
 			if config.JSONOutputFile != "" {
 				defer results.Write(config.JSONOutputFile)

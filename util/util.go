@@ -378,19 +378,25 @@ func isRealAddress(value string) bool {
 func GetJarvisValue(value string, network Network) Value {
 	valueBig, isHex := big.NewInt(0).SetString(value, 0)
 	if !isHex {
-		return Value{value, "string", nil}
+		return Value{
+			Value: value,
+			Type:  "string",
+		}
 	}
 
 	// if it is not a real address
 	if !isRealAddress(value) {
-		return Value{value, "bytes", nil}
+		return Value{
+			Value: value,
+			Type:  "bytes",
+		}
 	}
 
 	addr := GetJarvisAddress(common.BigToAddress(valueBig).Hex(), network)
 	return Value{
-		common.BigToAddress(valueBig).Hex(),
-		"address",
-		&addr,
+		Value:   common.BigToAddress(valueBig).Hex(),
+		Type:    "address",
+		Address: &addr,
 	}
 }
 

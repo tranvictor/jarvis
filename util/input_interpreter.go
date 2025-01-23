@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 
-	. "github.com/tranvictor/jarvis/networks"
+	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 )
 
 type CMD int
@@ -35,7 +35,7 @@ func IsInlineScript(input string) bool {
 	return false
 }
 
-func InterpretInput(input string, network Network) (string, error) {
+func InterpretInput(input string, network jarvisnetworks.Network) (string, error) {
 	// checking if input is an inline script
 	if IsInlineScript(input) {
 		gramTree, err := ParseGrammarTree(input)

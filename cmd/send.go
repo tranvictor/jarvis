@@ -13,7 +13,7 @@ import (
 	"github.com/tranvictor/jarvis/accounts"
 	types2 "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
-	. "github.com/tranvictor/jarvis/common"
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/txanalyzer"
@@ -27,16 +27,11 @@ var (
 	value     string
 	tokenAddr string
 	currency  string
-	err       error
 	data      string
 )
 
 func handleMsigSend(
 	txType uint8,
-	cmd *cobra.Command, args []string,
-	basePrice, extraPrice float64,
-	baseGas, extraGas uint64,
-	nonce uint64,
 	from types2.AccDesc,
 	to string,
 	txdata []byte,
@@ -54,7 +49,7 @@ func handleMsigSend(
 
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-	t = BuildExactTx(
+	t = jarviscommon.BuildExactTx(
 		txType,
 		config.Nonce,
 		to,
@@ -87,10 +82,10 @@ func handleMsigSend(
 
 	signedAddr, signedTx, err := account.SignTx(t, big.NewInt(int64(config.Network().GetChainID())))
 	if err != nil {
-		fmt.Printf("Failed to sign tx: %s\n", err)
+		fmt.Printf("failed to sign tx: %s\n", err)
 		return
 	}
-	if signedAddr.Cmp(HexToAddress(from.Address)) != 0 {
+	if signedAddr.Cmp(jarviscommon.HexToAddress(from.Address)) != 0 {
 		fmt.Printf("Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
 			from.Address,
 			signedAddr.Hex(),
@@ -107,10 +102,6 @@ func handleMsigSend(
 // currency here is supposed to be either ETH or address of an ERC20 token
 func handleSend(
 	txType uint8,
-	cmd *cobra.Command, args []string,
-	basePrice, extraPrice float64,
-	baseGas, extraGas uint64,
-	nonce uint64,
 	from types2.AccDesc,
 	to string,
 	amountWei *big.Int,
@@ -130,7 +121,7 @@ func handleSend(
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 	if tokenAddr == util.ETH_ADDR {
-		t = BuildExactTx(
+		t = jarviscommon.BuildExactTx(
 			txType,
 			config.Nonce,
 			to,
@@ -142,17 +133,17 @@ func handleSend(
 			config.Network().GetChainID(),
 		)
 	} else {
-		a = GetERC20ABI()
+		a = jarviscommon.GetERC20ABI()
 		data, err := a.Pack(
 			"transfer",
-			HexToAddress(to),
+			jarviscommon.HexToAddress(to),
 			amountWei,
 		)
 		if err != nil {
 			fmt.Printf("Couldn't pack data: %s\n", err)
 			return
 		}
-		t = BuildExactTx(
+		t = jarviscommon.BuildExactTx(
 			txType,
 			config.Nonce,
 			tokenAddr,
@@ -191,7 +182,7 @@ func handleSend(
 		fmt.Printf("Failed to sign tx: %s\n", err)
 		return
 	}
-	if signedAddr.Cmp(HexToAddress(from.Address)) != 0 {
+	if signedAddr.Cmp(jarviscommon.HexToAddress(from.Address)) != 0 {
 		fmt.Printf("Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
 			from.Address,
 			signedAddr.Hex(),
@@ -205,7 +196,7 @@ func handleSend(
 	}
 }
 
-func sendFromMsig(cmd *cobra.Command, args []string) {
+func sendFromMsig() {
 	msigAddress, err := getMsigContractFromParams([]string{config.From})
 	if err != nil {
 		fmt.Printf("Couldn't find a wallet or multisig with keyword %s\n", config.From)
@@ -213,6 +204,10 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 	}
 
 	config.To, _, err = util.GetAddressFromString(msigAddress)
+	if err != nil {
+		fmt.Printf("Couldn't find a wallet or multisig with keyword \"%s\"\n", config.From)
+		return
+	}
 
 	multisigContract, err := msig.NewMultisigContract(
 		config.To,
@@ -256,7 +251,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 	// if value is not an address, we need to look it up
 	// from the token database to get its address
 
-	if currency == util.ETH_ADDR || strings.ToLower(currency) == strings.ToLower(config.Network().GetNativeTokenSymbol()) {
+	if currency == util.ETH_ADDR || strings.EqualFold(currency, config.Network().GetNativeTokenSymbol()) {
 		tokenAddr = util.ETH_ADDR
 	} else {
 		addr, _, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
@@ -309,7 +304,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 				}
 				amountWei = ethBalance
 			} else {
-				amountWei, err = FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
+				amountWei, err = jarviscommon.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
 				if err != nil {
 					fmt.Printf("Couldn't calculate the amount: %s\n", err)
 					return
@@ -319,7 +314,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 			msigABI := util.GetGnosisMsigABI()
 			txdata, err = msigABI.Pack(
 				"submitTransaction",
-				HexToAddress(to),
+				jarviscommon.HexToAddress(to),
 				amountWei,
 				cmdutil.StringParamToBytes(data),
 			)
@@ -342,9 +337,9 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 				if err != nil {
 					fmt.Printf("Couldn't read balance of the multisig: %s\n", err)
 				}
-				data, err = PackERC20Data(
+				data, err = jarviscommon.PackERC20Data(
 					"transfer",
-					HexToAddress(to),
+					jarviscommon.HexToAddress(to),
 					amountWei,
 				)
 				if err != nil {
@@ -357,15 +352,15 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 					fmt.Printf("Couldn't get token decimal: %s\n", err)
 					return
 				}
-				amountWei, err = FloatStringToBig(amountStr, decimals)
+				amountWei, err = jarviscommon.FloatStringToBig(amountStr, decimals)
 				if err != nil {
 					fmt.Printf("Couldn't calculate amount in wei: %s\n", err)
 					return
 				}
 
-				data, err = PackERC20Data(
+				data, err = jarviscommon.PackERC20Data(
 					"transfer",
-					HexToAddress(to),
+					jarviscommon.HexToAddress(to),
 					amountWei,
 				)
 				if err != nil {
@@ -377,7 +372,7 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 			msigABI := util.GetGnosisMsigABI()
 			txdata, err = msigABI.Pack(
 				"submitTransaction",
-				HexToAddress(tokenAddr),
+				jarviscommon.HexToAddress(tokenAddr),
 				big.NewInt(0),
 				data,
 			)
@@ -405,10 +400,6 @@ func sendFromMsig(cmd *cobra.Command, args []string) {
 
 	handleMsigSend(
 		config.TxType,
-		cmd, args,
-		config.GasPrice, config.ExtraGasPrice,
-		config.GasLimit, config.ExtraGasLimit,
-		config.Nonce,
 		config.FromAcc,
 		config.To,
 		txdata,
@@ -440,7 +431,7 @@ exact addresses start with 0x.`,
 			acc, err := accounts.GetAccount(config.From)
 			if err != nil {
 				// if config.From is not in wallet list, fall back to msig send
-				sendFromMsig(cmd, args)
+				sendFromMsig()
 				return
 			}
 
@@ -456,7 +447,7 @@ exact addresses start with 0x.`,
 			// if value is not an address, we need to look it up
 			// from the token database to get its address
 
-			if currency == util.ETH_ADDR || strings.ToLower(currency) == strings.ToLower(config.Network().GetNativeTokenSymbol()) {
+			if currency == util.ETH_ADDR || strings.EqualFold(currency, config.Network().GetNativeTokenSymbol()) {
 				tokenAddr = util.ETH_ADDR
 			} else {
 				addr, _, err := util.GetMatchingAddress(fmt.Sprintf("%s token", currency))
@@ -534,7 +525,7 @@ exact addresses start with 0x.`,
 						}
 						gasCost := big.NewInt(0).Mul(
 							big.NewInt(int64(config.GasLimit)),
-							FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
+							jarviscommon.FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
 						)
 
 						if ethBalance.Cmp(gasCost) == -1 {
@@ -543,7 +534,7 @@ exact addresses start with 0x.`,
 						}
 						amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
 					} else {
-						amountWei, err = FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
+						amountWei, err = jarviscommon.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
 						if err != nil {
 							fmt.Printf("Couldn't calculate send amount: %s\n", err)
 							return
@@ -562,9 +553,9 @@ exact addresses start with 0x.`,
 							fmt.Printf("Couldn't get token balance: %s\n", err)
 							return
 						}
-						data, err = PackERC20Data(
+						data, err = jarviscommon.PackERC20Data(
 							"transfer",
-							HexToAddress(to),
+							jarviscommon.HexToAddress(to),
 							amountWei,
 						)
 						if err != nil {
@@ -577,15 +568,15 @@ exact addresses start with 0x.`,
 							fmt.Printf("Couldn't get token decimal: %s\n", err)
 							return
 						}
-						amountWei, err = FloatStringToBig(amountStr, decimals)
+						amountWei, err = jarviscommon.FloatStringToBig(amountStr, decimals)
 						if err != nil {
 							fmt.Printf("Couldn't calculate token amount in wei: %s\n", err)
 							return
 						}
 
-						data, err = PackERC20Data(
+						data, err = jarviscommon.PackERC20Data(
 							"transfer",
-							HexToAddress(to),
+							jarviscommon.HexToAddress(to),
 							amountWei,
 						)
 						if err != nil {
@@ -611,10 +602,6 @@ exact addresses start with 0x.`,
 
 			handleSend(
 				config.TxType,
-				cmd, args,
-				config.GasPrice, config.ExtraGasPrice,
-				config.GasLimit, config.ExtraGasLimit,
-				config.Nonce,
 				config.FromAcc,
 				to,
 				amountWei,
