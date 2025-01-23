@@ -542,8 +542,8 @@ func ConvertParamStrToTupleType(
 		value, err := ConvertParamStrToType(name, *t.TupleElems[i], inputElems[i], network)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"couldn't parse field %d (%s), index %d with input \"%s\"",
-				i, field.Name, field.Type, inputElems[i])
+				"couldn't parse field %d (%s), index %d with input \"%s\": %w",
+				i, field.Name, field.Type, inputElems[i], err)
 		}
 
 		jarviscommon.DebugPrintf("parsed value for field %s: %+v\n", field.Name, value)
@@ -559,7 +559,7 @@ func ConvertParamStrToArray(
 	t abi.Type,
 	str string,
 	network jarvisnetworks.Network,
-) ([]interface{}, error) {
+) (interface{}, error) {
 	// split to get the elements
 	//   if element type is tuple or slice or array
 	//       using regex to extract elements including []
@@ -578,7 +578,37 @@ func ConvertParamStrToArray(
 	// } else if t.Elem.T == abi.StringTy {
 	// } else {
 	// }
-	return nil, fmt.Errorf("unimplemented")
+
+	jarviscommon.DebugPrintf("value str: %s\n", str)
+	jarviscommon.DebugPrintf("input name: %s\n", name)
+	jarviscommon.DebugPrintf("input type: %v\n", t)
+	jarviscommon.DebugPrintf("input array elem type: %v\n", t.Elem)
+
+	inputElems, err := SplitArrayOrTupleStringInput(str)
+	if err != nil {
+		return nil, err
+	}
+
+	sliceType := reflect.SliceOf(t.Elem.GetType())
+	arrayInstance := reflect.MakeSlice(sliceType, 0, 0)
+
+	for i := 0; i < len(inputElems); i++ {
+		jarviscommon.DebugPrintf("Input for element %dth of type %+v: %s\n", i, t.Elem, inputElems[i])
+
+		elemName := fmt.Sprintf("%s[%d]", name, i)
+		value, err := ConvertParamStrToType(elemName, *t.Elem, inputElems[i], network)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"couldn't parse element %dth (%s) with input \"%s\": %w",
+				i, t.Elem, inputElems[i], err)
+		}
+
+		jarviscommon.DebugPrintf("parsed value for element %dth: %+v\n", i, value)
+
+		arrayInstance = reflect.Append(arrayInstance, reflect.ValueOf(value))
+	}
+
+	return arrayInstance.Interface(), nil
 }
 
 func ConvertParamStrToType(

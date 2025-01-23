@@ -279,7 +279,7 @@ func PromptNonArray(input abi.Argument, prefill string, network Network) (interf
 	inpStr = strings.Trim(inpStr, " ")
 	inpStr, err := util.InterpretInput(inpStr, network)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("couldn't interpret input: %w", err)
 	}
 	return util.ConvertParamStrToType(input.Name, input.Type, inpStr, network)
 }
@@ -469,7 +469,7 @@ func PromptFunctionCallData(
 			inputParam, err = PromptParam(false, input, prefills[pi], network) // not interactive prompt
 			if err != nil {
 				fmt.Printf("Your input is not valid: %s\n", err)
-				continue
+				return nil, nil, fmt.Errorf("your input is not valid: %w", err)
 			}
 
 			fmt.Printf(":\n")
