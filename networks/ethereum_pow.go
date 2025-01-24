@@ -1,71 +1,31 @@
 package networks
 
 import (
-	"os"
-	"strings"
-	"time"
-
-	. "github.com/tranvictor/jarvis/util/explorers"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var EthereumPOW Network = NewEthereumPOW()
 
 type ethereumPOW struct {
-	*EtherscanLikeExplorer
+	*GenericEtherscanNetwork
 }
 
 func NewEthereumPOW() *ethereumPOW {
-	result := &ethereumPOW{NewMainnetEtherscan()}
-	result.ChainID = result.GetChainID()
-	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
-	if apiKey != "" {
-		result.EtherscanLikeExplorer.APIKey = apiKey
+	return &ethereumPOW{
+		GenericEtherscanNetwork: NewGenericEtherscanNetwork(GenericEtherscanNetworkConfig{
+			Name:               "ethpow",
+			AlternativeNames:   []string{},
+			ChainID:            10001,
+			NativeTokenSymbol:  "ETH",
+			NativeTokenDecimal: 18,
+			BlockTime:          14,
+			NodeVariableName:   "ETHEREUM_POW_NODE",
+			DefaultNodes: map[string]string{
+				"ethpow-team": "https://mainnet.ethereumpow.org",
+			},
+			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/api",
+			MultiCallContractAddress:        common.HexToAddress("0xeefba1e63905ef1d7acba5a8513c70307c1ce441"),
+		}),
 	}
-	return result
-}
-
-func (self *ethereumPOW) GetName() string {
-	return "ethpow"
-}
-
-func (self *ethereumPOW) GetChainID() uint64 {
-	return 10001
-}
-
-func (self *ethereumPOW) GetAlternativeNames() []string {
-	return []string{}
-}
-
-func (self *ethereumPOW) GetNativeTokenSymbol() string {
-	return "ETH"
-}
-
-func (self *ethereumPOW) GetNativeTokenDecimal() uint64 {
-	return 18
-}
-
-func (self *ethereumPOW) GetBlockTime() time.Duration {
-	return 14 * time.Second
-}
-
-func (self *ethereumPOW) GetNodeVariableName() string {
-	return "ETHEREUM_POW_NODE"
-}
-
-func (self *ethereumPOW) GetDefaultNodes() map[string]string {
-	return map[string]string{
-		"ethpow-team": "https://mainnet.ethereumpow.org",
-	}
-}
-
-func (self *ethereumPOW) GetBlockExplorerAPIKeyVariableName() string {
-	return "ETHERSCAN_API_KEY"
-}
-
-func (self *ethereumPOW) GetBlockExplorerAPIURL() string {
-	return self.EtherscanLikeExplorer.Domain
-}
-
-func (self *ethereumPOW) MultiCallContract() string {
-	return "0xeefba1e63905ef1d7acba5a8513c70307c1ce441"
 }

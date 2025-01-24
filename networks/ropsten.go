@@ -1,71 +1,31 @@
 package networks
 
 import (
-	"os"
-	"strings"
-	"time"
-
-	. "github.com/tranvictor/jarvis/util/explorers"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var Ropsten Network = NewRopsten()
 
 type ropsten struct {
-	*EtherscanLikeExplorer
+	*GenericEtherscanNetwork
 }
 
 func NewRopsten() *ropsten {
-	result := &ropsten{NewRopstenEtherscan()}
-	result.ChainID = result.GetChainID()
-	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
-	if apiKey != "" {
-		result.EtherscanLikeExplorer.APIKey = apiKey
+	return &ropsten{
+		GenericEtherscanNetwork: NewGenericEtherscanNetwork(GenericEtherscanNetworkConfig{
+			Name:               "ropsten",
+			AlternativeNames:   []string{},
+			ChainID:            3,
+			NativeTokenSymbol:  "ETH",
+			NativeTokenDecimal: 18,
+			BlockTime:          14,
+			NodeVariableName:   "ETHEREUM_ROPSTEN_NODE",
+			DefaultNodes: map[string]string{
+				"ropsten-infura": "https://ropsten.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
+			},
+			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/api",
+			MultiCallContractAddress:        common.HexToAddress("0x53c43764255c17bd724f74c4ef150724ac50a3ed"),
+		}),
 	}
-	return result
-}
-
-func (self *ropsten) GetName() string {
-	return "ropsten"
-}
-
-func (self *ropsten) GetChainID() uint64 {
-	return 3
-}
-
-func (self *ropsten) GetAlternativeNames() []string {
-	return []string{}
-}
-
-func (self *ropsten) GetNativeTokenSymbol() string {
-	return "ETH"
-}
-
-func (self *ropsten) GetNativeTokenDecimal() uint64 {
-	return 18
-}
-
-func (self *ropsten) GetBlockTime() time.Duration {
-	return 14 * time.Second
-}
-
-func (self *ropsten) GetNodeVariableName() string {
-	return "ETHEREUM_ROPSTEN_NODE"
-}
-
-func (self *ropsten) GetDefaultNodes() map[string]string {
-	return map[string]string{
-		"ropsten-infura": "https://ropsten.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
-	}
-}
-
-func (self *ropsten) GetBlockExplorerAPIKeyVariableName() string {
-	return "ETHERSCAN_API_KEY"
-}
-
-func (self *ropsten) GetBlockExplorerAPIURL() string {
-	return self.EtherscanLikeExplorer.Domain
-}
-
-func (self *ropsten) MultiCallContract() string {
-	return "0x53c43764255c17bd724f74c4ef150724ac50a3ed"
 }

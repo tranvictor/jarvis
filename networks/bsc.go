@@ -1,77 +1,33 @@
 package networks
 
 import (
-	"os"
-	"strings"
-	"time"
-
-	. "github.com/tranvictor/jarvis/util/explorers"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var BSCMainnet Network = NewBSCMainnet()
 
 type bscMainnet struct {
-	*EtherscanLikeExplorer
+	*GenericEtherscanNetwork
 }
 
 func NewBSCMainnet() *bscMainnet {
-	result := &bscMainnet{NewBscscan()}
-	result.ChainID = result.GetChainID()
-	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
-	if apiKey != "" {
-		result.EtherscanLikeExplorer.APIKey = apiKey
+	return &bscMainnet{
+		GenericEtherscanNetwork: NewGenericEtherscanNetwork(GenericEtherscanNetworkConfig{
+			Name:               "bsc",
+			AlternativeNames:   []string{},
+			ChainID:            56,
+			NativeTokenSymbol:  "BNB",
+			NativeTokenDecimal: 18,
+			BlockTime:          2,
+			NodeVariableName:   "BSC_MAINNET_NODE",
+			DefaultNodes: map[string]string{
+				"binance":  "https://bsc-dataseed.binance.org",
+				"defibit":  "https://bsc-dataseed1.defibit.io",
+				"ninicoin": "https://bsc-dataseed1.ninicoin.io",
+			},
+			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
+			BlockExplorerAPIURL:             "https://api.bscscan.com/api",
+			MultiCallContractAddress:        common.HexToAddress("0x41263cba59eb80dc200f3e2544eda4ed6a90e76c"),
+		}),
 	}
-	return result
-}
-
-func (self *bscMainnet) GetName() string {
-	return "bsc"
-}
-
-func (self *bscMainnet) GetChainID() uint64 {
-	return 56
-}
-
-func (self *bscMainnet) GetAlternativeNames() []string {
-	return []string{}
-}
-
-func (self *bscMainnet) GetNativeTokenSymbol() string {
-	return "BNB"
-}
-
-func (self *bscMainnet) GetNativeTokenDecimal() uint64 {
-	return 18
-}
-
-func (self *bscMainnet) GetBlockTime() time.Duration {
-	return 2 * time.Second
-}
-
-func (self *bscMainnet) GetNodeVariableName() string {
-	return "BSC_MAINNET_NODE"
-}
-
-func (self *bscMainnet) GetDefaultNodes() map[string]string {
-	return map[string]string{
-		"binance":  "https://bsc-dataseed.binance.org",
-		"defibit":  "https://bsc-dataseed1.defibit.io",
-		"ninicoin": "https://bsc-dataseed1.ninicoin.io",
-	}
-}
-
-func (self *bscMainnet) GetBlockExplorerAPIKeyVariableName() string {
-	return "ETHERSCAN_API_KEY"
-}
-
-func (self *bscMainnet) GetBlockExplorerAPIURL() string {
-	return self.EtherscanLikeExplorer.Domain
-}
-
-func (self *bscMainnet) RecommendedGasPrice() (float64, error) {
-	return 10, nil
-}
-
-func (self *bscMainnet) MultiCallContract() string {
-	return "0x41263cba59eb80dc200f3e2544eda4ed6a90e76c"
 }

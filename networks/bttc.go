@@ -1,75 +1,31 @@
 package networks
 
 import (
-	"os"
-	"strings"
-	"time"
-
-	. "github.com/tranvictor/jarvis/util/explorers"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var BttcMainnet Network = NewBttcMainnet()
 
 type bttcMainnet struct {
-	*EtherscanLikeExplorer
+	*GenericEtherscanNetwork
 }
 
 func NewBttcMainnet() *bttcMainnet {
-	result := &bttcMainnet{NewEtherscanV2()}
-	result.ChainID = result.GetChainID()
-	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
-	if apiKey != "" {
-		result.EtherscanLikeExplorer.APIKey = apiKey
+	return &bttcMainnet{
+		GenericEtherscanNetwork: NewGenericEtherscanNetwork(GenericEtherscanNetworkConfig{
+			Name:               "bttc",
+			AlternativeNames:   []string{},
+			ChainID:            199,
+			NativeTokenSymbol:  "BTT",
+			NativeTokenDecimal: 18,
+			BlockTime:          2,
+			NodeVariableName:   "BTTC_MAINNET_NODE",
+			DefaultNodes: map[string]string{
+				"bt.io": "https://rpc.bt.io",
+			},
+			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
+			BlockExplorerAPIURL:             "https://api.bttcscan.com/api",
+			MultiCallContractAddress:        common.HexToAddress("0xBF69a56D35B8d6f5A8e0e96B245a72F735751e54"),
+		}),
 	}
-	return result
-}
-
-func (self *bttcMainnet) GetName() string {
-	return "bttc"
-}
-
-func (self *bttcMainnet) GetChainID() uint64 {
-	return 199
-}
-
-func (self *bttcMainnet) GetAlternativeNames() []string {
-	return []string{}
-}
-
-func (self *bttcMainnet) GetNativeTokenSymbol() string {
-	return "BTT"
-}
-
-func (self *bttcMainnet) GetNativeTokenDecimal() uint64 {
-	return 18
-}
-
-func (self *bttcMainnet) GetBlockTime() time.Duration {
-	return 2 * time.Second
-}
-
-func (self *bttcMainnet) GetNodeVariableName() string {
-	return "BTTC_MAINNET_NODE"
-}
-
-func (self *bttcMainnet) GetDefaultNodes() map[string]string {
-	return map[string]string{
-		"bt.io": "https://rpc.bt.io",
-	}
-}
-
-func (self *bttcMainnet) GetBlockExplorerAPIKeyVariableName() string {
-	return "ETHERSCAN_API_KEY"
-}
-
-func (self *bttcMainnet) GetBlockExplorerAPIURL() string {
-	return self.EtherscanLikeExplorer.Domain
-}
-
-// func (self *bttcMainnet) RecommendedGasPrice() (float64, error) {
-// 	return 0.01, nil
-// }
-
-func (self *bttcMainnet) MultiCallContract() string {
-	return "0xBF69a56D35B8d6f5A8e0e96B245a72F735751e54"
 }

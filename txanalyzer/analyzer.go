@@ -489,10 +489,3 @@ func NewRopstenAnalyzer() *TxAnalyzer {
 		Ropsten,
 	}
 }
-
-func NewTomoAnalyzer() *TxAnalyzer {
-	return &TxAnalyzer{
-		reader.NewTomoReader(),
-		TomoMainnet,
-	}
-}

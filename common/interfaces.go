@@ -2,11 +2,12 @@ package common
 
 import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	. "github.com/tranvictor/jarvis/networks"
+
+	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 )
 
 // type AddressDatabase interface {
 // 	GetName(addr string) string
 // }
 
-type ABIDatabase func(address string, network Network) (*abi.ABI, error)
+type ABIDatabase func(address string, network jarvisnetworks.Network) (*abi.ABI, error)
