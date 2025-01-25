@@ -3,11 +3,15 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"os"
+	"strconv"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 
+	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -16,6 +20,154 @@ var (
 	NetworkConfig string
 	NetworkForce  bool
 )
+
+// TODO: in this version, we only support adding a new network that works with etherscan
+// in next version, we will support adding a new network that works with altlayer or doesn't have a block explorer
+func PromptNetwork() networks.Network {
+	name := cmdutil.PromptInputWithValidation("Please enter the name of the network", func(name string) error {
+		if name == "" {
+			return fmt.Errorf("name cannot be empty")
+		}
+
+		if NetworkForce {
+			return nil
+		}
+
+		if _, err := networks.GetNetwork(name); err == nil {
+			return fmt.Errorf("network with name %s already exists. If you want to replace it, use flag --force", name)
+		}
+		return nil
+	})
+
+	alternativeNamesStr := cmdutil.PromptInput("Please enter the alternative names of the network (comma separated, don't wrap with quotes)")
+	alternativeNames := strings.Split(alternativeNamesStr, ",")
+	for i, name := range alternativeNames {
+		alternativeNames[i] = strings.TrimSpace(name)
+	}
+
+	chainIDStr := cmdutil.PromptInputWithValidation("Please enter the chain ID of the network", func(chainIDstr string) error {
+		if chainIDstr == "" {
+			return fmt.Errorf("chain ID cannot be empty")
+		}
+		_, err := strconv.Atoi(chainIDstr)
+		if err != nil {
+			return fmt.Errorf("chain ID must be a number")
+		}
+		return nil
+	})
+	chainID, _ := strconv.Atoi(chainIDStr)
+
+	nativeTokenSymbol := cmdutil.PromptInputWithValidation("Please enter the native token symbol of the network", func(nativeTokenSymbol string) error {
+		if nativeTokenSymbol == "" {
+			return fmt.Errorf("native token symbol cannot be empty")
+		}
+		return nil
+	})
+
+	nativeTokenDecimalStr := cmdutil.PromptInputWithValidation("Please enter the native token decimal of the network", func(nativeTokenDecimal string) error {
+		if nativeTokenDecimal == "" {
+			return fmt.Errorf("native token decimal cannot be empty")
+		}
+		_, err := strconv.Atoi(nativeTokenDecimal)
+		if err != nil {
+			return fmt.Errorf("native token decimal must be a number")
+		}
+		return nil
+	})
+	nativeTokenDecimal, _ := strconv.Atoi(nativeTokenDecimalStr)
+
+	blockTimeStr := cmdutil.PromptInputWithValidation("Please enter the block time of the network in seconds", func(blockTime string) error {
+		if blockTime == "" {
+			return fmt.Errorf("block time cannot be empty")
+		}
+		_, err := strconv.Atoi(blockTime)
+		if err != nil {
+			return fmt.Errorf("block time must be a number")
+		}
+		return nil
+	})
+	blockTime, _ := strconv.Atoi(blockTimeStr)
+
+	nodeVariableName := cmdutil.PromptInputWithValidation("Please enter the node variable name of the network", func(nodeVariableName string) error {
+		if nodeVariableName == "" {
+			return fmt.Errorf("node variable name cannot be empty")
+		}
+
+		// the input has to be in capital letters
+		if strings.ToUpper(nodeVariableName) != nodeVariableName {
+			return fmt.Errorf("node variable name must be in capital letters")
+		}
+		return nil
+	})
+
+	defaultNodesStr := cmdutil.PromptInputWithValidation("Please enter the default node urls of the network (comma separated, no wrapping with quotes)", func(defaultNodes string) error {
+		if defaultNodes == "" {
+			return fmt.Errorf("default node urls cannot be empty")
+		}
+
+		nodes := strings.Split(defaultNodes, ",")
+		for _, node := range nodes {
+			// check if the node is a valid url
+			_, err := url.Parse(node)
+			if err != nil {
+				return fmt.Errorf("default node url %s is not a valid url", node)
+			}
+		}
+		return nil
+	})
+	defaultNodes := make(map[string]string)
+	for _, node := range strings.Split(defaultNodesStr, ",") {
+		// name of the node is the domain of the url
+		nodeURL, _ := url.Parse(strings.TrimSpace(node))
+		defaultNodes[nodeURL.Host] = strings.TrimSpace(node)
+	}
+
+	blockExplorerAPIKeyVariableName := cmdutil.PromptInputWithValidation("Please enter the block explorer API key variable name of the network", func(blockExplorerAPIKeyVariableName string) error {
+		if blockExplorerAPIKeyVariableName == "" {
+			return fmt.Errorf("block explorer API key variable name cannot be empty")
+		}
+		return nil
+	})
+
+	blockExplorerAPIURL := cmdutil.PromptInputWithValidation("Please enter the block explorer API URL of the network", func(blockExplorerAPIURL string) error {
+		if blockExplorerAPIURL == "" {
+			return fmt.Errorf("block explorer API URL cannot be empty")
+		}
+		_, err := url.Parse(blockExplorerAPIURL)
+		if err != nil {
+			return fmt.Errorf("block explorer API URL %s is not a valid url", blockExplorerAPIURL)
+		}
+		return nil
+	})
+
+	multiCallContractAddress := cmdutil.PromptInputWithValidation("Please enter the multi call contract address of the network", func(multiCallContractAddress string) error {
+		if multiCallContractAddress == "" {
+			return fmt.Errorf("multi call contract address cannot be empty")
+		}
+
+		// check if the address is an ethereum address
+		if !common.IsHexAddress(multiCallContractAddress) {
+			return fmt.Errorf("multi call contract address %s is not a valid address", multiCallContractAddress)
+		}
+		return nil
+	})
+
+	networkConfig := networks.GenericEtherscanNetworkConfig{
+		Name:                            name,
+		AlternativeNames:                alternativeNames,
+		ChainID:                         uint64(chainID),
+		NativeTokenSymbol:               nativeTokenSymbol,
+		NativeTokenDecimal:              uint64(nativeTokenDecimal),
+		BlockTime:                       uint64(blockTime),
+		NodeVariableName:                nodeVariableName,
+		DefaultNodes:                    defaultNodes,
+		BlockExplorerAPIKeyVariableName: blockExplorerAPIKeyVariableName,
+		BlockExplorerAPIURL:             blockExplorerAPIURL,
+		MultiCallContractAddress:        common.HexToAddress(multiCallContractAddress),
+	}
+
+	return networks.NewGenericEtherscanNetwork(networkConfig)
+}
 
 var addNetworkCmd = &cobra.Command{
 	Use:   "add",
@@ -74,6 +226,7 @@ var addNetworkCmd = &cobra.Command{
 			}
 		} else {
 			// in this case, user didn't provide any config, we need to prompt user to input the network config
+			newNetwork = PromptNetwork()
 		}
 
 		allNames := []string{newNetwork.GetName()}
