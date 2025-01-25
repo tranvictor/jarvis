@@ -23,4 +23,8 @@ type Network interface {
 	// this interface can return "" in case
 	// there is no multicall contract on the network
 	MultiCallContract() string
+
+	// since network is a persistent object, we need to implement MarshalJSON and UnmarshalJSON
+	MarshalJSON() ([]byte, error)
+	UnmarshalJSON([]byte) error
 }

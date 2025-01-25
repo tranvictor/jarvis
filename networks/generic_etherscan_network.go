@@ -1,6 +1,7 @@
 package networks
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"time"
@@ -27,13 +28,13 @@ type GenericEtherscanNetworkConfig struct {
 // GenericEtherscanNetwork is a generic implementation of a network that uses Etherscan as their official explorer
 type GenericEtherscanNetwork struct {
 	*explorers.EtherscanLikeExplorer
-	config GenericEtherscanNetworkConfig
+	Config GenericEtherscanNetworkConfig
 }
 
 func NewGenericEtherscanNetwork(config GenericEtherscanNetworkConfig) *GenericEtherscanNetwork {
 	result := &GenericEtherscanNetwork{
 		EtherscanLikeExplorer: explorers.NewEtherscanV2(),
-		config:                config,
+		Config:                config,
 	}
 	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
 	if apiKey != "" {
@@ -43,45 +44,53 @@ func NewGenericEtherscanNetwork(config GenericEtherscanNetworkConfig) *GenericEt
 }
 
 func (gn *GenericEtherscanNetwork) GetName() string {
-	return gn.config.Name
+	return gn.Config.Name
 }
 
 func (gn *GenericEtherscanNetwork) GetChainID() uint64 {
-	return gn.config.ChainID
+	return gn.Config.ChainID
 }
 
 func (gn *GenericEtherscanNetwork) GetAlternativeNames() []string {
-	return gn.config.AlternativeNames
+	return gn.Config.AlternativeNames
 }
 
 func (gn *GenericEtherscanNetwork) GetNativeTokenSymbol() string {
-	return gn.config.NativeTokenSymbol
+	return gn.Config.NativeTokenSymbol
 }
 
 func (gn *GenericEtherscanNetwork) GetNativeTokenDecimal() uint64 {
-	return gn.config.NativeTokenDecimal
+	return gn.Config.NativeTokenDecimal
 }
 
 func (gn *GenericEtherscanNetwork) GetBlockTime() time.Duration {
-	return time.Duration(gn.config.BlockTime) * time.Second
+	return time.Duration(gn.Config.BlockTime) * time.Second
 }
 
 func (gn *GenericEtherscanNetwork) GetNodeVariableName() string {
-	return gn.config.NodeVariableName
+	return gn.Config.NodeVariableName
 }
 
 func (gn *GenericEtherscanNetwork) GetDefaultNodes() map[string]string {
-	return gn.config.DefaultNodes
+	return gn.Config.DefaultNodes
 }
 
 func (gn *GenericEtherscanNetwork) GetBlockExplorerAPIKeyVariableName() string {
-	return gn.config.BlockExplorerAPIKeyVariableName
+	return gn.Config.BlockExplorerAPIKeyVariableName
 }
 
 func (gn *GenericEtherscanNetwork) GetBlockExplorerAPIURL() string {
-	return gn.config.BlockExplorerAPIURL
+	return gn.Config.BlockExplorerAPIURL
 }
 
 func (gn *GenericEtherscanNetwork) MultiCallContract() string {
-	return gn.config.MultiCallContractAddress.Hex()
+	return gn.Config.MultiCallContractAddress.Hex()
+}
+
+func (gn *GenericEtherscanNetwork) MarshalJSON() ([]byte, error) {
+	return json.Marshal(gn.Config)
+}
+
+func (gn *GenericEtherscanNetwork) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &gn.Config)
 }

@@ -7,12 +7,12 @@ import (
 var BitfiTestnet = NewBitfiTestnet()
 
 type bitfiTestnet struct {
-	*GenericEtherscanNetwork
+	*GenericOptimismNetwork
 }
 
 func NewBitfiTestnet() *bitfiTestnet {
 	return &bitfiTestnet{
-		GenericEtherscanNetwork: NewGenericEtherscanNetwork(GenericEtherscanNetworkConfig{
+		GenericOptimismNetwork: NewGenericOptimismNetwork(GenericOptimismNetworkConfig{
 			Name:               "bitfi-testnet",
 			AlternativeNames:   []string{},
 			ChainID:            891891,
