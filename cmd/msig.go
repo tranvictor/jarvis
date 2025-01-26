@@ -396,7 +396,7 @@ var batchApproveMsigCmd = &cobra.Command{
 						util.DisplayBroadcastedTx(
 							broadcastedTx, true, signError, network,
 						)
-						return fmt.Errorf("user aborted: %w", signError)
+						return fmt.Errorf("not waiting for tx to be mined")
 					}
 					return nil
 				},

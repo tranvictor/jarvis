@@ -8,7 +8,7 @@ import (
 // RunParallel takes multiple functions that each return an error,
 // runs them in parallel using goroutines, then aggregates any
 // errors using errors.Join (Go 1.20+).
-func RunParallel(funcs ...func() error) error {
+func RunParallel(funcs ...func() error) (error, int) {
 	var wg sync.WaitGroup
 	errs := make(chan error, len(funcs)) // buffered channel
 
@@ -16,7 +16,8 @@ func RunParallel(funcs ...func() error) error {
 		wg.Add(1)
 		go func(fn func() error) {
 			defer wg.Done()
-			if err := fn(); err != nil {
+			err := fn()
+			if err != nil {
 				errs <- err
 			}
 		}(fn)
@@ -33,5 +34,5 @@ func RunParallel(funcs ...func() error) error {
 	}
 
 	// If there are no errors, errors.Join returns nil
-	return errors.Join(allErrs...)
+	return errors.Join(allErrs...), len(allErrs)
 }
