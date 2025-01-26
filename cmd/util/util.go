@@ -17,11 +17,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tranvictor/jarvis/accounts"
-	. "github.com/tranvictor/jarvis/common"
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
-	. "github.com/tranvictor/jarvis/networks"
+	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/reader"
@@ -30,8 +30,8 @@ import (
 func AnalyzeAndShowMsigTxInfo(
 	multisigContract *msig.MultisigContract,
 	txid *big.Int,
-	network Network,
-) (fc *FunctionCall, confirmed bool, executed bool) {
+	network jarvisnetworks.Network,
+) (fc *jarviscommon.FunctionCall, confirmed bool, executed bool) {
 	fmt.Printf("========== What the multisig will do ==========\n")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
@@ -50,9 +50,9 @@ func AnalyzeAndShowMsigTxInfo(
 	if len(data) == 0 {
 		fmt.Printf(
 			"Sending: %f %s to %s\n",
-			BigToFloat(value, network.GetNativeTokenDecimal()),
+			jarviscommon.BigToFloat(value, network.GetNativeTokenDecimal()),
 			network.GetNativeTokenSymbol(),
-			VerboseAddress(util.GetJarvisAddress(address, network)),
+			jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)),
 		)
 	} else {
 		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
@@ -101,30 +101,30 @@ func AnalyzeAndShowMsigTxInfo(
 				isStandardERC20Call = true
 
 				fmt.Printf(
-					"From: %s\nSending: %s %s (%s)\nTo: %s\n",
-					VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
-					InfoColor(fmt.Sprintf("%f", StringToFloat(funcCall.Params[1].Values[0].Value, decimal))),
-					InfoColor(symbol),
+					"from: %s\nSending: %s %s (%s)\nto: %s\n",
+					jarviscommon.VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
+					jarviscommon.InfoColor(fmt.Sprintf("%f", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Value, decimal))),
+					jarviscommon.InfoColor(symbol),
 					address,
-					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
+					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
 				)
 			case "transferFrom":
 				isStandardERC20Call = true
 
 				fmt.Printf(
-					"From: %s\nSending: %f %s (%s)\nTo: %s\n",
-					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
-					StringToFloat(funcCall.Params[2].Values[0].Value, decimal),
+					"from: %s\nSending: %f %s (%s)\nto: %s\n",
+					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
+					jarviscommon.StringToFloat(funcCall.Params[2].Values[0].Value, decimal),
 					symbol,
 					address,
-					VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Values[0].Value, network)),
+					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Values[0].Value, network)),
 				)
 			case "approve":
 				isStandardERC20Call = true
 				fmt.Printf(
-					"Approving %s to spend upto: %f %s (%s) from the multisig\n",
-					VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
-					StringToFloat(funcCall.Params[1].Values[0].Value, decimal),
+					"approving %s to spend upto: %f %s (%s) from the multisig\n",
+					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
+					jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Value, decimal),
 					symbol,
 					address,
 				)
@@ -132,7 +132,7 @@ func AnalyzeAndShowMsigTxInfo(
 		}
 
 		if !isStandardERC20Call {
-			fmt.Printf("Calling on %s:\n", VerboseAddress(util.GetJarvisAddress(address, network)))
+			fmt.Printf("Calling on %s:\n", jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)))
 			fc = util.AnalyzeMethodCallAndPrint(
 				analyzer,
 				value,
@@ -163,10 +163,10 @@ func AnalyzeAndShowMsigTxInfo(
 	return
 }
 
-type PostProcessFunc func(fc *FunctionCall) error
+type PostProcessFunc func(fc *jarviscommon.FunctionCall) error
 
 func ScanForTxs(para string) (nwks []string, addresses []string) {
-	networkNames := GetSupportedNetworkNames()
+	networkNames := jarvisnetworks.GetSupportedNetworkNames()
 	regexStr := strings.Join(networkNames, "|")
 	regexStr = fmt.Sprintf(
 		"(?i)(?:(?P<network>%s)(?:.{0,}?))?(?P<address>(?:0x)?(?:[0-9a-fA-F]{64}))",
@@ -235,7 +235,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 			return
 		}
 		for _, l := range state.TxInfo.Receipt.Logs {
-			if strings.ToLower(l.Address.Hex()) == strings.ToLower(config.To) &&
+			if strings.EqualFold(l.Address.Hex(), config.To) &&
 				l.Topics[0].Hex() == "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51" {
 
 				txid = l.Topics[1].Big()
@@ -297,7 +297,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		}
 	}
 
-	tx := BuildExactTx(
+	tx := jarviscommon.BuildExactTx(
 		config.TxType,
 		config.Nonce,
 		config.To,
@@ -336,7 +336,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		fmt.Printf("Signing tx failed: %s\n", err)
 		return
 	}
-	if signedAddr.Cmp(HexToAddress(config.FromAcc.Address)) != 0 {
+	if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
 		fmt.Printf(
 			"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
 			config.FromAcc.Address,
@@ -387,17 +387,17 @@ func HandlePostSign(
 ) (broadcasted bool, err error) {
 	signedData, err := rlp.EncodeToBytes(signedTx)
 	if err != nil {
-		fmt.Printf("Couldn't encode the signed tx: %s", err)
-		return false, fmt.Errorf("Couldn't encode the signed tx: %w", err)
+		fmt.Printf("couldn't encode the signed tx: %s", err)
+		return false, fmt.Errorf("couldn't encode the signed tx: %w", err)
 	}
 	signedHex := hexutil.Encode(signedData)
 
-	signerHex, err := GetSignerAddressFromTx(
+	signerHex, err := jarviscommon.GetSignerAddressFromTx(
 		signedTx,
 		big.NewInt(int64(config.Network().GetChainID())),
 	)
 	if err != nil {
-		return false, fmt.Errorf("Couldn't derive sender address from signed tx: %w", err)
+		return false, fmt.Errorf("couldn't derive sender address from signed tx: %w", err)
 	}
 
 	resultJSON := signedTxResultJSON{
@@ -457,21 +457,19 @@ func HandlePostSign(
 		}
 	}()
 
-	select {
-	case <-broadcastedCh:
-		if config.DontWaitToBeMined {
-			util.DisplayBroadcastedTx(
-				signedTx, broadcasted, err, config.Network(),
-			)
-			return broadcasted, err
-		}
-
-		util.DisplayWaitAnalyze(
-			reader, analyzer, signedTx, broadcasted, err, config.Network(),
-			a, nil, config.DegenMode,
+	<-broadcastedCh // wait for the tx to be broadcasted
+	if config.DontWaitToBeMined {
+		util.DisplayBroadcastedTx(
+			signedTx, broadcasted, err, config.Network(),
 		)
 		return broadcasted, err
 	}
+
+	util.DisplayWaitAnalyze(
+		reader, analyzer, signedTx, broadcasted, err, config.Network(),
+		a, nil, config.DegenMode,
+	)
+	return broadcasted, err
 }
 
 func StringParamToBytes(data string) []byte {

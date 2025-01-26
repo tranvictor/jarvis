@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/spf13/cobra"
+	"github.com/tranvictor/walletarmy"
 
 	"github.com/tranvictor/jarvis/accounts"
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
@@ -266,7 +267,7 @@ var batchApproveMsigCmd = &cobra.Command{
 	Short: "Approve multiple gnosis transactions",
 	Long:  `This command only works with list of init transactions as the first param`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cm := cmdutil.NewContextManager()
+		cm := walletarmy.NewWalletManager()
 		a := util.GetGnosisMsigABI()
 		// get networks and txs from params
 		networks, txs := cmdutil.ScanForTxs(args[0])
@@ -357,46 +358,54 @@ var batchApproveMsigCmd = &cobra.Command{
 				fmt.Printf("We are doing legacy tx hence we ignore tip gas parameter.\n")
 			}
 
-			tx, err := cm.BuildTx(
+			minedTx, err := cm.EnsureTxWithHooks(
 				txType,
-				jarviscommon.HexToAddress(from), jarviscommon.HexToAddress(msigHex),
-				nil,
-				big.NewInt(0),
-				0,
-				0,
-				0,
+				jarviscommon.HexToAddress(from), jarviscommon.HexToAddress(msigHex), // from, to
+				nil, // value
+				0,   // gasLimit
+				0,   // gasPrice
+				0,   // tipCap
 				data,
 				network,
+				func(tx *types.Transaction, buildError error) error { // before signing and broadcasting hook
+					if buildError != nil {
+						fmt.Printf("Couldn't build tx: %s\n", buildError)
+						return buildError
+					}
+
+					// prompt user to confirm the tx
+					err = cmdutil.PromptTxConfirmation(
+						cm.Analyzer(network),
+						util.GetJarvisAddress(from, network),
+						tx,
+						nil,
+						network,
+					)
+					if err != nil {
+						fmt.Printf("Skip this tx. Continue with next tx.\n")
+						return fmt.Errorf("user aborted: %w", err)
+					}
+					return nil
+				},
+				func(broadcastedTx *types.Transaction, signError error) error { // after signing hook
+					if signError != nil {
+						return signError
+					}
+
+					if config.DontWaitToBeMined {
+						util.DisplayBroadcastedTx(
+							broadcastedTx, true, signError, network,
+						)
+						return fmt.Errorf("user aborted: %w", signError)
+					}
+					return nil
+				},
 			)
-			if err != nil {
-				fmt.Printf("Couldn't build tx: %s\n", err)
-				continue
-			}
 
-			err = cmdutil.PromptTxConfirmation(
-				cm.Analyzer(network),
-				util.GetJarvisAddress(from, network),
-				tx,
-				nil,
-				network,
+			util.DisplayWaitAnalyze(
+				cm.Reader(network), cm.Analyzer(network), minedTx, true, nil, network,
+				a, nil, config.DegenMode,
 			)
-			if err != nil {
-				fmt.Printf("Skip this tx. Continue with next tx.\n")
-				continue
-			}
-
-			signedTx, broadcasted, err := cm.SignTxAndBroadcast(jarviscommon.HexToAddress(from), tx, network)
-
-			if config.DontWaitToBeMined {
-				util.DisplayBroadcastedTx(
-					signedTx, broadcasted, err, network,
-				)
-			} else {
-				util.DisplayWaitAnalyze(
-					cm.Reader(network), cm.Analyzer(network), signedTx, broadcasted, err, network,
-					a, nil, config.DegenMode,
-				)
-			}
 		}
 	},
 }

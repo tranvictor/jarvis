@@ -16,9 +16,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	. "github.com/tranvictor/jarvis/common"
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
-	. "github.com/tranvictor/jarvis/networks"
+	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -48,17 +48,17 @@ func PromptInputWithValidation(prompter string, validator StringValidator) strin
 	}
 }
 
-func PromptPercentageBps(prompter string, upbound int64, network Network) *big.Int {
+func PromptPercentageBps(prompter string, upbound int64, network jarvisnetworks.Network) *big.Int {
 	return PromptNumber(prompter, func(number *big.Int) error {
 		n := number.Int64()
 		if n < 0 || n > upbound {
-			return fmt.Errorf("This percentage bps must be in [0, %d]", upbound)
+			return fmt.Errorf("this percentage bps must be in [0, %d]", upbound)
 		}
 		return nil
 	}, network)
 }
 
-func PromptNumber(prompter string, validator NumberValidator, network Network) *big.Int {
+func PromptNumber(prompter string, validator NumberValidator, network jarvisnetworks.Network) *big.Int {
 	reader := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Printf("%s: ", prompter)
@@ -132,7 +132,7 @@ func PromptParam(
 	interactiveMode bool,
 	input abi.Argument,
 	prefill string,
-	network Network,
+	network jarvisnetworks.Network,
 ) (interface{}, error) {
 	t := input.Type
 	switch t.T {
@@ -148,7 +148,7 @@ func PromptParam(
 	}
 }
 
-func PromptArray(input abi.Argument, prefill string, network Network) (interface{}, error) {
+func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Network) (interface{}, error) {
 	var inpStr string
 	if prefill == "" {
 		inpStr = PromptInput("")
@@ -269,7 +269,7 @@ func PromptArray(input abi.Argument, prefill string, network Network) (interface
 	}
 }
 
-func PromptNonArray(input abi.Argument, prefill string, network Network) (interface{}, error) {
+func PromptNonArray(input abi.Argument, prefill string, network jarvisnetworks.Network) (interface{}, error) {
 	var inpStr string
 	if prefill == "" {
 		inpStr = PromptInput("")
@@ -286,10 +286,10 @@ func PromptNonArray(input abi.Argument, prefill string, network Network) (interf
 
 func PromptTxConfirmation(
 	analyzer util.TxAnalyzer,
-	from Address,
+	from jarviscommon.Address,
 	tx *types.Transaction,
 	customABIs map[string]*abi.ABI,
-	network Network,
+	network jarvisnetworks.Network,
 ) error {
 	fmt.Printf("\n========== Confirm tx data before signing ==========\n\n")
 	err := showTxInfoToConfirm(
@@ -305,27 +305,6 @@ func PromptTxConfirmation(
 	return nil
 }
 
-func indent(nospace int, strs []string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-
-	if len(strs) == 1 {
-		return strs[0]
-	}
-
-	indentation := ""
-	for i := 0; i < nospace; i++ {
-		indentation += " "
-	}
-	result := ""
-	for i, str := range strs {
-		result += fmt.Sprintf("\n%s%d. %s", indentation, i, str)
-	}
-	result += "\n"
-	return result
-}
-
 func PromptTxData(
 	analyzer util.TxAnalyzer,
 	contractAddress string,
@@ -334,7 +313,7 @@ func PromptTxData(
 	prefillMode bool,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	network Network,
+	network jarvisnetworks.Network,
 ) ([]byte, error) {
 	method, params, err := PromptFunctionCallData(
 		analyzer,
@@ -351,7 +330,7 @@ func PromptTxData(
 	}
 
 	for _, param := range params {
-		DebugPrintf("param: %+v\n", param)
+		jarviscommon.DebugPrintf("param: %+v\n", param)
 	}
 
 	if method.Type == abi.Constructor {
@@ -428,7 +407,7 @@ func PromptFunctionCallData(
 	mode string,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	network Network,
+	network jarvisnetworks.Network,
 ) (method *abi.Method, params []interface{}, err error) {
 	method, methodName, err := PromptMethod(a, methodIndex, mode)
 	if err != nil {
@@ -438,7 +417,7 @@ func PromptFunctionCallData(
 	if method.Type == abi.Constructor {
 		fmt.Printf("Creating new contract at %s\n", contractAddress)
 	} else {
-		fmt.Printf("\nContract: %s\n", VerboseAddress(util.GetJarvisAddress(contractAddress, network)))
+		fmt.Printf("\nContract: %s\n", jarviscommon.VerboseAddress(util.GetJarvisAddress(contractAddress, network)))
 	}
 	fmt.Printf("Method: %s\n", methodName)
 	inputs := method.Inputs
@@ -463,7 +442,7 @@ func PromptFunctionCallData(
 			}
 
 			fmt.Printf("    You entered:\n")
-			PrintVerboseParamResultToWriter(os.Stdout, analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam), 2, true)
+			jarviscommon.PrintVerboseParamResultToWriter(os.Stdout, analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam), 2, true)
 			fmt.Printf("\n")
 		} else {
 			inputParam, err = PromptParam(false, input, prefills[pi], network) // not interactive prompt
@@ -473,7 +452,7 @@ func PromptFunctionCallData(
 			}
 
 			fmt.Printf(":\n")
-			PrintVerboseParamResultToWriter(os.Stdout, analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam), 2, true)
+			jarviscommon.PrintVerboseParamResultToWriter(os.Stdout, analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam), 2, true)
 			fmt.Printf("\n")
 		}
 		params = append(params, inputParam)
@@ -484,34 +463,34 @@ func PromptFunctionCallData(
 
 func showTxInfoToConfirm(
 	analyzer util.TxAnalyzer,
-	from Address,
+	from jarviscommon.Address,
 	tx *types.Transaction,
 	customABIs map[string]*abi.ABI,
-	network Network,
+	network jarvisnetworks.Network,
 ) error {
 	if tx.To() != nil {
 		fmt.Printf(
-			"From: %s ==> %s\n",
-			VerboseAddress(from),
-			VerboseAddress(util.GetJarvisAddress(tx.To().Hex(), network)),
+			"from: %s ==> %s\n",
+			jarviscommon.VerboseAddress(from),
+			jarviscommon.VerboseAddress(util.GetJarvisAddress(tx.To().Hex(), network)),
 		)
 	} else {
 		cAddr := crypto.CreateAddress(
-			HexToAddress(from.Address),
+			jarviscommon.HexToAddress(from.Address),
 			tx.Nonce(),
 		).Hex()
 		fmt.Printf(
-			"From: %s ==> Create contract at %s\n",
-			VerboseAddress(from),
+			"from: %s ==> create contract at %s\n",
+			jarviscommon.VerboseAddress(from),
 			cAddr,
 		)
 	}
 
-	sendingETH := BigToFloatString(tx.Value(), network.GetNativeTokenDecimal())
+	sendingETH := jarviscommon.BigToFloatString(tx.Value(), network.GetNativeTokenDecimal())
 	if tx.Value().Cmp(big.NewInt(0)) > 0 {
 		fmt.Printf(
 			"Value: %s\n",
-			InfoColor(fmt.Sprintf("%s %s", sendingETH, network.GetNativeTokenSymbol())),
+			jarviscommon.InfoColor(fmt.Sprintf("%s %s", sendingETH, network.GetNativeTokenSymbol())),
 		)
 	}
 
@@ -520,9 +499,9 @@ func showTxInfoToConfirm(
 		fmt.Printf(
 			"Nonce: %d  |  Gas Price: %.4f gwei (%d gas = %.8f %s)\n",
 			tx.Nonce(),
-			BigToFloat(tx.GasPrice(), 9),
+			jarviscommon.BigToFloat(tx.GasPrice(), 9),
 			tx.Gas(),
-			BigToFloat(
+			jarviscommon.BigToFloat(
 				big.NewInt(0).Mul(
 					big.NewInt(int64(tx.Gas())),
 					tx.GasPrice(),
@@ -535,10 +514,10 @@ func showTxInfoToConfirm(
 		fmt.Printf(
 			"Nonce: %d  |  Max Gas Price: %.4f gwei, Max Tip Price: %.4f gwei (%d gas = %.8f %s)\n",
 			tx.Nonce(),
-			BigToFloat(tx.GasFeeCap(), 9),
-			BigToFloat(tx.GasTipCap(), 9),
+			jarviscommon.BigToFloat(tx.GasFeeCap(), 9),
+			jarviscommon.BigToFloat(tx.GasTipCap(), 9),
 			tx.Gas(),
-			BigToFloat(
+			jarviscommon.BigToFloat(
 				big.NewInt(0).Mul(
 					big.NewInt(int64(tx.Gas())),
 					tx.GasPrice(),
@@ -571,7 +550,7 @@ func showTxInfoToConfirm(
 		tx.Data(),
 		customABIs,
 	)
-	PrintFunctionCall(fc)
+	jarviscommon.PrintFunctionCall(fc)
 
 	return nil
 }

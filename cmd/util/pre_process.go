@@ -10,7 +10,7 @@ import (
 
 	"github.com/tranvictor/jarvis/accounts"
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
-	. "github.com/tranvictor/jarvis/common"
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
@@ -34,7 +34,7 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 		}
 	}
 
-	config.Value, err = FloatStringToBig(config.RawValue, 18)
+	config.Value, err = jarviscommon.FloatStringToBig(config.RawValue, 18)
 	if err != nil {
 		return fmt.Errorf("couldn't parse -v param: %s", err)
 	}
@@ -62,12 +62,12 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 
 			reader, err := util.EthReader(config.Network())
 			if err != nil {
-				return fmt.Errorf("couldn't connect to blockchain\n")
+				return fmt.Errorf("couldn't connect to blockchain: %w", err)
 			}
 
 			txinfo, err := reader.TxInfoFromHash(config.Tx)
 			if err != nil {
-				return fmt.Errorf("couldn't get tx info from the blockchain: %s\n", err)
+				return fmt.Errorf("couldn't get tx info from the blockchain: %w", err)
 			}
 			state.TxInfo = &txinfo
 			config.To = state.TxInfo.Tx.To().Hex()
@@ -93,7 +93,7 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
 		if config.ForceERC20ABI {
-			a = GetERC20ABI()
+			a = jarviscommon.GetERC20ABI()
 		} else if config.CustomABI != "" {
 			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
 			if err != nil {
@@ -137,12 +137,12 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 		}
 		if count == 0 {
 			return fmt.Errorf(
-				"You don't have any wallet which is this multisig signer. Please jarvis wallet add to add the wallet.",
+				"you don't have any wallet which is this multisig signer. please jarvis wallet add to add the wallet",
 			)
 		}
 		if count != 1 {
 			return fmt.Errorf(
-				"You have many wallets that are this multisig signers. Please specify only 1.",
+				"you have many wallets that are this multisig signers. please specify only 1",
 			)
 		}
 		config.FromAcc = acc
@@ -187,18 +187,18 @@ func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
 
 	config.TxType, err = ValidTxType(reader, config.Network())
 	if err != nil {
-		return fmt.Errorf("Couldn't determine proper tx type: %s\n", err)
+		return fmt.Errorf("couldn't determine proper tx type: %w", err)
 	}
 
 	if config.TxType == types.LegacyTxType && config.TipGas > 0 {
-		return fmt.Errorf("We are doing legacy tx hence we ignore tip gas parameter.\n")
+		return fmt.Errorf("we are doing legacy tx hence we ignore tip gas parameter")
 	}
 
 	if config.TxType == types.DynamicFeeTxType {
 		if config.TipGas == 0 {
 			config.TipGas, err = reader.GetSuggestedGasTipCap()
 			if err != nil {
-				return fmt.Errorf("Couldn't estimate recommended gas price: %s\n", err)
+				return fmt.Errorf("couldn't estimate recommended gas price: %w", err)
 			}
 		}
 	}
