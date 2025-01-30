@@ -3,7 +3,7 @@ module github.com/tranvictor/jarvis
 require (
 	github.com/Songmu/prompter v0.0.0-20181014095714-d227c68538bd
 	github.com/blevesearch/bleve v1.0.14
-	github.com/ethereum/go-ethereum v1.14.12
+	github.com/ethereum/go-ethereum v1.14.13
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
 	github.com/karalabe/usb v0.0.2
