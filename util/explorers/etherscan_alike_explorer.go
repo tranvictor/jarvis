@@ -23,11 +23,12 @@ type EtherscanLikeExplorer struct {
 	APIKey string
 }
 
-func NewEtherscanLikeExplorer(domain string, apiKey string) *EtherscanLikeExplorer {
+func NewEtherscanLikeExplorer(domain string, apiKey string, chainID uint64) *EtherscanLikeExplorer {
 	return &EtherscanLikeExplorer{
-		gpmu:   sync.Mutex{},
-		Domain: domain,
-		APIKey: apiKey,
+		gpmu:    sync.Mutex{},
+		Domain:  domain,
+		APIKey:  apiKey,
+		ChainID: chainID,
 	}
 }
 

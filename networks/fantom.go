@@ -24,7 +24,7 @@ func NewFantom() *fantom {
 				"fantom": "https://rpc.ftm.tools/",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.ftmscan.com/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xcf591ce5574258aC4550D96c545e4F3fd49A74ec"),
 		}),
 	}

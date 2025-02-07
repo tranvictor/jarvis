@@ -24,7 +24,7 @@ func NewMumbai() *mumbai {
 				"infura-mumbai": "https://polygon-mumbai.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.polygonscan.com/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0x08411ADd0b5AA8ee47563b146743C13b3556c9Cc"),
 		}),
 	}

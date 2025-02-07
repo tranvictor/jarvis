@@ -24,7 +24,7 @@ func NewEthereumPOW() *ethereumPOW {
 				"ethpow-team": "https://mainnet.ethereumpow.org",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.etherscan.io/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xeefba1e63905ef1d7acba5a8513c70307c1ce441"),
 		}),
 	}

@@ -24,7 +24,7 @@ func NewBaseMainnet() *baseMainnet {
 				"public-base": "https://mainnet.base.org",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.basescan.org/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11"),
 		}),
 	}

@@ -24,7 +24,7 @@ func NewRopsten() *ropsten {
 				"ropsten-infura": "https://ropsten.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.etherscan.io/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0x53c43764255c17bd724f74c4ef150724ac50a3ed"),
 		}),
 	}

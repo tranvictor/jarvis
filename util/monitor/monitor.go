@@ -16,18 +16,6 @@ func NewGenericTxMonitor(r *reader.EthReader) *TxMonitor {
 	return &TxMonitor{r}
 }
 
-func NewRopstenTxMonitor() *TxMonitor {
-	return &TxMonitor{
-		reader: reader.NewRopstenReader(),
-	}
-}
-
-func NewTxMonitor() *TxMonitor {
-	return &TxMonitor{
-		reader: reader.NewEthReader(),
-	}
-}
-
 func (self TxMonitor) periodicCheck(tx string, info chan common.TxInfo) {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
