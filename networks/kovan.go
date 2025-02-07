@@ -24,7 +24,7 @@ func NewKovan() *kovan {
 				"kovan-infura": "https://kovan.infura.io/v3/247128ae36b6444d944d4c3793c8e3f5",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.etherscan.io/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0x2cc8688c5f75e365aaeeb4ea8d6a480405a48d2a"),
 		}),
 	}

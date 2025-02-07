@@ -11,6 +11,8 @@ import (
 	"github.com/tranvictor/jarvis/util/explorers"
 )
 
+const defaultAPIKey = "UBB257TI824FC7HUSPT66KZUMGBPRN3IWV"
+
 type GenericEtherscanNetworkConfig struct {
 	Name                            string            `json:"name"`
 	AlternativeNames                []string          `json:"alternative_names"`
@@ -32,13 +34,13 @@ type GenericEtherscanNetwork struct {
 }
 
 func NewGenericEtherscanNetwork(config GenericEtherscanNetworkConfig) *GenericEtherscanNetwork {
-	result := &GenericEtherscanNetwork{
-		EtherscanLikeExplorer: explorers.NewEtherscanV2(),
-		Config:                config,
+	apiKey := strings.Trim(os.Getenv(config.BlockExplorerAPIKeyVariableName), " ")
+	if apiKey == "" {
+		apiKey = defaultAPIKey
 	}
-	apiKey := strings.Trim(os.Getenv(result.GetBlockExplorerAPIKeyVariableName()), " ")
-	if apiKey != "" {
-		result.EtherscanLikeExplorer.APIKey = apiKey
+	result := &GenericEtherscanNetwork{
+		EtherscanLikeExplorer: explorers.NewEtherscanLikeExplorer(config.BlockExplorerAPIURL, apiKey, config.ChainID),
+		Config:                config,
 	}
 	return result
 }

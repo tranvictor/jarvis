@@ -23,7 +23,7 @@ func NewArbitrumMainnet() *arbitrumMainnet {
 				"infura": "https://arb1.arbitrum.io/rpc",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.arbiscan.io/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0x80C7DD17B01855a6D2347444a0FCC36136a314de"),
 		}),
 	}

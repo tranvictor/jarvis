@@ -475,17 +475,3 @@ func (self *TxAnalyzer) AnalyzeOffline(
 func NewGenericAnalyzer(r *reader.EthReader, network Network) *TxAnalyzer {
 	return &TxAnalyzer{r, network}
 }
-
-func NewAnalyzer() *TxAnalyzer {
-	return &TxAnalyzer{
-		reader.NewEthReader(),
-		EthereumMainnet,
-	}
-}
-
-func NewRopstenAnalyzer() *TxAnalyzer {
-	return &TxAnalyzer{
-		reader.NewRopstenReader(),
-		Ropsten,
-	}
-}

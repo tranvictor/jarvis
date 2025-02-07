@@ -24,7 +24,7 @@ func NewlineaMainnet() *lineaMainnet {
 				"infura-linea": "https://linea-mainnet.infura.io/v3/1556a477007b49cda01f9f3df4d97edd",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.etherscan.io/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11"),
 		}),
 	}

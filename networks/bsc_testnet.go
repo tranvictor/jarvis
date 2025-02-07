@@ -28,7 +28,7 @@ func NewBSCTestnet() *bscTestnet {
 				"binance6": "https://data-seed-prebsc-2-s3.binance.org:8545",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.bscscan.com/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xae11C5B5f29A6a25e955F0CB8ddCc416f522AF5C"),
 		}),
 	}

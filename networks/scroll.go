@@ -24,7 +24,7 @@ func NewScrollMainnet() *scrollMainnet {
 				"public-scroll": "https://rpc.scroll.io",
 			},
 			BlockExplorerAPIKeyVariableName: "SCROLLSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.scrollscan.com/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11"),
 		}),
 	}

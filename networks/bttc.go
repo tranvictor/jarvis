@@ -24,7 +24,7 @@ func NewBttcMainnet() *bttcMainnet {
 				"bt.io": "https://rpc.bt.io",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.bttcscan.com/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xBF69a56D35B8d6f5A8e0e96B245a72F735751e54"),
 		}),
 	}

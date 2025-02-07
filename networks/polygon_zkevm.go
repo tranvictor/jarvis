@@ -23,7 +23,7 @@ func NewPolygonZkevmMainnet() *polygonZkevmMainnet {
 				"public-polygonZkevm": "https://zkevm-rpc.com",
 			},
 			BlockExplorerAPIKeyVariableName: "POLYGON_ZKEVMSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.polygonzkevmscan.com/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11"),
 		}),
 	}

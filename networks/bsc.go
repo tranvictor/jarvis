@@ -26,7 +26,7 @@ func NewBSCMainnet() *bscMainnet {
 				"ninicoin": "https://bsc-dataseed1.ninicoin.io",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.bscscan.com/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0x41263cba59eb80dc200f3e2544eda4ed6a90e76c"),
 		}),
 	}

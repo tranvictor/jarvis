@@ -23,7 +23,7 @@ func NewOptimismMainnet() *optimismMainnet {
 				"mainnet-optimism": "https://mainnet.optimism.io",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
-			BlockExplorerAPIURL:             "https://api.optimistic.etherscan.io/api",
+			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xD9bfE9979e9CA4b2fe84bA5d4Cf963bBcB376974"),
 		}),
 	}
