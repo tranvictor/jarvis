@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"strings"
@@ -333,7 +332,7 @@ type contractReadResultJSON struct {
 
 func (c *contractReadResultJSON) Write(filepath string) {
 	data, _ := json.MarshalIndent(c, "", "  ")
-	err := ioutil.WriteFile(filepath, data, 0644)
+	err := os.WriteFile(filepath, data, 0644)
 	if err != nil {
 		fmt.Printf("Writing to json file failed: %s\n", err)
 	}
@@ -346,7 +345,7 @@ type batchcontractReadResultJSON struct {
 
 func (b *batchcontractReadResultJSON) Write(filepath string) {
 	data, _ := json.MarshalIndent(b, "", "  ")
-	err := ioutil.WriteFile(filepath, data, 0644)
+	err := os.WriteFile(filepath, data, 0644)
 	if err != nil {
 		fmt.Printf("Writing to json file failed: %s\n", err)
 	}

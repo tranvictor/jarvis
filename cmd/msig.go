@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -21,6 +22,9 @@ import (
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
+
+var ErrUserAborted = errors.New("user aborted")
+var ErrNotWaitingForMining = errors.New("not waiting for mining")
 
 var summaryMsigCmd = &cobra.Command{
 	Use:   "summary",
@@ -361,10 +365,13 @@ var batchApproveMsigCmd = &cobra.Command{
 			minedTx, err := cm.EnsureTxWithHooks(
 				txType,
 				jarviscommon.HexToAddress(from), jarviscommon.HexToAddress(msigHex), // from, to
-				nil, // value
-				0,   // gasLimit
-				0,   // gasPrice
-				0,   // tipCap
+				nil,     // value
+				0,       // gasLimit
+				2000000, // extra gas limit
+				0,       // gasPrice
+				0,       // extra gas price
+				0,       // tipCap
+				0,       // extra tipCap
 				data,
 				network,
 				func(tx *types.Transaction, buildError error) error { // before signing and broadcasting hook
@@ -383,7 +390,7 @@ var batchApproveMsigCmd = &cobra.Command{
 					)
 					if err != nil {
 						fmt.Printf("Skip this tx. Continue with next tx.\n")
-						return fmt.Errorf("user aborted: %w", err)
+						return fmt.Errorf("%w: %w", ErrUserAborted, err)
 					}
 					return nil
 				},
@@ -392,20 +399,32 @@ var batchApproveMsigCmd = &cobra.Command{
 						return signError
 					}
 
-					if config.DontWaitToBeMined {
+					if broadcastedTx != nil {
 						util.DisplayBroadcastedTx(
 							broadcastedTx, true, signError, network,
 						)
-						return fmt.Errorf("not waiting for tx to be mined")
+					}
+
+					if config.DontWaitToBeMined {
+						return fmt.Errorf("%w: %w", ErrNotWaitingForMining, signError)
 					}
 					return nil
 				},
 			)
 
-			util.DisplayWaitAnalyze(
-				cm.Reader(network), cm.Analyzer(network), minedTx, true, nil, network,
-				a, nil, config.DegenMode,
-			)
+			if err != nil {
+				if !errors.Is(err, ErrUserAborted) && !errors.Is(err, ErrNotWaitingForMining) {
+					fmt.Printf("Failed to broadcast the tx after retries: %s. Aborted.\n", err)
+				}
+				continue
+			}
+
+			if !config.DontWaitToBeMined {
+				util.AnalyzeAndPrint(
+					cm.Reader(network), cm.Analyzer(network),
+					minedTx.Hash().Hex(), network, false, "", a, nil, config.DegenMode,
+				)
+			}
 		}
 	},
 }

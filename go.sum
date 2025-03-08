@@ -299,8 +299,8 @@ github.com/tklauser/go-sysconf v0.3.12 h1:0QaGUFOdQaIVdPgfITYzaTegZvdCjmYO52cSFA
 github.com/tklauser/go-sysconf v0.3.12/go.mod h1:Ho14jnntGE1fpdOqQEEaiKRpvIavV0hSfmBq8nJbHYI=
 github.com/tklauser/numcpus v0.6.1 h1:ng9scYS7az0Bk4OZLvrNXNSAO2Pxr1XXRAPyjhIx+Fk=
 github.com/tklauser/numcpus v0.6.1/go.mod h1:1XfjsgE2zo8GVw7POkMbHENHzVg3GzmoZ9fESEdAacY=
-github.com/tranvictor/walletarmy v0.0.0-20250126143048-0738dbd65ec1 h1:UaSbFZs81ClK+t1lwd8T2kpXbSkwcx87GnvIDmVzfW0=
-github.com/tranvictor/walletarmy v0.0.0-20250126143048-0738dbd65ec1/go.mod h1:rFeazbD6PpD+BPVWyJ4TvWlrDQCsCHEtlLe4fCuzVwY=
+github.com/tranvictor/walletarmy v0.0.0-20250308180718-0195307b2251 h1:+yuvMMMWz8Quv+CzQyJoWGf4d5c12rzX+jYzHMQBQ04=
+github.com/tranvictor/walletarmy v0.0.0-20250308180718-0195307b2251/go.mod h1:rFeazbD6PpD+BPVWyJ4TvWlrDQCsCHEtlLe4fCuzVwY=
 github.com/ugorji/go/codec v0.0.0-20181204163529-d75b2dcb6bc8/go.mod h1:VFNgLljTbGfSG7qAOspJ7OScBnGdDN/yBr0sguwnwf0=
 github.com/urfave/cli/v2 v2.25.7 h1:VAzn5oq403l5pHjc4OhD54+XGO9cdKVL/7lDjF+iKUs=
 github.com/urfave/cli/v2 v2.25.7/go.mod h1:8qnjx1vcq5s2/wpsqoZFndg2CE5tNFyrTvS6SinrnYQ=
