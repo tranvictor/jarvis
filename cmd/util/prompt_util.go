@@ -181,7 +181,7 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 		}
 		return result, nil
 	case abi.IntTy, abi.UintTy:
-		result := []*big.Int{}
+		result := []interface{}{}
 		if len(paramsStr) == 0 {
 			return result, nil
 		}
@@ -190,7 +190,19 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 			if err != nil {
 				return nil, err
 			}
-			result = append(result, converted.(*big.Int))
+
+			switch input.Type.Elem.Size {
+			case 8:
+				result = append(result, converted.(uint8))
+			case 16:
+				result = append(result, converted.(uint16))
+			case 32:
+				result = append(result, converted.(uint32))
+			case 64:
+				result = append(result, converted.(uint64))
+			default:
+				result = append(result, converted.(*big.Int))
+			}
 		}
 		return result, nil
 	case abi.BoolTy:
