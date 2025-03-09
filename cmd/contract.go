@@ -257,6 +257,7 @@ func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlo
 
 		fmt.Printf("%d. ", i+1)
 		jarviscommon.PrintVerboseParamResultToWriter(os.Stdout, oneOutputParamResult, 0, true)
+		fmt.Printf("\n")
 	}
 	return result, nil
 }
