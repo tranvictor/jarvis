@@ -34,7 +34,7 @@ release:
 	git tag -a "$(VERSION)" -m "$(RELEASE_TEXT)"
 	# If you want to push the tag right away, un-comment the next line:
 	# git push origin "$(VERSION)"
-	goreleaser1.17 release --clean --skip-publish
+	goreleaser1.17 release --clean
 
 # This is the "phony target" trick: any unknown goal (like v0.0.33) goes here
 %:
