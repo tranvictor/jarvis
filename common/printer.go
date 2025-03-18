@@ -48,25 +48,28 @@ func PrintTxSuccessSummary(result *TxResult, network Network, writer io.Writer) 
 }
 
 func PrintVerboseTopicToWriter(writer io.Writer, topic TopicResult) {
-	PrintVerboseValueToWriter(writer, topic.Value)
+	PrintVerboseValueToWriter(writer, 0, topic.Value)
 	fmt.Fprintf(writer, "\n")
 }
 
 func PrintVerboseParamResultToWriter(writer io.Writer, param ParamResult, indentLevel int, includeFieldNames bool) {
 	indentation := ""
-	for i := 0; i < indentLevel; i++ {
+	for range indentLevel {
 		indentation = indentation + "    "
 	}
 
+	var fieldStr string
 	if includeFieldNames {
-		fmt.Fprintf(writer, "%s%s (%s): ", indentation, param.Name, param.Type)
+		fieldStr = fmt.Sprintf("%s%s (%s): ", indentation, param.Name, param.Type)
 	} else {
-		fmt.Fprintf(writer, "%s", indentation)
+		fieldStr = indentation
 	}
+
+	fmt.Fprintf(writer, "%s", fieldStr)
 
 	// in case the param is an array of values
 	if param.Values != nil {
-		PrintVerboseValueToWriter(writer, param.Values)
+		PrintVerboseValueToWriter(writer, len(fieldStr), param.Values)
 		return
 	}
 	// in case the param is an array of tubples
@@ -83,7 +86,7 @@ func PrintVerboseParamResultToWriter(writer io.Writer, param ParamResult, indent
 
 func PrintVerboseTuplesToWriter(writer io.Writer, tuples []TupleParamResult, indentLevel int) {
 	indentation := ""
-	for i := 0; i < indentLevel; i++ {
+	for range indentLevel {
 		indentation = indentation + "    "
 	}
 
@@ -126,7 +129,7 @@ func PrintTupleFieldNamesToWriter(writer io.Writer, tuple TupleParamResult, inde
 
 func PrintVerboseTupleToWriter(writer io.Writer, tuple TupleParamResult, indentLevel int, includeFieldNames bool) {
 	indentation := ""
-	for i := 0; i < indentLevel; i++ {
+	for range indentLevel {
 		indentation = indentation + "    "
 	}
 
@@ -147,7 +150,7 @@ func PrintVerboseTupleToWriter(writer io.Writer, tuple TupleParamResult, indentL
 
 func PrintVerboseArraysToWriter(writer io.Writer, arrays []ParamResult, indentLevel int) {
 	indentation := ""
-	for i := 0; i < indentLevel; i++ {
+	for range indentLevel {
 		indentation = indentation + "    "
 	}
 
@@ -194,7 +197,7 @@ func PrintTxDetails(result *TxResult, network Network, writer io.Writer) {
 		fmt.Fprintf(writer, "Log %d: %s\n", i+1, l.Name)
 		for j, topic := range l.Topics {
 			fmt.Fprintf(writer, "    Topic %d - %s: ", j+1, topic.Name)
-			PrintVerboseValueToWriter(writer, topic.Value)
+			PrintVerboseValueToWriter(writer, 0, topic.Value)
 			fmt.Fprintf(writer, "\n")
 		}
 		fmt.Fprintf(writer, "    Data:\n")
@@ -278,7 +281,12 @@ func VerboseValues(values []Value) []string {
 	return result
 }
 
-func PrintVerboseValueToWriter(writer io.Writer, values []Value) {
+func PrintVerboseValueToWriter(writer io.Writer, leftAlign int, values []Value) {
+	anchor := ""
+	for i := 0; i < leftAlign; i++ {
+		anchor = anchor + " "
+	}
+
 	verboseValues := VerboseValues(values)
 	if len(verboseValues) == 0 {
 		fmt.Fprintf(writer, "")
@@ -286,9 +294,12 @@ func PrintVerboseValueToWriter(writer io.Writer, values []Value) {
 		fmt.Fprintf(writer, "%s", verboseValues[0])
 	} else {
 		for i, value := range values {
+			if i > 0 {
+				fmt.Fprintf(writer, anchor)
+			}
 			fmt.Fprintf(writer, "%d. %s", i+1, verboseValue(value))
 			if i < len(values)-1 {
-				fmt.Fprintf(writer, ", ")
+				fmt.Fprintf(writer, "\n")
 			}
 		}
 	}
