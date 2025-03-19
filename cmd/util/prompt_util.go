@@ -133,7 +133,7 @@ func PromptParam(
 	input abi.Argument,
 	prefill string,
 	network jarvisnetworks.Network,
-) (interface{}, error) {
+) (any, error) {
 	t := input.Type
 	switch t.T {
 	case abi.SliceTy, abi.ArrayTy:
@@ -181,30 +181,73 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 		}
 		return result, nil
 	case abi.IntTy, abi.UintTy:
-		result := []interface{}{}
-		if len(paramsStr) == 0 {
-			return result, nil
-		}
-		for _, p := range paramsStr {
-			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-			if err != nil {
-				return nil, err
+		switch input.Type.Elem.Size {
+		case 8:
+			result := []uint8{}
+			if len(paramsStr) == 0 {
+				return result, nil
 			}
-
-			switch input.Type.Elem.Size {
-			case 8:
+			for _, p := range paramsStr {
+				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+				if err != nil {
+					return nil, err
+				}
 				result = append(result, converted.(uint8))
-			case 16:
+			}
+			return result, nil
+		case 16:
+			result := []uint16{}
+			if len(paramsStr) == 0 {
+				return result, nil
+			}
+			for _, p := range paramsStr {
+				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+				if err != nil {
+					return nil, err
+				}
 				result = append(result, converted.(uint16))
-			case 32:
+			}
+			return result, nil
+		case 32:
+			result := []uint32{}
+			if len(paramsStr) == 0 {
+				return result, nil
+			}
+			for _, p := range paramsStr {
+				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+				if err != nil {
+					return nil, err
+				}
 				result = append(result, converted.(uint32))
-			case 64:
+			}
+			return result, nil
+		case 64:
+			result := []uint64{}
+			if len(paramsStr) == 0 {
+				return result, nil
+			}
+			for _, p := range paramsStr {
+				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+				if err != nil {
+					return nil, err
+				}
 				result = append(result, converted.(uint64))
-			default:
+			}
+			return result, nil
+		default:
+			result := []*big.Int{}
+			if len(paramsStr) == 0 {
+				return result, nil
+			}
+			for _, p := range paramsStr {
+				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
+				if err != nil {
+					return nil, err
+				}
 				result = append(result, converted.(*big.Int))
 			}
+			return result, nil
 		}
-		return result, nil
 	case abi.BoolTy:
 		result := []bool{}
 		if len(paramsStr) == 0 {
@@ -420,7 +463,7 @@ func PromptFunctionCallData(
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	network jarvisnetworks.Network,
-) (method *abi.Method, params []interface{}, err error) {
+) (method *abi.Method, params []any, err error) {
 	method, methodName, err := PromptMethod(a, methodIndex, mode)
 	if err != nil {
 		return nil, nil, err
@@ -437,14 +480,14 @@ func PromptFunctionCallData(
 		return nil, nil, fmt.Errorf("you must specify enough params in prefilled mode")
 	}
 	fmt.Printf("Input:\n")
-	params = []interface{}{}
+	params = []any{}
 	pi := 0
 	for {
 		if pi >= len(inputs) {
 			break
 		}
 		input := inputs[pi]
-		var inputParam interface{}
+		var inputParam any
 		fmt.Printf("%d. %s (%s)", pi+1, input.Name, input.Type.String())
 		if !prefillMode || prefills[pi] == "?" {
 			inputParam, err = PromptParam(true, input, "", network) // interactive prompt
