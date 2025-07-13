@@ -616,7 +616,7 @@ func ConvertParamStrToType(
 	t abi.Type,
 	str string,
 	network jarvisnetworks.Network,
-) (interface{}, error) {
+) (any, error) {
 	switch t.T {
 	case abi.StringTy: // variable arrays are written at the end of the return bytes
 		return ConvertToString(str)
