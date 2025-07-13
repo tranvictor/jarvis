@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"strings"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -363,6 +364,8 @@ var batchApproveMsigCmd = &cobra.Command{
 			}
 
 			minedTx, err := cm.EnsureTxWithHooks(
+				10,
+				5*time.Second,
 				txType,
 				jarviscommon.HexToAddress(from), jarviscommon.HexToAddress(msigHex), // from, to
 				nil,     // value
@@ -410,6 +413,8 @@ var batchApproveMsigCmd = &cobra.Command{
 					}
 					return nil
 				},
+				nil, // TODO: can add abis to parse errors here
+				nil, // TODO: can add hook to handle gas estimation errors here
 			)
 
 			if err != nil {
