@@ -11,7 +11,7 @@ require (
 	github.com/openconfig/goyang v0.2.4
 	github.com/sahilm/fuzzy v0.1.0
 	github.com/spf13/cobra v1.5.0
-	github.com/tranvictor/walletarmy v0.0.0-20250713075331-1ea1e3025c8c
+	github.com/tranvictor/walletarmy v0.0.0-20250713091021-5a2402611d20
 	golang.org/x/crypto v0.32.0
 	golang.org/x/sys v0.29.0
 	golang.org/x/term v0.28.0

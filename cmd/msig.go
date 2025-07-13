@@ -366,6 +366,7 @@ var batchApproveMsigCmd = &cobra.Command{
 			minedTx, err := cm.EnsureTxWithHooks(
 				10,
 				5*time.Second,
+				5*time.Second,
 				txType,
 				jarviscommon.HexToAddress(from), jarviscommon.HexToAddress(msigHex), // from, to
 				nil,     // value
