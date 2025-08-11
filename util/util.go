@@ -680,9 +680,9 @@ func IsProxyABI(a *abi.ABI) bool {
 		return false
 	}
 
-	if a.Fallback.String() != "" {
-		return true
-	}
+	// if a.Fallback.String() != "" {
+	// 	return true
+	// }
 
 	for _, m := range PROXY_METHODS {
 		_, found := a.Methods[m]
