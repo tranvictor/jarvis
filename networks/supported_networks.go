@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"strings"
 )
 
 // Insert more Network implementation here to support
@@ -44,8 +45,15 @@ type networks struct {
 func (n *networks) getSupportedNetworkNames() []string {
 	res := []string{}
 	for _, n := range n.networks {
-		res = append(res, n.GetName())
-		res = append(res, n.GetAlternativeNames()...)
+		name := n.GetName()
+		if strings.TrimSpace(name) != "" {
+			res = append(res, name)
+		}
+		for _, an := range n.GetAlternativeNames() {
+			if strings.TrimSpace(an) != "" {
+				res = append(res, an)
+			}
+		}
 	}
 	return res
 }

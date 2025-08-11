@@ -22,9 +22,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 
 	bleve "github.com/tranvictor/jarvis/bleve"
-	. "github.com/tranvictor/jarvis/common"
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
-	. "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util/broadcaster"
 	"github.com/tranvictor/jarvis/util/cache"
 	"github.com/tranvictor/jarvis/util/monitor"
@@ -46,7 +46,7 @@ const (
 	BSCSCAN_API_KEY_VAR       string = "BSCSCAN_API_KEY"
 )
 
-func CalculateTimeDurationFromBlock(network Network, from, to uint64) time.Duration {
+func CalculateTimeDurationFromBlock(network networks.Network, from, to uint64) time.Duration {
 	if from >= to {
 		return time.Duration(0)
 	}
@@ -117,7 +117,7 @@ func ParamToBigInt(param string) (*big.Int, error) {
 	var result *big.Int
 	param = strings.Trim(param, " ")
 	if len(param) > 2 && param[0:2] == "0x" {
-		result = HexToBig(param)
+		result = jarviscommon.HexToBig(param)
 	} else {
 		idInt, err := strconv.Atoi(param)
 		if err != nil {
@@ -187,7 +187,7 @@ func PathToAddress(path string) (string, error) {
 	return result[0], nil
 }
 
-func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, network Network) {
+func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, network networks.Network) {
 	if !broadcasted {
 		fmt.Printf("Couldn't broadcast tx. Errors: %s\n", err)
 	} else {
@@ -201,7 +201,7 @@ func DisplayWaitAnalyze(
 	t *types.Transaction,
 	broadcasted bool,
 	err error,
-	network Network,
+	network networks.Network,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	degenMode bool,
@@ -234,11 +234,11 @@ func AnalyzeMethodCallAndPrint(
 	destination string,
 	data []byte,
 	customABIs map[string]*abi.ABI,
-	network Network,
-) (fc *FunctionCall) {
+	network networks.Network,
+) (fc *jarviscommon.FunctionCall) {
 	fc = analyzer.AnalyzeFunctionCallRecursively(
 		GetABI, value, destination, data, customABIs)
-	PrintFunctionCall(fc)
+	jarviscommon.PrintFunctionCall(fc)
 	return fc
 }
 
@@ -246,13 +246,13 @@ func AnalyzeAndPrint(
 	reader *reader.EthReader,
 	analyzer TxAnalyzer,
 	tx string,
-	network Network,
+	network networks.Network,
 	forceERC20ABI bool,
 	customABI string,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	degenMode bool,
-) *TxResult {
+) *jarviscommon.TxResult {
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
 	}
@@ -274,7 +274,7 @@ func AnalyzeAndPrint(
 		return nil
 	}
 
-	var result *TxResult
+	var result *jarviscommon.TxResult
 
 	if isContract {
 		if a == nil {
@@ -291,14 +291,14 @@ func AnalyzeAndPrint(
 	}
 
 	if degenMode {
-		PrintTxDetails(result, network, os.Stdout)
+		jarviscommon.PrintTxDetails(result, network, os.Stdout)
 	} else {
-		PrintTxSuccessSummary(result, network, os.Stdout)
+		jarviscommon.PrintTxSuccessSummary(result, network, os.Stdout)
 	}
 	return result
 }
 
-func EthTxMonitor(network Network) (*monitor.TxMonitor, error) {
+func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {
 	r, err := EthReader(network)
 	if err != nil {
 		return nil, err
@@ -306,7 +306,7 @@ func EthTxMonitor(network Network) (*monitor.TxMonitor, error) {
 	return monitor.NewGenericTxMonitor(r), nil
 }
 
-func GetNodes(network Network) (map[string]string, error) {
+func GetNodes(network networks.Network) (map[string]string, error) {
 	nodes, err := getCustomNode(network)
 	if err != nil {
 		nodes = network.GetDefaultNodes()
@@ -318,7 +318,7 @@ func GetNodes(network Network) (map[string]string, error) {
 	return nodes, nil
 }
 
-func EthBroadcaster(network Network) (*broadcaster.Broadcaster, error) {
+func EthBroadcaster(network networks.Network) (*broadcaster.Broadcaster, error) {
 	nodes, err := GetNodes(network)
 	if err != nil {
 		return nil, err
@@ -326,7 +326,7 @@ func EthBroadcaster(network Network) (*broadcaster.Broadcaster, error) {
 	return broadcaster.NewGenericBroadcaster(nodes), nil
 }
 
-func EthReader(network Network) (*reader.EthReader, error) {
+func EthReader(network networks.Network) (*reader.EthReader, error) {
 	var result *reader.EthReader
 	var err error
 	nodes, err := GetNodes(network)
@@ -375,10 +375,10 @@ func isRealAddress(value string) bool {
 	return true
 }
 
-func GetJarvisValue(value string, network Network) Value {
+func GetJarvisValue(value string, network networks.Network) jarviscommon.Value {
 	valueBig, isHex := big.NewInt(0).SetString(value, 0)
 	if !isHex {
-		return Value{
+		return jarviscommon.Value{
 			Value: value,
 			Type:  "string",
 		}
@@ -386,21 +386,21 @@ func GetJarvisValue(value string, network Network) Value {
 
 	// if it is not a real address
 	if !isRealAddress(value) {
-		return Value{
+		return jarviscommon.Value{
 			Value: value,
 			Type:  "bytes",
 		}
 	}
 
 	addr := GetJarvisAddress(common.BigToAddress(valueBig).Hex(), network)
-	return Value{
+	return jarviscommon.Value{
 		Value:   common.BigToAddress(valueBig).Hex(),
 		Type:    "address",
 		Address: &addr,
 	}
 }
 
-func GetJarvisAddress(addr string, network Network) Address {
+func GetJarvisAddress(addr string, network networks.Network) jarviscommon.Address {
 	var decimal int64
 	var erc20Detected bool
 
@@ -412,20 +412,20 @@ func GetJarvisAddress(addr string, network Network) Address {
 
 	addr, name, err := GetAddressFromString(addr)
 	if err != nil {
-		return Address{
+		return jarviscommon.Address{
 			Address: addr,
 			Desc:    "Unknown",
 		}
 	}
 
 	if erc20Detected {
-		return Address{
+		return jarviscommon.Address{
 			Address: addr,
 			Desc:    name,
 			Decimal: decimal,
 		}
 	} else {
-		return Address{
+		return jarviscommon.Address{
 			Address: addr,
 			Desc:    name,
 		}
@@ -446,7 +446,7 @@ func isHttpURL(path string) bool {
 func ReadCustomABIString(
 	addr string,
 	pathOrAddress string,
-	network Network,
+	network networks.Network,
 ) (str string, err error) {
 	if isRealAddress(pathOrAddress) {
 		return GetABIString(pathOrAddress, network)
@@ -471,6 +471,9 @@ func GetETHPriceInUSD() (float64, error) {
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
 	priceres := coingeckopriceresponse{}
 	err = json.Unmarshal(body, &priceres)
 	if err != nil {
@@ -494,6 +497,9 @@ func GetCoinGeckoRateInUSD(token string) (float64, error) {
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, err
+	}
 	priceres := coingeckopriceresponse{}
 	err = json.Unmarshal(body, &priceres)
 	if err != nil {
@@ -502,7 +508,7 @@ func GetCoinGeckoRateInUSD(token string) (float64, error) {
 	return priceres[strings.ToLower(token)]["usd"], nil
 }
 
-func ReadCustomABI(addr string, pathOrAddress string, network Network) (a *abi.ABI, err error) {
+func ReadCustomABI(addr string, pathOrAddress string, network networks.Network) (a *abi.ABI, err error) {
 	str, err := ReadCustomABIString(addr, pathOrAddress, network)
 	if err != nil {
 		return nil, err
@@ -543,7 +549,7 @@ func GetABIFromString(abiStr string) (*abi.ABI, error) {
 	return &result, err
 }
 
-func GetABIStringBypassCache(addr string, network Network) (string, error) {
+func GetABIStringBypassCache(addr string, network networks.Network) (string, error) {
 	cacheKey := fmt.Sprintf("%s_abi", addr)
 	// not found from cache, getting from etherscan or equivalent websites
 	reader, err := EthReader(network)
@@ -562,7 +568,7 @@ func GetABIStringBypassCache(addr string, network Network) (string, error) {
 	return abiStr, nil
 }
 
-func IsContract(addr string, network Network) (bool, error) {
+func IsContract(addr string, network networks.Network) (bool, error) {
 	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network)
 	_, found := cache.GetCache(cacheKey)
 	if found {
@@ -590,7 +596,7 @@ func IsContract(addr string, network Network) (bool, error) {
 	return isContract, nil
 }
 
-func GetABIString(addr string, network Network) (string, error) {
+func GetABIString(addr string, network networks.Network) (string, error) {
 	cacheKey := fmt.Sprintf("%s_abi", strings.ToLower(addr))
 	cached, found := cache.GetCache(cacheKey)
 	if found {
@@ -603,10 +609,10 @@ func ConfigToABI(
 	address string,
 	forceERC20ABI bool,
 	customABI string,
-	network Network,
+	network networks.Network,
 ) (*abi.ABI, error) {
 	if forceERC20ABI {
-		return GetERC20ABI(), nil
+		return jarviscommon.GetERC20ABI(), nil
 	}
 	if customABI != "" {
 		return ReadCustomABI(address, customABI, network)
@@ -654,7 +660,7 @@ func GetGnosisMsigABI() *abi.ABI {
 	return &result
 }
 
-func GetABI(addr string, network Network) (*abi.ABI, error) {
+func GetABI(addr string, network networks.Network) (*abi.ABI, error) {
 	abiStr, err := GetABIString(addr, network)
 	if err != nil {
 		return nil, err
@@ -727,7 +733,7 @@ func IsGnosisMultisig(a *abi.ABI) (bool, error) {
 func GetBalances(
 	wallets []string,
 	tokens []string,
-	network Network,
+	network networks.Network,
 ) (balances map[common.Address][]*big.Int, block int64, err error) {
 	return GetHistoryBalances(-1, wallets, tokens, network)
 }
@@ -736,10 +742,10 @@ func GetHistoryBalances(
 	atBlock int64,
 	wallets []string,
 	tokens []string,
-	network Network,
+	network networks.Network,
 ) (balances map[common.Address][]*big.Int, block int64, err error) {
-	helperABI := GetMultiCallABI()
-	erc20ABI := GetERC20ABI()
+	helperABI := jarviscommon.GetMultiCallABI()
+	erc20ABI := jarviscommon.GetERC20ABI()
 
 	mc, err := NewMultiCall(network)
 	if err != nil {
@@ -749,7 +755,7 @@ func GetHistoryBalances(
 	balances = map[common.Address][]*big.Int{}
 
 	for _, wallet := range wallets {
-		wAddr := HexToAddress(wallet)
+		wAddr := jarviscommon.HexToAddress(wallet)
 		for i, token := range tokens {
 			index := i
 			oneResult := big.NewInt(0)
@@ -764,7 +770,7 @@ func GetHistoryBalances(
 					network.MultiCallContract(),
 					helperABI,
 					"getEthBalance",
-					HexToAddress(wallet),
+					jarviscommon.HexToAddress(wallet),
 				)
 			} else {
 				mc.RegisterWithHook(
@@ -776,7 +782,7 @@ func GetHistoryBalances(
 					token,
 					erc20ABI,
 					"balanceOf",
-					HexToAddress(wallet),
+					jarviscommon.HexToAddress(wallet),
 				)
 			}
 		}
@@ -787,7 +793,7 @@ func GetHistoryBalances(
 	return balances, block, err
 }
 
-func NewMultiCall(network Network) (*reader.MultipleCall, error) {
+func NewMultiCall(network networks.Network) (*reader.MultipleCall, error) {
 	r, err := EthReader(network)
 	if err != nil {
 		return nil, err
@@ -795,7 +801,7 @@ func NewMultiCall(network Network) (*reader.MultipleCall, error) {
 	return reader.NewMultiCall(r, network.MultiCallContract()), nil
 }
 
-func getCustomNode(network Network) (map[string]string, error) {
+func getCustomNode(network networks.Network) (map[string]string, error) {
 	usr, _ := user.Current()
 	dir := usr.HomeDir
 	file := path.Join(dir, "nodes.json")
@@ -821,7 +827,7 @@ func getCustomNode(network Network) (map[string]string, error) {
 	}
 	node, ok := result[network.GetName()]
 	if !ok {
-		return nil, fmt.Errorf("Could not get node from custom file")
+		return nil, fmt.Errorf("could not get node from custom file")
 	}
 	return node, nil
 }
