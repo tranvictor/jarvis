@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 	"syscall"
 
 	gethaccounts "github.com/ethereum/go-ethereum/accounts"
@@ -234,10 +235,27 @@ var listWalletCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		accs := accounts.GetAccounts()
 		fmt.Printf("Jarvis: You have %d wallets:\n", len(accs))
-		index := 0
+
+		// Create a slice to hold account info for sorting
+		type accountInfo struct {
+			addr string
+			acc  types.AccDesc
+		}
+		var accountList []accountInfo
+
+		// Convert map to slice
 		for addr, acc := range accs {
-			index += 1
-			fmt.Printf("%d. %s: %s (%s)\n", index, addr, acc.Kind, acc.Desc)
+			accountList = append(accountList, accountInfo{addr: addr, acc: acc})
+		}
+
+		// Sort by acc.Desc
+		sort.Slice(accountList, func(i, j int) bool {
+			return accountList[i].acc.Desc < accountList[j].acc.Desc
+		})
+
+		// Print sorted accounts
+		for index, item := range accountList {
+			fmt.Printf("%d. %s: %s (%s)\n", index+1, item.addr, item.acc.Kind, item.acc.Desc)
 		}
 		fmt.Printf("\nJarvis: If you want to add more wallets to the list, use following command:\n> jarvis wallet add\n")
 	},
