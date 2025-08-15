@@ -288,6 +288,7 @@ func (onr *OneNodeReader) ReadContractToBytes(atBlock int64, from string, caddr 
 	}
 	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
+
 	return ethcli.CallContract(timeout, ethereum.CallMsg{
 		From:     jarviscommon.HexToAddress(from),
 		To:       &contract,

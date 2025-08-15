@@ -97,10 +97,11 @@ func (mc *MultipleCall) callMCContract(atBlock int64) (block int64, err error) {
 		calls = append(calls, call{jarviscommon.HexToAddress(caddr), data})
 	}
 
-	err = mc.r.ReadHistoryContract(
+	err = mc.r.ReadHistoryContractWithABI(
 		atBlock,
 		&res,
 		mc.contract,
+		mc.mcABI,
 		"aggregate",
 		calls,
 	)
