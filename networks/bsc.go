@@ -31,3 +31,7 @@ func NewBSCMainnet() *bscMainnet {
 		}),
 	}
 }
+
+func (b *bscMainnet) IsSyncTxSupported() bool {
+	return false
+}

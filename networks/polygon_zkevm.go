@@ -28,3 +28,7 @@ func NewPolygonZkevmMainnet() *polygonZkevmMainnet {
 		}),
 	}
 }
+
+func (p *polygonZkevmMainnet) IsSyncTxSupported() bool {
+	return false
+}

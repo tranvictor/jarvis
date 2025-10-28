@@ -85,7 +85,7 @@ func (onr *OneNodeReader) GEthClient() (*gethclient.Client, error) {
 	return onr.gethClient, err
 }
 
-func (onr *OneNodeReader) EstimateGas(from, to string, priceGwei float64, value *big.Int, data []byte) (uint64, error) {
+func (onr *OneNodeReader) EstimateGas(from, to string, priceGwei float64, value *big.Int, data []byte, atBlock *big.Int) (uint64, error) {
 	fromAddr := common.HexToAddress(from)
 	var toAddrPtr *common.Address
 	if to != "" {
@@ -99,14 +99,14 @@ func (onr *OneNodeReader) EstimateGas(from, to string, priceGwei float64, value 
 	}
 	timeout, cancel := context.WithTimeout(context.Background(), TIMEOUT)
 	defer cancel()
-	return ethcli.EstimateGas(timeout, ethereum.CallMsg{
+	return ethcli.EstimateGasAtBlock(timeout, ethereum.CallMsg{
 		From:     fromAddr,
 		To:       toAddrPtr,
 		Gas:      0,
 		GasPrice: price,
 		Value:    value,
 		Data:     data,
-	})
+	}, atBlock)
 }
 
 func (onr *OneNodeReader) GetCode(address string) (code []byte, err error) {

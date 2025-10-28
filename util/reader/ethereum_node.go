@@ -19,6 +19,7 @@ type EthereumNode interface {
 		priceGwei float64,
 		value *big.Int,
 		data []byte,
+		atBlock *big.Int,
 	) (gas uint64, err error)
 	GetCode(address string) (code []byte, err error)
 	GetBalance(address string) (balance *big.Int, err error)

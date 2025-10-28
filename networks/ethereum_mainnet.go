@@ -29,3 +29,7 @@ func NewEthereumMainnet() *ethereumMainnet {
 		}),
 	}
 }
+
+func (e *ethereumMainnet) IsSyncTxSupported() bool {
+	return true
+}

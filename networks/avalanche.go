@@ -29,3 +29,7 @@ func NewAvalanche() *avalanche {
 		}),
 	}
 }
+
+func (a *avalanche) IsSyncedTxSupported() bool {
+	return false
+}

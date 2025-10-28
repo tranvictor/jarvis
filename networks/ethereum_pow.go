@@ -29,3 +29,7 @@ func NewEthereumPOW() *ethereumPOW {
 		}),
 	}
 }
+
+func (e *ethereumPOW) IsSyncTxSupported() bool {
+	return false
+}

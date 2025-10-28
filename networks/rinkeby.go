@@ -28,3 +28,7 @@ func NewRinkeby() *rinkeby {
 		}),
 	}
 }
+
+func (r *rinkeby) IsSyncTxSupported() bool {
+	return false
+}

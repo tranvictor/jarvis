@@ -20,6 +20,8 @@ type Network interface {
 	RecommendedGasPrice() (float64, error)
 	GetABIString(address string) (string, error)
 
+	IsSyncTxSupported() bool
+
 	// this interface can return "" in case
 	// there is no multicall contract on the network
 	MultiCallContract() string

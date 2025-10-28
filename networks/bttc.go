@@ -29,3 +29,7 @@ func NewBttcMainnet() *bttcMainnet {
 		}),
 	}
 }
+
+func (b *bttcMainnet) IsSyncTxSupported() bool {
+	return false
+}

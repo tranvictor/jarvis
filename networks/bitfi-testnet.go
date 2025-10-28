@@ -27,6 +27,7 @@ func NewBitfiTestnet() *bitfiTestnet {
 			BlockExplorerAPIKeyVariableName: "BITFI_TESTNET_SCAN_API_KEY",
 			BlockExplorerAPIURL:             "https://bitfi-ledger-testnet-explorer.alt.technology/api/v2",
 			MultiCallContractAddress:        common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11"),
+			SyncTxSupported:                 false,
 		}),
 	}
 }

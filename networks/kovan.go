@@ -29,3 +29,7 @@ func NewKovan() *kovan {
 		}),
 	}
 }
+
+func (k *kovan) IsSyncTxSupported() bool {
+	return false
+}

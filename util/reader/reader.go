@@ -62,7 +62,8 @@ func (er *EthReader) EstimateExactGas(
 	for i := range er.nodes {
 		n := er.nodes[i]
 		go func() {
-			gas, err := n.EstimateGas(from, to, priceGwei, value, data)
+			// passing negative atBlock param to estimate gas on pending block
+			gas, err := n.EstimateGas(from, to, priceGwei, value, data, big.NewInt(-1))
 			resCh <- estimateGasResult{
 				Gas:   gas,
 				Error: wrapError(err, n.NodeName()),

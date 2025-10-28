@@ -29,3 +29,7 @@ func NewlineaMainnet() *lineaMainnet {
 		}),
 	}
 }
+
+func (l *lineaMainnet) IsSyncTxSupported() bool {
+	return false
+}

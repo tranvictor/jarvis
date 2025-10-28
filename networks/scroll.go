@@ -29,3 +29,7 @@ func NewScrollMainnet() *scrollMainnet {
 		}),
 	}
 }
+
+func (s *scrollMainnet) IsSyncTxSupported() bool {
+	return false
+}

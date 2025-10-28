@@ -29,3 +29,7 @@ func NewMumbai() *mumbai {
 		}),
 	}
 }
+
+func (m *mumbai) IsSyncTxSupported() bool {
+	return false
+}

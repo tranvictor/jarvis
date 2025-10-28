@@ -29,3 +29,7 @@ func NewBaseMainnet() *baseMainnet {
 		}),
 	}
 }
+
+func (b *baseMainnet) IsSyncTxSupported() bool {
+	return false
+}

@@ -28,3 +28,7 @@ func NewOptimismMainnet() *optimismMainnet {
 		}),
 	}
 }
+
+func (o *optimismMainnet) IsSyncTxSupported() bool {
+	return false
+}

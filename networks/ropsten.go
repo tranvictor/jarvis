@@ -29,3 +29,7 @@ func NewRopsten() *ropsten {
 		}),
 	}
 }
+
+func (r *ropsten) IsSyncTxSupported() bool {
+	return false
+}

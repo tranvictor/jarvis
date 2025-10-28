@@ -29,3 +29,7 @@ func NewMatic() *matic {
 		}),
 	}
 }
+
+func (m *matic) IsSyncTxSupported() bool {
+	return false
+}

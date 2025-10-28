@@ -28,3 +28,7 @@ func NewArbitrumMainnet() *arbitrumMainnet {
 		}),
 	}
 }
+
+func (a *arbitrumMainnet) IsSyncTxSupported() bool {
+	return true
+}

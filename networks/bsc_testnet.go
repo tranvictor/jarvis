@@ -33,3 +33,7 @@ func NewBSCTestnet() *bscTestnet {
 		}),
 	}
 }
+
+func (b *bscTestnet) IsSyncTxSupported() bool {
+	return false
+}

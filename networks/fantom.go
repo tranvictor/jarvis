@@ -29,3 +29,7 @@ func NewFantom() *fantom {
 		}),
 	}
 }
+
+func (f *fantom) IsSyncTxSupported() bool {
+	return false
+}

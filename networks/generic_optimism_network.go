@@ -23,6 +23,7 @@ type GenericOptimismNetworkConfig struct {
 	BlockExplorerAPIKeyVariableName string            `json:"block_explorer_api_key_variable_name"`
 	BlockExplorerAPIURL             string            `json:"block_explorer_api_url"`
 	MultiCallContractAddress        common.Address    `json:"multi_call_contract_address"`
+	SyncTxSupported                 bool              `json:"sync_tx_supported"`
 }
 
 // GenericOptimismNetwork is a generic implementation of a network that uses Etherscan as their official explorer
@@ -92,4 +93,8 @@ func (gn *GenericOptimismNetwork) MarshalJSON() ([]byte, error) {
 
 func (gn *GenericOptimismNetwork) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &gn.config)
+}
+
+func (gn *GenericOptimismNetwork) IsSyncTxSupported() bool {
+	return gn.config.SyncTxSupported
 }

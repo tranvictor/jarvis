@@ -25,6 +25,7 @@ type GenericEtherscanNetworkConfig struct {
 	BlockExplorerAPIKeyVariableName string            `json:"block_explorer_api_key_variable_name"`
 	BlockExplorerAPIURL             string            `json:"block_explorer_api_url"`
 	MultiCallContractAddress        common.Address    `json:"multi_call_contract_address"`
+	SyncedTxSupported               bool              `json:"synced_tx_supported"`
 }
 
 // GenericEtherscanNetwork is a generic implementation of a network that uses Etherscan as their official explorer
@@ -95,4 +96,8 @@ func (gn *GenericEtherscanNetwork) MarshalJSON() ([]byte, error) {
 
 func (gn *GenericEtherscanNetwork) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &gn.Config)
+}
+
+func (gn *GenericEtherscanNetwork) IsSyncTxSupported() bool {
+	return gn.Config.SyncedTxSupported
 }
