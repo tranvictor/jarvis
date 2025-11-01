@@ -300,23 +300,40 @@ func (onr *OneNodeReader) ReadContractToBytes(atBlock int64, from string, caddr 
 }
 
 func (onr *OneNodeReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
-	gethcli, err := onr.GEthClient()
-	if err != nil {
-		return nil, err
-	}
 
 	contract := jarviscommon.HexToAddress(to)
 
 	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
-	return gethcli.CallContract(timeout, ethereum.CallMsg{
+
+	if overrides != nil {
+		// overrides is only supported on geth client, it really depends on the node we call to
+		gethcli, err := onr.GEthClient()
+		if err != nil {
+			return nil, err
+		}
+		return gethcli.CallContract(timeout, ethereum.CallMsg{
+			From:     jarviscommon.HexToAddress(from),
+			To:       &contract,
+			Gas:      0,
+			GasPrice: nil,
+			Value:    nil,
+			Data:     data,
+		}, big.NewInt(int64(rpc.PendingBlockNumber)), overrides) // pending block number is used to call the contract on the pending block
+	}
+
+	ethcli, err := onr.EthClient()
+	if err != nil {
+		return nil, err
+	}
+	return ethcli.CallContract(timeout, ethereum.CallMsg{
 		From:     jarviscommon.HexToAddress(from),
 		To:       &contract,
 		Gas:      0,
 		GasPrice: nil,
 		Value:    nil,
 		Data:     data,
-	}, nil, overrides)
+	}, big.NewInt(int64(rpc.PendingBlockNumber))) // pending block number is used to call the contract on the pending block
 }
 
 func (onr *OneNodeReader) CurrentBlock() (uint64, error) {
