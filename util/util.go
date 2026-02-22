@@ -242,7 +242,7 @@ func AnalyzeMethodCallAndPrint(
 ) (fc *jarviscommon.FunctionCall) {
 	fc = analyzer.AnalyzeFunctionCallRecursively(
 		GetABI, value, destination, data, customABIs)
-	jarviscommon.PrintFunctionCallToWriter(fc, u.Writer())
+	DisplayFunctionCall(u, fc)
 	return fc
 }
 
@@ -295,11 +295,7 @@ func AnalyzeAndPrint(
 		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false, network)
 	}
 
-	if degenMode {
-		jarviscommon.PrintTxDetails(result, network, u.Writer())
-	} else {
-		jarviscommon.PrintTxSuccessSummary(result, network, u.Writer())
-	}
+	DisplayTxResult(u, result, network, degenMode)
 	return result
 }
 

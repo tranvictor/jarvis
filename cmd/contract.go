@@ -212,9 +212,7 @@ func handleReadOneFunctionOnContract(r readerPkg.Reader, analyzer util.TxAnalyze
 		oneVerboseParamResult := convertToVerboseParamResult(oneOutputParamResult)
 		result = append(result, oneVerboseParamResult)
 
-		fmt.Fprintf(appUI.Writer(), "%d. ", i+1)
-		jarviscommon.PrintVerboseParamResultToWriter(appUI.Writer(), oneOutputParamResult, 0, true)
-		fmt.Fprintln(appUI.Writer())
+		util.DisplayParam(appUI, oneOutputParamResult)
 	}
 	return result, nil
 }

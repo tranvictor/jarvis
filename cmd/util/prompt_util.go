@@ -3,7 +3,6 @@ package util
 import (
 	"fmt"
 	"math/big"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -364,13 +363,7 @@ func PromptFunctionCallData(
 		}
 
 		paramUI.Info("You entered:")
-		jarviscommon.PrintVerboseParamResultToWriter(
-			paramUI.Indent().Writer(),
-			analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam),
-			0,
-			true,
-		)
-		fmt.Fprintln(paramUI.Writer())
+		util.DisplayParam(paramUI.Indent(), analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam))
 
 		params = append(params, inputParam)
 		pi++
@@ -458,7 +451,7 @@ func showTxInfoToConfirm(
 		tx.Data(),
 		customABIs,
 	)
-	jarviscommon.PrintFunctionCallToWriter(fc, u.Writer())
-	fmt.Fprintln(os.Stdout) // blank line after the function call block
+	util.DisplayFunctionCall(u, fc)
+	u.Info("")
 	return nil
 }
