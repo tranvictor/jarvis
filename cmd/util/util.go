@@ -23,7 +23,6 @@ import (
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
-	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 	utilreader "github.com/tranvictor/jarvis/util/reader"
@@ -37,6 +36,7 @@ func AnalyzeAndShowMsigTxInfo(
 	txid *big.Int,
 	network jarvisnetworks.Network,
 	resolver ABIResolver,
+	analyzer util.TxAnalyzer,
 ) (fc *jarviscommon.FunctionCall, confirmed bool, executed bool) {
 	u.Section("What the multisig will do")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
@@ -64,12 +64,6 @@ func AnalyzeAndShowMsigTxInfo(
 		destAbi, err := resolver.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
 		if err != nil {
 			u.Error("Couldn't get abi of destination address: %s", err)
-			return
-		}
-
-		analyzer, err := txanalyzer.EthAnalyzer(network)
-		if err != nil {
-			u.Error("Couldn't analyze tx: %s", err)
 			return
 		}
 
@@ -265,13 +259,14 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	fc, _, executed := AnalyzeAndShowMsigTxInfo(u, multisigContract, txid, config.Network(), tc.Resolver)
+	fc, _, executed := AnalyzeAndShowMsigTxInfo(u, multisigContract, txid, config.Network(), tc.Resolver, analyzer)
 
 	if postProcess != nil && postProcess(fc) != nil {
 		return
 	}
 
 	if executed {
+		u.Warn("This transaction has already been executed. Nothing to do.")
 		return
 	}
 
@@ -287,8 +282,9 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	if config.GasLimit == 0 {
-		config.GasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, data)
+	gasLimit := config.GasLimit
+	if gasLimit == 0 {
+		gasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, data)
 		if err != nil {
 			u.Error("Couldn't estimate gas limit: %s", err)
 			return
@@ -300,9 +296,9 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		tc.Nonce,
 		tc.To,
 		tc.Value,
-		config.GasLimit+config.ExtraGasLimit,
+		gasLimit+config.ExtraGasLimit,
 		tc.GasPrice+config.ExtraGasPrice,
-		tc.TipGas,
+		tc.TipGas+config.ExtraTipGas,
 		data,
 		config.Network().GetChainID(),
 	)

@@ -152,15 +152,16 @@ var txContractCmd = &cobra.Command{
 			nil,
 			config.Network(),
 		)
-
-		jarviscommon.DebugPrintf("calling data: %x\n", data)
-
 		if err != nil {
 			appUI.Error("Couldn't pack data: %s", err)
 			return
 		}
-		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, data)
+
+		jarviscommon.DebugPrintf("calling data: %x\n", data)
+
+		gasLimit := config.GasLimit
+		if gasLimit == 0 {
+			gasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, data)
 			if err != nil {
 				appUI.Error("Couldn't estimate gas limit: %s", err)
 				return
@@ -172,7 +173,7 @@ var txContractCmd = &cobra.Command{
 			tc.Nonce,
 			tc.To,
 			tc.Value,
-			config.GasLimit+config.ExtraGasLimit,
+			gasLimit+config.ExtraGasLimit,
 			tc.GasPrice+config.ExtraGasPrice,
 			tc.TipGas+config.ExtraTipGas,
 			data,

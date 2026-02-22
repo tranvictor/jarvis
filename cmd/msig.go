@@ -52,31 +52,30 @@ var summaryMsigCmd = &cobra.Command{
 		}
 		appUI.Info("Number of transactions: %d", noTxs)
 		noExecuted := 0
-		noRevoked := 0
 		noConfirmed := 0
 		noError := 0
 		nonExecutedConfirmedIds := []int64{}
 		for i := int64(0); i < noTxs; i++ {
 			executed, err := multisigContract.IsExecuted(big.NewInt(i))
 			if err != nil {
-				appUI.Error("%d. %s", i, err)
+				appUI.Error("%d. error: %s", i, err)
 				noError++
 				continue
 			}
 			if executed {
-				appUI.Info("%d. executed", i)
+				appUI.Success("%d. executed", i)
 				noExecuted++
 				noConfirmed++
 				continue
 			}
 			confirmed, err := multisigContract.IsConfirmed(big.NewInt(i))
 			if err != nil {
-				appUI.Error("%d. %s", i, err)
+				appUI.Error("%d. error: %s", i, err)
 				noError++
 				continue
 			}
 			if confirmed {
-				appUI.Info("%d. confirmed - not executed", i)
+				appUI.Warn("%d. confirmed - not yet executed", i)
 				nonExecutedConfirmedIds = append(nonExecutedConfirmedIds, i)
 				noConfirmed++
 				continue
@@ -85,10 +84,11 @@ var summaryMsigCmd = &cobra.Command{
 		}
 		appUI.Info("------------")
 		appUI.Info("Total executed txs: %d", noExecuted)
-		appUI.Info("Total confirmed but NOT executed txs: %d. Their ids are: %v", noConfirmed-noExecuted, nonExecutedConfirmedIds)
-		appUI.Info("Total revoked txs: %d", noRevoked)
-		appUI.Info("Total unconfirmed txs (including unknown txs): %d", int(noTxs)-noConfirmed-noRevoked)
-		_ = noError
+		appUI.Info("Total confirmed but NOT executed txs: %d. IDs: %v", noConfirmed-noExecuted, nonExecutedConfirmedIds)
+		appUI.Info("Total unconfirmed txs: %d", int(noTxs)-noConfirmed)
+		if noError > 0 {
+			appUI.Warn("Txs with query errors (excluded from counts above): %d", noError)
+		}
 	},
 }
 
@@ -96,7 +96,12 @@ var transactionInfoMsigCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Print all information about a multisig init",
 	Long:  ``,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return cmdutil.CommonNetworkPreprocess(appUI, cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+
 		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
 		if err != nil {
 			return
@@ -123,7 +128,7 @@ var transactionInfoMsigCmd = &cobra.Command{
 			return
 		}
 
-		cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, config.Network(), cmdutil.DefaultABIResolver{})
+		cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, config.Network(), cmdutil.DefaultABIResolver{}, tc.Analyzer)
 	},
 }
 
@@ -260,15 +265,17 @@ func GetApproverAccountFromMsig(multisigContract *msig.MultisigContract) (string
 	for _, owner := range owners {
 		a, err := accounts.GetAccount(owner)
 		if err == nil {
-			acc = a
+			if count == 0 {
+				acc = a // capture only the first matching wallet
+			}
 			count++
 		}
 	}
 	if count == 0 {
 		return "", fmt.Errorf("you don't have any wallet which is this multisig signer. please jarvis wallet add to add the wallet")
 	}
-	if count != 1 {
-		appUI.Warn("you have many wallets that are this multisig signers. selecting the last one")
+	if count > 1 {
+		appUI.Warn("You have %d wallets that are signers of this multisig. Using the first one found: %s", count, acc.Address)
 	}
 	return acc.Address, nil
 }
@@ -328,7 +335,7 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
-			_, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{})
+			_, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
 			if executed {
 				appUI.Warn("This tx is already executed. You don't have to approve it anymore. Continue with next tx.")
 				continue
@@ -469,8 +476,9 @@ var newMsigCmd = &cobra.Command{
 			strings.ToLower(cAddr): msigABI,
 		}
 
-		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateExactGas(tc.From, "", 0, tc.Value, bytecode)
+		gasLimit := config.GasLimit
+		if gasLimit == 0 {
+			gasLimit, err = reader.EstimateExactGas(tc.From, "", 0, tc.Value, bytecode)
 			if err != nil {
 				appUI.Error("Couldn't estimate gas limit: %s", err)
 				return
@@ -480,7 +488,7 @@ var newMsigCmd = &cobra.Command{
 			tc.TxType,
 			tc.Nonce,
 			tc.Value,
-			config.GasLimit+config.ExtraGasLimit,
+			gasLimit+config.ExtraGasLimit,
 			tc.GasPrice+config.ExtraGasPrice,
 			tc.TipGas+config.ExtraTipGas,
 			bytecode,
@@ -582,8 +590,9 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 
-		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, txdata)
+		gasLimit := config.GasLimit
+		if gasLimit == 0 {
+			gasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, txdata)
 			if err != nil {
 				appUI.Error("Couldn't estimate gas limit: %s", err)
 				return
@@ -595,7 +604,7 @@ var initMsigCmd = &cobra.Command{
 			tc.Nonce,
 			tc.To,
 			tc.Value,
-			config.GasLimit+config.ExtraGasLimit,
+			gasLimit+config.ExtraGasLimit,
 			tc.GasPrice+config.ExtraGasPrice,
 			tc.TipGas+config.ExtraTipGas,
 			txdata,

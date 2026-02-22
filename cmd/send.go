@@ -205,92 +205,87 @@ func sendFromMsig(reader utilreader.Reader, analyzer util.TxAnalyzer, resolver c
 		}
 	}
 
-	var (
-		txdata    []byte
-		amountWei *big.Int
-	)
-
-	gasLimit := config.GasLimit
-	if gasLimit == 0 {
-		if tokenAddrLocal == util.ETH_ADDR {
-			if amountStr == "ALL" {
-				ethBalance, err := reader.GetBalance(msigContractAddr)
-				if err != nil {
-					appUI.Error("Couldn't get balance of the multisig: %s", err)
-					return
-				}
-				amountWei = ethBalance
-			} else {
-				amountWei, err = jarviscommon.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
-				if err != nil {
-					appUI.Error("Couldn't calculate the amount: %s", err)
-					return
-				}
-			}
-
-			msigABI := util.GetGnosisMsigABI()
-			txdata, err = msigABI.Pack(
-				"submitTransaction",
-				jarviscommon.HexToAddress(toAddr),
-				amountWei,
-				cmdutil.StringParamToBytes(data),
-			)
+	// Resolve amountWei — must happen regardless of whether the user supplied a gas limit.
+	var amountWei *big.Int
+	if tokenAddrLocal == util.ETH_ADDR {
+		if amountStr == "ALL" {
+			ethBalance, err := reader.GetBalance(msigContractAddr)
 			if err != nil {
-				appUI.Error("Couldn't pack tx data 1: %s", err)
+				appUI.Error("Couldn't get balance of the multisig: %s", err)
 				return
 			}
-
-			gasLimit, err = reader.EstimateExactGas(fromAddr, msigContractAddr, 0, big.NewInt(0), txdata)
+			amountWei = ethBalance
+		} else {
+			amountWei, err = jarviscommon.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
 			if err != nil {
-				appUI.Error("Getting estimated gas for the tx failed: %s", err)
+				appUI.Error("Couldn't calculate the amount: %s", err)
+				return
+			}
+		}
+	} else {
+		if amountStr == "ALL" {
+			amountWei, err = reader.ERC20Balance(tokenAddrLocal, msigContractAddr)
+			if err != nil {
+				appUI.Error("Couldn't read balance of the multisig: %s", err)
 				return
 			}
 		} else {
-			var innerData []byte
-			if amountStr == "ALL" {
-				amountWei, err = reader.ERC20Balance(tokenAddrLocal, msigContractAddr)
-				if err != nil {
-					appUI.Error("Couldn't read balance of the multisig: %s", err)
-				}
-				innerData, err = jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
-				if err != nil {
-					appUI.Error("Couldn't pack transfer data: %s", err)
-					return
-				}
-			} else {
-				decimals, err := reader.ERC20Decimal(tokenAddrLocal)
-				if err != nil {
-					appUI.Error("Couldn't get token decimal: %s", err)
-					return
-				}
-				amountWei, err = jarviscommon.FloatStringToBig(amountStr, decimals)
-				if err != nil {
-					appUI.Error("Couldn't calculate amount in wei: %s", err)
-					return
-				}
-				innerData, err = jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
-				if err != nil {
-					appUI.Error("Couldn't pack transfer data: %s", err)
-					return
-				}
+			decimals, err := reader.ERC20Decimal(tokenAddrLocal)
+			if err != nil {
+				appUI.Error("Couldn't get token decimal: %s", err)
+				return
 			}
+			amountWei, err = jarviscommon.FloatStringToBig(amountStr, decimals)
+			if err != nil {
+				appUI.Error("Couldn't calculate amount in wei: %s", err)
+				return
+			}
+		}
+	}
 
-			msigABI := util.GetGnosisMsigABI()
-			txdata, err = msigABI.Pack(
-				"submitTransaction",
-				jarviscommon.HexToAddress(tokenAddrLocal),
-				big.NewInt(0),
-				innerData,
-			)
-			if err != nil {
-				appUI.Error("Couldn't pack tx data 2: %s", err)
-				return
-			}
+	// Pack txdata — also must happen regardless of gas limit.
+	var txdata []byte
+	msigABI := util.GetGnosisMsigABI()
+	if tokenAddrLocal == util.ETH_ADDR {
+		txdata, err = msigABI.Pack(
+			"submitTransaction",
+			jarviscommon.HexToAddress(toAddr),
+			amountWei,
+			cmdutil.StringParamToBytes(data),
+		)
+		if err != nil {
+			appUI.Error("Couldn't pack tx data: %s", err)
+			return
+		}
+	} else {
+		innerData, err := jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
+		if err != nil {
+			appUI.Error("Couldn't pack transfer data: %s", err)
+			return
+		}
+		txdata, err = msigABI.Pack(
+			"submitTransaction",
+			jarviscommon.HexToAddress(tokenAddrLocal),
+			big.NewInt(0),
+			innerData,
+		)
+		if err != nil {
+			appUI.Error("Couldn't pack tx data: %s", err)
+			return
+		}
+	}
+
+	// Gas estimation — only when the user has not provided a value.
+	gasLimit := config.GasLimit
+	if gasLimit == 0 {
+		if tokenAddrLocal == util.ETH_ADDR {
+			gasLimit, err = reader.EstimateExactGas(fromAddr, msigContractAddr, 0, big.NewInt(0), txdata)
+		} else {
 			gasLimit, err = reader.EstimateGas(fromAddr, msigContractAddr, gasPrice+config.ExtraGasPrice, 0, txdata)
-			if err != nil {
-				appUI.Error("Couldn't estimate gas: %s", err)
-				return
-			}
+		}
+		if err != nil {
+			appUI.Error("Couldn't estimate gas: %s", err)
+			return
 		}
 	}
 

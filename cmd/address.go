@@ -14,11 +14,15 @@ var addressCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		para := strings.Join(args, " ")
-		addrs, names, _ := util.GetMatchingAddresses(para)
-		appUI.Info("Addresses")
+		addrs, names, err := util.GetMatchingAddresses(para)
+		if err != nil || len(addrs) == 0 {
+			appUI.Warn("No matching addresses found for \"%s\"", para)
+			return
+		}
+		appUI.Info("Found %d matching address(es):", len(addrs))
 		appUI.Info("-----------------------")
 		for i, addr := range addrs {
-			appUI.Info("%s: %s", addr, names[i])
+			appUI.Info("%d. %s (%s)", i+1, addr, names[i])
 		}
 	},
 }
