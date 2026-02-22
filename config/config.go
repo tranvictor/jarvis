@@ -1,10 +1,8 @@
 package config
 
 import (
-	"math/big"
 	"sync"
 
-	"github.com/tranvictor/jarvis/accounts/types"
 	"github.com/tranvictor/jarvis/networks"
 )
 
@@ -51,17 +49,12 @@ var (
 	ExtraGasLimit uint64
 	Nonce         uint64
 	From          string
-	FromAcc       types.AccDesc
 	To            string
-	Value         *big.Int
 	RawValue      string
 	MethodIndex   uint64
-	PrefillMode   bool
 	PrefillStr    string
-	PrefillParams []string
 	NoFuncCall    bool
 	Tx            string
-	TxType        uint8
 
 	AllZeroParamsMethods bool
 	AtBlock              int64

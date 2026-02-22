@@ -101,13 +101,14 @@ Param rules:
 			return
 		}
 
+		tc, _ := cmdutil.TxContextFrom(cmd)
 		data, err := cmdutil.PromptTxData(
 			appUI,
 			analyzer,
 			contractAddress,
 			config.MethodIndex,
-			config.PrefillParams,
-			config.PrefillMode,
+			tc.PrefillParams,
+			tc.PrefillMode,
 			a,
 			nil,
 			config.Network(),
@@ -136,6 +137,8 @@ var txContractCmd = &cobra.Command{
 		return cmdutil.CommonTxPreprocess(appUI, cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+
 		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			appUI.Error("Couldn't init eth reader: %s", err)
@@ -144,19 +147,19 @@ var txContractCmd = &cobra.Command{
 
 		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-		a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
+		a, err := util.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
-			appUI.Error("Couldn't get abi for %s: %s", config.To, err)
+			appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 			return
 		}
 
 		data, err := cmdutil.PromptTxData(
 			appUI,
 			analyzer,
-			config.To,
+			tc.To,
 			config.MethodIndex,
-			config.PrefillParams,
-			config.PrefillMode,
+			tc.PrefillParams,
+			tc.PrefillMode,
 			a,
 			nil,
 			config.Network(),
@@ -169,7 +172,7 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, 0, config.Value, data)
+			config.GasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, data)
 			if err != nil {
 				appUI.Error("Couldn't estimate gas limit: %s", err)
 				return
@@ -177,23 +180,23 @@ var txContractCmd = &cobra.Command{
 		}
 
 		tx := jarviscommon.BuildExactTx(
-			config.TxType,
-			config.Nonce,
-			config.To,
-			config.Value,
+			tc.TxType,
+			tc.Nonce,
+			tc.To,
+			tc.Value,
 			config.GasLimit+config.ExtraGasLimit,
-			config.GasPrice+config.ExtraGasPrice,
-			config.TipGas+config.ExtraTipGas,
+			tc.GasPrice+config.ExtraGasPrice,
+			tc.TipGas+config.ExtraTipGas,
 			data,
 			config.Network().GetChainID(),
 		)
 		err = cmdutil.PromptTxConfirmation(
 			appUI,
 			analyzer,
-			util.GetJarvisAddress(config.From, config.Network()),
+			util.GetJarvisAddress(tc.From, config.Network()),
 			tx,
 			map[string]*abi.ABI{
-				strings.ToLower(config.To): a,
+				strings.ToLower(tc.To): a,
 			},
 			config.Network(),
 		)
@@ -202,7 +205,7 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 		appUI.Info("Unlock your wallet and sign now...")
-		account, err := accounts.UnlockAccount(config.FromAcc)
+		account, err := accounts.UnlockAccount(tc.FromAcc)
 		if err != nil {
 			appUI.Error("Unlock your wallet failed: %s", err)
 			return
@@ -213,10 +216,10 @@ var txContractCmd = &cobra.Command{
 			appUI.Error("%s", err)
 			return
 		}
-		if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
+		if signedAddr.Cmp(jarviscommon.HexToAddress(tc.FromAcc.Address)) != 0 {
 			appUI.Error(
 				"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
-				config.FromAcc.Address,
+				tc.FromAcc.Address,
 				signedAddr.Hex(),
 			)
 			return
@@ -229,8 +232,8 @@ var txContractCmd = &cobra.Command{
 	},
 }
 
-func handleReadOneFunctionOnContract(r *reader.EthReader, a *abi.ABI, atBlock int64, method *abi.Method, params []interface{}) (contractReadResult, error) {
-	responseBytes, err := r.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", config.To, a, method.Name, params...)
+func handleReadOneFunctionOnContract(r *reader.EthReader, a *abi.ABI, atBlock int64, to string, method *abi.Method, params []interface{}) (contractReadResult, error) {
+	responseBytes, err := r.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", to, a, method.Name, params...)
 	if err != nil {
 		appUI.Error("getting response failed: %s", err)
 		return contractReadResult{}, err
@@ -358,6 +361,8 @@ var readContractCmd = &cobra.Command{
 		return cmdutil.CommonFunctionCallPreprocess(appUI, cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+
 		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			appUI.Error("Couldn't init eth reader: %s", err)
@@ -373,9 +378,9 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
+			a, err := util.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
-				appUI.Error("Couldn't get abi for %s: %s", config.To, err)
+				appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 				return
 			}
 
@@ -385,7 +390,7 @@ var readContractCmd = &cobra.Command{
 				resultJSON.Functions = append(resultJSON.Functions, method.Name)
 				appUI.Info("%d. %s", i+1, method.Name)
 
-				result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, &method, []interface{}{})
+				result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, tc.To, &method, []interface{}{})
 				if err != nil {
 					resultJSON.Results = append(resultJSON.Results, contractReadResultJSON{
 						Error: fmt.Sprintf("%s", err),
@@ -409,19 +414,19 @@ var readContractCmd = &cobra.Command{
 
 			analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
+			a, err := util.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
-				appUI.Error("Couldn't get abi for %s: %s", config.To, err)
+				appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 				return
 			}
 
 			method, params, err := cmdutil.PromptFunctionCallData(
 				appUI,
 				analyzer,
-				config.To,
+				tc.To,
 				config.MethodIndex,
-				config.PrefillParams,
-				config.PrefillMode,
+				tc.PrefillParams,
+				tc.PrefillMode,
 				"read",
 				a,
 				nil,
@@ -432,7 +437,7 @@ var readContractCmd = &cobra.Command{
 				resultJSON.Error = fmt.Sprintf("%s", err)
 				return
 			}
-			result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, method, params)
+			result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, tc.To, method, params)
 
 			if err != nil {
 				resultJSON.Error = fmt.Sprintf("%s", err)

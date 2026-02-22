@@ -351,15 +351,7 @@ var batchApproveMsigCmd = &cobra.Command{
 				return
 			}
 
-			if txType == types.LegacyTxType && config.TxType == types.DynamicFeeTxType {
-				jarviscommon.DebugPrintf("The %s network doesn't support dynamic fee transaction, ignore tx type in cmd parameters", network.GetName())
-			}
-
-			if txType == types.DynamicFeeTxType && config.TxType == types.LegacyTxType {
-				txType = config.TxType
-			}
-
-			if config.TxType == types.LegacyTxType && config.TipGas > 0 {
+			if txType == types.LegacyTxType && config.TipGas > 0 {
 				appUI.Warn("We are doing legacy tx hence we ignore tip gas parameter.")
 			}
 
@@ -440,6 +432,8 @@ var newMsigCmd = &cobra.Command{
 		return cmdutil.CommonTxPreprocess(appUI, cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+
 		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			appUI.Error("Couldn't connect to blockchain.")
@@ -450,15 +444,15 @@ var newMsigCmd = &cobra.Command{
 
 		msigABI := util.GetGnosisMsigABI()
 
-		cAddr := crypto.CreateAddress(jarviscommon.HexToAddress(config.From), config.Nonce).Hex()
+		cAddr := crypto.CreateAddress(jarviscommon.HexToAddress(tc.From), tc.Nonce).Hex()
 
 		data, err := cmdutil.PromptTxData(
 			appUI,
 			analyzer,
 			cAddr,
 			cmdutil.CONSTRUCTOR_METHOD_INDEX,
-			config.PrefillParams,
-			config.PrefillMode,
+			tc.PrefillParams,
+			tc.PrefillMode,
 			msigABI,
 			nil,
 			config.Network(),
@@ -479,19 +473,19 @@ var newMsigCmd = &cobra.Command{
 		}
 
 		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateExactGas(config.From, "", 0, config.Value, bytecode)
+			config.GasLimit, err = reader.EstimateExactGas(tc.From, "", 0, tc.Value, bytecode)
 			if err != nil {
 				appUI.Error("Couldn't estimate gas limit: %s", err)
 				return
 			}
 		}
 		tx := jarviscommon.BuildContractCreationTx(
-			config.TxType,
-			config.Nonce,
-			config.Value,
+			tc.TxType,
+			tc.Nonce,
+			tc.Value,
 			config.GasLimit+config.ExtraGasLimit,
-			config.GasPrice+config.ExtraGasPrice,
-			config.TipGas+config.ExtraTipGas,
+			tc.GasPrice+config.ExtraGasPrice,
+			tc.TipGas+config.ExtraTipGas,
 			bytecode,
 			config.Network().GetChainID(),
 		)
@@ -499,7 +493,7 @@ var newMsigCmd = &cobra.Command{
 		err = cmdutil.PromptTxConfirmation(
 			appUI,
 			analyzer,
-			util.GetJarvisAddress(config.From, config.Network()),
+			util.GetJarvisAddress(tc.From, config.Network()),
 			tx,
 			customABIs,
 			config.Network(),
@@ -510,7 +504,7 @@ var newMsigCmd = &cobra.Command{
 		}
 
 		appUI.Info("Unlock your wallet and sign now...")
-		account, err := accounts.UnlockAccount(config.FromAcc)
+		account, err := accounts.UnlockAccount(tc.FromAcc)
 		if err != nil {
 			appUI.Error("Failed: %s", err)
 			return
@@ -521,10 +515,10 @@ var newMsigCmd = &cobra.Command{
 			appUI.Error("Failed to sign tx: %s", err)
 			return
 		}
-		if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
+		if signedAddr.Cmp(jarviscommon.HexToAddress(tc.FromAcc.Address)) != 0 {
 			appUI.Error(
 				"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
-				config.FromAcc.Address,
+				tc.FromAcc.Address,
 				signedAddr.Hex(),
 			)
 			return
@@ -559,6 +553,8 @@ var initMsigCmd = &cobra.Command{
 		return nil
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+
 		reader, err := util.EthReader(config.Network())
 		if err != nil {
 			appUI.Error("Couldn't connect to blockchain.")
@@ -579,8 +575,8 @@ var initMsigCmd = &cobra.Command{
 				analyzer,
 				config.MsigTo,
 				config.MethodIndex,
-				config.PrefillParams,
-				config.PrefillMode,
+				tc.PrefillParams,
+				tc.PrefillMode,
 				a,
 				nil,
 				config.Network(),
@@ -592,19 +588,19 @@ var initMsigCmd = &cobra.Command{
 			}
 		}
 
-		msigABI, err := util.GetABI(config.To, config.Network())
+		msigABI, err := util.GetABI(tc.To, config.Network())
 		if err != nil {
 			appUI.Error("Couldn't get the multisig's ABI: %s", err)
 			return
 		}
 
 		if config.Simulate {
-			multisigContract, err := msig.NewMultisigContract(config.To, config.Network())
+			multisigContract, err := msig.NewMultisigContract(tc.To, config.Network())
 			if err != nil {
 				appUI.Error("Couldn't interact with the contract: %s", err)
 				return
 			}
-			err = multisigContract.SimulateSubmit(config.From, config.MsigTo, jarviscommon.FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()), data)
+			err = multisigContract.SimulateSubmit(tc.From, config.MsigTo, jarviscommon.FloatToBigInt(config.MsigValue, config.Network().GetNativeTokenDecimal()), data)
 			if err != nil {
 				appUI.Error("Could not simulate interact with the contract: %s", err)
 				return
@@ -623,7 +619,7 @@ var initMsigCmd = &cobra.Command{
 		}
 
 		if config.GasLimit == 0 {
-			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, 0, config.Value, txdata)
+			config.GasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, txdata)
 			if err != nil {
 				appUI.Error("Couldn't estimate gas limit: %s", err)
 				return
@@ -631,25 +627,25 @@ var initMsigCmd = &cobra.Command{
 		}
 
 		tx := jarviscommon.BuildExactTx(
-			config.TxType,
-			config.Nonce,
-			config.To,
-			config.Value,
+			tc.TxType,
+			tc.Nonce,
+			tc.To,
+			tc.Value,
 			config.GasLimit+config.ExtraGasLimit,
-			config.GasPrice+config.ExtraGasPrice,
-			config.TipGas+config.ExtraTipGas,
+			tc.GasPrice+config.ExtraGasPrice,
+			tc.TipGas+config.ExtraTipGas,
 			txdata,
 			config.Network().GetChainID(),
 		)
 
 		customABIs := map[string]*abi.ABI{
 			strings.ToLower(config.MsigTo): a,
-			strings.ToLower(config.To):     msigABI,
+			strings.ToLower(tc.To):         msigABI,
 		}
 		err = cmdutil.PromptTxConfirmation(
 			appUI,
 			analyzer,
-			util.GetJarvisAddress(config.From, config.Network()),
+			util.GetJarvisAddress(tc.From, config.Network()),
 			tx,
 			customABIs,
 			config.Network(),
@@ -660,7 +656,7 @@ var initMsigCmd = &cobra.Command{
 		}
 
 		appUI.Info("Unlock your wallet and sign now...")
-		account, err := accounts.UnlockAccount(config.FromAcc)
+		account, err := accounts.UnlockAccount(tc.FromAcc)
 		if err != nil {
 			appUI.Error("Failed: %s", err)
 			return
@@ -671,10 +667,10 @@ var initMsigCmd = &cobra.Command{
 			appUI.Error("Failed to sign tx: %s", err)
 			return
 		}
-		if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
+		if signedAddr.Cmp(jarviscommon.HexToAddress(tc.FromAcc.Address)) != 0 {
 			appUI.Error(
 				"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
-				config.FromAcc.Address,
+				tc.FromAcc.Address,
 				signedAddr.Hex(),
 			)
 			return

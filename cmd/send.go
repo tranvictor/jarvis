@@ -227,12 +227,12 @@ func sendFromMsig() {
 		return
 	}
 
-	var acc types2.AccDesc
+	var fromAcc types2.AccDesc
 	count := 0
 	for _, owner := range owners {
 		a, err := accounts.GetAccount(owner)
 		if err == nil {
-			acc = a
+			fromAcc = a
 			count++
 			break
 		}
@@ -242,8 +242,7 @@ func sendFromMsig() {
 		return
 	}
 
-	config.FromAcc = acc
-	config.From = acc.Address
+	config.From = fromAcc.Address
 
 	amountStr, currency, err := util.ValueToAmountAndCurrency(value)
 	if err != nil {
@@ -389,12 +388,13 @@ func sendFromMsig() {
 		}
 	}
 
-	handleMsigSend(
-		config.TxType,
-		config.FromAcc,
-		config.To,
-		txdata,
-	)
+	txType, err := cmdutil.ValidTxType(reader, config.Network())
+	if err != nil {
+		appUI.Error("Couldn't determine proper tx type: %s", err)
+		return
+	}
+
+	handleMsigSend(txType, fromAcc, config.To, txdata)
 }
 
 func init() {
@@ -423,7 +423,7 @@ exact addresses start with 0x.`,
 				return
 			}
 
-			config.FromAcc = acc
+			fromAcc := acc
 			config.From = acc.Address
 
 			amountStr, currency, err = util.ValueToAmountAndCurrency(value)
@@ -468,18 +468,18 @@ exact addresses start with 0x.`,
 				}
 			}
 
-			config.TxType, err = cmdutil.ValidTxType(reader, config.Network())
+			txType, err := cmdutil.ValidTxType(reader, config.Network())
 			if err != nil {
 				appUI.Error("Couldn't determine proper tx type: %s", err)
 				return
 			}
 
-			if config.TxType == types.LegacyTxType && config.TipGas > 0 {
+			if txType == types.LegacyTxType && config.TipGas > 0 {
 				appUI.Warn("We are doing legacy tx hence we ignore tip gas parameter.")
 				return
 			}
 
-			if config.TxType == types.DynamicFeeTxType {
+			if txType == types.DynamicFeeTxType {
 				if config.TipGas == 0 {
 					config.TipGas, err = reader.GetSuggestedGasTipCap()
 					if err != nil {
@@ -580,8 +580,8 @@ exact addresses start with 0x.`,
 			}
 
 			handleSend(
-				config.TxType,
-				config.FromAcc,
+				txType,
+				fromAcc,
 				to,
 				amountWei,
 				tokenAddr,

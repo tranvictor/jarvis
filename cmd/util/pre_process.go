@@ -12,43 +12,44 @@ import (
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
 
-// CommonFunctionCallPreprocess processes args passed to the command in order to
-// initiate config's variables in a conventional way across many Function Call alike
-// commands.
+// CommonFunctionCallPreprocess populates a TxContext with the values derivable
+// from the function-call arguments: target address, parsed value, prefill params,
+// and an optional TxInfo when the argument is a tx hash. It attaches the context
+// to the cobra command so Run functions can retrieve it via TxContextFrom.
 func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) {
 	if err = config.SetNetwork(config.NetworkString); err != nil {
 		return err
 	}
 	u.Info("Network: %s", config.Network().GetName())
 
-	config.PrefillStr = strings.Trim(config.PrefillStr, " ")
-	if config.PrefillStr != "" {
-		config.PrefillMode = true
-		config.PrefillParams = strings.Split(config.PrefillStr, "|")
-		for i := range config.PrefillParams {
-			config.PrefillParams[i] = strings.Trim(config.PrefillParams[i], " ")
+	tc := TxContext{}
+
+	prefillStr := strings.Trim(config.PrefillStr, " ")
+	if prefillStr != "" {
+		tc.PrefillMode = true
+		tc.PrefillParams = strings.Split(prefillStr, "|")
+		for i := range tc.PrefillParams {
+			tc.PrefillParams[i] = strings.Trim(tc.PrefillParams[i], " ")
 		}
 	}
 
-	config.Value, err = jarviscommon.FloatStringToBig(config.RawValue, 18)
+	tc.Value, err = jarviscommon.FloatStringToBig(config.RawValue, 18)
 	if err != nil {
 		return fmt.Errorf("couldn't parse -v param: %s", err)
 	}
-
-	if config.Value.Cmp(big.NewInt(0)) < 0 {
+	if tc.Value.Cmp(big.NewInt(0)) < 0 {
 		return fmt.Errorf("-v param can't be negative")
 	}
 
 	if len(args) == 0 {
-		config.To = "" // this is to indicate a contract creation tx
+		tc.To = "" // contract creation tx
 	} else {
-		config.To, _, err = util.GetAddressFromString(args[0])
+		tc.To, _, err = util.GetAddressFromString(args[0])
 		if err != nil {
 			nwks, txs := ScanForTxs(args[0])
 			if len(txs) == 0 {
@@ -56,8 +57,7 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 			}
 			config.Tx = txs[0]
 			if nwks[0] != "" {
-				err = config.SetNetwork(nwks[0])
-				if err != nil {
+				if err = config.SetNetwork(nwks[0]); err != nil {
 					return err
 				}
 			}
@@ -71,39 +71,38 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 			if err != nil {
 				return fmt.Errorf("couldn't get tx info from the blockchain: %w", err)
 			}
-			state.TxInfo = &txinfo
-			config.To = state.TxInfo.Tx.To().Hex()
+			tc.TxInfo = &txinfo
+			tc.To = tc.TxInfo.Tx.To().Hex()
 		}
 	}
 
+	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil
 }
 
-// CommonTxPreprocess processes args passed to the command in order to
-// initiate config's variables in a conventional way across many commands
-// that do txs.
+// CommonTxPreprocess extends CommonFunctionCallPreprocess by also resolving the
+// signing account and fetching gas/nonce parameters. It overwrites the TxContext
+// attached to cmd by CommonFunctionCallPreprocess.
 func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) {
-	err = CommonFunctionCallPreprocess(u, cmd, args)
-	if err != nil {
+	if err = CommonFunctionCallPreprocess(u, cmd, args); err != nil {
 		return err
 	}
 
-	a, err := util.GetABI(config.To, config.Network())
+	tc, _ := TxContextFrom(cmd)
+
+	a, err := util.GetABI(tc.To, config.Network())
 	if err != nil {
 		if config.ForceERC20ABI {
 			a = jarviscommon.GetERC20ABI()
 		} else if config.CustomABI != "" {
-			a, err = util.ReadCustomABI(config.To, config.CustomABI, config.Network())
+			a, err = util.ReadCustomABI(tc.To, config.CustomABI, config.Network())
 			if err != nil {
 				return fmt.Errorf("reading custom abi failed: %w", err)
 			}
 		}
 	}
 
-	// loosely check by checking a set of method names
-
 	isGnosisMultisig := false
-
 	if err == nil {
 		isGnosisMultisig, err = util.IsGnosisMultisig(a)
 		if err != nil {
@@ -111,11 +110,9 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 		}
 	}
 
+	var fromAcc jtypes.AccDesc
 	if config.From == "" && isGnosisMultisig {
-		multisigContract, err := msig.NewMultisigContract(
-			config.To,
-			config.Network(),
-		)
+		multisigContract, err := msig.NewMultisigContract(tc.To, config.Network())
 		if err != nil {
 			return err
 		}
@@ -124,12 +121,11 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 			return fmt.Errorf("getting msig owners failed: %w", err)
 		}
 
-		var acc jtypes.AccDesc
 		count := 0
 		for _, owner := range owners {
-			a, err := accounts.GetAccount(owner)
+			acc, err := accounts.GetAccount(owner)
 			if err == nil {
-				acc = a
+				fromAcc = acc
 				count++
 			}
 		}
@@ -143,63 +139,59 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 				"you have many wallets that are this multisig signers. please specify only 1",
 			)
 		}
-		config.FromAcc = acc
-		config.From = acc.Address
-
 	} else {
-		// process from to get address
-		acc, err := accounts.GetAccount(config.From)
+		fromAcc, err = accounts.GetAccount(config.From)
 		if err != nil {
 			return err
-		} else {
-			config.FromAcc = acc
-			config.From = acc.Address
 		}
-
 	}
+
+	tc.FromAcc = fromAcc
+	tc.From = fromAcc.Address
 
 	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		return err
 	}
 
-	// config.GasPrice, err = util.FloatStringToBig(config.RawGasPrice, 9)
-	// if err != nil {
-	// 	return fmt.Errorf("couldn't parse gas price param: %s", err)
-	// }
-
 	if config.GasPrice == 0 {
-		config.GasPrice, err = reader.RecommendedGasPrice()
+		tc.GasPrice, err = reader.RecommendedGasPrice()
 		if err != nil {
 			return fmt.Errorf("getting recommended gas price failed: %w", err)
 		}
+	} else {
+		tc.GasPrice = config.GasPrice
 	}
 
-	// var Nonce uint64
 	if config.Nonce == 0 {
-		config.Nonce, err = reader.GetMinedNonce(config.From)
+		tc.Nonce, err = reader.GetMinedNonce(tc.From)
 		if err != nil {
 			return fmt.Errorf("getting nonce failed: %w", err)
 		}
+	} else {
+		tc.Nonce = config.Nonce
 	}
 
-	config.TxType, err = ValidTxType(reader, config.Network())
+	tc.TxType, err = ValidTxType(reader, config.Network())
 	if err != nil {
 		return fmt.Errorf("couldn't determine proper tx type: %w", err)
 	}
 
-	if config.TxType == types.LegacyTxType && config.TipGas > 0 {
+	if tc.TxType == types.LegacyTxType && config.TipGas > 0 {
 		return fmt.Errorf("we are doing legacy tx hence we ignore tip gas parameter")
 	}
 
-	if config.TxType == types.DynamicFeeTxType {
+	if tc.TxType == types.DynamicFeeTxType {
 		if config.TipGas == 0 {
-			config.TipGas, err = reader.GetSuggestedGasTipCap()
+			tc.TipGas, err = reader.GetSuggestedGasTipCap()
 			if err != nil {
 				return fmt.Errorf("couldn't estimate recommended gas price: %w", err)
 			}
+		} else {
+			tc.TipGas = config.TipGas
 		}
 	}
 
+	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil
 }

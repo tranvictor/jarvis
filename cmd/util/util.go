@@ -19,7 +19,6 @@ import (
 	"github.com/tranvictor/jarvis/accounts"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
@@ -195,6 +194,8 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	args []string,
 	postProcess PostProcessFunc,
 ) {
+	tc, _ := TxContextFrom(cmd)
+
 	reader, err := util.EthReader(config.Network())
 	if err != nil {
 		u.Error("Couldn't connect to blockchain.")
@@ -204,6 +205,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
 	var txid *big.Int
+	var txInfo *jarviscommon.TxInfo
 
 	if config.Tx == "" {
 		nwks, txs := ScanForTxs(args[1])
@@ -225,20 +227,21 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	}
 
 	if txid == nil {
-		if state.TxInfo == nil {
+		txInfo = tc.TxInfo
+		if txInfo == nil {
 			txinfo, err := reader.TxInfoFromHash(config.Tx)
 			if err != nil {
 				u.Error("Couldn't get tx info from the blockchain: %s", err)
 				return
 			}
-			state.TxInfo = &txinfo
+			txInfo = &txinfo
 		}
-		if state.TxInfo.Receipt == nil {
+		if txInfo.Receipt == nil {
 			u.Error("Can't get receipt of the init tx. That tx might still be pending.")
 			return
 		}
-		for _, l := range state.TxInfo.Receipt.Logs {
-			if strings.EqualFold(l.Address.Hex(), config.To) &&
+		for _, l := range txInfo.Receipt.Logs {
+			if strings.EqualFold(l.Address.Hex(), tc.To) &&
 				l.Topics[0].Hex() == "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51" {
 				txid = l.Topics[1].Big()
 				break
@@ -250,10 +253,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		}
 	}
 
-	multisigContract, err := msig.NewMultisigContract(
-		config.To,
-		config.Network(),
-	)
+	multisigContract, err := msig.NewMultisigContract(tc.To, config.Network())
 	if err != nil {
 		u.Error("Couldn't interact with the contract: %s", err)
 		return
@@ -269,9 +269,9 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	a, err := util.GetABI(config.To, config.Network())
+	a, err := util.GetABI(tc.To, config.Network())
 	if err != nil {
-		u.Error("Couldn't get the ABI for %s: %s", config.To, err)
+		u.Error("Couldn't get the ABI for %s: %s", tc.To, err)
 		return
 	}
 
@@ -282,13 +282,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	}
 
 	if config.GasLimit == 0 {
-		config.GasLimit, err = reader.EstimateExactGas(
-			config.From,
-			config.To,
-			0,
-			config.Value,
-			data,
-		)
+		config.GasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, data)
 		if err != nil {
 			u.Error("Couldn't estimate gas limit: %s", err)
 			return
@@ -296,13 +290,13 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	}
 
 	tx := jarviscommon.BuildExactTx(
-		config.TxType,
-		config.Nonce,
-		config.To,
-		config.Value,
+		tc.TxType,
+		tc.Nonce,
+		tc.To,
+		tc.Value,
 		config.GasLimit+config.ExtraGasLimit,
-		config.GasPrice+config.ExtraGasPrice,
-		config.TipGas,
+		tc.GasPrice+config.ExtraGasPrice,
+		tc.TipGas,
 		data,
 		config.Network().GetChainID(),
 	)
@@ -310,7 +304,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	err = PromptTxConfirmation(
 		u,
 		analyzer,
-		util.GetJarvisAddress(config.From, config.Network()),
+		util.GetJarvisAddress(tc.From, config.Network()),
 		tx,
 		nil,
 		config.Network(),
@@ -321,7 +315,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	}
 
 	u.Info("Unlock your wallet and sign now...")
-	account, err := accounts.UnlockAccount(config.FromAcc)
+	account, err := accounts.UnlockAccount(tc.FromAcc)
 	if err != nil {
 		u.Error("Failed: %s", err)
 		return
@@ -335,10 +329,10 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		u.Error("Signing tx failed: %s", err)
 		return
 	}
-	if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
+	if signedAddr.Cmp(jarviscommon.HexToAddress(tc.FromAcc.Address)) != 0 {
 		u.Error(
 			"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
-			config.FromAcc.Address,
+			tc.FromAcc.Address,
 			signedAddr.Hex(),
 		)
 		return
