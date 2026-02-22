@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"math/big"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -23,33 +23,37 @@ import (
 	"github.com/tranvictor/jarvis/msig"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/reader"
 )
 
+// AnalyzeAndShowMsigTxInfo fetches a multisig transaction by ID, decodes and
+// displays its intent, confirmation status, and list of confirmers.
 func AnalyzeAndShowMsigTxInfo(
+	u ui.UI,
 	multisigContract *msig.MultisigContract,
 	txid *big.Int,
 	network jarvisnetworks.Network,
 ) (fc *jarviscommon.FunctionCall, confirmed bool, executed bool) {
-	fmt.Printf("========== What the multisig will do ==========\n")
+	u.Section("What the multisig will do")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
-		fmt.Printf("Couldn't get tx info: %s\n", err)
+		u.Error("Couldn't get tx info: %s", err)
 		return
 	}
 
 	requirement, err := multisigContract.VoteRequirement()
 	if err != nil {
-		fmt.Printf("Couldn't get msig requirement: %s\n", err)
+		u.Error("Couldn't get msig requirement: %s", err)
 		return
 	}
 
 	confirmed = len(confirmations) >= int(requirement)
 
 	if len(data) == 0 {
-		fmt.Printf(
-			"Sending: %f %s to %s\n",
+		u.Info(
+			"Sending: %f %s to %s",
 			jarviscommon.BigToFloat(value, network.GetNativeTokenDecimal()),
 			network.GetNativeTokenSymbol(),
 			jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)),
@@ -57,13 +61,13 @@ func AnalyzeAndShowMsigTxInfo(
 	} else {
 		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
 		if err != nil {
-			fmt.Printf("Couldn't get abi of destination address: %s\n", err)
+			u.Error("Couldn't get abi of destination address: %s", err)
 			return
 		}
 
 		analyzer, err := txanalyzer.EthAnalyzer(network)
 		if err != nil {
-			fmt.Printf("Couldn't analyze tx: %s\n", err)
+			u.Error("Couldn't analyze tx: %s", err)
 			return
 		}
 
@@ -80,28 +84,27 @@ func AnalyzeAndShowMsigTxInfo(
 				},
 			)
 			if funcCall.Error != "" {
-				fmt.Printf("This tx calls an unknown function from %s's ABI. Proceed with tx anyways.\n", address)
+				u.Error("This tx calls an unknown function from %s's ABI. Proceed with tx anyways.", address)
 				return
 			}
 
 			symbol, err := util.GetERC20Symbol(address, network)
 			if err != nil {
-				fmt.Printf("Getting the token's symbol failed: %s. Proceed with tx anyways.\n", err)
+				u.Error("Getting the token's symbol failed: %s. Proceed with tx anyways.", err)
 				return
 			}
 
 			decimal, err := util.GetERC20Decimal(address, network)
 			if err != nil {
-				fmt.Printf("Getting the token's decimal failed: %s. Proceed with tx anyways.\n", err)
+				u.Error("Getting the token's decimal failed: %s. Proceed with tx anyways.", err)
 				return
 			}
 
 			switch funcCall.Method {
 			case "transfer":
 				isStandardERC20Call = true
-
-				fmt.Printf(
-					"from: %s\nSending: %s %s (%s)\nto: %s\n",
+				u.Info(
+					"from: %s\nSending: %s %s (%s)\nto: %s",
 					jarviscommon.VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
 					jarviscommon.InfoColor(fmt.Sprintf("%f", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Value, decimal))),
 					jarviscommon.InfoColor(symbol),
@@ -110,9 +113,8 @@ func AnalyzeAndShowMsigTxInfo(
 				)
 			case "transferFrom":
 				isStandardERC20Call = true
-
-				fmt.Printf(
-					"from: %s\nSending: %f %s (%s)\nto: %s\n",
+				u.Info(
+					"from: %s\nSending: %f %s (%s)\nto: %s",
 					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
 					jarviscommon.StringToFloat(funcCall.Params[2].Values[0].Value, decimal),
 					symbol,
@@ -121,8 +123,8 @@ func AnalyzeAndShowMsigTxInfo(
 				)
 			case "approve":
 				isStandardERC20Call = true
-				fmt.Printf(
-					"approving %s to spend upto: %f %s (%s) from the multisig\n",
+				u.Info(
+					"approving %s to spend upto: %f %s (%s) from the multisig",
 					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
 					jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Value, decimal),
 					symbol,
@@ -132,8 +134,9 @@ func AnalyzeAndShowMsigTxInfo(
 		}
 
 		if !isStandardERC20Call {
-			fmt.Printf("Calling on %s:\n", jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)))
+			u.Info("Calling on %s:", jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)))
 			fc = util.AnalyzeMethodCallAndPrint(
+				u,
 				analyzer,
 				value,
 				address,
@@ -146,25 +149,27 @@ func AnalyzeAndShowMsigTxInfo(
 		}
 	}
 
-	fmt.Printf("===============================================\n\n")
-	fmt.Printf("========== Multisig transaction status ========\n")
-	fmt.Printf("Executed: %t\n", executed)
-	fmt.Printf("Confirmed: %t\n", confirmed)
-	fmt.Printf("Confirmations (among current owners):\n")
+	u.Section("Multisig transaction status")
+	u.Info("Executed: %t", executed)
+	u.Info("Confirmed: %t", confirmed)
+	u.Info("Confirmations (among current owners):")
 	for i, c := range confirmations {
 		_, name, err := util.GetMatchingAddress(c)
 		if err != nil {
-			fmt.Printf("%d. %s (Unknown)\n", i+1, c)
+			u.Info("%d. %s (Unknown)", i+1, c)
 		} else {
-			fmt.Printf("%d. %s (%s)\n", i+1, c, name)
+			u.Info("%d. %s (%s)", i+1, c, name)
 		}
 	}
 
 	return
 }
 
+// PostProcessFunc is a callback called with the decoded function call after
+// displaying a multisig transaction. Return an error to abort the flow.
 type PostProcessFunc func(fc *jarviscommon.FunctionCall) error
 
+// ScanForTxs scans para for network-prefixed or bare transaction hashes.
 func ScanForTxs(para string) (nwks []string, addresses []string) {
 	networkNames := jarvisnetworks.GetSupportedNetworkNames()
 	regexStr := strings.Join(networkNames, "|")
@@ -174,19 +179,17 @@ func ScanForTxs(para string) (nwks []string, addresses []string) {
 	)
 
 	re := regexp.MustCompile(regexStr)
-
-	// Find all matches
-	matches := re.FindAllStringSubmatch(para, -1)
-
-	for _, match := range matches {
+	for _, match := range re.FindAllStringSubmatch(para, -1) {
 		nwks = append(nwks, strings.ToLower(match[1]))
 		addresses = append(addresses, match[2])
 	}
-
 	return
 }
 
+// HandleApproveOrRevokeOrExecuteMsig handles the confirm / revoke / execute
+// flow for a Gnosis multisig transaction.
 func HandleApproveOrRevokeOrExecuteMsig(
+	u ui.UI,
 	method string,
 	cmd *cobra.Command,
 	args []string,
@@ -194,7 +197,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 ) {
 	reader, err := util.EthReader(config.Network())
 	if err != nil {
-		fmt.Printf("Couldn't connect to blockchain.\n")
+		u.Error("Couldn't connect to blockchain.")
 		return
 	}
 
@@ -207,14 +210,14 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		if len(txs) == 0 {
 			txid, err = util.ParamToBigInt(args[1])
 			if err != nil {
-				fmt.Printf("Invalid second param. It must be either init tx hash or tx id.\n")
+				u.Error("Invalid second param. It must be either init tx hash or tx id.")
 				return
 			}
 		} else {
 			config.Tx = txs[0]
 			if nwks[0] != "" {
 				if err = config.SetNetwork(nwks[0]); err != nil {
-					fmt.Printf("Not supported network: %s\n", err)
+					u.Error("Not supported network: %s", err)
 					return
 				}
 			}
@@ -225,27 +228,24 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		if state.TxInfo == nil {
 			txinfo, err := reader.TxInfoFromHash(config.Tx)
 			if err != nil {
-				fmt.Printf("Couldn't get tx info from the blockchain: %s\n", err)
+				u.Error("Couldn't get tx info from the blockchain: %s", err)
 				return
 			}
 			state.TxInfo = &txinfo
 		}
 		if state.TxInfo.Receipt == nil {
-			fmt.Printf("Can't get receipt of the init tx. That tx might still be pending.\n")
+			u.Error("Can't get receipt of the init tx. That tx might still be pending.")
 			return
 		}
 		for _, l := range state.TxInfo.Receipt.Logs {
 			if strings.EqualFold(l.Address.Hex(), config.To) &&
 				l.Topics[0].Hex() == "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51" {
-
 				txid = l.Topics[1].Big()
 				break
 			}
 		}
 		if txid == nil {
-			fmt.Printf(
-				"The provided tx hash is not a gnosis multisig init tx or with a different multisig.\n",
-			)
+			u.Error("The provided tx hash is not a gnosis multisig init tx or with a different multisig.")
 			return
 		}
 	}
@@ -255,11 +255,11 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		config.Network(),
 	)
 	if err != nil {
-		fmt.Printf("Couldn't interact with the contract: %s\n", err)
+		u.Error("Couldn't interact with the contract: %s", err)
 		return
 	}
 
-	fc, _, executed := AnalyzeAndShowMsigTxInfo(multisigContract, txid, config.Network())
+	fc, _, executed := AnalyzeAndShowMsigTxInfo(u, multisigContract, txid, config.Network())
 
 	if postProcess != nil && postProcess(fc) != nil {
 		return
@@ -268,21 +268,19 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	if executed {
 		return
 	}
-	// TODO: support multiple txs?
 
 	a, err := util.GetABI(config.To, config.Network())
 	if err != nil {
-		fmt.Printf("Couldn't get the ABI for %s: %s\n", config.To, err)
+		u.Error("Couldn't get the ABI for %s: %s", config.To, err)
 		return
 	}
 
 	data, err := a.Pack(method, txid)
 	if err != nil {
-		fmt.Printf("Couldn't pack data: %s\n", err)
+		u.Error("Couldn't pack data: %s", err)
 		return
 	}
 
-	// var GasLimit uint64
 	if config.GasLimit == 0 {
 		config.GasLimit, err = reader.EstimateExactGas(
 			config.From,
@@ -292,7 +290,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 			data,
 		)
 		if err != nil {
-			fmt.Printf("Couldn't estimate gas limit: %s\n", err)
+			u.Error("Couldn't estimate gas limit: %s", err)
 			return
 		}
 	}
@@ -310,6 +308,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	)
 
 	err = PromptTxConfirmation(
+		u,
 		analyzer,
 		util.GetJarvisAddress(config.From, config.Network()),
 		tx,
@@ -317,14 +316,14 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		config.Network(),
 	)
 	if err != nil {
-		fmt.Printf("Aborted!\n")
+		u.Error("Aborted!")
 		return
 	}
 
-	fmt.Printf("== Unlock your wallet and sign now...\n")
+	u.Info("Unlock your wallet and sign now...")
 	account, err := accounts.UnlockAccount(config.FromAcc)
 	if err != nil {
-		fmt.Printf("Failed: %s\n", err)
+		u.Error("Failed: %s", err)
 		return
 	}
 
@@ -333,12 +332,12 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		big.NewInt(int64(config.Network().GetChainID())),
 	)
 	if err != nil {
-		fmt.Printf("Signing tx failed: %s\n", err)
+		u.Error("Signing tx failed: %s", err)
 		return
 	}
 	if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
-		fmt.Printf(
-			"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
+		u.Error(
+			"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
 			config.FromAcc.Address,
 			signedAddr.Hex(),
 		)
@@ -347,18 +346,16 @@ func HandleApproveOrRevokeOrExecuteMsig(
 
 	broadcaster, err := util.EthBroadcaster(config.Network())
 	if err != nil {
-		fmt.Printf("Signing tx failed: %s\n", err)
+		u.Error("Couldn't create broadcaster: %s", err)
 		return
 	}
 
 	_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
 	if config.DontWaitToBeMined {
-		util.DisplayBroadcastedTx(
-			signedTx, broadcasted, err, config.Network(),
-		)
+		util.DisplayBroadcastedTx(u, signedTx, broadcasted, err, config.Network())
 	} else {
 		util.DisplayWaitAnalyze(
-			reader, analyzer, signedTx, broadcasted, err, config.Network(),
+			u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
 			a, nil, config.DegenMode,
 		)
 	}
@@ -371,15 +368,17 @@ type signedTxResultJSON struct {
 	SignedHex     string             `json:"signedHex"`
 }
 
-func (s *signedTxResultJSON) Write(filepath string) {
+func (s *signedTxResultJSON) Write(u ui.UI, filepath string) {
 	data, _ := json.MarshalIndent(s, "", "  ")
-	err := ioutil.WriteFile(filepath, data, 0644)
-	if err != nil {
-		fmt.Printf("Writing to json file failed: %s\n", err)
+	if err := os.WriteFile(filepath, data, 0644); err != nil {
+		u.Error("Writing to json file failed: %s", err)
 	}
 }
 
+// HandlePostSign encodes the signed transaction, optionally writes JSON output,
+// and broadcasts (with optional retry) and/or waits for mining.
 func HandlePostSign(
+	u ui.UI,
 	signedTx *types.Transaction,
 	reader *reader.EthReader,
 	analyzer *txanalyzer.TxAnalyzer,
@@ -387,7 +386,7 @@ func HandlePostSign(
 ) (broadcasted bool, err error) {
 	signedData, err := rlp.EncodeToBytes(signedTx)
 	if err != nil {
-		fmt.Printf("couldn't encode the signed tx: %s", err)
+		u.Error("couldn't encode the signed tx: %s", err)
 		return false, fmt.Errorf("couldn't encode the signed tx: %w", err)
 	}
 	signedHex := hexutil.Encode(signedData)
@@ -407,7 +406,7 @@ func HandlePostSign(
 		SignedHex:     signedHex,
 	}
 	if config.JSONOutputFile != "" {
-		defer resultJSON.Write(config.JSONOutputFile)
+		defer resultJSON.Write(u, config.JSONOutputFile)
 	}
 
 	broadcaster, err := util.EthBroadcaster(config.Network())
@@ -416,21 +415,18 @@ func HandlePostSign(
 	}
 
 	if config.DontBroadcast {
-		fmt.Printf("Signed tx: %s\n", signedHex)
+		u.Critical("Signed tx: %s", signedHex)
 		return false, nil
 	}
 
 	if !config.RetryBroadcast {
 		_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
 		if config.DontWaitToBeMined {
-			util.DisplayBroadcastedTx(
-				signedTx, broadcasted, err, config.Network(),
-			)
+			util.DisplayBroadcastedTx(u, signedTx, broadcasted, err, config.Network())
 			return broadcasted, err
 		}
-
 		util.DisplayWaitAnalyze(
-			reader, analyzer, signedTx, broadcasted, err, config.Network(),
+			u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
 			a, nil, config.DegenMode,
 		)
 		return broadcasted, err
@@ -448,7 +444,7 @@ func HandlePostSign(
 					broadcastedCh <- nil
 					close(quit)
 				} else {
-					fmt.Printf("Couldn't broadcast tx: %s. Retry in a while.\n", err)
+					u.Error("Couldn't broadcast tx: %s. Retry in a while.", err)
 				}
 			case <-quit:
 				ticker.Stop()
@@ -457,34 +453,30 @@ func HandlePostSign(
 		}
 	}()
 
-	<-broadcastedCh // wait for the tx to be broadcasted
+	<-broadcastedCh
 	if config.DontWaitToBeMined {
-		util.DisplayBroadcastedTx(
-			signedTx, broadcasted, err, config.Network(),
-		)
+		util.DisplayBroadcastedTx(u, signedTx, broadcasted, err, config.Network())
 		return broadcasted, err
 	}
 
 	util.DisplayWaitAnalyze(
-		reader, analyzer, signedTx, broadcasted, err, config.Network(),
+		u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
 		a, nil, config.DegenMode,
 	)
 	return broadcasted, err
 }
 
+// StringParamToBytes converts a hex-prefixed or raw string to bytes.
 func StringParamToBytes(data string) []byte {
 	if data == "" {
 		return []byte{}
 	}
-
 	if strings.HasPrefix(data, "0x") {
 		dataBytes, err := hex.DecodeString(data[2:])
 		if err != nil {
-			fmt.Printf("Couldn't decode data: %s. Hex data must start with 0x and be a valid hex string. Ignore this param.\n", err)
 			return []byte{}
 		}
 		return dataBytes
 	}
-
 	return []byte(data)
 }

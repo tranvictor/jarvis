@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -12,7 +11,6 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-// txCmd represents the tx command
 var txCmd = &cobra.Command{
 	Use:   "info",
 	Short: "Analyze and show all information about a tx",
@@ -21,17 +19,16 @@ var txCmd = &cobra.Command{
 		para := strings.Join(args, " ")
 		txs := util.ScanForTxs(para)
 		if len(txs) == 0 {
-			fmt.Printf("Couldn't find any tx hash in the params\n")
+			appUI.Error("Couldn't find any tx hash in the params")
 		} else {
-			fmt.Printf("Following tx hash(es) will be analyzed shortly:\n")
+			appUI.Info("Following tx hash(es) will be analyzed shortly:")
 			for i, t := range txs {
-				fmt.Printf("  %d. %s\n", i, t)
+				appUI.Info("  %d. %s", i, t)
 			}
-			fmt.Printf("\n\n")
 
 			reader, err := util.EthReader(config.Network())
 			if err != nil {
-				fmt.Printf("Couldn't init eth reader: %s\n", err)
+				appUI.Error("Couldn't init eth reader: %s", err)
 				return
 			}
 
@@ -40,13 +37,18 @@ var txCmd = &cobra.Command{
 			results := jarviscommon.TxResults{}
 
 			if config.JSONOutputFile != "" {
-				defer results.Write(config.JSONOutputFile)
+				defer func() {
+					if err := results.Write(config.JSONOutputFile); err != nil {
+						appUI.Error("Writing to json file failed: %s", err)
+					}
+				}()
 			}
 
 			for _, t := range txs {
-				fmt.Printf("Analyzing tx: %s...\n", t)
+				appUI.Info("Analyzing tx: %s...", t)
 
 				r := util.AnalyzeAndPrint(
+					appUI,
 					reader,
 					analyzer,
 					t,
@@ -58,7 +60,7 @@ var txCmd = &cobra.Command{
 					config.DegenMode,
 				)
 				results[t] = r
-				fmt.Printf("\n----------------------------------------------------------\n")
+				appUI.Info("----------------------------------------------------------")
 			}
 		}
 	},
@@ -70,14 +72,4 @@ func init() {
 	txCmd.PersistentFlags().StringVarP(&config.JSONOutputFile, "json-output", "o", "", "write output of contract read to json file")
 
 	rootCmd.AddCommand(txCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// txCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// txCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

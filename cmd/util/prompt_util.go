@@ -1,7 +1,6 @@
 package util
 
 import (
-	"bufio"
 	"fmt"
 	"math/big"
 	"os"
@@ -10,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Songmu/prompter"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -19,6 +17,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -34,22 +33,19 @@ type (
 	StringValidator func(st string) error
 )
 
-func PromptInputWithValidation(prompter string, validator StringValidator) string {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Printf("%s: ", prompter)
-		text, _ := reader.ReadString('\n')
-		result := strings.Trim(text[0:len(text)-1], "\r\n")
-		err := validator(result)
-		if err == nil {
-			return result
-		}
-		fmt.Printf("Jarvis: %s\n", err)
+// PromptInputWithValidation shows a label, then loops until the validator passes.
+func PromptInputWithValidation(u ui.UI, label string, validator StringValidator) string {
+	if label != "" {
+		u.Info(label)
 	}
+	return u.Ask(func(s string) error {
+		return validator(s)
+	})
 }
 
-func PromptPercentageBps(prompter string, upbound int64, network jarvisnetworks.Network) *big.Int {
-	return PromptNumber(prompter, func(number *big.Int) error {
+// PromptPercentageBps prompts for a basis-points value in [0, upbound].
+func PromptPercentageBps(u ui.UI, label string, upbound int64, network jarvisnetworks.Network) *big.Int {
+	return PromptNumber(u, label, func(number *big.Int) error {
 		n := number.Int64()
 		if n < 0 || n > upbound {
 			return fmt.Errorf("this percentage bps must be in [0, %d]", upbound)
@@ -58,77 +54,87 @@ func PromptPercentageBps(prompter string, upbound int64, network jarvisnetworks.
 	}, network)
 }
 
-func PromptNumber(prompter string, validator NumberValidator, network jarvisnetworks.Network) *big.Int {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Printf("%s: ", prompter)
-		text, _ := reader.ReadString('\n')
-		input := strings.Trim(text[0:len(text)-1], "\r\n ")
-		num, err := util.ConvertToBig(input, network)
+// PromptNumber shows a label and loops until a valid number satisfying validator is entered.
+func PromptNumber(u ui.UI, label string, validator NumberValidator, network jarvisnetworks.Network) *big.Int {
+	if label != "" {
+		u.Info(label)
+	}
+	var result *big.Int
+	u.Ask(func(s string) error {
+		num, err := util.ConvertToBig(strings.TrimSpace(s), network)
 		if err != nil {
-			fmt.Printf("Jarvis: couldn't interpret as a number because %s\n", err)
+			return fmt.Errorf("couldn't interpret as a number: %s", err)
+		}
+		if err := validator(num); err != nil {
+			return err
+		}
+		result = num
+		return nil
+	})
+	return result
+}
+
+// PromptItemInList shows a label and loops until the user enters one of options.
+func PromptItemInList(u ui.UI, label string, options []string) string {
+	if label != "" {
+		u.Info(label)
+	}
+	return u.Ask(func(s string) error {
+		s = strings.TrimSpace(s)
+		for _, op := range options {
+			if s == strings.TrimSpace(op) {
+				return nil
+			}
+		}
+		return fmt.Errorf("your input is not in the list")
+	})
+}
+
+// PromptIndex shows a label and loops until the user enters a valid index in
+// [min, max] or one of the navigation keywords "next", "back", "custom".
+func PromptIndex(u ui.UI, label string, min, max int) int {
+	if label != "" {
+		u.Info(label)
+	}
+	for {
+		input := strings.TrimSpace(u.Ask(nil))
+		switch input {
+		case "next":
+			return NEXT
+		case "back":
+			return BACK
+		case "custom":
+			return CUSTOM
+		}
+		index, err := strconv.Atoi(input)
+		if err != nil {
+			u.Error("please enter a number between %d and %d, or 'next' / 'back' / 'custom'", min, max)
 			continue
 		}
-		err = validator(num)
-		if err == nil {
-			return num
+		if min <= index && index <= max {
+			return index
 		}
-		fmt.Printf("Jarvis: %s\n", err)
+		u.Error("please enter a number between %d and %d", min, max)
 	}
 }
 
-func PromptItemInList(prompter string, options []string) string {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Printf("%s: ", prompter)
-		text, _ := reader.ReadString('\n')
-		input := strings.Trim(text[0:len(text)-1], "\r\n ")
-		for _, op := range options {
-			if input == strings.Trim(op, "\r\n ") {
-				return input
-			}
-		}
-		fmt.Printf("Jarvis: Your input is not in the list.\n")
+// PromptInput shows an optional label and reads one line.
+func PromptInput(u ui.UI, label string) string {
+	if label != "" {
+		u.Info(label)
 	}
+	return u.Ask(nil)
 }
 
-func PromptIndex(prompter string, min, max int) int {
-	reader := bufio.NewReader(os.Stdin)
-	for {
-		fmt.Printf("%s: ", prompter)
-		text, _ := reader.ReadString('\n')
-		indexInput := strings.Trim(text[0:len(text)-1], "\r\n")
-		if indexInput == "next" {
-			return NEXT
-		} else if indexInput == "back" {
-			return BACK
-		} else if indexInput == "custom" {
-			return CUSTOM
-		} else {
-			index, err := strconv.Atoi(indexInput)
-			if err != nil {
-				fmt.Printf("Jarvis: Please enter the index or 'next' or 'back'\n")
-			} else if min <= index && index <= max {
-				return index
-			} else {
-				fmt.Printf("Jarvis: Please enter the index. It should be any number from %d-%d\n", min, max)
-			}
-		}
-	}
+// PromptFilePath shows an optional label and reads a file path.
+func PromptFilePath(u ui.UI, label string) string {
+	return PromptInput(u, label)
 }
 
-func PromptInput(prompter string) string {
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Printf("%s: ", prompter)
-	text, _ := reader.ReadString('\n')
-	return strings.Trim(text[0:len(text)-1], "\r\n")
-}
-
-func PromptFilePath(prompter string) string {
-	return PromptInput(prompter)
-}
-
+// PromptParam prompts for a single ABI parameter value.
+// If prefill is non-empty the user is not prompted; the prefill is used directly.
 func PromptParam(
+	u ui.UI,
 	interactiveMode bool,
 	input abi.Argument,
 	prefill string,
@@ -137,25 +143,21 @@ func PromptParam(
 	t := input.Type
 	switch t.T {
 	case abi.SliceTy, abi.ArrayTy:
-		return PromptArray(input, prefill, network)
-	// case abi.TupleTy:
-	// 	if interactiveMode {
-	// 		return PromptTuple(input, prefill, network)
-	// 	}
-	// 	return PromptNonArray(input, prefill, network)
+		return PromptArray(u, input, prefill, network)
 	default:
-		return PromptNonArray(input, prefill, network)
+		return PromptNonArray(u, input, prefill, network)
 	}
 }
 
-func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Network) (interface{}, error) {
+// PromptArray prompts for an array-typed ABI parameter.
+func PromptArray(u ui.UI, input abi.Argument, prefill string, network jarvisnetworks.Network) (interface{}, error) {
 	var inpStr string
 	if prefill == "" {
-		inpStr = PromptInput("")
+		inpStr = u.Ask(nil)
 	} else {
 		inpStr = prefill
 	}
-	inpStr = strings.Trim(inpStr, " ")
+	inpStr = strings.TrimSpace(inpStr)
 	inpStr, err := util.InterpretInput(inpStr, network)
 	if err != nil {
 		return nil, err
@@ -167,11 +169,8 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 	}
 
 	switch input.Type.Elem.T {
-	case abi.StringTy: // variable arrays are written at the end of the return bytes
+	case abi.StringTy:
 		result := []string{}
-		if len(paramsStr) == 0 {
-			return result, nil
-		}
 		for _, p := range paramsStr {
 			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
@@ -184,9 +183,6 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 		switch input.Type.Elem.Size {
 		case 8:
 			result := []uint8{}
-			if len(paramsStr) == 0 {
-				return result, nil
-			}
 			for _, p := range paramsStr {
 				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 				if err != nil {
@@ -197,9 +193,6 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 			return result, nil
 		case 16:
 			result := []uint16{}
-			if len(paramsStr) == 0 {
-				return result, nil
-			}
 			for _, p := range paramsStr {
 				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 				if err != nil {
@@ -210,9 +203,6 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 			return result, nil
 		case 32:
 			result := []uint32{}
-			if len(paramsStr) == 0 {
-				return result, nil
-			}
 			for _, p := range paramsStr {
 				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 				if err != nil {
@@ -223,9 +213,6 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 			return result, nil
 		case 64:
 			result := []uint64{}
-			if len(paramsStr) == 0 {
-				return result, nil
-			}
 			for _, p := range paramsStr {
 				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 				if err != nil {
@@ -236,9 +223,6 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 			return result, nil
 		default:
 			result := []*big.Int{}
-			if len(paramsStr) == 0 {
-				return result, nil
-			}
 			for _, p := range paramsStr {
 				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 				if err != nil {
@@ -250,9 +234,6 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 		}
 	case abi.BoolTy:
 		result := []bool{}
-		if len(paramsStr) == 0 {
-			return result, nil
-		}
 		for _, p := range paramsStr {
 			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
@@ -263,9 +244,6 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 		return result, nil
 	case abi.AddressTy:
 		result := []common.Address{}
-		if len(paramsStr) == 0 {
-			return result, nil
-		}
 		for _, p := range paramsStr {
 			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
@@ -276,9 +254,6 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 		return result, nil
 	case abi.HashTy:
 		result := []common.Hash{}
-		if len(paramsStr) == 0 {
-			return result, nil
-		}
 		for _, p := range paramsStr {
 			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
@@ -302,10 +277,8 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 			input.Type.Elem.T,
 		)
 	case abi.TupleTy:
-		// Create a slice of the tuple type
 		sliceType := reflect.SliceOf(input.Type.Elem.TupleType)
 		result := reflect.MakeSlice(sliceType, 0, 0)
-
 		for _, p := range paramsStr {
 			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
 			if err != nil {
@@ -313,7 +286,6 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 			}
 			result = reflect.Append(result, reflect.ValueOf(converted))
 		}
-
 		return result.Interface(), nil
 	default:
 		return nil, fmt.Errorf(
@@ -324,14 +296,15 @@ func PromptArray(input abi.Argument, prefill string, network jarvisnetworks.Netw
 	}
 }
 
-func PromptNonArray(input abi.Argument, prefill string, network jarvisnetworks.Network) (interface{}, error) {
+// PromptNonArray prompts for a scalar ABI parameter value.
+func PromptNonArray(u ui.UI, input abi.Argument, prefill string, network jarvisnetworks.Network) (interface{}, error) {
 	var inpStr string
 	if prefill == "" {
-		inpStr = PromptInput("")
+		inpStr = u.Ask(nil)
 	} else {
 		inpStr = prefill
 	}
-	inpStr = strings.Trim(inpStr, " ")
+	inpStr = strings.TrimSpace(inpStr)
 	inpStr, err := util.InterpretInput(inpStr, network)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't interpret input: %w", err)
@@ -339,28 +312,31 @@ func PromptNonArray(input abi.Argument, prefill string, network jarvisnetworks.N
 	return util.ConvertParamStrToType(input.Name, input.Type, inpStr, network)
 }
 
+// PromptTxConfirmation displays a transaction summary and asks the user to
+// confirm before signing. Returns an error if the user aborts.
 func PromptTxConfirmation(
+	u ui.UI,
 	analyzer util.TxAnalyzer,
 	from jarviscommon.Address,
 	tx *types.Transaction,
 	customABIs map[string]*abi.ABI,
 	network jarvisnetworks.Network,
 ) error {
-	fmt.Printf("\n========== Confirm tx data before signing ==========\n\n")
-	err := showTxInfoToConfirm(
-		analyzer, from, tx, customABIs, network,
-	)
-	if err != nil {
-		fmt.Printf("%s\n", err)
+	u.Section("Confirm tx data before signing")
+	if err := showTxInfoToConfirm(u, analyzer, from, tx, customABIs, network); err != nil {
+		u.Error("%s", err)
 		return err
 	}
-	if !config.YesToAllPrompt && !prompter.YN("\nConfirm?", true) {
+	if !config.YesToAllPrompt && !u.Confirm("Confirm?", true) {
 		return fmt.Errorf("user aborted")
 	}
 	return nil
 }
 
+// PromptTxData guides the user through selecting a method and filling its
+// parameters, then returns the ABI-encoded call data.
 func PromptTxData(
+	u ui.UI,
 	analyzer util.TxAnalyzer,
 	contractAddress string,
 	methodIndex uint64,
@@ -371,6 +347,7 @@ func PromptTxData(
 	network jarvisnetworks.Network,
 ) ([]byte, error) {
 	method, params, err := PromptFunctionCallData(
+		u,
 		analyzer,
 		contractAddress,
 		methodIndex,
@@ -379,7 +356,8 @@ func PromptTxData(
 		"write",
 		a,
 		customABIs,
-		network)
+		network,
+	)
 	if err != nil {
 		return []byte{}, err
 	}
@@ -401,6 +379,7 @@ func (m orderedMethods) Len() int           { return len(m) }
 func (m orderedMethods) Swap(i, j int)      { m[i], m[j] = m[j], m[i] }
 func (m orderedMethods) Less(i, j int) bool { return m[i].Name < m[j].Name }
 
+// AllZeroParamFunctions returns all read-only ABI methods that take no inputs.
 func AllZeroParamFunctions(a *abi.ABI) []abi.Method {
 	methods := []abi.Method{}
 	for _, m := range a.Methods {
@@ -412,7 +391,9 @@ func AllZeroParamFunctions(a *abi.ABI) []abi.Method {
 	return methods
 }
 
-func PromptMethod(a *abi.ABI, methodIndex uint64, mode string) (*abi.Method, string, error) {
+// PromptMethod lists the available methods and lets the user choose one.
+// If methodIndex is non-zero, that method is selected without prompting.
+func PromptMethod(u ui.UI, a *abi.ABI, methodIndex uint64, mode string) (*abi.Method, string, error) {
 	methods := []abi.Method{}
 	if mode == "write" {
 		for _, m := range a.Methods {
@@ -429,12 +410,13 @@ func PromptMethod(a *abi.ABI, methodIndex uint64, mode string) (*abi.Method, str
 	}
 	sort.Sort(orderedMethods(methods))
 	if methodIndex == 0 {
-		fmt.Printf("write functions:\n")
+		u.Info("%s functions:", mode)
 		for i, m := range methods {
-			fmt.Printf("%d. %s\n", i+1, m.Name)
+			u.Info("%d. %s", i+1, m.Name)
 		}
 		methodIndex = uint64(
 			PromptIndex(
+				u,
 				fmt.Sprintf("Please choose method index [%d, %d]", 1, len(methods)),
 				1,
 				len(methods),
@@ -446,14 +428,17 @@ func PromptMethod(a *abi.ABI, methodIndex uint64, mode string) (*abi.Method, str
 		method := a.Constructor
 		return &method, "constructor", nil
 	} else if int(methodIndex) > len(methods) {
-		return nil, "", fmt.Errorf("the contract doesn't have %d(th) write method", methodIndex)
+		return nil, "", fmt.Errorf("the contract doesn't have %d(th) %s method", methodIndex, mode)
 	} else {
 		method := &methods[methodIndex-1]
 		return method, method.Name, nil
 	}
 }
 
+// PromptFunctionCallData guides the user through picking a method and filling
+// all its parameters interactively or from prefills.
 func PromptFunctionCallData(
+	u ui.UI,
 	analyzer util.TxAnalyzer,
 	contractAddress string,
 	methodIndex uint64,
@@ -464,22 +449,25 @@ func PromptFunctionCallData(
 	customABIs map[string]*abi.ABI,
 	network jarvisnetworks.Network,
 ) (method *abi.Method, params []any, err error) {
-	method, methodName, err := PromptMethod(a, methodIndex, mode)
+	method, methodName, err := PromptMethod(u, a, methodIndex, mode)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	if method.Type == abi.Constructor {
-		fmt.Printf("Creating new contract at %s\n", contractAddress)
+		u.Info("Creating new contract at %s", contractAddress)
 	} else {
-		fmt.Printf("\nContract: %s\n", jarviscommon.VerboseAddress(util.GetJarvisAddress(contractAddress, network)))
+		u.Info("Contract: %s", jarviscommon.VerboseAddress(util.GetJarvisAddress(contractAddress, network)))
 	}
-	fmt.Printf("Method: %s\n", methodName)
+	u.Info("Method: %s", methodName)
+
 	inputs := method.Inputs
 	if prefillMode && len(inputs) != len(prefills) {
 		return nil, nil, fmt.Errorf("you must specify enough params in prefilled mode")
 	}
-	fmt.Printf("Input:\n")
+
+	u.Info("Input:")
+	paramUI := u.Indent()
 	params = []any{}
 	pi := 0
 	for {
@@ -487,36 +475,43 @@ func PromptFunctionCallData(
 			break
 		}
 		input := inputs[pi]
+
+		paramUI.Info("%d. %s (%s)", pi+1, input.Name, input.Type.String())
+
 		var inputParam any
-		fmt.Printf("%d. %s (%s)", pi+1, input.Name, input.Type.String())
 		if !prefillMode || prefills[pi] == "?" {
-			inputParam, err = PromptParam(true, input, "", network) // interactive prompt
+			inputParam, err = PromptParam(paramUI, true, input, "", network)
 			if err != nil {
-				fmt.Printf("Your input is not valid: %s\n", err)
+				paramUI.Error("your input is not valid: %s", err)
 				continue
 			}
-
-			fmt.Printf("    You entered:\n")
-			jarviscommon.PrintVerboseParamResultToWriter(os.Stdout, analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam), 2, true)
-			fmt.Printf("\n")
 		} else {
-			inputParam, err = PromptParam(false, input, prefills[pi], network) // not interactive prompt
+			inputParam, err = PromptParam(paramUI, false, input, prefills[pi], network)
 			if err != nil {
-				fmt.Printf("Your input is not valid: %s\n", err)
+				paramUI.Error("your input is not valid: %s", err)
 				return nil, nil, fmt.Errorf("your input is not valid: %w", err)
 			}
-
-			fmt.Printf(":\n")
-			jarviscommon.PrintVerboseParamResultToWriter(os.Stdout, analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam), 2, true)
-			fmt.Printf("\n")
 		}
+
+		paramUI.Info("You entered:")
+		jarviscommon.PrintVerboseParamResultToWriter(
+			paramUI.Indent().Writer(),
+			analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam),
+			0,
+			true,
+		)
+		fmt.Fprintln(paramUI.Writer())
+
 		params = append(params, inputParam)
 		pi++
 	}
 	return method, params, nil
 }
 
+// showTxInfoToConfirm writes the transaction summary (from, to, value, gas,
+// decoded function call) to the UI for the user to review before signing.
 func showTxInfoToConfirm(
+	u ui.UI,
 	analyzer util.TxAnalyzer,
 	from jarviscommon.Address,
 	tx *types.Transaction,
@@ -524,8 +519,8 @@ func showTxInfoToConfirm(
 	network jarvisnetworks.Network,
 ) error {
 	if tx.To() != nil {
-		fmt.Printf(
-			"from: %s ==> %s\n",
+		u.Critical(
+			"from: %s ==> %s",
 			jarviscommon.VerboseAddress(from),
 			jarviscommon.VerboseAddress(util.GetJarvisAddress(tx.To().Hex(), network)),
 		)
@@ -534,8 +529,8 @@ func showTxInfoToConfirm(
 			jarviscommon.HexToAddress(from.Address),
 			tx.Nonce(),
 		).Hex()
-		fmt.Printf(
-			"from: %s ==> create contract at %s\n",
+		u.Critical(
+			"from: %s ==> create contract at %s",
 			jarviscommon.VerboseAddress(from),
 			cAddr,
 		)
@@ -543,40 +538,31 @@ func showTxInfoToConfirm(
 
 	sendingETH := jarviscommon.BigToFloatString(tx.Value(), network.GetNativeTokenDecimal())
 	if tx.Value().Cmp(big.NewInt(0)) > 0 {
-		fmt.Printf(
-			"Value: %s\n",
-			jarviscommon.InfoColor(fmt.Sprintf("%s %s", sendingETH, network.GetNativeTokenSymbol())),
-		)
+		u.Critical("Value: %s %s", sendingETH, network.GetNativeTokenSymbol())
 	}
 
 	switch tx.Type() {
 	case types.LegacyTxType:
-		fmt.Printf(
-			"Nonce: %d  |  Gas Price: %.4f gwei (%d gas = %.8f %s)\n",
+		u.Critical(
+			"Nonce: %d  |  Gas Price: %.4f gwei (%d gas = %.8f %s)",
 			tx.Nonce(),
 			jarviscommon.BigToFloat(tx.GasPrice(), 9),
 			tx.Gas(),
 			jarviscommon.BigToFloat(
-				big.NewInt(0).Mul(
-					big.NewInt(int64(tx.Gas())),
-					tx.GasPrice(),
-				),
+				big.NewInt(0).Mul(big.NewInt(int64(tx.Gas())), tx.GasPrice()),
 				18,
 			),
 			network.GetNativeTokenSymbol(),
 		)
 	case types.DynamicFeeTxType:
-		fmt.Printf(
-			"Nonce: %d  |  Max Gas Price: %.4f gwei, Max Tip Price: %.4f gwei (%d gas = %.8f %s)\n",
+		u.Critical(
+			"Nonce: %d  |  Max Gas Price: %.4f gwei, Max Tip Price: %.4f gwei (%d gas = %.8f %s)",
 			tx.Nonce(),
 			jarviscommon.BigToFloat(tx.GasFeeCap(), 9),
 			jarviscommon.BigToFloat(tx.GasTipCap(), 9),
 			tx.Gas(),
 			jarviscommon.BigToFloat(
-				big.NewInt(0).Mul(
-					big.NewInt(int64(tx.Gas())),
-					tx.GasPrice(),
-				),
+				big.NewInt(0).Mul(big.NewInt(int64(tx.Gas())), tx.GasPrice()),
 				18,
 			),
 			network.GetNativeTokenSymbol(),
@@ -584,8 +570,6 @@ func showTxInfoToConfirm(
 	}
 
 	if tx.To() == nil {
-		// TODO: analyzing creation tx
-		// just ignore it for now
 		return nil
 	}
 
@@ -593,7 +577,6 @@ func showTxInfoToConfirm(
 	if err != nil {
 		return err
 	}
-
 	if !isContract {
 		return nil
 	}
@@ -605,7 +588,7 @@ func showTxInfoToConfirm(
 		tx.Data(),
 		customABIs,
 	)
-	jarviscommon.PrintFunctionCall(fc)
-
+	jarviscommon.PrintFunctionCallToWriter(fc, u.Writer())
+	fmt.Fprintln(os.Stdout) // blank line after the function call block
 	return nil
 }

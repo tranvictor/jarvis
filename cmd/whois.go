@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -9,7 +8,6 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-// txCmd represents the tx command
 var whoisCmd = &cobra.Command{
 	Use:   "whois",
 	Short: "Show name of one or multiple addresses",
@@ -18,15 +16,15 @@ var whoisCmd = &cobra.Command{
 		para := strings.Join(args, " ")
 		addresses := util.ScanForAddresses(para)
 		if len(addresses) == 0 {
-			fmt.Printf("Couldn't find any addresses in the params\n")
+			appUI.Error("Couldn't find any addresses in the params")
 		} else {
 			for _, address := range addresses {
 				addrs, names, _ := util.GetExactAddressFromDatabases(address)
 				if len(addrs) == 0 {
-					fmt.Printf("%s: %s\n", address, "not found")
+					appUI.Info("%s: %s", address, "not found")
 					continue
 				}
-				fmt.Printf("%s: %s\n", addrs[0], names[0])
+				appUI.Info("%s: %s", addrs[0], names[0])
 			}
 		}
 	},
@@ -34,14 +32,4 @@ var whoisCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(whoisCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// txCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// txCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }

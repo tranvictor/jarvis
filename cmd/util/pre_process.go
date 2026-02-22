@@ -14,16 +14,18 @@ import (
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/config/state"
 	"github.com/tranvictor/jarvis/msig"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
 
 // CommonFunctionCallPreprocess processes args passed to the command in order to
 // initiate config's variables in a conventional way across many Function Call alike
 // commands.
-func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error) {
+func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) {
 	if err = config.SetNetwork(config.NetworkString); err != nil {
 		return err
 	}
+	u.Info("Network: %s", config.Network().GetName())
 
 	config.PrefillStr = strings.Trim(config.PrefillStr, " ")
 	if config.PrefillStr != "" {
@@ -80,12 +82,8 @@ func CommonFunctionCallPreprocess(cmd *cobra.Command, args []string) (err error)
 // CommonTxPreprocess processes args passed to the command in order to
 // initiate config's variables in a conventional way across many commands
 // that do txs.
-func CommonTxPreprocess(cmd *cobra.Command, args []string) (err error) {
-	if err = config.SetNetwork(config.NetworkString); err != nil {
-		return err
-	}
-
-	err = CommonFunctionCallPreprocess(cmd, args)
+func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) {
+	err = CommonFunctionCallPreprocess(u, cmd, args)
 	if err != nil {
 		return err
 	}

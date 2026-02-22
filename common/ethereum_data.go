@@ -2,7 +2,6 @@ package common
 
 import (
 	"encoding/json"
-	"fmt"
 	"math/big"
 	"os"
 )
@@ -86,13 +85,9 @@ type LogResult struct {
 
 type TxResults map[string]*TxResult
 
-func (tr *TxResults) Write(filepath string) {
+func (tr *TxResults) Write(filepath string) error {
 	data, _ := json.MarshalIndent(tr, "", "  ")
-
-	err := os.WriteFile(filepath, data, 0644)
-	if err != nil {
-		fmt.Printf("Writing to json file failed: %s\n", err)
-	}
+	return os.WriteFile(filepath, data, 0644)
 }
 
 type TxResult struct {

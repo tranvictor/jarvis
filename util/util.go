@@ -25,6 +25,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util/broadcaster"
 	"github.com/tranvictor/jarvis/util/cache"
 	"github.com/tranvictor/jarvis/util/monitor"
@@ -187,15 +188,16 @@ func PathToAddress(path string) (string, error) {
 	return result[0], nil
 }
 
-func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, network networks.Network) {
+func DisplayBroadcastedTx(u ui.UI, t *types.Transaction, broadcasted bool, err error, network networks.Network) {
 	if !broadcasted {
-		fmt.Printf("Couldn't broadcast tx. Errors: %s\n", err)
+		u.Error("Couldn't broadcast tx. Errors: %s", err)
 	} else {
-		fmt.Printf("BROADCASTED TX:\n%s:%s\n", network.GetName(), t.Hash().Hex())
+		u.Critical("BROADCASTED TX: %s:%s", network.GetName(), t.Hash().Hex())
 	}
 }
 
 func DisplayWaitAnalyze(
+	u ui.UI,
 	reader *reader.EthReader,
 	analyzer TxAnalyzer,
 	t *types.Transaction,
@@ -206,15 +208,16 @@ func DisplayWaitAnalyze(
 	customABIs map[string]*abi.ABI,
 	degenMode bool,
 ) {
-	DisplayBroadcastedTx(t, broadcasted, err, network)
+	DisplayBroadcastedTx(u, t, broadcasted, err, network)
 	if broadcasted {
 		mo, err := EthTxMonitor(network)
 		if err != nil {
-			fmt.Printf("Couldn't monitor the tx: %s\n", err)
+			u.Error("Couldn't monitor the tx: %s", err)
 			return
 		}
 		mo.BlockingWait(t.Hash().Hex())
 		AnalyzeAndPrint(
+			u,
 			reader,
 			analyzer,
 			t.Hash().Hex(),
@@ -229,6 +232,7 @@ func DisplayWaitAnalyze(
 }
 
 func AnalyzeMethodCallAndPrint(
+	u ui.UI,
 	analyzer TxAnalyzer,
 	value *big.Int,
 	destination string,
@@ -238,11 +242,12 @@ func AnalyzeMethodCallAndPrint(
 ) (fc *jarviscommon.FunctionCall) {
 	fc = analyzer.AnalyzeFunctionCallRecursively(
 		GetABI, value, destination, data, customABIs)
-	jarviscommon.PrintFunctionCall(fc)
+	jarviscommon.PrintFunctionCallToWriter(fc, u.Writer())
 	return fc
 }
 
 func AnalyzeAndPrint(
+	u ui.UI,
 	reader *reader.EthReader,
 	analyzer TxAnalyzer,
 	tx string,
@@ -259,7 +264,7 @@ func AnalyzeAndPrint(
 
 	txinfo, err := reader.TxInfoFromHash(tx)
 	if err != nil {
-		fmt.Printf("getting tx info failed: %s", err)
+		u.Error("getting tx info failed: %s", err)
 		return nil
 	}
 
@@ -270,7 +275,7 @@ func AnalyzeAndPrint(
 
 	isContract, err := IsContract(contractAddress, network)
 	if err != nil {
-		fmt.Printf("checking tx type failed: %s", err)
+		u.Error("checking tx type failed: %s", err)
 		return nil
 	}
 
@@ -280,7 +285,7 @@ func AnalyzeAndPrint(
 		if a == nil {
 			a, err = ConfigToABI(contractAddress, forceERC20ABI, customABI, network)
 			if err != nil {
-				fmt.Printf("Couldn't get abi for %s: %s\n", contractAddress, err)
+				u.Error("Couldn't get abi for %s: %s", contractAddress, err)
 				return nil
 			}
 		}
@@ -291,9 +296,9 @@ func AnalyzeAndPrint(
 	}
 
 	if degenMode {
-		jarviscommon.PrintTxDetails(result, network, os.Stdout)
+		jarviscommon.PrintTxDetails(result, network, u.Writer())
 	} else {
-		jarviscommon.PrintTxSuccessSummary(result, network, os.Stdout)
+		jarviscommon.PrintTxSuccessSummary(result, network, u.Writer())
 	}
 	return result
 }

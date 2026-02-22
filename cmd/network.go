@@ -21,95 +21,82 @@ var (
 	NetworkForce  bool
 )
 
-// TODO: in this version, we only support adding a new network that works with etherscan
-// in next version, we will support adding a new network that works with altlayer or doesn't have a block explorer
 func PromptNetwork() networks.Network {
-	name := cmdutil.PromptInputWithValidation("Please enter the name of the network", func(name string) error {
+	name := cmdutil.PromptInputWithValidation(appUI, "Please enter the name of the network", func(name string) error {
 		if name == "" {
 			return fmt.Errorf("name cannot be empty")
 		}
-
 		if NetworkForce {
 			return nil
 		}
-
 		if _, err := networks.GetNetwork(name); err == nil {
 			return fmt.Errorf("network with name %s already exists. If you want to replace it, use flag --force", name)
 		}
 		return nil
 	})
 
-	alternativeNamesStr := cmdutil.PromptInput("Please enter the alternative names of the network (comma separated, don't wrap with quotes)")
+	alternativeNamesStr := cmdutil.PromptInput(appUI, "Please enter the alternative names of the network (comma separated, don't wrap with quotes)")
 	alternativeNames := strings.Split(alternativeNamesStr, ",")
 	for i, name := range alternativeNames {
 		alternativeNames[i] = strings.TrimSpace(name)
 	}
 
-	chainIDStr := cmdutil.PromptInputWithValidation("Please enter the chain ID of the network", func(chainIDstr string) error {
+	chainIDStr := cmdutil.PromptInputWithValidation(appUI, "Please enter the chain ID of the network", func(chainIDstr string) error {
 		if chainIDstr == "" {
 			return fmt.Errorf("chain ID cannot be empty")
 		}
-		_, err := strconv.Atoi(chainIDstr)
-		if err != nil {
+		if _, err := strconv.Atoi(chainIDstr); err != nil {
 			return fmt.Errorf("chain ID must be a number")
 		}
 		return nil
 	})
 	chainID, _ := strconv.Atoi(chainIDStr)
 
-	nativeTokenSymbol := cmdutil.PromptInputWithValidation("Please enter the native token symbol of the network", func(nativeTokenSymbol string) error {
+	nativeTokenSymbol := cmdutil.PromptInputWithValidation(appUI, "Please enter the native token symbol of the network", func(nativeTokenSymbol string) error {
 		if nativeTokenSymbol == "" {
 			return fmt.Errorf("native token symbol cannot be empty")
 		}
 		return nil
 	})
 
-	nativeTokenDecimalStr := cmdutil.PromptInputWithValidation("Please enter the native token decimal of the network", func(nativeTokenDecimal string) error {
+	nativeTokenDecimalStr := cmdutil.PromptInputWithValidation(appUI, "Please enter the native token decimal of the network", func(nativeTokenDecimal string) error {
 		if nativeTokenDecimal == "" {
 			return fmt.Errorf("native token decimal cannot be empty")
 		}
-		_, err := strconv.Atoi(nativeTokenDecimal)
-		if err != nil {
+		if _, err := strconv.Atoi(nativeTokenDecimal); err != nil {
 			return fmt.Errorf("native token decimal must be a number")
 		}
 		return nil
 	})
 	nativeTokenDecimal, _ := strconv.Atoi(nativeTokenDecimalStr)
 
-	blockTimeStr := cmdutil.PromptInputWithValidation("Please enter the block time of the network in seconds", func(blockTime string) error {
+	blockTimeStr := cmdutil.PromptInputWithValidation(appUI, "Please enter the block time of the network in seconds", func(blockTime string) error {
 		if blockTime == "" {
 			return fmt.Errorf("block time cannot be empty")
 		}
-		_, err := strconv.Atoi(blockTime)
-		if err != nil {
+		if _, err := strconv.Atoi(blockTime); err != nil {
 			return fmt.Errorf("block time must be a number")
 		}
 		return nil
 	})
 	blockTime, _ := strconv.Atoi(blockTimeStr)
 
-	nodeVariableName := cmdutil.PromptInputWithValidation("Please enter the node variable name of the network", func(nodeVariableName string) error {
+	nodeVariableName := cmdutil.PromptInputWithValidation(appUI, "Please enter the node variable name of the network", func(nodeVariableName string) error {
 		if nodeVariableName == "" {
 			return fmt.Errorf("node variable name cannot be empty")
 		}
-
-		// the input has to be in capital letters
 		if strings.ToUpper(nodeVariableName) != nodeVariableName {
 			return fmt.Errorf("node variable name must be in capital letters")
 		}
 		return nil
 	})
 
-	defaultNodesStr := cmdutil.PromptInputWithValidation("Please enter the default node urls of the network (comma separated, no wrapping with quotes)", func(defaultNodes string) error {
+	defaultNodesStr := cmdutil.PromptInputWithValidation(appUI, "Please enter the default node urls of the network (comma separated, no wrapping with quotes)", func(defaultNodes string) error {
 		if defaultNodes == "" {
 			return fmt.Errorf("default node urls cannot be empty")
 		}
-
-		nodes := strings.Split(defaultNodes, ",")
-		for _, node := range nodes {
-			// check if the node is a valid url
-			_, err := url.Parse(node)
-			if err != nil {
+		for _, node := range strings.Split(defaultNodes, ",") {
+			if _, err := url.Parse(node); err != nil {
 				return fmt.Errorf("default node url %s is not a valid url", node)
 			}
 		}
@@ -117,37 +104,33 @@ func PromptNetwork() networks.Network {
 	})
 	defaultNodes := make(map[string]string)
 	for _, node := range strings.Split(defaultNodesStr, ",") {
-		// name of the node is the domain of the url
 		nodeURL, _ := url.Parse(strings.TrimSpace(node))
 		defaultNodes[nodeURL.Host] = strings.TrimSpace(node)
 	}
 
-	blockExplorerAPIKeyVariableName := cmdutil.PromptInputWithValidation("Please enter the block explorer API key variable name of the network", func(blockExplorerAPIKeyVariableName string) error {
-		if blockExplorerAPIKeyVariableName == "" {
+	blockExplorerAPIKeyVariableName := cmdutil.PromptInputWithValidation(appUI, "Please enter the block explorer API key variable name of the network", func(v string) error {
+		if v == "" {
 			return fmt.Errorf("block explorer API key variable name cannot be empty")
 		}
 		return nil
 	})
 
-	blockExplorerAPIURL := cmdutil.PromptInputWithValidation("Please enter the block explorer API URL of the network", func(blockExplorerAPIURL string) error {
-		if blockExplorerAPIURL == "" {
+	blockExplorerAPIURL := cmdutil.PromptInputWithValidation(appUI, "Please enter the block explorer API URL of the network", func(v string) error {
+		if v == "" {
 			return fmt.Errorf("block explorer API URL cannot be empty")
 		}
-		_, err := url.Parse(blockExplorerAPIURL)
-		if err != nil {
-			return fmt.Errorf("block explorer API URL %s is not a valid url", blockExplorerAPIURL)
+		if _, err := url.Parse(v); err != nil {
+			return fmt.Errorf("block explorer API URL %s is not a valid url", v)
 		}
 		return nil
 	})
 
-	multiCallContractAddress := cmdutil.PromptInputWithValidation("Please enter the multi call contract address of the network", func(multiCallContractAddress string) error {
-		if multiCallContractAddress == "" {
+	multiCallContractAddress := cmdutil.PromptInputWithValidation(appUI, "Please enter the multi call contract address of the network", func(v string) error {
+		if v == "" {
 			return fmt.Errorf("multi call contract address cannot be empty")
 		}
-
-		// check if the address is an ethereum address
-		if !common.IsHexAddress(multiCallContractAddress) {
-			return fmt.Errorf("multi call contract address %s is not a valid address", multiCallContractAddress)
+		if !common.IsHexAddress(v) {
+			return fmt.Errorf("multi call contract address %s is not a valid address", v)
 		}
 		return nil
 	})
@@ -190,42 +173,39 @@ var addNetworkCmd = &cobra.Command{
 		"multi_call_contract_address": "0x5394753688800000000000000000000000000000000000000000000000000000"
 	}`,
 	Run: func(cmd *cobra.Command, args []string) {
-		// check if the network config json is passed via --config flag
-		config, err := cmd.Flags().GetString("config")
+		cfg, err := cmd.Flags().GetString("config")
 		if err != nil {
-			fmt.Printf("Error: %s\n", err)
+			appUI.Error("Error: %s", err)
 			return
 		}
 
 		var newNetwork networks.Network
-		config = strings.TrimSpace(config)
-		if config != "" && strings.HasPrefix(config, "{") && strings.HasSuffix(config, "}") {
-			newNetwork, err = networks.NewNetworkFromJSON([]byte(config))
+		cfg = strings.TrimSpace(cfg)
+		if cfg != "" && strings.HasPrefix(cfg, "{") && strings.HasSuffix(cfg, "}") {
+			newNetwork, err = networks.NewNetworkFromJSON([]byte(cfg))
 			if err != nil {
-				fmt.Printf("The provided json is not valid: %s\n", err)
+				appUI.Error("The provided json is not valid: %s", err)
 				return
 			}
-		} else if config != "" {
-			// in this case, config is supposed to be a path to a json file
-			jsonFile, err := os.Open(config)
+		} else if cfg != "" {
+			jsonFile, err := os.Open(cfg)
 			if err != nil {
-				fmt.Printf("Couldn't open the provided json file: %s\n", err)
+				appUI.Error("Couldn't open the provided json file: %s", err)
 				return
 			}
 			defer jsonFile.Close()
 
 			jsonBytes, err := io.ReadAll(jsonFile)
 			if err != nil {
-				fmt.Printf("Couldn't read the provided json file: %s\n", err)
+				appUI.Error("Couldn't read the provided json file: %s", err)
 				return
 			}
 			newNetwork, err = networks.NewNetworkFromJSON(jsonBytes)
 			if err != nil {
-				fmt.Printf("The provided json is not a valid network config: %s\n", err)
+				appUI.Error("The provided json is not a valid network config: %s", err)
 				return
 			}
 		} else {
-			// in this case, user didn't provide any config, we need to prompt user to input the network config
 			newNetwork = PromptNetwork()
 		}
 
@@ -236,17 +216,14 @@ var addNetworkCmd = &cobra.Command{
 		for _, name := range allNames {
 			_, err = networks.GetNetwork(name)
 			if err == nil && !NetworkForce {
-				fmt.Printf("Network with name %s already exists. Abort. If you want to update the network, use flag --force.\n", name)
+				appUI.Error("Network with name %s already exists. Abort. If you want to update the network, use flag --force.", name)
 				return
 			}
-
 			if err == nil && NetworkForce {
-				fmt.Printf("Network with name %s already exists. We will replace it with the new network.\n", name)
+				appUI.Warn("Network with name %s already exists. We will replace it with the new network.", name)
 				willReplace = true
 				continue
 			}
-
-			// err is not nil means the network is not found, hence we can add it
 			if err != nil {
 				willReplace = true
 				continue
@@ -254,12 +231,11 @@ var addNetworkCmd = &cobra.Command{
 		}
 
 		if willReplace {
-			err = networks.AddNetwork(newNetwork)
-			if err != nil {
-				fmt.Printf("Failed to add the new network: %s\n", err)
+			if err = networks.AddNetwork(newNetwork); err != nil {
+				appUI.Error("Failed to add the new network: %s", err)
 				return
 			}
-			fmt.Printf("Network %s with chain ID %d added and saved to ~/.jarvis/networks/.\n", newNetwork.GetName(), newNetwork.GetChainID())
+			appUI.Success("Network %s with chain ID %d added and saved to ~/.jarvis/networks/.", newNetwork.GetName(), newNetwork.GetChainID())
 		}
 	},
 }
@@ -269,22 +245,22 @@ var listNetworkCmd = &cobra.Command{
 	Short: "Show all of supported networks",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		networks := networks.GetSupportedNetworks()
-		for i, n := range networks {
+		nets := networks.GetSupportedNetworks()
+		for i, n := range nets {
 			nodes, err := util.GetNodes(n)
 			if err != nil {
-				fmt.Printf("Error: %s\n", err)
+				appUI.Error("Error: %s", err)
 				continue
 			}
-			fmt.Printf("%d. Name: %s, Chain ID: %d\n", i+1, n.GetName(), n.GetChainID())
-			fmt.Printf("    RPC nodes:\n")
+			appUI.Info("%d. Name: %s, Chain ID: %d", i+1, n.GetName(), n.GetChainID())
+			appUI.Info("    RPC nodes:")
 			for key, node := range nodes {
-				fmt.Printf("    - %s: %s\n", key, node)
+				appUI.Info("    - %s: %s", key, node)
 			}
 		}
 
-		fmt.Printf("\nJarvis: If you want to add more networks to the list, use following command:\n> jarvis network add\n")
-		fmt.Printf("\nJarvis: If you want to delete a network, just delete the corresponding json file in ~/.jarvis/networks/.\n")
+		appUI.Info("\nIf you want to add more networks to the list, use following command:\n> jarvis network add")
+		appUI.Info("\nIf you want to delete a network, just delete the corresponding json file in ~/.jarvis/networks/.")
 	},
 }
 

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"fmt"
 	"math/big"
 	"sync"
 
@@ -37,23 +36,8 @@ func SetNetwork(networkStr string) error {
 	defer mu.Unlock()
 
 	var err error
-	var inited bool
-
-	if cachedNetwork != nil {
-		inited = true
-	}
-
 	cachedNetwork, err = networks.GetNetwork(networkStr)
-	if err != nil {
-		return err
-	}
-
-	if inited {
-		fmt.Printf("Switched to network: %s\n", cachedNetwork.GetName())
-	} else {
-		fmt.Printf("Network: %s\n", cachedNetwork.GetName())
-	}
-	return nil
+	return err
 }
 
 var NetworkString string

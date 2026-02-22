@@ -19,6 +19,11 @@ func PrintFunctionCall(fc *FunctionCall) {
 	printFunctionCallToWriter(fc, os.Stdout, 0)
 }
 
+// PrintFunctionCallToWriter writes a decoded function call to w at indent level 0.
+func PrintFunctionCallToWriter(fc *FunctionCall, w io.Writer) {
+	printFunctionCallToWriter(fc, w, 0)
+}
+
 func PrintTxSuccessSummary(result *TxResult, network Network, writer io.Writer) {
 	if result.Status == "done" {
 		fmt.Fprintf(writer, "Mining status: %s\n", aurora.Green(result.Status))

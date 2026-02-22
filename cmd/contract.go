@@ -56,7 +56,7 @@ Param rules:
 		10.5 KNC token => 10500000000000000000.
 
 	3. bool
-		bool element must be either "true" or "false" (without quotes), all
+		bool element must be either "true" or "false" ( without quotes), all
 		other alternative boolean value string are invalid. Eg. T, F, True,
 		False, nil are invalid.
 
@@ -77,19 +77,19 @@ Param rules:
 	`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) < 1 {
-			fmt.Printf("Not enough param. Please provide contract address or its name.\n")
+			appUI.Error("Not enough param. Please provide contract address or its name.")
 			return
 		}
 		contractAddress, contractName, err := util.GetAddressFromString(args[0])
 		if err != nil {
-			fmt.Printf("Couldn't interpret contract address")
+			appUI.Error("Couldn't interpret contract address")
 			return
 		}
-		fmt.Printf("Contract: %s (%s)\n", contractAddress, contractName)
+		appUI.Info("Contract: %s (%s)", contractAddress, contractName)
 
 		reader, err := util.EthReader(config.Network())
 		if err != nil {
-			fmt.Printf("Couldn't connect to blockchain.\n")
+			appUI.Error("Couldn't connect to blockchain.")
 			return
 		}
 
@@ -97,11 +97,12 @@ Param rules:
 
 		a, err := util.ConfigToABI(contractAddress, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
-			fmt.Printf("Couldn't get abi for %s: %s\n", contractAddress, err)
+			appUI.Error("Couldn't get abi for %s: %s", contractAddress, err)
 			return
 		}
 
 		data, err := cmdutil.PromptTxData(
+			appUI,
 			analyzer,
 			contractAddress,
 			config.MethodIndex,
@@ -112,10 +113,10 @@ Param rules:
 			config.Network(),
 		)
 		if err != nil {
-			fmt.Printf("Couldn't pack data: %s\n", err)
+			appUI.Error("Couldn't pack data: %s", err)
 			return
 		}
-		fmt.Printf("Data to sign: 0x%s\n", common.Bytes2Hex(data))
+		appUI.Success("Data to sign: 0x%s", common.Bytes2Hex(data))
 	},
 }
 
@@ -126,16 +127,18 @@ var contractCmd = &cobra.Command{
 }
 
 var txContractCmd = &cobra.Command{
-	Use:               "tx [tx hashes]",
-	Aliases:           []string{"write"},
-	Short:             "do transaction to interact with smart contracts",
-	Long:              ` `,
-	TraverseChildren:  true,
-	PersistentPreRunE: cmdutil.CommonTxPreprocess,
+	Use:              "tx [tx hashes]",
+	Aliases:          []string{"write"},
+	Short:            "do transaction to interact with smart contracts",
+	Long:             ` `,
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return cmdutil.CommonTxPreprocess(appUI, cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		reader, err := util.EthReader(config.Network())
 		if err != nil {
-			fmt.Printf("Couldn't init eth reader: %s\n", err)
+			appUI.Error("Couldn't init eth reader: %s", err)
 			return
 		}
 
@@ -143,11 +146,12 @@ var txContractCmd = &cobra.Command{
 
 		a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
-			fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
+			appUI.Error("Couldn't get abi for %s: %s", config.To, err)
 			return
 		}
 
 		data, err := cmdutil.PromptTxData(
+			appUI,
 			analyzer,
 			config.To,
 			config.MethodIndex,
@@ -161,14 +165,13 @@ var txContractCmd = &cobra.Command{
 		jarviscommon.DebugPrintf("calling data: %x\n", data)
 
 		if err != nil {
-			fmt.Printf("Couldn't pack data: %s\n", err)
+			appUI.Error("Couldn't pack data: %s", err)
 			return
 		}
-		// var GasLimit uint64
 		if config.GasLimit == 0 {
 			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, 0, config.Value, data)
 			if err != nil {
-				fmt.Printf("Couldn't estimate gas limit: %s\n", err)
+				appUI.Error("Couldn't estimate gas limit: %s", err)
 				return
 			}
 		}
@@ -185,6 +188,7 @@ var txContractCmd = &cobra.Command{
 			config.Network().GetChainID(),
 		)
 		err = cmdutil.PromptTxConfirmation(
+			appUI,
 			analyzer,
 			util.GetJarvisAddress(config.From, config.Network()),
 			tx,
@@ -194,70 +198,65 @@ var txContractCmd = &cobra.Command{
 			config.Network(),
 		)
 		if err != nil {
-			fmt.Printf("Aborted!\n")
+			appUI.Error("Aborted!")
 			return
 		}
-		fmt.Printf("== Unlock your wallet and sign now...\n")
+		appUI.Info("Unlock your wallet and sign now...")
 		account, err := accounts.UnlockAccount(config.FromAcc)
 		if err != nil {
-			fmt.Printf("Unlock your wallet failed: %s\n", err)
+			appUI.Error("Unlock your wallet failed: %s", err)
 			return
 		}
 
 		signedAddr, signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
 		if err != nil {
-			fmt.Printf("%s", err)
+			appUI.Error("%s", err)
 			return
 		}
 		if signedAddr.Cmp(jarviscommon.HexToAddress(config.FromAcc.Address)) != 0 {
-			fmt.Printf("Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s\n",
+			appUI.Error(
+				"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
 				config.FromAcc.Address,
 				signedAddr.Hex(),
 			)
 			return
 		}
 
-		broadcasted, err := cmdutil.HandlePostSign(signedTx, reader, analyzer, a)
+		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a)
 		if err != nil && !broadcasted {
-			fmt.Printf("Failed to proceed after signing the tx: %s. Aborted.\n", err)
+			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}
 	},
 }
 
-func handleReadOneFunctionOnContract(reader *reader.EthReader, a *abi.ABI, atBlock int64, method *abi.Method, params []interface{}) (contractReadResult, error) {
-	responseBytes, err := reader.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", config.To, a, method.Name, params...)
+func handleReadOneFunctionOnContract(r *reader.EthReader, a *abi.ABI, atBlock int64, method *abi.Method, params []interface{}) (contractReadResult, error) {
+	responseBytes, err := r.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", config.To, a, method.Name, params...)
 	if err != nil {
-		fmt.Printf("getting response failed: %s\n", err)
+		appUI.Error("getting response failed: %s", err)
 		return contractReadResult{}, err
 	}
 	if len(responseBytes) == 0 {
-		fmt.Printf("the function reverts. please double check your params.\n")
+		appUI.Error("the function reverts. please double check your params.")
 		return contractReadResult{}, fmt.Errorf("the function reverted")
 	}
 	ps, err := method.Outputs.UnpackValues(responseBytes)
 	if err != nil {
-		fmt.Printf("Couldn't unpack response to go types: %s\n", err)
+		appUI.Error("Couldn't unpack response to go types: %s", err)
 		return contractReadResult{}, err
 	}
 
-	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+	analyzer := txanalyzer.NewGenericAnalyzer(r, config.Network())
 
-	fmt.Printf("Output:\n")
+	appUI.Info("Output:")
 	result := contractReadResult{}
 	for i, output := range method.Outputs {
 		oneOutputParamResult := analyzer.ParamAsJarvisParamResult(output.Name, output.Type, ps[i])
 		oneVerboseParamResult := convertToVerboseParamResult(oneOutputParamResult)
 		result = append(result, oneVerboseParamResult)
 
-		// 	returnVariable{
-		// 	Name:        output.Name,
-		// 	Values:      valueStrs,
-		// 	HumanValues: VerboseValues(values),
-		// })
-
-		fmt.Printf("%d. ", i+1)
-		jarviscommon.PrintVerboseParamResultToWriter(os.Stdout, oneOutputParamResult, 0, true)
-		fmt.Printf("\n")
+		fmt.Fprintf(appUI.Writer(), "%d. ", i+1)
+		jarviscommon.PrintVerboseParamResultToWriter(appUI.Writer(), oneOutputParamResult, 0, true)
+		fmt.Fprintln(appUI.Writer())
 	}
 	return result, nil
 }
@@ -333,9 +332,8 @@ type contractReadResultJSON struct {
 
 func (c *contractReadResultJSON) Write(filepath string) {
 	data, _ := json.MarshalIndent(c, "", "  ")
-	err := os.WriteFile(filepath, data, 0644)
-	if err != nil {
-		fmt.Printf("Writing to json file failed: %s\n", err)
+	if err := os.WriteFile(filepath, data, 0644); err != nil {
+		appUI.Error("Writing to json file failed: %s", err)
 	}
 }
 
@@ -346,22 +344,23 @@ type batchcontractReadResultJSON struct {
 
 func (b *batchcontractReadResultJSON) Write(filepath string) {
 	data, _ := json.MarshalIndent(b, "", "  ")
-	err := os.WriteFile(filepath, data, 0644)
-	if err != nil {
-		fmt.Printf("Writing to json file failed: %s\n", err)
+	if err := os.WriteFile(filepath, data, 0644); err != nil {
+		appUI.Error("Writing to json file failed: %s", err)
 	}
 }
 
 var readContractCmd = &cobra.Command{
-	Use:               "read",
-	Short:             "read smart contracts (faster than etherscan)",
-	Long:              ` `,
-	TraverseChildren:  true,
-	PersistentPreRunE: cmdutil.CommonFunctionCallPreprocess,
+	Use:              "read",
+	Short:            "read smart contracts (faster than etherscan)",
+	Long:             ` `,
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return cmdutil.CommonFunctionCallPreprocess(appUI, cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
 		reader, err := util.EthReader(config.Network())
 		if err != nil {
-			fmt.Printf("Couldn't init eth reader: %s\n", err)
+			appUI.Error("Couldn't init eth reader: %s", err)
 			return
 		}
 		if config.AllZeroParamsMethods {
@@ -376,7 +375,7 @@ var readContractCmd = &cobra.Command{
 
 			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
-				fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
+				appUI.Error("Couldn't get abi for %s: %s", config.To, err)
 				return
 			}
 
@@ -384,7 +383,7 @@ var readContractCmd = &cobra.Command{
 			for i := range methods {
 				method := methods[i]
 				resultJSON.Functions = append(resultJSON.Functions, method.Name)
-				fmt.Printf("%d. %s\n", i+1, method.Name)
+				appUI.Info("%d. %s", i+1, method.Name)
 
 				result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, &method, []interface{}{})
 				if err != nil {
@@ -396,7 +395,7 @@ var readContractCmd = &cobra.Command{
 						Result: result,
 					})
 				}
-				fmt.Printf("---------------------------------------------------\n")
+				appUI.Info("---------------------------------------------------")
 			}
 		} else {
 			resultJSON := contractReadResultJSON{
@@ -412,11 +411,12 @@ var readContractCmd = &cobra.Command{
 
 			a, err := util.ConfigToABI(config.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
-				fmt.Printf("Couldn't get abi for %s: %s\n", config.To, err)
+				appUI.Error("Couldn't get abi for %s: %s", config.To, err)
 				return
 			}
 
 			method, params, err := cmdutil.PromptFunctionCallData(
+				appUI,
 				analyzer,
 				config.To,
 				config.MethodIndex,
@@ -428,7 +428,7 @@ var readContractCmd = &cobra.Command{
 				config.Network(),
 			)
 			if err != nil {
-				fmt.Printf("Couldn't get params from users: %s\n", err)
+				appUI.Error("Couldn't get params from users: %s", err)
 				resultJSON.Error = fmt.Sprintf("%s", err)
 				return
 			}
@@ -463,17 +463,5 @@ func init() {
 	readContractCmd.PersistentFlags().StringVarP(&config.JSONOutputFile, "json-output", "o", "", "write output of contract read to json file")
 	readContractCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
 	contractCmd.AddCommand(readContractCmd)
-	// contractCmd.AddCommand(govInfocontractCmd)
-	// TODO: add more commands to send or call other contracts
 	rootCmd.AddCommand(contractCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// txCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// txCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
