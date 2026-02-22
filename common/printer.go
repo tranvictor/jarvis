@@ -29,7 +29,8 @@ func ReadableNumber(value string) string {
 }
 
 // VerboseValue returns a human-readable string for a single decoded ABI value.
-// Addresses are expanded with their label; numbers are formatted with separators.
+// Addresses are expanded with their label; token amounts show both raw and
+// human-readable form; other numbers are formatted with digit separators.
 func VerboseValue(value Value) string {
 	if value.Address != nil {
 		return VerboseAddress(*value.Address)
@@ -39,10 +40,20 @@ func VerboseValue(value Value) string {
 		return value.Value
 	}
 
-	// hex values are likely byte data — skip the readable-number formatting
+	// hex values are likely byte data — skip numeric formatting
 	if len(value.Value) >= 2 && value.Value[0:2] == "0x" {
 		return value.Value
 	}
+
+	if value.TokenHint != nil {
+		raw := StringToBig(value.Value)
+		human := BigToFloatString(raw, value.TokenHint.Decimal)
+		if value.TokenHint.Symbol != "" {
+			return fmt.Sprintf("%s (%s %s)", value.Value, human, value.TokenHint.Symbol)
+		}
+		return fmt.Sprintf("%s (%s)", value.Value, human)
+	}
+
 	return ReadableNumber(value.Value)
 }
 

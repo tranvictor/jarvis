@@ -12,10 +12,19 @@ type Address struct {
 	Decimal int64
 }
 
+// TokenHint carries token metadata for a Value that represents a token amount.
+// When set, display functions show the raw integer alongside the human-readable
+// decimal form (e.g. "20258273 (20.258273 USDC)").
+type TokenHint struct {
+	Decimal uint64
+	Symbol  string
+}
+
 type Value struct {
-	Value   string
-	Type    string
-	Address *Address
+	Value     string
+	Type      string
+	Address   *Address
+	TokenHint *TokenHint // non-nil when this value is a token amount
 }
 
 type FunctionCall struct {

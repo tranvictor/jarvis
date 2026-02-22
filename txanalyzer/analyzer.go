@@ -29,17 +29,16 @@ func EthAnalyzer(network Network) (*TxAnalyzer, error) {
 }
 
 type TxAnalyzer struct {
-	reader  reader.Reader
-	Network Network
+	ctx *AnalysisContext
 }
 
 func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult, network Network) {
-	result.From = util.GetJarvisAddress(txinfo.Tx.Extra.From.Hex(), self.Network)
+	result.From = util.GetJarvisAddress(txinfo.Tx.Extra.From.Hex(), self.ctx.Network)
 	result.Value = fmt.Sprintf(
 		"%s",
 		BigToFloatString(txinfo.Tx.Value(), network.GetNativeTokenDecimal()),
 	)
-	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.Network)
+	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.ctx.Network)
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%.4f", BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
@@ -48,16 +47,27 @@ func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult, network 
 		"%.8f",
 		BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()),
 	)
-	// result.Timestamp = fmt.Sprintf("%s", time.Unix(int64(txinfo.BlockHeader.Time), 0).String())
 }
 
-func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}) Value {
+// nonArrayParamAsJarvisValue converts a scalar ABI value to a jarvis Value.
+// When hint is non-nil (i.e. the contract is a known ERC20), integer values
+// are annotated with the token's decimal and symbol so the display layer can
+// show both the raw amount and the human-readable form.
+func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}, hint *ERC20Info) Value {
 	valueStr := ""
 	switch t.T {
-	case abi.StringTy: // variable arrays are written at the end of the return bytes
+	case abi.StringTy:
 		valueStr = fmt.Sprintf("%s", value.(string))
 	case abi.IntTy, abi.UintTy:
 		valueStr = fmt.Sprintf("%d", value)
+		v := util.GetJarvisValue(valueStr, self.ctx.Network)
+		if hint != nil {
+			v.TokenHint = &TokenHint{
+				Decimal: hint.Decimal,
+				Symbol:  hint.Symbol,
+			}
+		}
+		return v
 	case abi.BoolTy:
 		valueStr = fmt.Sprintf("%t", value.(bool))
 	case abi.AddressTy:
@@ -78,10 +88,10 @@ func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}
 	default:
 		valueStr = fmt.Sprintf("%v", value)
 	}
-	return util.GetJarvisValue(valueStr, self.Network)
+	return util.GetJarvisValue(valueStr, self.ctx.Network)
 }
 
-func (ta *TxAnalyzer) ParamAsJarvisTuple(t abi.Type, value interface{}) TupleParamResult {
+func (ta *TxAnalyzer) paramAsJarvisTuple(t abi.Type, value interface{}, hint *ERC20Info) TupleParamResult {
 	result := TupleParamResult{
 		Name: t.TupleRawName,
 		Type: t.String(),
@@ -89,23 +99,29 @@ func (ta *TxAnalyzer) ParamAsJarvisTuple(t abi.Type, value interface{}) TuplePar
 
 	realVal, ok := value.(reflect.Value)
 	if !ok {
-		// value is not a reflect.Value
 		realVal = reflect.ValueOf(value)
 	}
 
 	for i, field := range t.TupleElems {
-		result.Values = append(result.Values, ta.ParamAsJarvisParamResult(
+		result.Values = append(result.Values, ta.paramAsJarvisParamResult(
 			t.TupleRawNames[i],
 			*field,
 			reflect.Indirect(realVal).FieldByName(
 				cases.Title(language.Und, cases.NoLower).String(t.TupleRawNames[i]),
 			).Interface(),
+			hint,
 		))
 	}
 	return result
 }
 
-func (ta *TxAnalyzer) ParamAsJarvisParamResult(name string, t abi.Type, value interface{}) ParamResult {
+// ParamAsJarvisTuple is the public interface method; it delegates to the
+// internal variant with no token hint (nil context).
+func (ta *TxAnalyzer) ParamAsJarvisTuple(t abi.Type, value interface{}) TupleParamResult {
+	return ta.paramAsJarvisTuple(t, value, nil)
+}
+
+func (ta *TxAnalyzer) paramAsJarvisParamResult(name string, t abi.Type, value interface{}, hint *ERC20Info) ParamResult {
 	result := ParamResult{
 		Name: name,
 	}
@@ -116,43 +132,46 @@ func (ta *TxAnalyzer) ParamAsJarvisParamResult(name string, t abi.Type, value in
 
 		realVal, ok := value.(reflect.Value)
 		if !ok {
-			// value is not a reflect.Value
 			realVal = reflect.ValueOf(value)
 		}
 
-		// check to see if element of this argument is either slice, array, tuple or arbitrary types
 		if t.Elem.T == abi.SliceTy || t.Elem.T == abi.ArrayTy {
-			// if the element is a slice, array or tuple, we need to populate the result's tuples
 			result.Arrays = []ParamResult{}
 			for i := 0; i < realVal.Len(); i++ {
 				result.Arrays = append(
 					result.Arrays,
-					ta.ParamAsJarvisParamResult(fmt.Sprintf("%s[%d]", name, i), *t.Elem, realVal.Index(i).Interface()))
+					ta.paramAsJarvisParamResult(fmt.Sprintf("%s[%d]", name, i), *t.Elem, realVal.Index(i).Interface(), hint))
 			}
 		} else if t.Elem.T == abi.TupleTy {
 			result.Tuples = []TupleParamResult{}
 			for i := 0; i < realVal.Len(); i++ {
 				result.Tuples = append(
 					result.Tuples,
-					ta.ParamAsJarvisTuple(*t.Elem, realVal.Index(i).Interface()))
+					ta.paramAsJarvisTuple(*t.Elem, realVal.Index(i).Interface(), hint))
 			}
 		} else {
 			result.Values = []Value{}
 			for i := 0; i < realVal.Len(); i++ {
 				result.Values = append(
 					result.Values,
-					ta.nonArrayParamAsJarvisValue(*t.Elem, realVal.Index(i).Interface()))
+					ta.nonArrayParamAsJarvisValue(*t.Elem, realVal.Index(i).Interface(), hint))
 			}
 		}
 		return result
 	case abi.TupleTy:
 		result.Type = t.TupleRawName
-		result.Tuples = []TupleParamResult{ta.ParamAsJarvisTuple(t, value)}
+		result.Tuples = []TupleParamResult{ta.paramAsJarvisTuple(t, value, hint)}
 	default:
 		result.Type = t.String()
-		result.Values = []Value{ta.nonArrayParamAsJarvisValue(t, value)}
+		result.Values = []Value{ta.nonArrayParamAsJarvisValue(t, value, hint)}
 	}
 	return result
+}
+
+// ParamAsJarvisParamResult is the public interface method; it delegates to the
+// internal variant with no token hint (nil context).
+func (ta *TxAnalyzer) ParamAsJarvisParamResult(name string, t abi.Type, value interface{}) ParamResult {
+	return ta.paramAsJarvisParamResult(name, t, value, nil)
 }
 
 func findEventById(a *abi.ABI, topic []byte) (*abi.Event, error) {
@@ -171,8 +190,6 @@ const maxRecursionDepth = 10
 // LooksLikeTxData returns true only when the params contain exactly one
 // "address", exactly one "uint256", and exactly one "bytes" param — matching
 // the Gnosis classic submitTransaction(address,uint256,bytes) signature.
-// The previous implementation matched any function that happened to have at
-// least one of each type, causing false-positive recursive decoding.
 func LooksLikeTxData(params []ParamResult) bool {
 	var nAddress, nUint, nBytes int
 	for _, p := range params {
@@ -189,8 +206,7 @@ func LooksLikeTxData(params []ParamResult) bool {
 }
 
 // GetTxDatasFromFunctionCallParams extracts the single address, uint256, and
-// bytes values from params that LooksLikeTxData validated. It returns exactly
-// one element in each slice so the caller's loop is always safe.
+// bytes values from params that LooksLikeTxData validated.
 func GetTxDatasFromFunctionCallParams(
 	params []ParamResult,
 ) (destinations []string, values []string, data []string) {
@@ -226,20 +242,24 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 	depth int,
 ) (fc *FunctionCall) {
 	fc = &FunctionCall{}
-	fc.Destination = util.GetJarvisAddress(destination, self.Network)
+	fc.Destination = util.GetJarvisAddress(destination, self.ctx.Network)
 	fc.Value = value
 
 	var err error
 
 	a := customABIs[strings.ToLower(fc.Destination.Address)]
 	if a == nil {
-		a, err = lookupABI(destination, self.Network)
+		a, err = lookupABI(destination, self.ctx.Network)
 		if err != nil {
 			a = GetERC20ABI()
 		}
 	}
 
-	fc.Method, fc.Params, err = self.AnalyzeMethodCall(a, data)
+	// Look up ERC20 context for the destination so that integer params
+	// (token amounts) can be annotated with decimal and symbol.
+	hint := self.ctx.ERC20InfoFor(destination)
+
+	fc.Method, fc.Params, err = self.analyzeMethodCall(a, data, hint)
 	if err != nil {
 		fc.Error = "couldn't decode bytes data"
 	}
@@ -250,8 +270,6 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 
 	if LooksLikeTxData(fc.Params) {
 		destinations, valueStrs, dataStrs := GetTxDatasFromFunctionCallParams(fc.Params)
-		// All three slices have exactly one element (guaranteed by LooksLikeTxData
-		// + GetTxDatasFromFunctionCallParams), so iterating any one is safe.
 		n := len(dataStrs)
 		if len(destinations) < n {
 			n = len(destinations)
@@ -282,9 +300,12 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 	return fc
 }
 
-func (self *TxAnalyzer) AnalyzeMethodCall(
+// analyzeMethodCall is the internal variant that accepts a token hint so that
+// ERC20 integer params can be annotated with decimal context.
+func (self *TxAnalyzer) analyzeMethodCall(
 	a *abi.ABI,
 	data []byte,
+	hint *ERC20Info,
 ) (method string, params []ParamResult, err error) {
 	if _, err := a.MethodById(data); err != nil {
 		a = GetERC20ABI()
@@ -301,16 +322,24 @@ func (self *TxAnalyzer) AnalyzeMethodCall(
 
 	params = []ParamResult{}
 	for i, input := range m.Inputs {
-		params = append(params, self.ParamAsJarvisParamResult(input.Name, input.Type, ps[i]))
+		params = append(params, self.paramAsJarvisParamResult(input.Name, input.Type, ps[i], hint))
 	}
 
 	return method, params, nil
 }
 
+// AnalyzeMethodCall is the public interface method; it delegates to the
+// internal variant with no token hint (nil context).
+func (self *TxAnalyzer) AnalyzeMethodCall(
+	a *abi.ABI,
+	data []byte,
+) (method string, params []ParamResult, err error) {
+	return self.analyzeMethodCall(a, data, nil)
+}
+
 func (self *TxAnalyzer) AnalyzeLog(
 	customABIs map[string]*abi.ABI,
 	l *types.Log,
-	network Network,
 ) (LogResult, error) {
 	logResult := LogResult{
 		Name:   "",
@@ -320,24 +349,27 @@ func (self *TxAnalyzer) AnalyzeLog(
 
 	var err error
 
-	abi := customABIs[strings.ToLower(l.Address.Hex())]
-	if abi == nil {
-		abi, err = util.GetABI(l.Address.Hex(), network)
+	a := customABIs[strings.ToLower(l.Address.Hex())]
+	if a == nil {
+		a, err = util.GetABI(l.Address.Hex(), self.ctx.Network)
 		if err != nil {
 			return logResult, fmt.Errorf("getting abi for %s failed: %s", l.Address.Hex(), err)
 		}
 	}
-	event, err := findEventById(abi, l.Topics[0].Bytes())
+	event, err := findEventById(a, l.Topics[0].Bytes())
 	if err != nil {
 		return logResult, err
 	}
 	logResult.Name = event.Name
 
+	// Annotate token amounts if the emitting contract is a known ERC20.
+	hint := self.ctx.ERC20InfoFor(l.Address.Hex())
+
 	iArgs, niArgs := SplitEventArguments(event.Inputs)
 	for j, topic := range l.Topics[1:] {
 		logResult.Topics = append(logResult.Topics, TopicResult{
 			Name:  iArgs[j].Name,
-			Value: []Value{util.GetJarvisValue(topic.Hex(), self.Network)},
+			Value: []Value{util.GetJarvisValue(topic.Hex(), self.ctx.Network)},
 		})
 	}
 
@@ -346,7 +378,7 @@ func (self *TxAnalyzer) AnalyzeLog(
 		return logResult, err
 	}
 	for i, input := range niArgs {
-		logResult.Data = append(logResult.Data, self.ParamAsJarvisParamResult(input.Name, input.Type, params[i]))
+		logResult.Data = append(logResult.Data, self.paramAsJarvisParamResult(input.Name, input.Type, params[i], hint))
 	}
 	return logResult, nil
 }
@@ -367,85 +399,13 @@ func (self *TxAnalyzer) analyzeContractTx(
 
 	logs := txinfo.Receipt.Logs
 	for _, l := range logs {
-		logResult, err := self.AnalyzeLog(customABIs, l, network)
+		logResult, err := self.AnalyzeLog(customABIs, l)
 		if err != nil {
 			result.Error += fmt.Sprintf("%s", err)
 		}
 		result.Logs = append(result.Logs, logResult)
 	}
 }
-
-// this function only compares thee function and param names against
-// standard gnosis multisig. No bytecode is compared.
-// func isGnosisMultisig(method *abi.Method, params []interface{}) bool {
-// 	if method.Name != "submitTransaction" {
-// 		return false
-// 	}
-// 	expectedParams := []string{"destination", "value", "data"}
-// 	for i, input := range method.Inputs {
-// 		if input.Name != expectedParams[i] {
-// 			return false
-// 		}
-// 	}
-// 	return true
-// }
-//
-// func (self *TxAnalyzer) gnosisMultisigInitData(a *abi.ABI, params []interface{}, customABIs map[string]*abi.ABI) (result *GnosisResult) {
-// 	result = &GnosisResult{
-// 		Contract:   Address{},
-// 		Network:    self.Network,
-// 		Method:     "",
-// 		Params:     []ParamResult{},
-// 		GnosisInit: nil,
-// 		Error:      "",
-// 	}
-// 	var err error
-// 	contract := params[0].(common.Address)
-// 	result.Contract = util.GetJarvisAddress(contract.Hex(), self.Network)
-// 	data := params[2].([]byte)
-// 	if a == nil {
-// 		result.Error = fmt.Sprintf("Cannot get abi of the contract: %s", err)
-// 		return result
-// 	}
-// 	if _, err = a.MethodById(data); err != nil {
-// 		a, _ = GetERC20ABI()
-// 	}
-// 	method, err := a.MethodById(data)
-// 	if err != nil {
-// 		result.Error = fmt.Sprintf("Cannot get corresponding method from the ABI: %s", err)
-// 		return result
-// 	}
-// 	// fmt.Printf("    Method: %s\n", method.Name)
-// 	result.Method = method.Name
-// 	ps, err := method.Inputs.UnpackValues(data[4:])
-// 	if err != nil {
-// 		result.Error = fmt.Sprintf("Cannot parse params: %s", err)
-// 		return result
-// 	}
-// 	// fmt.Printf("    Params:\n")
-// 	for i, input := range method.Inputs {
-// 		result.Params = append(result.Params, ParamResult{
-// 			Name:  input.Name,
-// 			Type:  input.Type.String(),
-// 			Value: self.ParamAsJarvisValues(input.Type, ps[i]),
-// 		})
-// 		// fmt.Printf("        %s (%s): ", input.Name, input.Type)
-// 	}
-//
-// 	if isGnosisMultisig(method, ps) {
-// 		// fmt.Printf("    ==> Gnosis Multisig init data:\n")
-// 		contract := ps[0].(common.Address)
-// 		a := customABIs[strings.ToLower(contract.Hex())]
-// 		if a == nil {
-// 			a, err = util.GetABI(contract.Hex(), self.Network)
-// 			if err != nil {
-// 				a, _ = GetERC20ABI()
-// 			}
-// 		}
-// 		result.GnosisInit = self.gnosisMultisigInitData(a, ps, customABIs)
-// 	}
-// 	return result
-// }
 
 func (self *TxAnalyzer) AnalyzeOffline(
 	txinfo *TxInfo,
@@ -455,27 +415,21 @@ func (self *TxAnalyzer) AnalyzeOffline(
 	network Network,
 ) *TxResult {
 	result := NewTxResult()
-	result.Network = self.Network.GetName()
-	// fmt.Printf("==========================================Transaction info===============================================================\n")
-	// fmt.Printf("tx hash: %s\n", tx)
+	result.Network = self.ctx.Network.GetName()
 	result.Hash = txinfo.Tx.Hash().Hex()
-	// fmt.Printf("mining status: %s\n", txinfo.Status)
 	result.Status = txinfo.Status
 	if txinfo.Status == "done" || txinfo.Status == "reverted" {
 		self.setBasicTxInfo(*txinfo, result, network)
 		if !isContract {
-			// fmt.Printf("tx type: normal\n")
 			result.TxType = "normal"
 		} else {
-			// fmt.Printf("tx type: contract call\n")
 			result.TxType = "contract call"
 			self.analyzeContractTx(*txinfo, lookupABI, customABIs, result, network)
 		}
 	}
-	// fmt.Printf("=========================================================================================================================\n")
 	return result
 }
 
 func NewGenericAnalyzer(r reader.Reader, network Network) *TxAnalyzer {
-	return &TxAnalyzer{r, network}
+	return &TxAnalyzer{ctx: NewAnalysisContext(r, network)}
 }
