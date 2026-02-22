@@ -3,6 +3,7 @@ package util
 import (
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -17,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/tranvictor/jarvis/accounts"
+	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
@@ -304,58 +306,58 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		config.Network().GetChainID(),
 	)
 
-	err = PromptTxConfirmation(
-		u,
-		analyzer,
-		util.GetJarvisAddress(tc.From, config.Network()),
-		tx,
-		nil,
-		config.Network(),
-	)
-	if err != nil {
-		u.Error("Aborted!")
-		return
-	}
-
-	u.Info("Unlock your wallet and sign now...")
-	account, err := accounts.UnlockAccount(tc.FromAcc)
-	if err != nil {
-		u.Error("Failed: %s", err)
-		return
-	}
-
-	signedAddr, signedTx, err := account.SignTx(
-		tx,
-		big.NewInt(int64(config.Network().GetChainID())),
-	)
-	if err != nil {
-		u.Error("Signing tx failed: %s", err)
-		return
-	}
-	if signedAddr.Cmp(jarviscommon.HexToAddress(tc.FromAcc.Address)) != 0 {
-		u.Error(
-			"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
-			tc.FromAcc.Address,
-			signedAddr.Hex(),
-		)
-		return
-	}
-
 	bc := tc.Broadcaster
 	if bc == nil {
 		u.Error("Broadcaster not available.")
 		return
 	}
 
-	_, broadcasted, err := bc.BroadcastTx(signedTx)
-	if config.DontWaitToBeMined {
-		util.DisplayBroadcastedTx(u, signedTx, broadcasted, err, config.Network())
-	} else {
-		util.DisplayWaitAnalyze(
-			u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
-			nil, nil, config.DegenMode,
+	if broadcasted, err := SignAndBroadcast(u, tc.FromAcc, tx, nil, reader, analyzer, a, bc); err != nil && !broadcasted {
+		u.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
+	}
+}
+
+// ErrWalletUnlock is returned by SignAndBroadcast when the wallet cannot be
+// unlocked. Callers that need a specific exit code (e.g. 126) can test with
+// errors.Is.
+var ErrWalletUnlock = errors.New("wallet unlock failed")
+
+// SignAndBroadcast prompts the user for confirmation, unlocks the wallet,
+// signs the transaction, verifies the signer, and hands off to HandlePostSign.
+func SignAndBroadcast(
+	u ui.UI,
+	fromAcc jtypes.AccDesc,
+	tx *types.Transaction,
+	customABIs map[string]*abi.ABI,
+	reader utilreader.Reader,
+	analyzer util.TxAnalyzer,
+	a *abi.ABI,
+	bc TxBroadcaster,
+) (bool, error) {
+	if err := PromptTxConfirmation(u, analyzer, util.GetJarvisAddress(fromAcc.Address, config.Network()), tx, customABIs, config.Network()); err != nil {
+		u.Error("Aborted!")
+		return false, err
+	}
+
+	u.Info("Unlock your wallet and sign now...")
+	account, err := accounts.UnlockAccount(fromAcc)
+	if err != nil {
+		return false, fmt.Errorf("%w: %s", ErrWalletUnlock, err)
+	}
+
+	signedAddr, signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
+	if err != nil {
+		return false, fmt.Errorf("couldn't sign tx: %w", err)
+	}
+	if signedAddr.Cmp(jarviscommon.HexToAddress(fromAcc.Address)) != 0 {
+		return false, fmt.Errorf(
+			"signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
+			fromAcc.Address,
+			signedAddr.Hex(),
 		)
 	}
+
+	return HandlePostSign(u, signedTx, reader, analyzer, a, bc)
 }
 
 type signedTxResultJSON struct {

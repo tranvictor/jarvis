@@ -81,6 +81,35 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 	return nil
 }
 
+// CommonSendPreprocess is a lightweight preprocess for the send command. It
+// initialises the network and injects an EthReader and Broadcaster into
+// TxContext so sendCmd.Run can use them without a live-node dependency in
+// tests. Gas, nonce, and TxType resolution is deliberately left to Run
+// because they depend on the specific token/amount being sent.
+func CommonSendPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+	if err := config.SetNetwork(config.NetworkString); err != nil {
+		return err
+	}
+	u.Info("Network: %s", config.Network().GetName())
+
+	tc := TxContext{}
+
+	r, err := util.EthReader(config.Network())
+	if err != nil {
+		return fmt.Errorf("couldn't connect to blockchain: %w", err)
+	}
+	tc.Reader = r
+
+	bc, err := util.EthBroadcaster(config.Network())
+	if err != nil {
+		return fmt.Errorf("couldn't connect to broadcaster: %w", err)
+	}
+	tc.Broadcaster = bc
+
+	cmd.SetContext(WithTxContext(cmd.Context(), tc))
+	return nil
+}
+
 // CommonTxPreprocess extends CommonFunctionCallPreprocess by also resolving the
 // signing account and fetching gas/nonce parameters. It overwrites the TxContext
 // attached to cmd by CommonFunctionCallPreprocess.

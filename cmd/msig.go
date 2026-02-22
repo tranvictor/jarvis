@@ -490,42 +490,10 @@ var newMsigCmd = &cobra.Command{
 			config.Network().GetChainID(),
 		)
 
-		err = cmdutil.PromptTxConfirmation(
-			appUI,
-			analyzer,
-			util.GetJarvisAddress(tc.From, config.Network()),
-			tx,
-			customABIs,
-			config.Network(),
-		)
-		if err != nil {
-			appUI.Error("Aborted!")
-			return
-		}
-
-		appUI.Info("Unlock your wallet and sign now...")
-		account, err := accounts.UnlockAccount(tc.FromAcc)
-		if err != nil {
-			appUI.Error("Failed: %s", err)
-			return
-		}
-
-		signedAddr, signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
-		if err != nil {
-			appUI.Error("Failed to sign tx: %s", err)
-			return
-		}
-		if signedAddr.Cmp(jarviscommon.HexToAddress(tc.FromAcc.Address)) != 0 {
-			appUI.Error(
-				"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
-				tc.FromAcc.Address,
-				signedAddr.Hex(),
-			)
-			return
-		}
-
-		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, nil, tc.Broadcaster)
-		if err != nil && !broadcasted {
+		if broadcasted, err := cmdutil.SignAndBroadcast(
+			appUI, tc.FromAcc, tx, customABIs,
+			reader, analyzer, nil, tc.Broadcaster,
+		); err != nil && !broadcasted {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}
 	},
@@ -642,41 +610,11 @@ var initMsigCmd = &cobra.Command{
 			strings.ToLower(config.MsigTo): a,
 			strings.ToLower(tc.To):         msigABI,
 		}
-		err = cmdutil.PromptTxConfirmation(
-			appUI,
-			analyzer,
-			util.GetJarvisAddress(tc.From, config.Network()),
-			tx,
-			customABIs,
-			config.Network(),
+
+		broadcasted, err := cmdutil.SignAndBroadcast(
+			appUI, tc.FromAcc, tx, customABIs,
+			reader, analyzer, a, tc.Broadcaster,
 		)
-		if err != nil {
-			appUI.Error("Aborted!")
-			return
-		}
-
-		appUI.Info("Unlock your wallet and sign now...")
-		account, err := accounts.UnlockAccount(tc.FromAcc)
-		if err != nil {
-			appUI.Error("Failed: %s", err)
-			return
-		}
-
-		signedAddr, signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
-		if err != nil {
-			appUI.Error("Failed to sign tx: %s", err)
-			return
-		}
-		if signedAddr.Cmp(jarviscommon.HexToAddress(tc.FromAcc.Address)) != 0 {
-			appUI.Error(
-				"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
-				tc.FromAcc.Address,
-				signedAddr.Hex(),
-			)
-			return
-		}
-
-		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a, tc.Broadcaster)
 		if err != nil && !broadcasted {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}

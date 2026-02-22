@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"os"
 	"strings"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 
-	"github.com/tranvictor/jarvis/accounts"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
@@ -190,43 +188,11 @@ var txContractCmd = &cobra.Command{
 			data,
 			config.Network().GetChainID(),
 		)
-		err = cmdutil.PromptTxConfirmation(
-			appUI,
-			analyzer,
-			util.GetJarvisAddress(tc.From, config.Network()),
-			tx,
-			map[string]*abi.ABI{
-				strings.ToLower(tc.To): a,
-			},
-			config.Network(),
-		)
-		if err != nil {
-			appUI.Error("Aborted!")
-			return
-		}
-		appUI.Info("Unlock your wallet and sign now...")
-		account, err := accounts.UnlockAccount(tc.FromAcc)
-		if err != nil {
-			appUI.Error("Unlock your wallet failed: %s", err)
-			return
-		}
-
-		signedAddr, signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
-		if err != nil {
-			appUI.Error("%s", err)
-			return
-		}
-		if signedAddr.Cmp(jarviscommon.HexToAddress(tc.FromAcc.Address)) != 0 {
-			appUI.Error(
-				"Signed from wrong address. You could use wrong hw or passphrase. Expected wallet: %s, signed wallet: %s",
-				tc.FromAcc.Address,
-				signedAddr.Hex(),
-			)
-			return
-		}
-
-		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a, tc.Broadcaster)
-		if err != nil && !broadcasted {
+		if broadcasted, err := cmdutil.SignAndBroadcast(
+			appUI, tc.FromAcc, tx,
+			map[string]*abi.ABI{strings.ToLower(tc.To): a},
+			reader, analyzer, a, tc.Broadcaster,
+		); err != nil && !broadcasted {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}
 	},
