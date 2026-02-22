@@ -20,11 +20,28 @@ type TokenHint struct {
 	Symbol  string
 }
 
+// DisplayKind controls how VerboseValue renders a Value. It is set at
+// creation time by the ABI decoder or the user-input interpreter, so the
+// display layer never needs to guess from heuristics.
+type DisplayKind int
+
+const (
+	DisplayRaw     DisplayKind = iota // string, bool, hash, hex bytes — shown as-is
+	DisplayAddress                    // Ethereum address — "0xabc... (Label)"
+	DisplayInteger                    // plain integer — ReadableNumber with separators
+	DisplayToken                      // token amount — "rawAmt (human Symbol)"
+)
+
+// Value is an annotated scalar ABI value.
+//
+// Raw is always set to the canonical string form. Kind controls how
+// VerboseValue formats it for display. Address and Token carry optional
+// enrichment when the kind requires it.
 type Value struct {
-	Value     string
-	Type      string
-	Address   *Address
-	TokenHint *TokenHint // non-nil when this value is a token amount
+	Raw     string      // canonical string representation (hex for bytes/addresses, decimal for ints)
+	Kind    DisplayKind // display intent; replaces the old ad-hoc Type string
+	Address *Address    // set when Kind == DisplayAddress
+	Token   *TokenHint  // set when Kind == DisplayToken
 }
 
 type FunctionCall struct {
@@ -83,7 +100,7 @@ type TupleParamResult struct {
 
 type TopicResult struct {
 	Name  string
-	Value []Value
+	Value Value // single decoded value for this indexed event argument
 }
 
 type LogResult struct {

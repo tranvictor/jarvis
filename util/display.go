@@ -78,14 +78,7 @@ func DisplayLog(u ui.UI, idx int, log jarviscommon.LogResult) {
 	u.Info("Log %d: %s", idx+1, log.Name)
 	inner := u.Indent()
 	for j, topic := range log.Topics {
-		if len(topic.Value) == 1 {
-			inner.Info("Topic %d - %s: %s", j+1, topic.Name, jarviscommon.VerboseValue(topic.Value[0]))
-		} else {
-			inner.Info("Topic %d - %s:", j+1, topic.Name)
-			for k, v := range topic.Value {
-				inner.Indent().Info("%d. %s", k+1, jarviscommon.VerboseValue(v))
-			}
-		}
+		inner.Info("Topic %d - %s: %s", j+1, topic.Name, jarviscommon.VerboseValue(topic.Value))
 	}
 	inner.Info("Data:")
 	for _, param := range log.Data {

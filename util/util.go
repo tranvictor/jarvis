@@ -377,28 +377,24 @@ func isRealAddress(value string) bool {
 }
 
 func GetJarvisValue(value string, network networks.Network) jarviscommon.Value {
-	valueBig, isHex := big.NewInt(0).SetString(value, 0)
-	if !isHex {
-		return jarviscommon.Value{
-			Value: value,
-			Type:  "string",
-		}
+	valueBig, ok := big.NewInt(0).SetString(value, 0)
+	if !ok {
+		// Not a valid integer — treat as a raw string literal.
+		return jarviscommon.Value{Raw: value, Kind: jarviscommon.DisplayRaw}
 	}
 
-	// if it is not a real address
 	if !isRealAddress(value) {
-		return jarviscommon.Value{
-			Value: value,
-			Type:  "bytes",
+		// It's a number but outside the address range.
+		// 0x-prefixed literals (hex) display raw; plain decimal numbers
+		// get the readable-number separator treatment.
+		if strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X") {
+			return jarviscommon.Value{Raw: value, Kind: jarviscommon.DisplayRaw}
 		}
+		return jarviscommon.Value{Raw: value, Kind: jarviscommon.DisplayInteger}
 	}
 
 	addr := GetJarvisAddress(common.BigToAddress(valueBig).Hex(), network)
-	return jarviscommon.Value{
-		Value:   common.BigToAddress(valueBig).Hex(),
-		Type:    "address",
-		Address: &addr,
-	}
+	return jarviscommon.Value{Raw: addr.Address, Kind: jarviscommon.DisplayAddress, Address: &addr}
 }
 
 func GetJarvisAddress(addr string, network networks.Network) jarviscommon.Address {

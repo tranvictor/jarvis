@@ -29,41 +29,30 @@ func ReadableNumber(value string) string {
 }
 
 // VerboseValue returns a human-readable string for a single decoded ABI value.
-// Addresses are expanded with their label; token amounts show both raw and
-// human-readable form; other numbers are formatted with digit separators.
 func VerboseValue(value Value) string {
-	if value.Address != nil {
+	switch value.Kind {
+	case DisplayAddress:
 		return VerboseAddress(*value.Address)
-	}
-
-	if value.Type == "string" {
-		return value.Value
-	}
-
-	// hex values are likely byte data — skip numeric formatting
-	if len(value.Value) >= 2 && value.Value[0:2] == "0x" {
-		return value.Value
-	}
-
-	if value.TokenHint != nil {
-		raw := StringToBig(value.Value)
-		human := BigToFloatString(raw, value.TokenHint.Decimal)
-		if value.TokenHint.Symbol != "" {
-			return fmt.Sprintf("%s (%s %s)", value.Value, human, value.TokenHint.Symbol)
+	case DisplayToken:
+		human := BigToFloatString(StringToBig(value.Raw), value.Token.Decimal)
+		if value.Token.Symbol != "" {
+			return fmt.Sprintf("%s (%s %s)", value.Raw, human, value.Token.Symbol)
 		}
-		return fmt.Sprintf("%s (%s)", value.Value, human)
+		return fmt.Sprintf("%s (%s)", value.Raw, human)
+	case DisplayInteger:
+		return ReadableNumber(value.Raw)
+	default: // DisplayRaw — string, bool, hash, hex bytes
+		return value.Raw
 	}
-
-	return ReadableNumber(value.Value)
 }
 
 // VerboseValues returns VerboseValue for each element in a slice.
 func VerboseValues(values []Value) []string {
-	result := []string{}
-	for _, value := range values {
-		result = append(result, VerboseValue(value))
+	out := make([]string, len(values))
+	for i, v := range values {
+		out[i] = VerboseValue(v)
 	}
-	return result
+	return out
 }
 
 func VerboseAddress(addr Address) string {

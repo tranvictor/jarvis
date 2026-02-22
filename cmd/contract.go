@@ -226,7 +226,7 @@ func convertToVerboseParamResult(oneOutputParamResult jarviscommon.ParamResult) 
 	if oneOutputParamResult.Values != nil {
 		result.Values = []string{}
 		for _, v := range oneOutputParamResult.Values {
-			result.Values = append(result.Values, v.Value)
+			result.Values = append(result.Values, v.Raw)
 		}
 		result.HumanValues = jarviscommon.VerboseValues(oneOutputParamResult.Values)
 	}

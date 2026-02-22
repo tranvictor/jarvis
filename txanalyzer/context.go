@@ -1,0 +1,82 @@
+package txanalyzer
+
+import (
+	"strings"
+	"sync"
+
+	. "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/util/reader"
+)
+
+// ERC20Info holds the token metadata discovered for a contract address.
+type ERC20Info struct {
+	Decimal uint64
+	Symbol  string
+}
+
+// cachedERC20 wraps an ERC20Info so that a nil info (not an ERC20) can be
+// distinguished from an unchecked address (absent from the map).
+type cachedERC20 struct {
+	info *ERC20Info // nil means "checked and not ERC20"
+}
+
+// AnalysisContext is the per-session knowledge base for a single jarvis run.
+//
+// It accumulates facts discovered during analysis (e.g. which contracts are
+// ERC20 tokens, their decimals and symbols) and caches them in memory so that
+// the same network lookup is never repeated within a single session.
+//
+// The underlying util/cache package already persists lookups to
+// ~/.jarvis/cache.json between runs, so AnalysisContext adds only the
+// fast in-memory layer on top.
+type AnalysisContext struct {
+	Network Network
+
+	// reader is stored for future enrichment queries that need direct RPC
+	// access (e.g. slot reads, multicall batching).
+	reader reader.Reader
+
+	mu    sync.RWMutex
+	erc20 map[string]cachedERC20 // keyed by lower-case address
+}
+
+// NewAnalysisContext creates a fresh, empty AnalysisContext for one cmd run.
+func NewAnalysisContext(r reader.Reader, network Network) *AnalysisContext {
+	return &AnalysisContext{
+		Network: network,
+		reader:  r,
+		erc20:   make(map[string]cachedERC20),
+	}
+}
+
+// ERC20InfoFor returns token metadata for addr if the address is a known ERC20
+// token, or nil otherwise. Results are cached in memory for the session
+// lifetime; the underlying util functions also persist to disk across runs.
+func (ctx *AnalysisContext) ERC20InfoFor(addr string) *ERC20Info {
+	key := strings.ToLower(addr)
+
+	ctx.mu.RLock()
+	entry, found := ctx.erc20[key]
+	ctx.mu.RUnlock()
+	if found {
+		return entry.info
+	}
+
+	// Not yet checked — look it up (util/cache provides disk persistence).
+	decimal, err := util.GetERC20Decimal(addr, ctx.Network)
+	if err != nil {
+		ctx.mu.Lock()
+		ctx.erc20[key] = cachedERC20{info: nil}
+		ctx.mu.Unlock()
+		return nil
+	}
+
+	symbol, _ := util.GetERC20Symbol(addr, ctx.Network)
+
+	info := &ERC20Info{Decimal: decimal, Symbol: symbol}
+	ctx.mu.Lock()
+	ctx.erc20[key] = cachedERC20{info: info}
+	ctx.mu.Unlock()
+	return info
+}

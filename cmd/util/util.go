@@ -102,27 +102,27 @@ func AnalyzeAndShowMsigTxInfo(
 				u.Info(
 					"from: %s\nSending: %s %s (%s)\nto: %s",
 					jarviscommon.VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
-					jarviscommon.InfoColor(fmt.Sprintf("%f", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Value, decimal))),
+					jarviscommon.InfoColor(fmt.Sprintf("%f", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal))),
 					jarviscommon.InfoColor(symbol),
 					address,
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
+					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)),
 				)
 			case "transferFrom":
 				isStandardERC20Call = true
 				u.Info(
 					"from: %s\nSending: %f %s (%s)\nto: %s",
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
-					jarviscommon.StringToFloat(funcCall.Params[2].Values[0].Value, decimal),
+					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)),
+					jarviscommon.StringToFloat(funcCall.Params[2].Values[0].Raw, decimal),
 					symbol,
 					address,
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Values[0].Value, network)),
+					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Values[0].Raw, network)),
 				)
 			case "approve":
 				isStandardERC20Call = true
 				u.Info(
 					"approving %s to spend upto: %f %s (%s) from the multisig",
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Value, network)),
-					jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Value, decimal),
+					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)),
+					jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal),
 					symbol,
 					address,
 				)

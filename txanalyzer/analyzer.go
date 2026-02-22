@@ -49,46 +49,53 @@ func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult, network 
 	)
 }
 
-// nonArrayParamAsJarvisValue converts a scalar ABI value to a jarvis Value.
-// When hint is non-nil (i.e. the contract is a known ERC20), integer values
-// are annotated with the token's decimal and symbol so the display layer can
-// show both the raw amount and the human-readable form.
+// nonArrayParamAsJarvisValue converts a scalar ABI value to a jarvis Value,
+// setting Kind directly from the ABI type so the display layer never has to
+// re-guess it from the raw string. When hint is non-nil the contract is a
+// known ERC20 token and integer params are annotated as DisplayToken.
 func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}, hint *ERC20Info) Value {
-	valueStr := ""
 	switch t.T {
 	case abi.StringTy:
-		valueStr = fmt.Sprintf("%s", value.(string))
+		return Value{Raw: value.(string), Kind: DisplayRaw}
+
+	case abi.BoolTy:
+		return Value{Raw: fmt.Sprintf("%t", value.(bool)), Kind: DisplayRaw}
+
+	case abi.AddressTy:
+		addr := util.GetJarvisAddress(value.(common.Address).Hex(), self.ctx.Network)
+		return Value{Raw: addr.Address, Kind: DisplayAddress, Address: &addr}
+
+	case abi.HashTy:
+		return Value{Raw: value.(common.Hash).Hex(), Kind: DisplayRaw}
+
 	case abi.IntTy, abi.UintTy:
-		valueStr = fmt.Sprintf("%d", value)
-		v := util.GetJarvisValue(valueStr, self.ctx.Network)
+		raw := fmt.Sprintf("%d", value)
 		if hint != nil {
-			v.TokenHint = &TokenHint{
-				Decimal: hint.Decimal,
-				Symbol:  hint.Symbol,
+			return Value{
+				Raw:  raw,
+				Kind: DisplayToken,
+				Token: &TokenHint{
+					Decimal: hint.Decimal,
+					Symbol:  hint.Symbol,
+				},
 			}
 		}
-		return v
-	case abi.BoolTy:
-		valueStr = fmt.Sprintf("%t", value.(bool))
-	case abi.AddressTy:
-		valueStr = fmt.Sprintf("%s", value.(common.Address).Hex())
-	case abi.HashTy:
-		valueStr = fmt.Sprintf("%s", value.(common.Hash).Hex())
+		return Value{Raw: raw, Kind: DisplayInteger}
+
 	case abi.BytesTy:
-		valueStr = fmt.Sprintf("0x%s", common.Bytes2Hex(value.([]byte)))
+		return Value{Raw: "0x" + common.Bytes2Hex(value.([]byte)), Kind: DisplayRaw}
+
 	case abi.FixedBytesTy:
-		word := []byte{}
-		for i := 0; i < int(reflect.TypeOf(value).Size()); i++ {
-			word = append(word, byte(0))
-		}
+		word := make([]byte, reflect.TypeOf(value).Size())
 		reflect.Copy(reflect.ValueOf(word), reflect.ValueOf(value))
-		valueStr = fmt.Sprintf("0x%s", common.Bytes2Hex(word))
+		return Value{Raw: "0x" + common.Bytes2Hex(word), Kind: DisplayRaw}
+
 	case abi.FunctionTy:
-		valueStr = fmt.Sprintf("0x%s", common.Bytes2Hex(value.([]byte)))
+		return Value{Raw: "0x" + common.Bytes2Hex(value.([]byte)), Kind: DisplayRaw}
+
 	default:
-		valueStr = fmt.Sprintf("%v", value)
+		return Value{Raw: fmt.Sprintf("%v", value), Kind: DisplayRaw}
 	}
-	return util.GetJarvisValue(valueStr, self.ctx.Network)
 }
 
 func (ta *TxAnalyzer) paramAsJarvisTuple(t abi.Type, value interface{}, hint *ERC20Info) TupleParamResult {
@@ -213,11 +220,11 @@ func GetTxDatasFromFunctionCallParams(
 	for _, p := range params {
 		switch p.Type {
 		case "address":
-			destinations = append(destinations, p.Values[0].Value)
+			destinations = append(destinations, p.Values[0].Raw)
 		case "bytes":
-			data = append(data, p.Values[0].Value)
+			data = append(data, p.Values[0].Raw)
 		case "uint256":
-			values = append(values, p.Values[0].Value)
+			values = append(values, p.Values[0].Raw)
 		}
 	}
 	return
@@ -369,7 +376,7 @@ func (self *TxAnalyzer) AnalyzeLog(
 	for j, topic := range l.Topics[1:] {
 		logResult.Topics = append(logResult.Topics, TopicResult{
 			Name:  iArgs[j].Name,
-			Value: []Value{util.GetJarvisValue(topic.Hex(), self.ctx.Network)},
+			Value: util.GetJarvisValue(topic.Hex(), self.ctx.Network),
 		})
 	}
 
