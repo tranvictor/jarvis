@@ -164,73 +164,46 @@ func findEventById(a *abi.ABI, topic []byte) (*abi.Event, error) {
 	return nil, fmt.Errorf("no event with id: %#x", topic)
 }
 
-func LooksLikeTxData(params []ParamResult) bool {
-	// iterate through the params to see
-	// if we have an address, uint and a []byte param
-	var isThereAddress bool
-	var isThereUint bool
-	var isThereBytes bool
-	for _, p := range params {
-		if p.Type == "address" {
-			isThereAddress = true
-		}
-		if p.Type == "bytes" {
-			isThereBytes = true
-		}
-		if p.Type == "uint256" {
-			isThereUint = true
-		}
-	}
-	if isThereAddress && isThereUint && isThereBytes {
-		return true
-	}
+// maxRecursionDepth caps AnalyzeFunctionCallRecursively to prevent unbounded
+// recursion on crafted or deeply-nested calldata.
+const maxRecursionDepth = 10
 
-	// TODO
-	// or we have equivalent size array of address, uint and []byte
-	// TODO
-	// if a param is a struct, get into the struct and do the same
-	// thing
-	return false
+// LooksLikeTxData returns true only when the params contain exactly one
+// "address", exactly one "uint256", and exactly one "bytes" param — matching
+// the Gnosis classic submitTransaction(address,uint256,bytes) signature.
+// The previous implementation matched any function that happened to have at
+// least one of each type, causing false-positive recursive decoding.
+func LooksLikeTxData(params []ParamResult) bool {
+	var nAddress, nUint, nBytes int
+	for _, p := range params {
+		switch p.Type {
+		case "address":
+			nAddress++
+		case "uint256":
+			nUint++
+		case "bytes":
+			nBytes++
+		}
+	}
+	return nAddress == 1 && nUint == 1 && nBytes == 1
 }
 
+// GetTxDatasFromFunctionCallParams extracts the single address, uint256, and
+// bytes values from params that LooksLikeTxData validated. It returns exactly
+// one element in each slice so the caller's loop is always safe.
 func GetTxDatasFromFunctionCallParams(
 	params []ParamResult,
 ) (destinations []string, values []string, data []string) {
-	destinations = []string{}
-	values = []string{}
-	data = []string{}
-	// iterate through the params to see
-	// if we have an address, uint and a []byte param
-	var isThereAddress bool
-	var isThereUint bool
-	var isThereBytes bool
 	for _, p := range params {
-		if p.Type == "address" {
-			isThereAddress = true
-		}
-		if p.Type == "bytes" {
-			isThereBytes = true
-		}
-		if p.Type == "uint256" {
-			isThereUint = true
+		switch p.Type {
+		case "address":
+			destinations = append(destinations, p.Values[0].Value)
+		case "bytes":
+			data = append(data, p.Values[0].Value)
+		case "uint256":
+			values = append(values, p.Values[0].Value)
 		}
 	}
-	if isThereAddress && isThereUint && isThereBytes {
-		for _, p := range params {
-			if p.Type == "address" {
-				destinations = append(destinations, p.Values[0].Value)
-			}
-			if p.Type == "bytes" {
-				data = append(data, p.Values[0].Value)
-			}
-			if p.Type == "uint256" {
-				values = append(values, p.Values[0].Value)
-			}
-		}
-		return
-	}
-	// TODO: handle arrays
-	// TODO: handle tupple
 	return
 }
 
@@ -240,6 +213,17 @@ func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(
 	destination string,
 	data []byte,
 	customABIs map[string]*abi.ABI,
+) (fc *FunctionCall) {
+	return self.analyzeFunctionCallRecursively(lookupABI, value, destination, data, customABIs, 0)
+}
+
+func (self *TxAnalyzer) analyzeFunctionCallRecursively(
+	lookupABI ABIDatabase,
+	value *big.Int,
+	destination string,
+	data []byte,
+	customABIs map[string]*abi.ABI,
+	depth int,
 ) (fc *FunctionCall) {
 	fc = &FunctionCall{}
 	fc.Destination = util.GetJarvisAddress(destination, self.Network)
@@ -260,16 +244,36 @@ func (self *TxAnalyzer) AnalyzeFunctionCallRecursively(
 		fc.Error = "couldn't decode bytes data"
 	}
 
+	if depth >= maxRecursionDepth {
+		return fc
+	}
+
 	if LooksLikeTxData(fc.Params) {
 		destinations, valueStrs, dataStrs := GetTxDatasFromFunctionCallParams(fc.Params)
-		for i := 0; i < len(dataStrs); i++ {
-			data, _ := hexutil.Decode(dataStrs[i])
-			nextFc := self.AnalyzeFunctionCallRecursively(
+		// All three slices have exactly one element (guaranteed by LooksLikeTxData
+		// + GetTxDatasFromFunctionCallParams), so iterating any one is safe.
+		n := len(dataStrs)
+		if len(destinations) < n {
+			n = len(destinations)
+		}
+		if len(valueStrs) < n {
+			n = len(valueStrs)
+		}
+		for i := 0; i < n; i++ {
+			innerData, err := hexutil.Decode(dataStrs[i])
+			if err != nil {
+				nextFc := &FunctionCall{}
+				nextFc.Error = fmt.Sprintf("couldn't decode inner calldata: %s", err)
+				fc.DecodedFunctionCalls = append(fc.DecodedFunctionCalls, nextFc)
+				continue
+			}
+			nextFc := self.analyzeFunctionCallRecursively(
 				lookupABI,
 				StringToBig(valueStrs[i]),
 				destinations[i],
-				data,
+				innerData,
 				customABIs,
+				depth+1,
 			)
 			fc.DecodedFunctionCalls = append(fc.DecodedFunctionCalls, nextFc)
 		}

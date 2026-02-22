@@ -4,13 +4,11 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
@@ -149,7 +147,10 @@ func PromptParam(
 	}
 }
 
-// PromptArray prompts for an array-typed ABI parameter.
+// PromptArray prompts for an array-typed ABI parameter and delegates all
+// element parsing and typed-slice construction to ConvertParamStrToArray,
+// which uses abi.Type.GetType() via reflect to produce the exact slice type
+// go-ethereum's ABI encoder expects.
 func PromptArray(u ui.UI, input abi.Argument, prefill string, network jarvisnetworks.Network) (interface{}, error) {
 	var inpStr string
 	if prefill == "" {
@@ -162,138 +163,7 @@ func PromptArray(u ui.UI, input abi.Argument, prefill string, network jarvisnetw
 	if err != nil {
 		return nil, err
 	}
-
-	paramsStr, err := util.SplitArrayOrTupleStringInput(inpStr)
-	if err != nil {
-		return nil, err
-	}
-
-	switch input.Type.Elem.T {
-	case abi.StringTy:
-		result := []string{}
-		for _, p := range paramsStr {
-			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, converted.(string))
-		}
-		return result, nil
-	case abi.IntTy, abi.UintTy:
-		switch input.Type.Elem.Size {
-		case 8:
-			result := []uint8{}
-			for _, p := range paramsStr {
-				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-				if err != nil {
-					return nil, err
-				}
-				result = append(result, converted.(uint8))
-			}
-			return result, nil
-		case 16:
-			result := []uint16{}
-			for _, p := range paramsStr {
-				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-				if err != nil {
-					return nil, err
-				}
-				result = append(result, converted.(uint16))
-			}
-			return result, nil
-		case 32:
-			result := []uint32{}
-			for _, p := range paramsStr {
-				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-				if err != nil {
-					return nil, err
-				}
-				result = append(result, converted.(uint32))
-			}
-			return result, nil
-		case 64:
-			result := []uint64{}
-			for _, p := range paramsStr {
-				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-				if err != nil {
-					return nil, err
-				}
-				result = append(result, converted.(uint64))
-			}
-			return result, nil
-		default:
-			result := []*big.Int{}
-			for _, p := range paramsStr {
-				converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-				if err != nil {
-					return nil, err
-				}
-				result = append(result, converted.(*big.Int))
-			}
-			return result, nil
-		}
-	case abi.BoolTy:
-		result := []bool{}
-		for _, p := range paramsStr {
-			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, converted.(bool))
-		}
-		return result, nil
-	case abi.AddressTy:
-		result := []common.Address{}
-		for _, p := range paramsStr {
-			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, converted.(common.Address))
-		}
-		return result, nil
-	case abi.HashTy:
-		result := []common.Hash{}
-		for _, p := range paramsStr {
-			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-			if err != nil {
-				return nil, err
-			}
-			result = append(result, converted.(common.Hash))
-		}
-		return result, nil
-	case abi.BytesTy:
-		return nil, fmt.Errorf(
-			"not supported array of type: %s - %x",
-			input.Type.Elem,
-			input.Type.Elem.T,
-		)
-	case abi.FixedBytesTy:
-		return util.ConvertParamStrToFixedByteType(input.Name, *input.Type.Elem, paramsStr, network)
-	case abi.FunctionTy:
-		return nil, fmt.Errorf(
-			"not supported array of type: %s - %x",
-			input.Type.Elem,
-			input.Type.Elem.T,
-		)
-	case abi.TupleTy:
-		sliceType := reflect.SliceOf(input.Type.Elem.TupleType)
-		result := reflect.MakeSlice(sliceType, 0, 0)
-		for _, p := range paramsStr {
-			converted, err := util.ConvertParamStrToType(input.Name, *input.Type.Elem, p, network)
-			if err != nil {
-				return nil, err
-			}
-			result = reflect.Append(result, reflect.ValueOf(converted))
-		}
-		return result.Interface(), nil
-	default:
-		return nil, fmt.Errorf(
-			"not supported array of type: %s - %x",
-			input.Type.Elem,
-			input.Type.Elem.T,
-		)
-	}
+	return util.ConvertParamStrToArray(input.Name, input.Type, inpStr, network)
 }
 
 // PromptNonArray prompts for a scalar ABI parameter value.
