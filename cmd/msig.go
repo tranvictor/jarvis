@@ -20,7 +20,6 @@ import (
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
-	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -32,7 +31,7 @@ var summaryMsigCmd = &cobra.Command{
 	Short: "Print all txs confirmation and execution status of the multisig",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		msigAddress, err := getMsigContractFromParams(args)
+		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
 		if err != nil {
 			return
 		}
@@ -98,7 +97,7 @@ var transactionInfoMsigCmd = &cobra.Command{
 	Short: "Print all information about a multisig init",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		msigAddress, err := getMsigContractFromParams(args)
+		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
 		if err != nil {
 			return
 		}
@@ -124,7 +123,7 @@ var transactionInfoMsigCmd = &cobra.Command{
 			return
 		}
 
-		cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, config.Network())
+		cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, config.Network(), cmdutil.DefaultABIResolver{})
 	},
 }
 
@@ -133,7 +132,7 @@ var govInfoMsigCmd = &cobra.Command{
 	Short: "Print goverance information of a Gnosis multisig",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		msigAddress, err := getMsigContractFromParams(args)
+		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
 		if err != nil {
 			return
 		}
@@ -176,13 +175,13 @@ var govInfoMsigCmd = &cobra.Command{
 	},
 }
 
-func getMsigContractFromParams(args []string) (msigAddress string, err error) {
+func getMsigContractFromParams(args []string, resolver cmdutil.ABIResolver) (msigAddress string, err error) {
 	if len(args) < 1 {
 		appUI.Error("Please specify multisig address")
 		return "", fmt.Errorf("not enough params")
 	}
 
-	addr, name, err := util.GetMatchingAddress(args[0])
+	addr, name, err := resolver.GetMatchingAddress(args[0])
 	var msigName string
 	if err != nil {
 		msigName = "Unknown"
@@ -196,7 +195,7 @@ func getMsigContractFromParams(args []string) (msigAddress string, err error) {
 		msigName = name
 		msigAddress = addr
 	}
-	a, err := util.GetABI(msigAddress, config.Network())
+	a, err := resolver.GetABI(msigAddress, config.Network())
 	if err != nil {
 		appUI.Error("Couldn't get ABI of %s from etherscan", msigAddress)
 		return "", err
@@ -329,7 +328,7 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
-			_, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network)
+			_, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{})
 			if executed {
 				appUI.Warn("This tx is already executed. You don't have to approve it anymore. Continue with next tx.")
 				continue
@@ -440,15 +439,13 @@ var newMsigCmd = &cobra.Command{
 			return
 		}
 
-		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
-
 		msigABI := util.GetGnosisMsigABI()
 
 		cAddr := crypto.CreateAddress(jarviscommon.HexToAddress(tc.From), tc.Nonce).Hex()
 
 		data, err := cmdutil.PromptTxData(
 			appUI,
-			analyzer,
+			tc.Analyzer,
 			cAddr,
 			cmdutil.CONSTRUCTOR_METHOD_INDEX,
 			tc.PrefillParams,
@@ -492,7 +489,7 @@ var newMsigCmd = &cobra.Command{
 
 		if broadcasted, err := cmdutil.SignAndBroadcast(
 			appUI, tc.FromAcc, tx, customABIs,
-			reader, analyzer, nil, tc.Broadcaster,
+			reader, tc.Analyzer, nil, tc.Broadcaster,
 		); err != nil && !broadcasted {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}
@@ -512,8 +509,9 @@ var initMsigCmd = &cobra.Command{
 			return fmt.Errorf("multisig value can't be negative")
 		}
 
+		tc, _ := cmdutil.TxContextFrom(cmd)
 		var msigToName string
-		config.MsigTo, msigToName, err = util.GetAddressFromString(config.MsigTo)
+		config.MsigTo, msigToName, err = tc.Resolver.GetAddressFromString(config.MsigTo)
 		if err != nil {
 			return err
 		}
@@ -529,9 +527,7 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 
-		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
-
-		a, err := util.ConfigToABI(config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network())
+		a, err := tc.Resolver.ConfigToABI(config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			appUI.Warn("Couldn't get abi for %s: %s. Continue:", config.MsigTo, err)
 		}
@@ -540,7 +536,7 @@ var initMsigCmd = &cobra.Command{
 		if a != nil && !config.NoFuncCall {
 			data, err = cmdutil.PromptTxData(
 				appUI,
-				analyzer,
+				tc.Analyzer,
 				config.MsigTo,
 				config.MethodIndex,
 				tc.PrefillParams,
@@ -556,7 +552,7 @@ var initMsigCmd = &cobra.Command{
 			}
 		}
 
-		msigABI, err := util.GetABI(tc.To, config.Network())
+		msigABI, err := tc.Resolver.GetABI(tc.To, config.Network())
 		if err != nil {
 			appUI.Error("Couldn't get the multisig's ABI: %s", err)
 			return
@@ -613,7 +609,7 @@ var initMsigCmd = &cobra.Command{
 
 		broadcasted, err := cmdutil.SignAndBroadcast(
 			appUI, tc.FromAcc, tx, customABIs,
-			reader, analyzer, a, tc.Broadcaster,
+			reader, tc.Analyzer, a, tc.Broadcaster,
 		)
 		if err != nil && !broadcasted {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)

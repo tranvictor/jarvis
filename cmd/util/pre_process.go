@@ -13,6 +13,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -34,6 +35,8 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 		return fmt.Errorf("couldn't connect to blockchain: %w", err)
 	}
 	tc.Reader = r
+	tc.Analyzer = txanalyzer.NewGenericAnalyzer(r, config.Network())
+	tc.Resolver = DefaultABIResolver{}
 
 	prefillStr := strings.Trim(config.PrefillStr, " ")
 	if prefillStr != "" {
@@ -81,6 +84,30 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 	return nil
 }
 
+// CommonNetworkPreprocess sets up the network and injects Reader, Analyzer,
+// and Resolver into TxContext. It does not resolve any positional argument as a
+// contract address, making it suitable for commands that operate on arbitrary
+// tx hashes or other non-address arguments (e.g. the "info" command).
+func CommonNetworkPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+	if err := config.SetNetwork(config.NetworkString); err != nil {
+		return err
+	}
+	u.Info("Network: %s", config.Network().GetName())
+
+	tc := TxContext{}
+
+	r, err := util.EthReader(config.Network())
+	if err != nil {
+		return fmt.Errorf("couldn't connect to blockchain: %w", err)
+	}
+	tc.Reader = r
+	tc.Analyzer = txanalyzer.NewGenericAnalyzer(r, config.Network())
+	tc.Resolver = DefaultABIResolver{}
+
+	cmd.SetContext(WithTxContext(cmd.Context(), tc))
+	return nil
+}
+
 // CommonSendPreprocess is a lightweight preprocess for the send command. It
 // initialises the network and injects an EthReader and Broadcaster into
 // TxContext so sendCmd.Run can use them without a live-node dependency in
@@ -99,6 +126,8 @@ func CommonSendPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("couldn't connect to blockchain: %w", err)
 	}
 	tc.Reader = r
+	tc.Analyzer = txanalyzer.NewGenericAnalyzer(r, config.Network())
+	tc.Resolver = DefaultABIResolver{}
 
 	bc, err := util.EthBroadcaster(config.Network())
 	if err != nil {

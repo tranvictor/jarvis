@@ -16,39 +16,44 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
-	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 	utilreader "github.com/tranvictor/jarvis/util/reader"
 )
 
+// flag-bound package-level vars (Cobra writes to these before Run is called).
 var (
-	to        string
-	amountStr string
-	amountWei *big.Int
-	value     string
-	tokenAddr string
-	currency  string
-	data      string
+	to    string
+	value string
+	data  string
 )
 
+// sendTxParams carries all resolved transaction parameters so that helpers do
+// not need to read or mutate any config.* globals.
+type sendTxParams struct {
+	txType   uint8
+	nonce    uint64
+	gasLimit uint64 // already includes ExtraGasLimit
+	gasPrice float64 // already includes ExtraGasPrice
+	tipGas   float64 // already includes ExtraTipGas
+}
+
 func handleMsigSend(
-	txType uint8,
+	sp sendTxParams,
 	from types2.AccDesc,
-	to string,
+	msigAddr string,
 	txdata []byte,
 	reader utilreader.Reader,
+	analyzer util.TxAnalyzer,
 	bc cmdutil.TxBroadcaster,
 ) {
-	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
-
 	t := jarviscommon.BuildExactTx(
-		txType,
-		config.Nonce,
-		to,
+		sp.txType,
+		sp.nonce,
+		msigAddr,
 		big.NewInt(0),
-		config.GasLimit+config.ExtraGasLimit,
-		config.GasPrice+config.ExtraGasPrice,
-		config.TipGas+config.ExtraTipGas,
+		sp.gasLimit,
+		sp.gasPrice,
+		sp.tipGas,
 		txdata,
 		config.Network().GetChainID(),
 	)
@@ -61,14 +66,17 @@ func handleMsigSend(
 	}
 }
 
-// currency here is supposed to be either ETH or address of an ERC20 token
+// handleSend builds and broadcasts either a native-token or ERC-20 transfer.
+// extraData is the raw hex payload from the --data flag (empty for plain sends).
 func handleSend(
-	txType uint8,
+	sp sendTxParams,
 	from types2.AccDesc,
-	to string,
+	toAddr string,
 	amountWei *big.Int,
 	tokenAddr string,
+	extraData string,
 	reader utilreader.Reader,
+	analyzer util.TxAnalyzer,
 	bc cmdutil.TxBroadcaster,
 ) {
 	var (
@@ -76,35 +84,33 @@ func handleSend(
 		a *abi.ABI
 	)
 
-	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
-
 	if tokenAddr == util.ETH_ADDR {
 		t = jarviscommon.BuildExactTx(
-			txType,
-			config.Nonce,
-			to,
+			sp.txType,
+			sp.nonce,
+			toAddr,
 			amountWei,
-			config.GasLimit+config.ExtraGasLimit,
-			config.GasPrice+config.ExtraGasPrice,
-			config.TipGas+config.ExtraTipGas,
-			cmdutil.StringParamToBytes(data),
+			sp.gasLimit,
+			sp.gasPrice,
+			sp.tipGas,
+			cmdutil.StringParamToBytes(extraData),
 			config.Network().GetChainID(),
 		)
 	} else {
 		a = jarviscommon.GetERC20ABI()
-		erc20data, err := a.Pack("transfer", jarviscommon.HexToAddress(to), amountWei)
+		erc20data, err := a.Pack("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
 		if err != nil {
 			appUI.Error("Couldn't pack data: %s", err)
 			return
 		}
 		t = jarviscommon.BuildExactTx(
-			txType,
-			config.Nonce,
+			sp.txType,
+			sp.nonce,
 			tokenAddr,
 			big.NewInt(0),
-			config.GasLimit+config.ExtraGasLimit,
-			config.GasPrice+config.ExtraGasPrice,
-			config.TipGas+config.ExtraTipGas,
+			sp.gasLimit,
+			sp.gasPrice,
+			sp.tipGas,
 			erc20data,
 			config.Network().GetChainID(),
 		)
@@ -122,23 +128,20 @@ func handleSend(
 	}
 }
 
-func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
-	msigAddress, err := getMsigContractFromParams([]string{config.From})
+func sendFromMsig(reader utilreader.Reader, analyzer util.TxAnalyzer, resolver cmdutil.ABIResolver, bc cmdutil.TxBroadcaster) {
+	msigAddress, err := getMsigContractFromParams([]string{config.From}, resolver)
 	if err != nil {
 		appUI.Error("Couldn't find a wallet or multisig with keyword %s", config.From)
 		return
 	}
 
-	config.To, _, err = util.GetAddressFromString(msigAddress)
+	msigContractAddr, _, err := resolver.GetAddressFromString(msigAddress)
 	if err != nil {
 		appUI.Error("Couldn't find a wallet or multisig with keyword \"%s\"", config.From)
 		return
 	}
 
-	multisigContract, err := msig.NewMultisigContract(
-		config.To,
-		config.Network(),
-	)
+	multisigContract, err := msig.NewMultisigContract(msigContractAddr, config.Network())
 	if err != nil {
 		appUI.Error("Couldn't read the multisig: %s", err)
 		return
@@ -151,21 +154,18 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 	}
 
 	var fromAcc types2.AccDesc
-	count := 0
 	for _, owner := range owners {
 		a, err := accounts.GetAccount(owner)
 		if err == nil {
 			fromAcc = a
-			count++
 			break
 		}
 	}
-	if count == 0 {
+	if fromAcc.Address == "" {
 		appUI.Error("You don't have any wallet which is this multisig signer. Please jarvis wallet add to add the wallet.")
 		return
 	}
-
-	config.From = fromAcc.Address
+	fromAddr := fromAcc.Address
 
 	amountStr, currency, err := util.ValueToAmountAndCurrency(value)
 	if err != nil {
@@ -173,43 +173,48 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 		return
 	}
 
+	var tokenAddrLocal string
 	if currency == util.ETH_ADDR || strings.EqualFold(currency, config.Network().GetNativeTokenSymbol()) {
-		tokenAddr = util.ETH_ADDR
+		tokenAddrLocal = util.ETH_ADDR
 	} else {
-		addr, _, err := util.GetMatchingAddress(currency + " token")
+		addr, _, err := resolver.GetMatchingAddress(currency + " token")
 		if err != nil {
 			if util.IsAddress(currency) {
-				tokenAddr = currency
+				tokenAddrLocal = currency
 			} else {
 				appUI.Error("Couldn't find the token by name or address")
 				return
 			}
 		} else {
-			tokenAddr = addr
+			tokenAddrLocal = addr
 		}
 	}
 
-	toAddr, _, err := util.GetMatchingAddress(to)
+	toAddr, _, err := resolver.GetMatchingAddress(to)
 	if err != nil {
 		appUI.Error("Couldn't get destination address with keyword: %s", to)
 		return
 	}
-	to = toAddr
 
-	if config.GasPrice == 0 {
-		config.GasPrice, err = reader.RecommendedGasPrice()
+	gasPrice := config.GasPrice
+	if gasPrice == 0 {
+		gasPrice, err = reader.RecommendedGasPrice()
 		if err != nil {
 			appUI.Error("Couldn't get recommended gas price: %s", err)
 			return
 		}
 	}
 
-	var txdata []byte
+	var (
+		txdata    []byte
+		amountWei *big.Int
+	)
 
-	if config.GasLimit == 0 {
-		if tokenAddr == util.ETH_ADDR {
+	gasLimit := config.GasLimit
+	if gasLimit == 0 {
+		if tokenAddrLocal == util.ETH_ADDR {
 			if amountStr == "ALL" {
-				ethBalance, err := reader.GetBalance(config.To)
+				ethBalance, err := reader.GetBalance(msigContractAddr)
 				if err != nil {
 					appUI.Error("Couldn't get balance of the multisig: %s", err)
 					return
@@ -226,7 +231,7 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 			msigABI := util.GetGnosisMsigABI()
 			txdata, err = msigABI.Pack(
 				"submitTransaction",
-				jarviscommon.HexToAddress(to),
+				jarviscommon.HexToAddress(toAddr),
 				amountWei,
 				cmdutil.StringParamToBytes(data),
 			)
@@ -235,7 +240,7 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 				return
 			}
 
-			config.GasLimit, err = reader.EstimateExactGas(config.From, config.To, 0, big.NewInt(0), txdata)
+			gasLimit, err = reader.EstimateExactGas(fromAddr, msigContractAddr, 0, big.NewInt(0), txdata)
 			if err != nil {
 				appUI.Error("Getting estimated gas for the tx failed: %s", err)
 				return
@@ -243,21 +248,17 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 		} else {
 			var innerData []byte
 			if amountStr == "ALL" {
-				amountWei, err = reader.ERC20Balance(tokenAddr, config.To)
+				amountWei, err = reader.ERC20Balance(tokenAddrLocal, msigContractAddr)
 				if err != nil {
 					appUI.Error("Couldn't read balance of the multisig: %s", err)
 				}
-				innerData, err = jarviscommon.PackERC20Data(
-					"transfer",
-					jarviscommon.HexToAddress(to),
-					amountWei,
-				)
+				innerData, err = jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
 				if err != nil {
 					appUI.Error("Couldn't pack transfer data: %s", err)
 					return
 				}
 			} else {
-				decimals, err := reader.ERC20Decimal(tokenAddr)
+				decimals, err := reader.ERC20Decimal(tokenAddrLocal)
 				if err != nil {
 					appUI.Error("Couldn't get token decimal: %s", err)
 					return
@@ -267,11 +268,7 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 					appUI.Error("Couldn't calculate amount in wei: %s", err)
 					return
 				}
-				innerData, err = jarviscommon.PackERC20Data(
-					"transfer",
-					jarviscommon.HexToAddress(to),
-					amountWei,
-				)
+				innerData, err = jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
 				if err != nil {
 					appUI.Error("Couldn't pack transfer data: %s", err)
 					return
@@ -281,7 +278,7 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 			msigABI := util.GetGnosisMsigABI()
 			txdata, err = msigABI.Pack(
 				"submitTransaction",
-				jarviscommon.HexToAddress(tokenAddr),
+				jarviscommon.HexToAddress(tokenAddrLocal),
 				big.NewInt(0),
 				innerData,
 			)
@@ -289,7 +286,7 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 				appUI.Error("Couldn't pack tx data 2: %s", err)
 				return
 			}
-			config.GasLimit, err = reader.EstimateGas(config.From, config.To, config.GasPrice+config.ExtraGasPrice, 0, txdata)
+			gasLimit, err = reader.EstimateGas(fromAddr, msigContractAddr, gasPrice+config.ExtraGasPrice, 0, txdata)
 			if err != nil {
 				appUI.Error("Couldn't estimate gas: %s", err)
 				return
@@ -297,10 +294,11 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 		}
 	}
 
-	if config.Nonce == 0 {
-		config.Nonce, err = reader.GetMinedNonce(config.From)
+	nonce := config.Nonce
+	if nonce == 0 {
+		nonce, err = reader.GetMinedNonce(fromAddr)
 		if err != nil {
-			appUI.Error("Couldn't get nonce of %s: %s", config.From, err)
+			appUI.Error("Couldn't get nonce of %s: %s", fromAddr, err)
 			return
 		}
 	}
@@ -311,7 +309,14 @@ func sendFromMsig(reader utilreader.Reader, bc cmdutil.TxBroadcaster) {
 		return
 	}
 
-	handleMsigSend(txType, fromAcc, config.To, txdata, reader, bc)
+	sp := sendTxParams{
+		txType:   txType,
+		nonce:    nonce,
+		gasLimit: gasLimit + config.ExtraGasLimit,
+		gasPrice: gasPrice + config.ExtraGasPrice,
+		tipGas:   config.TipGas + config.ExtraTipGas,
+	}
+	handleMsigSend(sp, fromAcc, msigContractAddr, txdata, reader, analyzer, bc)
 }
 
 var sendCmd = &cobra.Command{
@@ -329,55 +334,61 @@ exact addresses start with 0x.`,
 
 		reader := tc.Reader
 		bc := tc.Broadcaster
+		analyzer := tc.Analyzer
+		resolver := tc.Resolver
 		if reader == nil {
 			appUI.Error("Couldn't establish connection to node.")
 			return
 		}
 
-		if config.ExtraGasLimit == 250000 {
-			config.ExtraGasLimit = 0
+		// The send command intentionally sets ExtraGasLimit to 0; other
+		// commands default it to 250000.
+		extraGasLimit := config.ExtraGasLimit
+		if extraGasLimit == 250000 {
+			extraGasLimit = 0
 		}
 
 		acc, err := accounts.GetAccount(config.From)
 		if err != nil {
-			sendFromMsig(reader, bc)
+			sendFromMsig(reader, analyzer, resolver, bc)
 			return
 		}
 
 		fromAcc := acc
-		config.From = acc.Address
+		fromAddr := fromAcc.Address
 
-		amountStr, currency, err = util.ValueToAmountAndCurrency(value)
+		amountStr, currency, err := util.ValueToAmountAndCurrency(value)
 		if err != nil {
 			appUI.Error("Wrong format of --value/-v param")
 			return
 		}
 
+		var tokenAddrLocal string
 		if currency == util.ETH_ADDR || strings.EqualFold(currency, config.Network().GetNativeTokenSymbol()) {
-			tokenAddr = util.ETH_ADDR
+			tokenAddrLocal = util.ETH_ADDR
 		} else {
-			addr, _, err := util.GetMatchingAddress(currency + " token")
+			addr, _, err := resolver.GetMatchingAddress(currency + " token")
 			if err != nil {
 				if util.IsAddress(currency) {
-					tokenAddr = currency
+					tokenAddrLocal = currency
 				} else {
 					appUI.Error("Couldn't find the token by name or address")
 					return
 				}
 			} else {
-				tokenAddr = addr
+				tokenAddrLocal = addr
 			}
 		}
 
-		toAddr, _, err := util.GetMatchingAddress(to)
+		toAddr, _, err := resolver.GetMatchingAddress(to)
 		if err != nil {
 			appUI.Error("Couldn't find destination address by keyword nor address: %s", to)
 			return
 		}
-		to = toAddr
 
-		if config.GasPrice == 0 {
-			config.GasPrice, err = reader.RecommendedGasPrice()
+		gasPrice := config.GasPrice
+		if gasPrice == 0 {
+			gasPrice, err = reader.RecommendedGasPrice()
 			if err != nil {
 				appUI.Error("Couldn't estimate recommended gas price: %s", err)
 				return
@@ -395,34 +406,35 @@ exact addresses start with 0x.`,
 			return
 		}
 
-		if txType == types.DynamicFeeTxType {
-			if config.TipGas == 0 {
-				config.TipGas, err = reader.GetSuggestedGasTipCap()
-				if err != nil {
-					appUI.Error("Couldn't estimate recommended gas price: %s", err)
-					return
-				}
+		tipGas := config.TipGas
+		if txType == types.DynamicFeeTxType && tipGas == 0 {
+			tipGas, err = reader.GetSuggestedGasTipCap()
+			if err != nil {
+				appUI.Error("Couldn't estimate recommended gas price: %s", err)
+				return
 			}
 		}
 
-		if config.GasLimit == 0 {
-			if tokenAddr == util.ETH_ADDR {
+		var amountWei *big.Int
+		gasLimit := config.GasLimit
+		if gasLimit == 0 {
+			if tokenAddrLocal == util.ETH_ADDR {
 				if amountStr == "ALL" {
-					config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, big.NewInt(1), cmdutil.StringParamToBytes(data))
+					gasLimit, err = reader.EstimateExactGas(fromAddr, toAddr, 0, big.NewInt(1), cmdutil.StringParamToBytes(data))
 					if err != nil {
 						appUI.Error("Getting estimated gas for the tx failed: %s", err)
 						return
 					}
-					config.ExtraGasLimit = 0
+					extraGasLimit = 0 // exact gas for ALL; no extra needed
 
-					ethBalance, err := reader.GetBalance(config.From)
+					ethBalance, err := reader.GetBalance(fromAddr)
 					if err != nil {
 						appUI.Error("Couldn't get %s balance: %s", config.Network().GetNativeTokenSymbol(), err)
 						return
 					}
 					gasCost := big.NewInt(0).Mul(
-						big.NewInt(int64(config.GasLimit)),
-						jarviscommon.FloatToBigInt(config.GasPrice+config.ExtraGasPrice, 9),
+						big.NewInt(int64(gasLimit)),
+						jarviscommon.FloatToBigInt(gasPrice+config.ExtraGasPrice, 9),
 					)
 					if ethBalance.Cmp(gasCost) == -1 {
 						appUI.Error("Wallet doesn't have enough token to cover gas. Aborted.")
@@ -435,7 +447,7 @@ exact addresses start with 0x.`,
 						appUI.Error("Couldn't calculate send amount: %s", err)
 						return
 					}
-					config.GasLimit, err = reader.EstimateExactGas(config.From, to, 0, amountWei, cmdutil.StringParamToBytes(data))
+					gasLimit, err = reader.EstimateExactGas(fromAddr, toAddr, 0, amountWei, cmdutil.StringParamToBytes(data))
 					if err != nil {
 						appUI.Error("Getting estimated gas for the tx failed: %s", err)
 						return
@@ -444,22 +456,18 @@ exact addresses start with 0x.`,
 			} else {
 				var innerData []byte
 				if amountStr == "ALL" {
-					amountWei, err = reader.ERC20Balance(tokenAddr, config.From)
+					amountWei, err = reader.ERC20Balance(tokenAddrLocal, fromAddr)
 					if err != nil {
 						appUI.Error("Couldn't get token balance: %s", err)
 						return
 					}
-					innerData, err = jarviscommon.PackERC20Data(
-						"transfer",
-						jarviscommon.HexToAddress(to),
-						amountWei,
-					)
+					innerData, err = jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
 					if err != nil {
 						appUI.Error("Couldn't pack data: %s", err)
 						return
 					}
 				} else {
-					decimals, err := reader.ERC20Decimal(tokenAddr)
+					decimals, err := reader.ERC20Decimal(tokenAddrLocal)
 					if err != nil {
 						appUI.Error("Couldn't get token decimal: %s", err)
 						return
@@ -469,17 +477,13 @@ exact addresses start with 0x.`,
 						appUI.Error("Couldn't calculate token amount in wei: %s", err)
 						return
 					}
-					innerData, err = jarviscommon.PackERC20Data(
-						"transfer",
-						jarviscommon.HexToAddress(to),
-						amountWei,
-					)
+					innerData, err = jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
 					if err != nil {
 						appUI.Error("Couldn't pack data: %s", err)
 						return
 					}
 				}
-				config.GasLimit, err = reader.EstimateGas(config.From, tokenAddr, config.GasPrice+config.ExtraGasPrice, 0, innerData)
+				gasLimit, err = reader.EstimateGas(fromAddr, tokenAddrLocal, gasPrice+config.ExtraGasPrice, 0, innerData)
 				if err != nil {
 					appUI.Error("Couldn't estimate gas limit: %s", err)
 					return
@@ -487,15 +491,23 @@ exact addresses start with 0x.`,
 			}
 		}
 
-		if config.Nonce == 0 {
-			config.Nonce, err = reader.GetMinedNonce(config.From)
+		nonce := config.Nonce
+		if nonce == 0 {
+			nonce, err = reader.GetMinedNonce(fromAddr)
 			if err != nil {
 				appUI.Error("Couldn't get nonce: %s", err)
 				return
 			}
 		}
 
-		handleSend(txType, fromAcc, to, amountWei, tokenAddr, reader, bc)
+		sp := sendTxParams{
+			txType:   txType,
+			nonce:    nonce,
+			gasLimit: gasLimit + extraGasLimit,
+			gasPrice: gasPrice + config.ExtraGasPrice,
+			tipGas:   tipGas + config.ExtraTipGas,
+		}
+		handleSend(sp, fromAcc, toAddr, amountWei, tokenAddrLocal, data, reader, analyzer, bc)
 	},
 }
 

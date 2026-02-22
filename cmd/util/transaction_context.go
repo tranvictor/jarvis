@@ -12,6 +12,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/reader"
 )
 
@@ -37,8 +38,10 @@ type TxContext struct {
 	PrefillMode   bool
 	PrefillParams []string
 	TxInfo      *jarviscommon.TxInfo // non-nil when args[0] was a tx hash
-	Reader      reader.Reader       // injected by preprocess; nil in tests that don't need network I/O
-	Broadcaster TxBroadcaster       // injected by CommonTxPreprocess; nil for read-only commands
+	Reader      reader.Reader        // injected by preprocess; nil in tests that don't need network I/O
+	Broadcaster TxBroadcaster        // injected by CommonTxPreprocess; nil for read-only commands
+	Analyzer    util.TxAnalyzer      // pre-built from Reader in preprocessing; nil in read-only tests
+	Resolver    ABIResolver          // address/ABI lookup; DefaultABIResolver in production; stub in tests
 }
 
 type txContextKey struct{}

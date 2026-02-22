@@ -13,7 +13,6 @@ import (
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 	readerPkg "github.com/tranvictor/jarvis/util/reader"
 )
@@ -21,6 +20,10 @@ import (
 var composeDataContractCmd = &cobra.Command{
 	Use:   "encode",
 	Short: "Encode tx data to interact with smart contracts",
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return cmdutil.CommonFunctionCallPreprocess(appUI, cmd, args)
+	},
 	Long: `
 Param rules:
 	All params are passed to this command as strings and will be treated
@@ -74,35 +77,24 @@ Param rules:
 		Not supported yet
 	`,
 	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) < 1 {
-			appUI.Error("Not enough param. Please provide contract address or its name.")
-			return
-		}
-		contractAddress, contractName, err := util.GetAddressFromString(args[0])
+		tc, _ := cmdutil.TxContextFrom(cmd)
+
+		contractAddress, contractName, err := tc.Resolver.GetAddressFromString(args[0])
 		if err != nil {
 			appUI.Error("Couldn't interpret contract address")
 			return
 		}
 		appUI.Info("Contract: %s (%s)", contractAddress, contractName)
 
-		reader, err := util.EthReader(config.Network())
-		if err != nil {
-			appUI.Error("Couldn't connect to blockchain.")
-			return
-		}
-
-		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
-
-		a, err := util.ConfigToABI(contractAddress, config.ForceERC20ABI, config.CustomABI, config.Network())
+		a, err := tc.Resolver.ConfigToABI(contractAddress, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			appUI.Error("Couldn't get abi for %s: %s", contractAddress, err)
 			return
 		}
 
-		tc, _ := cmdutil.TxContextFrom(cmd)
 		data, err := cmdutil.PromptTxData(
 			appUI,
-			analyzer,
+			tc.Analyzer,
 			contractAddress,
 			config.MethodIndex,
 			tc.PrefillParams,
@@ -143,9 +135,7 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 
-		analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
-
-		a, err := util.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
+		a, err := tc.Resolver.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 		if err != nil {
 			appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 			return
@@ -153,7 +143,7 @@ var txContractCmd = &cobra.Command{
 
 		data, err := cmdutil.PromptTxData(
 			appUI,
-			analyzer,
+			tc.Analyzer,
 			tc.To,
 			config.MethodIndex,
 			tc.PrefillParams,
@@ -191,14 +181,14 @@ var txContractCmd = &cobra.Command{
 		if broadcasted, err := cmdutil.SignAndBroadcast(
 			appUI, tc.FromAcc, tx,
 			map[string]*abi.ABI{strings.ToLower(tc.To): a},
-			reader, analyzer, a, tc.Broadcaster,
+			reader, tc.Analyzer, a, tc.Broadcaster,
 		); err != nil && !broadcasted {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}
 	},
 }
 
-func handleReadOneFunctionOnContract(r readerPkg.Reader, a *abi.ABI, atBlock int64, to string, method *abi.Method, params []interface{}) (contractReadResult, error) {
+func handleReadOneFunctionOnContract(r readerPkg.Reader, analyzer util.TxAnalyzer, a *abi.ABI, atBlock int64, to string, method *abi.Method, params []interface{}) (contractReadResult, error) {
 	responseBytes, err := r.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", to, a, method.Name, params...)
 	if err != nil {
 		appUI.Error("getting response failed: %s", err)
@@ -213,8 +203,6 @@ func handleReadOneFunctionOnContract(r readerPkg.Reader, a *abi.ABI, atBlock int
 		appUI.Error("Couldn't unpack response to go types: %s", err)
 		return contractReadResult{}, err
 	}
-
-	analyzer := txanalyzer.NewGenericAnalyzer(r, config.Network())
 
 	appUI.Info("Output:")
 	result := contractReadResult{}
@@ -344,7 +332,7 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			a, err := util.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
+			a, err := tc.Resolver.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
 				appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 				return
@@ -356,7 +344,7 @@ var readContractCmd = &cobra.Command{
 				resultJSON.Functions = append(resultJSON.Functions, method.Name)
 				appUI.Info("%d. %s", i+1, method.Name)
 
-				result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, tc.To, &method, []interface{}{})
+				result, err := handleReadOneFunctionOnContract(reader, tc.Analyzer, a, config.AtBlock, tc.To, &method, []interface{}{})
 				if err != nil {
 					resultJSON.Results = append(resultJSON.Results, contractReadResultJSON{
 						Error: fmt.Sprintf("%s", err),
@@ -378,9 +366,7 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
-
-			a, err := util.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
+			a, err := tc.Resolver.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
 			if err != nil {
 				appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 				return
@@ -388,7 +374,7 @@ var readContractCmd = &cobra.Command{
 
 			method, params, err := cmdutil.PromptFunctionCallData(
 				appUI,
-				analyzer,
+				tc.Analyzer,
 				tc.To,
 				config.MethodIndex,
 				tc.PrefillParams,
@@ -403,7 +389,7 @@ var readContractCmd = &cobra.Command{
 				resultJSON.Error = fmt.Sprintf("%s", err)
 				return
 			}
-			result, err := handleReadOneFunctionOnContract(reader, a, config.AtBlock, tc.To, method, params)
+			result, err := handleReadOneFunctionOnContract(reader, tc.Analyzer, a, config.AtBlock, tc.To, method, params)
 
 			if err != nil {
 				resultJSON.Error = fmt.Sprintf("%s", err)

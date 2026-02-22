@@ -36,6 +36,7 @@ func AnalyzeAndShowMsigTxInfo(
 	multisigContract *msig.MultisigContract,
 	txid *big.Int,
 	network jarvisnetworks.Network,
+	resolver ABIResolver,
 ) (fc *jarviscommon.FunctionCall, confirmed bool, executed bool) {
 	u.Section("What the multisig will do")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
@@ -60,7 +61,7 @@ func AnalyzeAndShowMsigTxInfo(
 			jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)),
 		)
 	} else {
-		destAbi, err := util.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
+		destAbi, err := resolver.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
 		if err != nil {
 			u.Error("Couldn't get abi of destination address: %s", err)
 			return
@@ -76,7 +77,7 @@ func AnalyzeAndShowMsigTxInfo(
 
 		if util.IsERC20ABI(destAbi) {
 			funcCall := analyzer.AnalyzeFunctionCallRecursively(
-				util.GetABI,
+				resolver.GetABI,
 				value,
 				address,
 				data,
@@ -155,7 +156,7 @@ func AnalyzeAndShowMsigTxInfo(
 	u.Info("Confirmed: %t", confirmed)
 	u.Info("Confirmations (among current owners):")
 	for i, c := range confirmations {
-		_, name, err := util.GetMatchingAddress(c)
+		_, name, err := resolver.GetMatchingAddress(c)
 		if err != nil {
 			u.Info("%d. %s (Unknown)", i+1, c)
 		} else {
@@ -204,7 +205,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+	analyzer := tc.Analyzer
 
 	var (
 		err    error
@@ -264,7 +265,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	fc, _, executed := AnalyzeAndShowMsigTxInfo(u, multisigContract, txid, config.Network())
+	fc, _, executed := AnalyzeAndShowMsigTxInfo(u, multisigContract, txid, config.Network(), tc.Resolver)
 
 	if postProcess != nil && postProcess(fc) != nil {
 		return
@@ -274,7 +275,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	a, err := util.GetABI(tc.To, config.Network())
+	a, err := tc.Resolver.GetABI(tc.To, config.Network())
 	if err != nil {
 		u.Error("Couldn't get the ABI for %s: %s", tc.To, err)
 		return

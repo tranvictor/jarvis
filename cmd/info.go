@@ -5,63 +5,62 @@ import (
 
 	"github.com/spf13/cobra"
 
+	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
 var txCmd = &cobra.Command{
-	Use:   "info",
-	Short: "Analyze and show all information about a tx",
-	Long:  ``,
+	Use:              "info",
+	Short:            "Analyze and show all information about a tx",
+	Long:             ``,
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return cmdutil.CommonNetworkPreprocess(appUI, cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+
 		para := strings.Join(args, " ")
 		txs := util.ScanForTxs(para)
 		if len(txs) == 0 {
 			appUI.Error("Couldn't find any tx hash in the params")
-		} else {
-			appUI.Info("Following tx hash(es) will be analyzed shortly:")
-			for i, t := range txs {
-				appUI.Info("  %d. %s", i, t)
-			}
+			return
+		}
 
-			reader, err := util.EthReader(config.Network())
-			if err != nil {
-				appUI.Error("Couldn't init eth reader: %s", err)
-				return
-			}
+		appUI.Info("Following tx hash(es) will be analyzed shortly:")
+		for i, t := range txs {
+			appUI.Info("  %d. %s", i, t)
+		}
 
-			analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+		results := jarviscommon.TxResults{}
 
-			results := jarviscommon.TxResults{}
+		if config.JSONOutputFile != "" {
+			defer func() {
+				if err := results.Write(config.JSONOutputFile); err != nil {
+					appUI.Error("Writing to json file failed: %s", err)
+				}
+			}()
+		}
 
-			if config.JSONOutputFile != "" {
-				defer func() {
-					if err := results.Write(config.JSONOutputFile); err != nil {
-						appUI.Error("Writing to json file failed: %s", err)
-					}
-				}()
-			}
+		for _, t := range txs {
+			appUI.Info("Analyzing tx: %s...", t)
 
-			for _, t := range txs {
-				appUI.Info("Analyzing tx: %s...", t)
-
-				r := util.AnalyzeAndPrint(
-					appUI,
-					reader,
-					analyzer,
-					t,
-					config.Network(),
-					config.ForceERC20ABI,
-					config.CustomABI,
-					nil,
-					nil,
-					config.DegenMode,
-				)
-				results[t] = r
-				appUI.Info("----------------------------------------------------------")
-			}
+			r := util.AnalyzeAndPrint(
+				appUI,
+				tc.Reader,
+				tc.Analyzer,
+				t,
+				config.Network(),
+				config.ForceERC20ABI,
+				config.CustomABI,
+				nil,
+				nil,
+				config.DegenMode,
+			)
+			results[t] = r
+			appUI.Info("----------------------------------------------------------")
 		}
 	},
 }
