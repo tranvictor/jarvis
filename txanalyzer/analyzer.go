@@ -29,7 +29,7 @@ func EthAnalyzer(network Network) (*TxAnalyzer, error) {
 }
 
 type TxAnalyzer struct {
-	reader  *reader.EthReader
+	reader  reader.Reader
 	Network Network
 }
 
@@ -472,6 +472,6 @@ func (self *TxAnalyzer) AnalyzeOffline(
 	return result
 }
 
-func NewGenericAnalyzer(r *reader.EthReader, network Network) *TxAnalyzer {
+func NewGenericAnalyzer(r reader.Reader, network Network) *TxAnalyzer {
 	return &TxAnalyzer{r, network}
 }

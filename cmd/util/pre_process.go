@@ -29,6 +29,12 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 
 	tc := TxContext{}
 
+	r, err := util.EthReader(config.Network())
+	if err != nil {
+		return fmt.Errorf("couldn't connect to blockchain: %w", err)
+	}
+	tc.Reader = r
+
 	prefillStr := strings.Trim(config.PrefillStr, " ")
 	if prefillStr != "" {
 		tc.PrefillMode = true
@@ -62,12 +68,7 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 				}
 			}
 
-			reader, err := util.EthReader(config.Network())
-			if err != nil {
-				return fmt.Errorf("couldn't connect to blockchain: %w", err)
-			}
-
-			txinfo, err := reader.TxInfoFromHash(config.Tx)
+			txinfo, err := r.TxInfoFromHash(config.Tx)
 			if err != nil {
 				return fmt.Errorf("couldn't get tx info from the blockchain: %w", err)
 			}
@@ -149,10 +150,8 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 	tc.FromAcc = fromAcc
 	tc.From = fromAcc.Address
 
-	reader, err := util.EthReader(config.Network())
-	if err != nil {
-		return err
-	}
+	// tc.Reader is set by CommonFunctionCallPreprocess; use it directly.
+	reader := tc.Reader
 
 	if config.GasPrice == 0 {
 		tc.GasPrice, err = reader.RecommendedGasPrice()
@@ -191,6 +190,12 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 			tc.TipGas = config.TipGas
 		}
 	}
+
+	bc, err := util.EthBroadcaster(config.Network())
+	if err != nil {
+		return fmt.Errorf("couldn't connect to broadcaster: %w", err)
+	}
+	tc.Broadcaster = bc
 
 	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil

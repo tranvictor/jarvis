@@ -198,7 +198,7 @@ func DisplayBroadcastedTx(u ui.UI, t *types.Transaction, broadcasted bool, err e
 
 func DisplayWaitAnalyze(
 	u ui.UI,
-	reader *reader.EthReader,
+	reader reader.Reader,
 	analyzer TxAnalyzer,
 	t *types.Transaction,
 	broadcasted bool,
@@ -248,7 +248,7 @@ func AnalyzeMethodCallAndPrint(
 
 func AnalyzeAndPrint(
 	u ui.UI,
-	reader *reader.EthReader,
+	reader reader.Reader,
 	analyzer TxAnalyzer,
 	tx string,
 	network networks.Network,

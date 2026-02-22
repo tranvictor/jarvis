@@ -24,7 +24,7 @@ import (
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
-	"github.com/tranvictor/jarvis/util/reader"
+	utilreader "github.com/tranvictor/jarvis/util/reader"
 )
 
 // AnalyzeAndShowMsigTxInfo fetches a multisig transaction by ID, decodes and
@@ -196,16 +196,19 @@ func HandleApproveOrRevokeOrExecuteMsig(
 ) {
 	tc, _ := TxContextFrom(cmd)
 
-	reader, err := util.EthReader(config.Network())
-	if err != nil {
+	reader := tc.Reader
+	if reader == nil {
 		u.Error("Couldn't connect to blockchain.")
 		return
 	}
 
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
-	var txid *big.Int
-	var txInfo *jarviscommon.TxInfo
+	var (
+		err    error
+		txid   *big.Int
+		txInfo *jarviscommon.TxInfo
+	)
 
 	if config.Tx == "" {
 		nwks, txs := ScanForTxs(args[1])
@@ -338,19 +341,19 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	broadcaster, err := util.EthBroadcaster(config.Network())
-	if err != nil {
-		u.Error("Couldn't create broadcaster: %s", err)
+	bc := tc.Broadcaster
+	if bc == nil {
+		u.Error("Broadcaster not available.")
 		return
 	}
 
-	_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
+	_, broadcasted, err := bc.BroadcastTx(signedTx)
 	if config.DontWaitToBeMined {
 		util.DisplayBroadcastedTx(u, signedTx, broadcasted, err, config.Network())
 	} else {
 		util.DisplayWaitAnalyze(
 			u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
-			a, nil, config.DegenMode,
+			nil, nil, config.DegenMode,
 		)
 	}
 }
@@ -374,9 +377,10 @@ func (s *signedTxResultJSON) Write(u ui.UI, filepath string) {
 func HandlePostSign(
 	u ui.UI,
 	signedTx *types.Transaction,
-	reader *reader.EthReader,
-	analyzer *txanalyzer.TxAnalyzer,
+	reader utilreader.Reader,
+	analyzer util.TxAnalyzer,
 	a *abi.ABI,
+	broadcaster TxBroadcaster,
 ) (broadcasted bool, err error) {
 	signedData, err := rlp.EncodeToBytes(signedTx)
 	if err != nil {
@@ -401,11 +405,6 @@ func HandlePostSign(
 	}
 	if config.JSONOutputFile != "" {
 		defer resultJSON.Write(u, config.JSONOutputFile)
-	}
-
-	broadcaster, err := util.EthBroadcaster(config.Network())
-	if err != nil {
-		return false, err
 	}
 
 	if config.DontBroadcast {

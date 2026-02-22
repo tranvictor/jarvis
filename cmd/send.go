@@ -48,6 +48,12 @@ func handleMsigSend(
 
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
 
+	bc, err := util.EthBroadcaster(config.Network())
+	if err != nil {
+		appUI.Error("init broadcaster failed: %s", err)
+		return
+	}
+
 	t = jarviscommon.BuildExactTx(
 		txType,
 		config.Nonce,
@@ -94,7 +100,7 @@ func handleMsigSend(
 		return
 	}
 
-	broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a)
+	broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a, bc)
 	if err != nil && !broadcasted {
 		appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 	}
@@ -120,6 +126,12 @@ func handleSend(
 	}
 
 	analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+
+	bc, err := util.EthBroadcaster(config.Network())
+	if err != nil {
+		appUI.Error("init broadcaster failed: %s", err)
+		return
+	}
 
 	if tokenAddr == util.ETH_ADDR {
 		t = jarviscommon.BuildExactTx(
@@ -193,7 +205,7 @@ func handleSend(
 		return
 	}
 
-	broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a)
+	broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a, bc)
 	if err != nil && !broadcasted {
 		appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 	}

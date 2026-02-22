@@ -17,7 +17,7 @@ import (
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
-	"github.com/tranvictor/jarvis/util/reader"
+	readerPkg "github.com/tranvictor/jarvis/util/reader"
 )
 
 var composeDataContractCmd = &cobra.Command{
@@ -139,9 +139,9 @@ var txContractCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
 
-		reader, err := util.EthReader(config.Network())
-		if err != nil {
-			appUI.Error("Couldn't init eth reader: %s", err)
+		reader := tc.Reader
+		if reader == nil {
+			appUI.Error("Couldn't init eth reader.")
 			return
 		}
 
@@ -225,14 +225,14 @@ var txContractCmd = &cobra.Command{
 			return
 		}
 
-		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a)
+		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a, tc.Broadcaster)
 		if err != nil && !broadcasted {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}
 	},
 }
 
-func handleReadOneFunctionOnContract(r *reader.EthReader, a *abi.ABI, atBlock int64, to string, method *abi.Method, params []interface{}) (contractReadResult, error) {
+func handleReadOneFunctionOnContract(r readerPkg.Reader, a *abi.ABI, atBlock int64, to string, method *abi.Method, params []interface{}) (contractReadResult, error) {
 	responseBytes, err := r.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", to, a, method.Name, params...)
 	if err != nil {
 		appUI.Error("getting response failed: %s", err)
@@ -363,9 +363,9 @@ var readContractCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
 
-		reader, err := util.EthReader(config.Network())
-		if err != nil {
-			appUI.Error("Couldn't init eth reader: %s", err)
+		reader := tc.Reader
+		if reader == nil {
+			appUI.Error("Couldn't init eth reader.")
 			return
 		}
 		if config.AllZeroParamsMethods {

@@ -434,8 +434,8 @@ var newMsigCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
 
-		reader, err := util.EthReader(config.Network())
-		if err != nil {
+		reader := tc.Reader
+		if reader == nil {
 			appUI.Error("Couldn't connect to blockchain.")
 			return
 		}
@@ -524,7 +524,7 @@ var newMsigCmd = &cobra.Command{
 			return
 		}
 
-		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, nil)
+		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, nil, tc.Broadcaster)
 		if err != nil && !broadcasted {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}
@@ -555,8 +555,8 @@ var initMsigCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
 
-		reader, err := util.EthReader(config.Network())
-		if err != nil {
+		reader := tc.Reader
+		if reader == nil {
 			appUI.Error("Couldn't connect to blockchain.")
 			return
 		}
@@ -676,7 +676,7 @@ var initMsigCmd = &cobra.Command{
 			return
 		}
 
-		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a)
+		broadcasted, err := cmdutil.HandlePostSign(appUI, signedTx, reader, analyzer, a, tc.Broadcaster)
 		if err != nil && !broadcasted {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}

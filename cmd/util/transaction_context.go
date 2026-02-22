@@ -15,6 +15,12 @@ import (
 	"github.com/tranvictor/jarvis/util/reader"
 )
 
+// TxBroadcaster is the minimal interface consumed by the cmd layer for
+// submitting signed transactions. Tests can supply a mock implementation.
+type TxBroadcaster interface {
+	BroadcastTx(tx *types.Transaction) (string, bool, error)
+}
+
 // TxContext holds all values derived during pre-processing: resolved addresses,
 // auto-fetched gas parameters, parsed prefill strings, and optional TxInfo from
 // a scanned tx hash. Commands retrieve it via TxContextFrom instead of reading
@@ -30,7 +36,9 @@ type TxContext struct {
 	TxType        uint8
 	PrefillMode   bool
 	PrefillParams []string
-	TxInfo        *jarviscommon.TxInfo // non-nil when args[0] was a tx hash
+	TxInfo      *jarviscommon.TxInfo // non-nil when args[0] was a tx hash
+	Reader      reader.Reader       // injected by preprocess; nil in tests that don't need network I/O
+	Broadcaster TxBroadcaster       // injected by CommonTxPreprocess; nil for read-only commands
 }
 
 type txContextKey struct{}
@@ -49,7 +57,7 @@ func TxContextFrom(cmd *cobra.Command) (TxContext, bool) {
 
 // ValidTxType returns the appropriate transaction type for the current network,
 // respecting config.ForceLegacy.
-func ValidTxType(r *reader.EthReader, network jarvisnetworks.Network) (uint8, error) {
+func ValidTxType(r reader.Reader, network jarvisnetworks.Network) (uint8, error) {
 	if config.ForceLegacy {
 		return types.LegacyTxType, nil
 	}

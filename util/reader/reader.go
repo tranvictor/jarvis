@@ -18,6 +18,23 @@ import (
 
 var DEFAULT_ADDRESS string = "0x0000000000000000000000000000000000000000"
 
+// Reader is the minimal interface consumed by the cmd layer and preprocessing.
+// It covers every blockchain call made outside of internal utility helpers,
+// allowing tests to supply a mock without a live RPC node.
+type Reader interface {
+	TxInfoFromHash(tx string) (jarviscommon.TxInfo, error)
+	RecommendedGasPrice() (float64, error)
+	GetMinedNonce(address string) (nonce uint64, err error)
+	GetSuggestedGasTipCap() (float64, error)
+	CheckDynamicFeeTxAvailable() (bool, error)
+	EstimateExactGas(from, to string, priceGwei float64, value *big.Int, data []byte) (uint64, error)
+	EstimateGas(from, to string, priceGwei, value float64, data []byte) (uint64, error)
+	GetBalance(address string) (balance *big.Int, err error)
+	ERC20Balance(caddr string, user string) (*big.Int, error)
+	ERC20Decimal(caddr string) (uint64, error)
+	ReadContractToBytes(atBlock int64, from string, caddr string, abi *abi.ABI, method string, args ...interface{}) ([]byte, error)
+}
+
 const (
 	DEFAULT_ETHERSCAN_APIKEY string = "UBB257TI824FC7HUSPT66KZUMGBPRN3IWV"
 	DEFAULT_BSCSCAN_APIKEY   string = "62TU8Z81F7ESNJT38ZVRBSX7CNN4QZSP5I"
