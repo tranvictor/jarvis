@@ -140,21 +140,6 @@ type TxResult struct {
 
 func NewTxResult() *TxResult {
 	return &TxResult{
-		Hash:         "",
-		Network:      "mainnet",
-		Status:       "",
-		From:         Address{},
-		Value:        "",
-		To:           Address{},
-		Nonce:        "",
-		GasPrice:     "",
-		GasLimit:     "",
-		GasUsed:      "",
-		GasCost:      "",
-		TxType:       "",
-		FunctionCall: &FunctionCall{},
-		Logs:         []LogResult{},
-		Completed:    false,
-		Error:        "",
+		Network: "mainnet",
 	}
 }

@@ -33,9 +33,9 @@ type TxAnalyzer struct {
 }
 
 func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult) {
-	result.From = util.GetJarvisAddress(txinfo.Tx.Extra.From.Hex(), self.ctx.Network)
+	result.From = self.ctx.GetJarvisAddress(txinfo.Tx.Extra.From.Hex())
 	result.Value = BigToFloatString(txinfo.Tx.Value(), self.ctx.Network.GetNativeTokenDecimal())
-	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.ctx.Network)
+	result.To = self.ctx.GetJarvisAddress(txinfo.Tx.To().Hex())
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%.4f", BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
@@ -56,7 +56,7 @@ func (self *TxAnalyzer) nonArrayParamAsJarvisValue(t abi.Type, value interface{}
 		return Value{Raw: fmt.Sprintf("%t", value.(bool)), Kind: DisplayRaw}
 
 	case abi.AddressTy:
-		addr := util.GetJarvisAddress(value.(common.Address).Hex(), self.ctx.Network)
+		addr := self.ctx.GetJarvisAddress(value.(common.Address).Hex())
 		return Value{Raw: addr.Address, Kind: DisplayAddress, Address: &addr}
 
 	case abi.HashTy:
@@ -243,7 +243,7 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 	depth int,
 ) (fc *FunctionCall) {
 	fc = &FunctionCall{}
-	fc.Destination = util.GetJarvisAddress(destination, self.ctx.Network)
+	fc.Destination = self.ctx.GetJarvisAddress(destination)
 	fc.Value = value
 
 	var err error
@@ -426,11 +426,14 @@ func (self *TxAnalyzer) analyzeContractTx(
 		txinfo.Tx.Data(),
 		customABIs)
 
-	logs := txinfo.Receipt.Logs
-	for _, l := range logs {
+	for _, l := range txinfo.Receipt.Logs {
 		logResult, err := self.AnalyzeLog(customABIs, l)
 		if err != nil {
-			result.Error += fmt.Sprintf("%s", err)
+			if result.Error != "" {
+				result.Error += "; "
+			}
+			result.Error += err.Error()
+			continue
 		}
 		result.Logs = append(result.Logs, logResult)
 	}

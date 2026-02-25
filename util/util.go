@@ -28,6 +28,7 @@ import (
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util/broadcaster"
 	"github.com/tranvictor/jarvis/util/cache"
+	"github.com/tranvictor/jarvis/util/addrbook"
 	"github.com/tranvictor/jarvis/util/monitor"
 	"github.com/tranvictor/jarvis/util/reader"
 )
@@ -386,36 +387,12 @@ func GetJarvisValue(value string, network networks.Network) jarviscommon.Value {
 	return jarviscommon.Value{Raw: addr.Address, Kind: jarviscommon.DisplayAddress, Address: &addr}
 }
 
+// GetJarvisAddress resolves addr using the default (production) address
+// resolver. Call sites that already have a resolver (e.g. txanalyzer via
+// AnalysisContext) should use that resolver directly so the implementation
+// can be swapped in tests.
 func GetJarvisAddress(addr string, network networks.Network) jarviscommon.Address {
-	var decimal int64
-	var erc20Detected bool
-
-	isERC20, err := IsERC20(addr, network)
-	if err == nil && isERC20 {
-		cacheKey := fmt.Sprintf("%s_decimal", addr)
-		decimal, erc20Detected = cache.GetInt64Cache(cacheKey)
-	}
-
-	addr, name, err := GetAddressFromString(addr)
-	if err != nil {
-		return jarviscommon.Address{
-			Address: addr,
-			Desc:    "Unknown",
-		}
-	}
-
-	if erc20Detected {
-		return jarviscommon.Address{
-			Address: addr,
-			Desc:    name,
-			Decimal: decimal,
-		}
-	} else {
-		return jarviscommon.Address{
-			Address: addr,
-			Desc:    name,
-		}
-	}
+	return addrbook.NewDefault(network).Resolve(addr)
 }
 
 func isHttpURL(path string) bool {

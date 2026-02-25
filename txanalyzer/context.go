@@ -8,6 +8,7 @@ import (
 	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/reader"
+	"github.com/tranvictor/jarvis/util/addrbook"
 )
 
 // ERC20Info holds the token metadata discovered for a contract address.
@@ -32,7 +33,8 @@ type cachedERC20 struct {
 // ~/.jarvis/cache.json between runs, so AnalysisContext adds only the
 // fast in-memory layer on top.
 type AnalysisContext struct {
-	Network Network
+	Network  Network
+	Resolver addrbook.AddressResolver
 
 	// reader is stored for future enrichment queries that need direct RPC
 	// access (e.g. slot reads, multicall batching).
@@ -42,13 +44,29 @@ type AnalysisContext struct {
 	erc20 map[string]cachedERC20 // keyed by lower-case address
 }
 
-// NewAnalysisContext creates a fresh, empty AnalysisContext for one cmd run.
+// NewAnalysisContext creates a fresh AnalysisContext using the default
+// (production) address resolver backed by the local address databases.
 func NewAnalysisContext(r reader.Reader, network Network) *AnalysisContext {
+	return NewAnalysisContextWithResolver(r, network, addrbook.NewDefault(network))
+}
+
+// NewAnalysisContextWithResolver creates a fresh AnalysisContext with a
+// custom AddressResolver. Use this in tests to inject an addrbook.Map
+// (or any other deterministic implementation) instead of the local databases.
+func NewAnalysisContextWithResolver(r reader.Reader, network Network, res addrbook.AddressResolver) *AnalysisContext {
 	return &AnalysisContext{
-		Network: network,
-		reader:  r,
-		erc20:   make(map[string]cachedERC20),
+		Network:  network,
+		Resolver: res,
+		reader:   r,
+		erc20:    make(map[string]cachedERC20),
 	}
+}
+
+// GetJarvisAddress resolves addr using the context's AddressResolver. All
+// analyzer methods should call this instead of util.GetJarvisAddress directly
+// so that the resolver can be swapped out in tests.
+func (ctx *AnalysisContext) GetJarvisAddress(addr string) jarviscommon.Address {
+	return ctx.Resolver.Resolve(addr)
 }
 
 // ERC20InfoFor returns token metadata for addr if the address is a known ERC20
