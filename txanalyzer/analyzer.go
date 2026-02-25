@@ -32,21 +32,15 @@ type TxAnalyzer struct {
 	ctx *AnalysisContext
 }
 
-func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult, network Network) {
+func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult) {
 	result.From = util.GetJarvisAddress(txinfo.Tx.Extra.From.Hex(), self.ctx.Network)
-	result.Value = fmt.Sprintf(
-		"%s",
-		BigToFloatString(txinfo.Tx.Value(), network.GetNativeTokenDecimal()),
-	)
+	result.Value = BigToFloatString(txinfo.Tx.Value(), self.ctx.Network.GetNativeTokenDecimal())
 	result.To = util.GetJarvisAddress(txinfo.Tx.To().Hex(), self.ctx.Network)
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%.4f", BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
 	result.GasUsed = fmt.Sprintf("%d", txinfo.Receipt.GasUsed)
-	result.GasCost = fmt.Sprintf(
-		"%.8f",
-		BigToFloat(txinfo.GasCost(), network.GetNativeTokenDecimal()),
-	)
+	result.GasCost = fmt.Sprintf("%.8f", BigToFloat(txinfo.GasCost(), self.ctx.Network.GetNativeTokenDecimal()))
 }
 
 // nonArrayParamAsJarvisValue converts a scalar ABI value to a jarvis Value,
@@ -314,10 +308,12 @@ func (self *TxAnalyzer) analyzeMethodCall(
 	data []byte,
 	hint *ERC20Info,
 ) (method string, params []ParamResult, err error) {
-	if _, err := a.MethodById(data); err != nil {
-		a = GetERC20ABI()
-	}
 	m, err := a.MethodById(data)
+	if err != nil {
+		// Unknown selector — fall back to the standard ERC20 ABI.
+		a = GetERC20ABI()
+		m, err = a.MethodById(data)
+	}
 	if err != nil {
 		return "", []ParamResult{}, err
 	}
@@ -342,6 +338,18 @@ func (self *TxAnalyzer) AnalyzeMethodCall(
 	data []byte,
 ) (method string, params []ParamResult, err error) {
 	return self.analyzeMethodCall(a, data, nil)
+}
+
+// isValueType reports whether an ABI type is stored by value in an event topic.
+// Reference types (string, bytes, dynamic arrays, tuples) are stored as their
+// keccak256 hash instead and cannot be decoded from the raw topic bytes.
+func isValueType(t abi.Type) bool {
+	switch t.T {
+	case abi.BoolTy, abi.UintTy, abi.IntTy, abi.AddressTy, abi.HashTy, abi.FixedBytesTy:
+		return true
+	default:
+		return false
+	}
 }
 
 func (self *TxAnalyzer) AnalyzeLog(
@@ -374,9 +382,24 @@ func (self *TxAnalyzer) AnalyzeLog(
 
 	iArgs, niArgs := SplitEventArguments(event.Inputs)
 	for j, topic := range l.Topics[1:] {
+		arg := iArgs[j]
+		var topicValue Value
+		if isValueType(arg.Type) {
+			// Value types are ABI-encoded as 32-byte words in the topic slot;
+			// we can decode them with full type fidelity.
+			singleArg := abi.Arguments{abi.Argument{Name: arg.Name, Type: arg.Type}}
+			if decoded, decErr := singleArg.Unpack(topic.Bytes()); decErr == nil && len(decoded) > 0 {
+				topicValue = self.nonArrayParamAsJarvisValue(arg.Type, decoded[0], hint)
+			} else {
+				topicValue = Value{Raw: topic.Hex(), Kind: DisplayRaw}
+			}
+		} else {
+			// Reference types are stored as keccak256 hashes and cannot be decoded.
+			topicValue = Value{Raw: topic.Hex(), Kind: DisplayRaw}
+		}
 		logResult.Topics = append(logResult.Topics, TopicResult{
-			Name:  iArgs[j].Name,
-			Value: util.GetJarvisValue(topic.Hex(), self.ctx.Network),
+			Name:  arg.Name,
+			Value: topicValue,
 		})
 	}
 
@@ -395,7 +418,6 @@ func (self *TxAnalyzer) analyzeContractTx(
 	lookupABI ABIDatabase,
 	customABIs map[string]*abi.ABI,
 	result *TxResult,
-	network Network,
 ) {
 	result.FunctionCall = self.AnalyzeFunctionCallRecursively(
 		lookupABI,
@@ -419,19 +441,18 @@ func (self *TxAnalyzer) AnalyzeOffline(
 	lookupABI ABIDatabase,
 	customABIs map[string]*abi.ABI,
 	isContract bool,
-	network Network,
 ) *TxResult {
 	result := NewTxResult()
 	result.Network = self.ctx.Network.GetName()
 	result.Hash = txinfo.Tx.Hash().Hex()
 	result.Status = txinfo.Status
 	if txinfo.Status == "done" || txinfo.Status == "reverted" {
-		self.setBasicTxInfo(*txinfo, result, network)
+		self.setBasicTxInfo(*txinfo, result)
 		if !isContract {
 			result.TxType = "normal"
 		} else {
 			result.TxType = "contract call"
-			self.analyzeContractTx(*txinfo, lookupABI, customABIs, result, network)
+			self.analyzeContractTx(*txinfo, lookupABI, customABIs, result)
 		}
 	}
 	return result

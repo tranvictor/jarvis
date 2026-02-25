@@ -4,6 +4,7 @@ import (
 	"strings"
 	"sync"
 
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	. "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/reader"
@@ -63,16 +64,29 @@ func (ctx *AnalysisContext) ERC20InfoFor(addr string) *ERC20Info {
 		return entry.info
 	}
 
-	// Not yet checked — look it up (util/cache provides disk persistence).
-	decimal, err := util.GetERC20Decimal(addr, ctx.Network)
-	if err != nil {
+	// Not yet checked — fetch decimal and symbol in parallel.
+	// util/cache provides disk persistence so subsequent calls are instant.
+	var (
+		decimal    uint64
+		symbol     string
+		decimalErr error
+	)
+	jarviscommon.RunParallel(
+		func() error {
+			decimal, decimalErr = util.GetERC20Decimal(addr, ctx.Network)
+			return decimalErr
+		},
+		func() error {
+			symbol, _ = util.GetERC20Symbol(addr, ctx.Network)
+			return nil
+		},
+	)
+	if decimalErr != nil {
 		ctx.mu.Lock()
 		ctx.erc20[key] = cachedERC20{info: nil}
 		ctx.mu.Unlock()
 		return nil
 	}
-
-	symbol, _ := util.GetERC20Symbol(addr, ctx.Network)
 
 	info := &ERC20Info{Decimal: decimal, Symbol: symbol}
 	ctx.mu.Lock()

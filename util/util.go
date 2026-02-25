@@ -290,9 +290,9 @@ func AnalyzeAndPrint(
 			}
 		}
 		customABIs[strings.ToLower(txinfo.Tx.To().Hex())] = a
-		result = analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, true, network)
+		result = analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, true)
 	} else {
-		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false, network)
+		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false)
 	}
 
 	DisplayTxResult(u, result, network, degenMode)
@@ -347,21 +347,6 @@ func EthReader(network networks.Network) (*reader.EthReader, error) {
 	// }
 	return result, nil
 }
-
-// func ReadableNumber(value string) string {
-// 	digits := []string{}
-// 	for i, _ := range value {
-// 		digits = append([]string{string(value[len(value)-1-i])}, digits...)
-// 		if (i+1)%3 == 0 && i < len(value)-1 {
-// 			if (i+1)%9 == 0 {
-// 				digits = append([]string{"‸"}, digits...)
-// 			} else {
-// 				digits = append([]string{"￺"}, digits...)
-// 			}
-// 		}
-// 	}
-// 	return fmt.Sprintf("%s (%s)", value, strings.Join(digits, ""))
-// }
 
 func isRealAddress(value string) bool {
 	valueBig, isHex := big.NewInt(0).SetString(value, 0)
