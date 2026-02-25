@@ -8,6 +8,29 @@ import (
 	"github.com/tranvictor/jarvis/ui"
 )
 
+// ── Severity helpers ─────────────────────────────────────────────────────────
+
+// styledAddress wraps a common.Address in a StyledText.
+// Known addresses (non-empty, non-"unknown" description) are Success (green);
+// unknown ones are Warn (yellow) so they stand out without being alarming.
+func styledAddress(addr jarviscommon.Address) ui.StyledText {
+	text := jarviscommon.PlainAddress(addr)
+	if addr.Desc == "" || addr.Desc == "unknown" {
+		return ui.StyledText{Text: text, Severity: ui.SeverityWarn}
+	}
+	return ui.StyledText{Text: text, Severity: ui.SeveritySuccess}
+}
+
+// styledValue wraps a common.Value in a StyledText.
+// Address values inherit their severity from styledAddress; all other values
+// are SeverityInfo (plain).
+func styledValue(v jarviscommon.Value) ui.StyledText {
+	if v.Kind == jarviscommon.DisplayAddress && v.Address != nil {
+		return styledAddress(*v.Address)
+	}
+	return ui.StyledText{Text: jarviscommon.PlainValue(v), Severity: ui.SeverityInfo}
+}
+
 // ── Build phase (pure: no UI side-effects) ──────────────────────────────────
 
 func buildParamDisplay(param jarviscommon.ParamResult) ParamDisplay {
@@ -15,7 +38,7 @@ func buildParamDisplay(param jarviscommon.ParamResult) ParamDisplay {
 	switch {
 	case param.Values != nil:
 		for _, v := range param.Values {
-			d.Values = append(d.Values, jarviscommon.VerboseValue(v))
+			d.Values = append(d.Values, styledValue(v))
 		}
 	case param.Tuples != nil:
 		for _, tuple := range param.Tuples {
@@ -35,7 +58,7 @@ func buildParamDisplay(param jarviscommon.ParamResult) ParamDisplay {
 
 func buildFunctionCallDisplay(fc *jarviscommon.FunctionCall, nested bool) *FunctionCallDisplay {
 	d := &FunctionCallDisplay{
-		Destination: jarviscommon.VerboseAddress(fc.Destination),
+		Destination: styledAddress(fc.Destination),
 		Error:       fc.Error,
 		Method:      fc.Method,
 	}
@@ -56,7 +79,7 @@ func buildLogDisplay(log jarviscommon.LogResult) LogDisplay {
 	for _, topic := range log.Topics {
 		d.Topics = append(d.Topics, TopicDisplay{
 			Name:    topic.Name,
-			Verbose: jarviscommon.VerboseValue(topic.Value),
+			Verbose: styledValue(topic.Value),
 		})
 	}
 	for _, param := range log.Data {
@@ -68,8 +91,8 @@ func buildLogDisplay(log jarviscommon.LogResult) LogDisplay {
 func buildTxDisplay(result *jarviscommon.TxResult, fullDetail bool) *TxDisplay {
 	d := &TxDisplay{
 		Status: result.Status,
-		From:   jarviscommon.VerboseAddress(result.From),
-		To:     jarviscommon.VerboseAddress(result.To),
+		From:   styledAddress(result.From),
+		To:     styledAddress(result.To),
 		Value:  result.Value,
 		TxType: result.TxType,
 		Error:  result.Error,
@@ -93,18 +116,18 @@ func buildTxDisplay(result *jarviscommon.TxResult, fullDetail bool) *TxDisplay {
 	return d
 }
 
-// ── Print phase (reads only from the display struct) ────────────────────────
+// ── Print phase (reads only from the display struct, colours via u.Style) ────
 
 func printParamDisplay(u ui.UI, d ParamDisplay) {
 	label := fmt.Sprintf("%s (%s)", d.Name, d.Type)
 	switch {
 	case d.Values != nil:
 		if len(d.Values) == 1 {
-			u.Info("%s: %s", label, d.Values[0])
+			u.Info("%s: %s", label, u.Style(d.Values[0]))
 		} else {
 			u.Info("%s:", label)
 			for i, v := range d.Values {
-				u.Indent().Info("%d. %s", i+1, v)
+				u.Indent().Info("%d. %s", i+1, u.Style(v))
 			}
 		}
 	case d.Tuples != nil:
@@ -135,7 +158,7 @@ func printFunctionCallDisplay(u ui.UI, d *FunctionCallDisplay, nested bool) {
 		return
 	}
 	if nested {
-		u.Info("Interpreted Contract call to: %s", d.Destination)
+		u.Info("Interpreted Contract call to: %s", u.Style(d.Destination))
 		u.Info("| Value: %s", d.Value)
 	} else {
 		u.Info("")
@@ -154,7 +177,7 @@ func printLogDisplay(u ui.UI, idx int, d LogDisplay) {
 	u.Info("Log %d: %s", idx+1, d.Name)
 	inner := u.Indent()
 	for j, topic := range d.Topics {
-		inner.Info("Topic %d - %s: %s", j+1, topic.Name, topic.Verbose)
+		inner.Info("Topic %d - %s: %s", j+1, topic.Name, u.Style(topic.Verbose))
 	}
 	inner.Info("Data:")
 	for _, param := range d.Data {
@@ -169,7 +192,7 @@ func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network) {
 		u.Error("Mining status: %s", d.Status)
 	}
 	u.Info("From: %s ===[%s %s]===> %s",
-		d.From, d.Value, network.GetNativeTokenSymbol(), d.To,
+		u.Style(d.From), d.Value, network.GetNativeTokenSymbol(), u.Style(d.To),
 	)
 	if d.Nonce != "" {
 		u.Info("Nonce: %s", d.Nonce)
@@ -198,8 +221,7 @@ func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network) {
 // ── Public API ───────────────────────────────────────────────────────────────
 
 // DisplayParam builds the human-readable view-model for a single decoded ABI
-// parameter and writes it to u. The returned ParamDisplay is the authoritative
-// data — the UI output is derived entirely from it.
+// parameter and writes it to u via u.Style for correct terminal coloring.
 func DisplayParam(u ui.UI, param jarviscommon.ParamResult) ParamDisplay {
 	d := buildParamDisplay(param)
 	printParamDisplay(u, d)
@@ -223,9 +245,9 @@ func DisplayLog(u ui.UI, idx int, log jarviscommon.LogResult) LogDisplay {
 }
 
 // DisplayTxResult builds the human-readable view-model for an analyzed
-// transaction and writes it to u. The returned *TxDisplay is the
-// authoritative source for JSON output — the terminal output is derived
-// entirely from it, guaranteeing both representations are always in sync.
+// transaction and writes it to u. The returned *TxDisplay serializes cleanly
+// to JSON (StyledText fields marshal as plain strings); the terminal sees
+// coloured output via u.Style.
 func DisplayTxResult(u ui.UI, result *jarviscommon.TxResult, network networks.Network, fullDetail bool) *TxDisplay {
 	d := buildTxDisplay(result, fullDetail)
 	printTxDisplay(u, d, network)

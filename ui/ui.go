@@ -1,6 +1,41 @@
 package ui
 
-import "io"
+import (
+	"encoding/json"
+	"io"
+)
+
+// Severity classifies the visual weight of a piece of inline text, mirroring
+// the five output methods on UI. The print layer maps each value to the
+// corresponding terminal style; data consumers (JSON, tests) see plain text.
+type Severity uint8
+
+const (
+	SeverityInfo     Severity = iota // plain — no colour emphasis
+	SeveritySuccess                  // green  — known / positive
+	SeverityWarn                     // yellow — uncertain / needs attention
+	SeverityError                    // red    — unknown / negative
+	SeverityCritical                 // bold   — must-review before action
+)
+
+// StyledText pairs a plain string with a Severity annotation.
+//
+// JSON serialization: the struct marshals as just the plain Text string so
+// consumers receive clean output with no ANSI codes and no extra structure.
+//
+// Terminal rendering: pass the value to [UI.Style] to obtain the
+// appropriately coloured string for embedding in a format call:
+//
+//	u.Info("From: %s", u.Style(d.From))
+type StyledText struct {
+	Text     string
+	Severity Severity
+}
+
+// MarshalJSON serializes StyledText as a plain JSON string (just Text).
+func (s StyledText) MarshalJSON() ([]byte, error) {
+	return json.Marshal(s.Text)
+}
 
 // UI provides all terminal interaction for Jarvis commands.
 //
@@ -22,6 +57,15 @@ import "io"
 //	ui.Interpret("0xd8dA... (Vitalik Buterin)") // "→ ..." shows what Jarvis understood
 type UI interface {
 	// --- Output ---
+
+	// Style returns the text from t coloured according to its Severity.
+	// Use this to embed a styled value inside a larger Info/Critical/... line:
+	//
+	//	u.Info("From: %s ===> %s", u.Style(d.From), u.Style(d.To))
+	//
+	// When colours are disabled (e.g. piped output, RecordingUI) the plain
+	// text is returned unchanged.
+	Style(t StyledText) string
 
 	// Info writes a neutral status line (no prefix, no color).
 	Info(format string, args ...any)

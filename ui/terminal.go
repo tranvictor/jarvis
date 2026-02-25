@@ -51,6 +51,21 @@ func (u *TerminalUI) writeLine(line string) {
 	fmt.Fprintf(u.out, "%s%s\n", u.prefix(), line)
 }
 
+func (u *TerminalUI) Style(t StyledText) string {
+	switch t.Severity {
+	case SeveritySuccess:
+		return u.au.Green(t.Text).String()
+	case SeverityWarn:
+		return u.au.Yellow(t.Text).String()
+	case SeverityError:
+		return u.au.Red(t.Text).String()
+	case SeverityCritical:
+		return u.au.Bold(t.Text).String()
+	default: // SeverityInfo
+		return t.Text
+	}
+}
+
 func (u *TerminalUI) Info(format string, args ...any) {
 	u.writeLine(fmt.Sprintf(format, args...))
 }

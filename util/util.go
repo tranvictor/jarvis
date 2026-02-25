@@ -307,9 +307,14 @@ func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {
 }
 
 func GetNodes(network networks.Network) (map[string]string, error) {
-	nodes, err := getCustomNode(network)
+	src, err := getCustomNode(network)
 	if err != nil {
-		nodes = network.GetDefaultNodes()
+		src = network.GetDefaultNodes()
+	}
+	// Always work on a fresh copy so concurrent callers never share the same map.
+	nodes := make(map[string]string, len(src)+1)
+	for k, v := range src {
+		nodes[k] = v
 	}
 	customNode := strings.Trim(os.Getenv(network.GetNodeVariableName()), " ")
 	if customNode != "" {

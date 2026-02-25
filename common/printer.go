@@ -55,7 +55,29 @@ func VerboseValues(values []Value) []string {
 	return out
 }
 
+// PlainAddress formats an Address as a plain string with no ANSI color codes.
+// Use this when the result will be stored in a data structure or serialized to
+// JSON so that consumers don't receive terminal markup.
+func PlainAddress(addr Address) string {
+	if addr.Address == "" {
+		return ""
+	}
+	if addr.Decimal != 0 {
+		return fmt.Sprintf("%s (%s - %d)", addr.Address, addr.Desc, addr.Decimal)
+	}
+	if addr.Desc != "" {
+		return fmt.Sprintf("%s (%s)", addr.Address, addr.Desc)
+	}
+	return addr.Address
+}
+
+// VerboseAddress formats an Address for terminal display. The description is
+// wrapped in ANSI color via NameWithColor. Do NOT use the output as data
+// (e.g. JSON) — use PlainAddress for that.
 func VerboseAddress(addr Address) string {
+	if addr.Address == "" {
+		return ""
+	}
 	if addr.Decimal != 0 {
 		return fmt.Sprintf(
 			"%s (%s)",
@@ -64,6 +86,25 @@ func VerboseAddress(addr Address) string {
 		)
 	}
 	return fmt.Sprintf("%s (%s)", addr.Address, NameWithColor(addr.Desc))
+}
+
+// PlainValue returns a human-readable string for a single decoded ABI value
+// with no ANSI color codes. Use in build/data phases.
+func PlainValue(value Value) string {
+	switch value.Kind {
+	case DisplayAddress:
+		return PlainAddress(*value.Address)
+	case DisplayToken:
+		human := BigToFloatString(StringToBig(value.Raw), value.Token.Decimal)
+		if value.Token.Symbol != "" {
+			return fmt.Sprintf("%s (%s %s)", value.Raw, human, value.Token.Symbol)
+		}
+		return fmt.Sprintf("%s (%s)", value.Raw, human)
+	case DisplayInteger:
+		return ReadableNumber(value.Raw)
+	default:
+		return value.Raw
+	}
 }
 
 func PrintElapseTime(start time.Time, str string) {

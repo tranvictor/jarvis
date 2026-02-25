@@ -1,15 +1,16 @@
 package util
 
+import "github.com/tranvictor/jarvis/ui"
+
 // ParamDisplay is the human-readable view-model for a single decoded ABI
-// parameter. All string fields contain the verbose form already rendered by
-// VerboseValue — what the user sees on screen is identical to what appears in
-// JSON.
+// parameter. Each value is a StyledText — the plain text serializes cleanly
+// to JSON while the Severity annotation drives terminal coloring via u.Style.
 type ParamDisplay struct {
-	Name   string         `json:"name"`
-	Type   string         `json:"type"`
-	Values []string       `json:"values,omitempty"` // verbose strings for scalar/array-of-scalar params
-	Tuples []TupleDisplay `json:"tuples,omitempty"` // one entry per tuple instance
-	Arrays []ParamDisplay `json:"arrays,omitempty"` // one entry per inner array
+	Name   string           `json:"name"`
+	Type   string           `json:"type"`
+	Values []ui.StyledText  `json:"values,omitempty"` // serializes as []string
+	Tuples []TupleDisplay   `json:"tuples,omitempty"`
+	Arrays []ParamDisplay   `json:"arrays,omitempty"`
 }
 
 // TupleDisplay represents one struct/tuple instance with its decoded fields.
@@ -20,10 +21,11 @@ type TupleDisplay struct {
 }
 
 // TopicDisplay is the human-readable view-model for a single indexed event
-// argument.
+// argument. Verbose is a StyledText so addresses can be rendered in colour
+// on the terminal while JSON receives only clean text.
 type TopicDisplay struct {
-	Name    string `json:"name"`
-	Verbose string `json:"verbose"`
+	Name    string         `json:"name"`
+	Verbose ui.StyledText  `json:"verbose"` // serializes as string
 }
 
 // LogDisplay is the human-readable view-model for a single event log entry.
@@ -37,8 +39,8 @@ type LogDisplay struct {
 // call, including any recursively decoded inner calls (e.g. Gnosis multisig
 // submitTransaction wrapping an inner ERC20 transfer).
 type FunctionCallDisplay struct {
-	Destination string                 `json:"destination"`           // VerboseAddress
-	Value       string                 `json:"value,omitempty"`       // ETH value; omitted for top-level
+	Destination ui.StyledText          `json:"destination"` // serializes as string
+	Value       string                 `json:"value,omitempty"`
 	Method      string                 `json:"method,omitempty"`
 	Params      []ParamDisplay         `json:"params,omitempty"`
 	InnerCalls  []*FunctionCallDisplay `json:"inner_calls,omitempty"`
@@ -46,14 +48,13 @@ type FunctionCallDisplay struct {
 }
 
 // TxDisplay is the complete human-readable view-model for a single analyzed
-// transaction. It contains exactly what was printed to the terminal — nothing
-// more, nothing less — so the JSON output and the screen output are guaranteed
-// to be identical representations of the same data.
+// transaction. StyledText fields carry Severity annotations used only by the
+// terminal print phase; JSON consumers receive clean plain strings.
 type TxDisplay struct {
-	Status string `json:"status"`
-	From   string `json:"from"` // VerboseAddress
-	To     string `json:"to"`   // VerboseAddress
-	Value  string `json:"value"`
+	Status string        `json:"status"`
+	From   ui.StyledText `json:"from"` // serializes as string
+	To     ui.StyledText `json:"to"`   // serializes as string
+	Value  string        `json:"value"`
 
 	// Gas/nonce detail — populated only when fullDetail (degen) mode is on.
 	Nonce    string `json:"nonce,omitempty"`

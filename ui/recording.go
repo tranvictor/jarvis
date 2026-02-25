@@ -71,6 +71,12 @@ func (r *RecordingUI) nextInput(caller string) string {
 	return input
 }
 
+// Style returns the plain text of t without any colour markup.
+// RecordingUI is colour-free so tests receive clean, predictable strings.
+func (r *RecordingUI) Style(t StyledText) string {
+	return t.Text
+}
+
 func (r *RecordingUI) Info(format string, args ...any) {
 	r.record("Info", fmt.Sprintf(format, args...))
 }
