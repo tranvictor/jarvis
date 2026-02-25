@@ -189,101 +189,34 @@ var txContractCmd = &cobra.Command{
 	},
 }
 
-func handleReadOneFunctionOnContract(r readerPkg.Reader, analyzer util.TxAnalyzer, a *abi.ABI, atBlock int64, to string, method *abi.Method, params []interface{}) (contractReadResult, error) {
+func handleReadOneFunctionOnContract(r readerPkg.Reader, analyzer util.TxAnalyzer, a *abi.ABI, atBlock int64, to string, method *abi.Method, params []interface{}) ([]util.ParamDisplay, error) {
 	responseBytes, err := r.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", to, a, method.Name, params...)
 	if err != nil {
 		appUI.Error("getting response failed: %s", err)
-		return contractReadResult{}, err
+		return nil, err
 	}
 	if len(responseBytes) == 0 {
 		appUI.Error("the function reverts. please double check your params.")
-		return contractReadResult{}, fmt.Errorf("the function reverted")
+		return nil, fmt.Errorf("the function reverted")
 	}
 	ps, err := method.Outputs.UnpackValues(responseBytes)
 	if err != nil {
 		appUI.Error("Couldn't unpack response to go types: %s", err)
-		return contractReadResult{}, err
+		return nil, err
 	}
 
 	appUI.Info("Output:")
-	result := contractReadResult{}
+	var result []util.ParamDisplay
 	for i, output := range method.Outputs {
 		oneOutputParamResult := analyzer.ParamAsJarvisParamResult(output.Name, output.Type, ps[i])
-		oneVerboseParamResult := convertToVerboseParamResult(oneOutputParamResult)
-		result = append(result, oneVerboseParamResult)
-
-		util.DisplayParam(appUI, oneOutputParamResult)
+		result = append(result, util.DisplayParam(appUI, oneOutputParamResult))
 	}
 	return result, nil
 }
 
-func convertToVerboseParamResult(oneOutputParamResult jarviscommon.ParamResult) verboseParamResult {
-	result := verboseParamResult{
-		Name: oneOutputParamResult.Name,
-		Type: oneOutputParamResult.Type,
-	}
-
-	if oneOutputParamResult.Values != nil {
-		result.Values = []string{}
-		for _, v := range oneOutputParamResult.Values {
-			result.Values = append(result.Values, v.Raw)
-		}
-		result.HumanValues = jarviscommon.VerboseValues(oneOutputParamResult.Values)
-	}
-
-	if oneOutputParamResult.Tuples != nil {
-		result.Tuples = []verboseTupleParamResult{}
-		for _, t := range oneOutputParamResult.Tuples {
-			result.Tuples = append(result.Tuples, convertToVerboseTupleParamResult(t))
-		}
-	}
-
-	if oneOutputParamResult.Arrays != nil {
-		result.Arrays = []verboseParamResult{}
-		for _, a := range oneOutputParamResult.Arrays {
-			result.Arrays = append(result.Arrays, convertToVerboseParamResult(a))
-		}
-	}
-
-	return result
-}
-
-func convertToVerboseTupleParamResult(oneTupleParamResult jarviscommon.TupleParamResult) verboseTupleParamResult {
-	result := verboseTupleParamResult{
-		Name: oneTupleParamResult.Name,
-		Type: oneTupleParamResult.Type,
-	}
-
-	if oneTupleParamResult.Values != nil {
-		result.Values = []verboseParamResult{}
-		for _, v := range oneTupleParamResult.Values {
-			result.Values = append(result.Values, convertToVerboseParamResult(v))
-		}
-	}
-
-	return result
-}
-
-type verboseParamResult struct {
-	Name        string                    `json:"name"`
-	Type        string                    `json:"type"`
-	Values      []string                  `json:"values"`
-	Tuples      []verboseTupleParamResult `json:"tuples"`
-	Arrays      []verboseParamResult      `json:"arrays"`
-	HumanValues []string                  `json:"human_values"`
-}
-
-type verboseTupleParamResult struct {
-	Name   string               `json:"name"`
-	Type   string               `json:"type"`
-	Values []verboseParamResult `json:"values"`
-}
-
-type contractReadResult []verboseParamResult
-
 type contractReadResultJSON struct {
-	Result contractReadResult `json:"result"`
-	Error  string             `json:"error"`
+	Result []util.ParamDisplay `json:"result"`
+	Error  string              `json:"error"`
 }
 
 func (c *contractReadResultJSON) Write(filepath string) {
@@ -356,10 +289,10 @@ var readContractCmd = &cobra.Command{
 				appUI.Info("---------------------------------------------------")
 			}
 		} else {
-			resultJSON := contractReadResultJSON{
-				Result: contractReadResult{},
-				Error:  "",
-			}
+		resultJSON := contractReadResultJSON{
+			Result: nil,
+			Error:  "",
+		}
 
 			if config.JSONOutputFile != "" {
 				defer resultJSON.Write(config.JSONOutputFile)

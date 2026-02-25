@@ -1,12 +1,13 @@
 package cmd
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
-	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -34,11 +35,12 @@ var txCmd = &cobra.Command{
 			appUI.Info("  %d. %s", i, t)
 		}
 
-		results := jarviscommon.TxResults{}
+		displays := map[string]*util.TxDisplay{}
 
 		if config.JSONOutputFile != "" {
 			defer func() {
-				if err := results.Write(config.JSONOutputFile); err != nil {
+				data, _ := json.MarshalIndent(displays, "", "  ")
+				if err := os.WriteFile(config.JSONOutputFile, data, 0644); err != nil {
 					appUI.Error("Writing to json file failed: %s", err)
 				}
 			}()
@@ -47,7 +49,7 @@ var txCmd = &cobra.Command{
 		for _, t := range txs {
 			appUI.Info("Analyzing tx: %s...", t)
 
-			r := util.AnalyzeAndPrint(
+			d := util.AnalyzeAndPrint(
 				appUI,
 				tc.Reader,
 				tc.Analyzer,
@@ -59,7 +61,7 @@ var txCmd = &cobra.Command{
 				nil,
 				config.DegenMode,
 			)
-			results[t] = r
+			displays[t] = d
 			appUI.Info("----------------------------------------------------------")
 		}
 	},

@@ -257,7 +257,7 @@ func AnalyzeAndPrint(
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	degenMode bool,
-) *jarviscommon.TxResult {
+) *TxDisplay {
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
 	}
@@ -295,8 +295,7 @@ func AnalyzeAndPrint(
 		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false)
 	}
 
-	DisplayTxResult(u, result, network, degenMode)
-	return result
+	return DisplayTxResult(u, result, network, degenMode)
 }
 
 func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {
