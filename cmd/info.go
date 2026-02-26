@@ -47,8 +47,7 @@ var txCmd = &cobra.Command{
 		}
 
 		for _, t := range txs {
-			appUI.Info("Analyzing tx: %s...", t)
-
+			stop := appUI.Spinner("Analyzing " + t)
 			d := util.AnalyzeAndPrint(
 				appUI,
 				tc.Reader,
@@ -60,9 +59,10 @@ var txCmd = &cobra.Command{
 				nil,
 				nil,
 				config.DegenMode,
+				stop, // stops spinner just before display output begins
 			)
 			displays[t] = d
-			appUI.Info("----------------------------------------------------------")
+			appUI.Info("")
 		}
 	},
 }

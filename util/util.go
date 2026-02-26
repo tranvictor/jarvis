@@ -247,6 +247,13 @@ func AnalyzeMethodCallAndPrint(
 	return fc
 }
 
+// AnalyzeAndPrint fetches and decodes a transaction then renders it to u.
+// The optional beforeDisplay callback is invoked just before any output is
+// written — use it to stop a spinner so its goroutine never races with the
+// table renderer:
+//
+//	stop := u.Spinner("Analyzing...")
+//	AnalyzeAndPrint(u, ..., stop)
 func AnalyzeAndPrint(
 	u ui.UI,
 	reader reader.Reader,
@@ -258,6 +265,7 @@ func AnalyzeAndPrint(
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	degenMode bool,
+	beforeDisplay ...func(),
 ) *TxDisplay {
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
@@ -265,17 +273,26 @@ func AnalyzeAndPrint(
 
 	txinfo, err := reader.TxInfoFromHash(tx)
 	if err != nil {
+		for _, fn := range beforeDisplay {
+			fn()
+		}
 		u.Error("getting tx info failed: %s", err)
 		return nil
 	}
 
 	if txinfo.Tx.To() == nil {
+		for _, fn := range beforeDisplay {
+			fn()
+		}
 		return nil
 	}
 	contractAddress := txinfo.Tx.To().Hex()
 
 	isContract, err := IsContract(contractAddress, network)
 	if err != nil {
+		for _, fn := range beforeDisplay {
+			fn()
+		}
 		u.Error("checking tx type failed: %s", err)
 		return nil
 	}
@@ -286,6 +303,9 @@ func AnalyzeAndPrint(
 		if a == nil {
 			a, err = ConfigToABI(contractAddress, forceERC20ABI, customABI, network)
 			if err != nil {
+				for _, fn := range beforeDisplay {
+					fn()
+				}
 				u.Error("Couldn't get abi for %s: %s", contractAddress, err)
 				return nil
 			}
@@ -296,7 +316,11 @@ func AnalyzeAndPrint(
 		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false)
 	}
 
-	return DisplayTxResult(u, result, network, degenMode)
+	// All network work is done — stop the spinner before any output.
+	for _, fn := range beforeDisplay {
+		fn()
+	}
+	return DisplayTxResult(u, result, network, degenMode, tx)
 }
 
 func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {

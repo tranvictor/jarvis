@@ -264,7 +264,9 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
+			stopABI := appUI.Spinner("Fetching ABI for " + tc.To)
 			a, err := tc.Resolver.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
+			stopABI()
 			if err != nil {
 				appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 				return
@@ -276,7 +278,9 @@ var readContractCmd = &cobra.Command{
 				resultJSON.Functions = append(resultJSON.Functions, method.Name)
 				appUI.Info("%d. %s", i+1, method.Name)
 
+				stopRead := appUI.Spinner("Reading " + method.Name)
 				result, err := handleReadOneFunctionOnContract(reader, tc.Analyzer, a, config.AtBlock, tc.To, &method, []interface{}{})
+				stopRead()
 				if err != nil {
 					resultJSON.Results = append(resultJSON.Results, contractReadResultJSON{
 						Error: fmt.Sprintf("%s", err),
@@ -298,7 +302,9 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
+			stopABI := appUI.Spinner("Fetching ABI for " + tc.To)
 			a, err := tc.Resolver.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
+			stopABI()
 			if err != nil {
 				appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 				return
@@ -321,7 +327,9 @@ var readContractCmd = &cobra.Command{
 				resultJSON.Error = fmt.Sprintf("%s", err)
 				return
 			}
+			stopRead := appUI.Spinner("Reading " + method.Name)
 			result, err := handleReadOneFunctionOnContract(reader, tc.Analyzer, a, config.AtBlock, tc.To, method, params)
+			stopRead()
 
 			if err != nil {
 				resultJSON.Error = fmt.Sprintf("%s", err)

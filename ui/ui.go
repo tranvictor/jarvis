@@ -94,6 +94,31 @@ type UI interface {
 	// Example: "===== Confirm tx data before signing ====="
 	Section(title string)
 
+	// KeyValue renders an aligned 2-column block — label on the left,
+	// value on the right — with all values left-aligned to the same column.
+	// Use for compact metadata like Status/From/To/Value or gas details.
+	KeyValue(rows [][2]string)
+
+	// Table renders a full bordered table with a header row followed by data
+	// rows. Use when there are 3+ columns or the data is inherently tabular
+	// (e.g. a decoded parameter list).
+	Table(headers []string, rows [][]string)
+
+	// TableWithGroups renders a bordered table where each group of rows is
+	// visually separated from the next by a horizontal divider line. Use when
+	// rows belong to distinct logical groups (e.g. one group per event log).
+	TableWithGroups(headers []string, groups [][][]string)
+
+	// Spinner starts an animated spinner with the given message and returns a
+	// stop function. Call the stop function (or defer it) to clear the spinner
+	// once the work is done:
+	//
+	//   stop := u.Spinner("Fetching transaction...")
+	//   defer stop()
+	//
+	// In RecordingUI and non-terminal contexts the stop function is a no-op.
+	Spinner(msg string) func()
+
 	// Interpret writes what Jarvis understood from the user's last input.
 	// Always shown immediately after Ask, indented and prefixed with "→".
 	// Example: "  → 8,800,000,000,000,000,000 (8.8 KNC)"
