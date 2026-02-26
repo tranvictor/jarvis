@@ -461,6 +461,21 @@ func (self *TxAnalyzer) AnalyzeOffline(
 	return result
 }
 
+// NewGenericAnalyzer creates a TxAnalyzer with the default (production)
+// address resolver backed by the local address databases.
 func NewGenericAnalyzer(r reader.Reader, network Network) *TxAnalyzer {
 	return &TxAnalyzer{ctx: NewAnalysisContext(r, network)}
+}
+
+// NewGenericAnalyzerWithContext creates a TxAnalyzer with a fully-configured
+// AnalysisContext, allowing callers to inject a custom AddressResolver (e.g.
+// addrbook.Map for tests) and any other context-level dependencies.
+//
+// Typical test usage:
+//
+//	ctx := txanalyzer.NewAnalysisContextWithResolver(reader, network,
+//	    addrbook.Map{"0xabc...": "Alice"})
+//	analyzer := txanalyzer.NewGenericAnalyzerWithContext(ctx)
+func NewGenericAnalyzerWithContext(ctx *AnalysisContext) *TxAnalyzer {
+	return &TxAnalyzer{ctx: ctx}
 }
