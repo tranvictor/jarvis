@@ -14,10 +14,8 @@ import (
 	"github.com/tranvictor/jarvis/common"
 )
 
-// Broadcaster takes a signed tx and try to broadcast it to all
-// nodes that it manages as fast as possible. It returns a map of
-// failures and a bool indicating that the tx is broadcasted to
-// at least 1 node
+// Broadcaster sends a signed tx to all managed nodes in parallel and
+// returns success as soon as at least one node accepts it.
 type Broadcaster struct {
 	clients map[string]*rpc.Client
 }

@@ -25,8 +25,10 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util/broadcaster"
 	"github.com/tranvictor/jarvis/util/cache"
+	"github.com/tranvictor/jarvis/util/addrbook"
 	"github.com/tranvictor/jarvis/util/monitor"
 	"github.com/tranvictor/jarvis/util/reader"
 )
@@ -187,16 +189,17 @@ func PathToAddress(path string) (string, error) {
 	return result[0], nil
 }
 
-func DisplayBroadcastedTx(t *types.Transaction, broadcasted bool, err error, network networks.Network) {
+func DisplayBroadcastedTx(u ui.UI, t *types.Transaction, broadcasted bool, err error, network networks.Network) {
 	if !broadcasted {
-		fmt.Printf("Couldn't broadcast tx. Errors: %s\n", err)
+		u.Error("Couldn't broadcast tx. Errors: %s", err)
 	} else {
-		fmt.Printf("BROADCASTED TX:\n%s:%s\n", network.GetName(), t.Hash().Hex())
+		u.Critical("BROADCASTED TX: %s:%s", network.GetName(), t.Hash().Hex())
 	}
 }
 
 func DisplayWaitAnalyze(
-	reader *reader.EthReader,
+	u ui.UI,
+	reader reader.Reader,
 	analyzer TxAnalyzer,
 	t *types.Transaction,
 	broadcasted bool,
@@ -206,15 +209,16 @@ func DisplayWaitAnalyze(
 	customABIs map[string]*abi.ABI,
 	degenMode bool,
 ) {
-	DisplayBroadcastedTx(t, broadcasted, err, network)
+	DisplayBroadcastedTx(u, t, broadcasted, err, network)
 	if broadcasted {
 		mo, err := EthTxMonitor(network)
 		if err != nil {
-			fmt.Printf("Couldn't monitor the tx: %s\n", err)
+			u.Error("Couldn't monitor the tx: %s", err)
 			return
 		}
 		mo.BlockingWait(t.Hash().Hex())
 		AnalyzeAndPrint(
+			u,
 			reader,
 			analyzer,
 			t.Hash().Hex(),
@@ -229,6 +233,7 @@ func DisplayWaitAnalyze(
 }
 
 func AnalyzeMethodCallAndPrint(
+	u ui.UI,
 	analyzer TxAnalyzer,
 	value *big.Int,
 	destination string,
@@ -238,12 +243,13 @@ func AnalyzeMethodCallAndPrint(
 ) (fc *jarviscommon.FunctionCall) {
 	fc = analyzer.AnalyzeFunctionCallRecursively(
 		GetABI, value, destination, data, customABIs)
-	jarviscommon.PrintFunctionCall(fc)
+	DisplayFunctionCall(u, fc)
 	return fc
 }
 
 func AnalyzeAndPrint(
-	reader *reader.EthReader,
+	u ui.UI,
+	reader reader.Reader,
 	analyzer TxAnalyzer,
 	tx string,
 	network networks.Network,
@@ -252,14 +258,14 @@ func AnalyzeAndPrint(
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	degenMode bool,
-) *jarviscommon.TxResult {
+) *TxDisplay {
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
 	}
 
 	txinfo, err := reader.TxInfoFromHash(tx)
 	if err != nil {
-		fmt.Printf("getting tx info failed: %s", err)
+		u.Error("getting tx info failed: %s", err)
 		return nil
 	}
 
@@ -270,7 +276,7 @@ func AnalyzeAndPrint(
 
 	isContract, err := IsContract(contractAddress, network)
 	if err != nil {
-		fmt.Printf("checking tx type failed: %s", err)
+		u.Error("checking tx type failed: %s", err)
 		return nil
 	}
 
@@ -280,22 +286,17 @@ func AnalyzeAndPrint(
 		if a == nil {
 			a, err = ConfigToABI(contractAddress, forceERC20ABI, customABI, network)
 			if err != nil {
-				fmt.Printf("Couldn't get abi for %s: %s\n", contractAddress, err)
+				u.Error("Couldn't get abi for %s: %s", contractAddress, err)
 				return nil
 			}
 		}
 		customABIs[strings.ToLower(txinfo.Tx.To().Hex())] = a
-		result = analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, true, network)
+		result = analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, true)
 	} else {
-		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false, network)
+		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false)
 	}
 
-	if degenMode {
-		jarviscommon.PrintTxDetails(result, network, os.Stdout)
-	} else {
-		jarviscommon.PrintTxSuccessSummary(result, network, os.Stdout)
-	}
-	return result
+	return DisplayTxResult(u, result, network, degenMode)
 }
 
 func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {
@@ -307,9 +308,14 @@ func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {
 }
 
 func GetNodes(network networks.Network) (map[string]string, error) {
-	nodes, err := getCustomNode(network)
+	src, err := getCustomNode(network)
 	if err != nil {
-		nodes = network.GetDefaultNodes()
+		src = network.GetDefaultNodes()
+	}
+	// Always work on a fresh copy so concurrent callers never share the same map.
+	nodes := make(map[string]string, len(src)+1)
+	for k, v := range src {
+		nodes[k] = v
 	}
 	customNode := strings.Trim(os.Getenv(network.GetNodeVariableName()), " ")
 	if customNode != "" {
@@ -347,21 +353,6 @@ func EthReader(network networks.Network) (*reader.EthReader, error) {
 	return result, nil
 }
 
-// func ReadableNumber(value string) string {
-// 	digits := []string{}
-// 	for i, _ := range value {
-// 		digits = append([]string{string(value[len(value)-1-i])}, digits...)
-// 		if (i+1)%3 == 0 && i < len(value)-1 {
-// 			if (i+1)%9 == 0 {
-// 				digits = append([]string{"‸"}, digits...)
-// 			} else {
-// 				digits = append([]string{"￺"}, digits...)
-// 			}
-// 		}
-// 	}
-// 	return fmt.Sprintf("%s (%s)", value, strings.Join(digits, ""))
-// }
-
 func isRealAddress(value string) bool {
 	valueBig, isHex := big.NewInt(0).SetString(value, 0)
 	if !isHex {
@@ -376,60 +367,32 @@ func isRealAddress(value string) bool {
 }
 
 func GetJarvisValue(value string, network networks.Network) jarviscommon.Value {
-	valueBig, isHex := big.NewInt(0).SetString(value, 0)
-	if !isHex {
-		return jarviscommon.Value{
-			Value: value,
-			Type:  "string",
-		}
+	valueBig, ok := big.NewInt(0).SetString(value, 0)
+	if !ok {
+		// Not a valid integer — treat as a raw string literal.
+		return jarviscommon.Value{Raw: value, Kind: jarviscommon.DisplayRaw}
 	}
 
-	// if it is not a real address
 	if !isRealAddress(value) {
-		return jarviscommon.Value{
-			Value: value,
-			Type:  "bytes",
+		// It's a number but outside the address range.
+		// 0x-prefixed literals (hex) display raw; plain decimal numbers
+		// get the readable-number separator treatment.
+		if strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X") {
+			return jarviscommon.Value{Raw: value, Kind: jarviscommon.DisplayRaw}
 		}
+		return jarviscommon.Value{Raw: value, Kind: jarviscommon.DisplayInteger}
 	}
 
 	addr := GetJarvisAddress(common.BigToAddress(valueBig).Hex(), network)
-	return jarviscommon.Value{
-		Value:   common.BigToAddress(valueBig).Hex(),
-		Type:    "address",
-		Address: &addr,
-	}
+	return jarviscommon.Value{Raw: addr.Address, Kind: jarviscommon.DisplayAddress, Address: &addr}
 }
 
+// GetJarvisAddress resolves addr using the default (production) address
+// resolver. Call sites that already have a resolver (e.g. txanalyzer via
+// AnalysisContext) should use that resolver directly so the implementation
+// can be swapped in tests.
 func GetJarvisAddress(addr string, network networks.Network) jarviscommon.Address {
-	var decimal int64
-	var erc20Detected bool
-
-	isERC20, err := IsERC20(addr, network)
-	if err == nil && isERC20 {
-		cacheKey := fmt.Sprintf("%s_decimal", addr)
-		decimal, erc20Detected = cache.GetInt64Cache(cacheKey)
-	}
-
-	addr, name, err := GetAddressFromString(addr)
-	if err != nil {
-		return jarviscommon.Address{
-			Address: addr,
-			Desc:    "Unknown",
-		}
-	}
-
-	if erc20Detected {
-		return jarviscommon.Address{
-			Address: addr,
-			Desc:    name,
-			Decimal: decimal,
-		}
-	} else {
-		return jarviscommon.Address{
-			Address: addr,
-			Desc:    name,
-		}
-	}
+	return addrbook.NewDefault(network).Resolve(addr)
 }
 
 func isHttpURL(path string) bool {

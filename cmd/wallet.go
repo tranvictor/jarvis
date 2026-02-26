@@ -42,13 +42,13 @@ func getAccDescsFromHW(hw HW, t string, path string) (*types.AccDesc, error) {
 
 	p, err := gethaccounts.ParseDerivationPath(path)
 	if err != nil {
-		fmt.Printf("Can't parse your %s to get wallets, %s\n", t, err)
+		appUI.Error("Can't parse your %s to get wallets, %s", t, err)
 		return nil, err
 	}
 
 	w, err := hw.Derive(p)
 	if err != nil {
-		fmt.Printf("Can't read/derive your %s to get wallets, %s. Please check if your ledger is unlocked.\n", t, err)
+		appUI.Error("Can't read/derive your %s to get wallets, %s. Please check if your ledger is unlocked.", t, err)
 		return nil, err
 	}
 	ret.Derpath = p.String()
@@ -64,15 +64,16 @@ func handleHW(hw HW, t string) {
 	batch := 0
 	for {
 		for i := 0; i < WALLET_PAGING; i++ {
-			var path string
+			var pathTemplate string
 			switch t {
 			case "ledger":
-				path = fmt.Sprintf(LEDGER_BASE_PATH, batch*WALLET_PAGING+i)
+				pathTemplate = LEDGER_BASE_PATH
 			case "ledger-live":
-				path = fmt.Sprintf(LEDGER_LIVE_BASE_PATH, batch*WALLET_PAGING+i)
+				pathTemplate = LEDGER_LIVE_BASE_PATH
 			case "trezor":
-				path = fmt.Sprintf(TREZOR_BASE_PATH, batch*WALLET_PAGING+i)
+				pathTemplate = TREZOR_BASE_PATH
 			}
+			path := fmt.Sprintf(pathTemplate, batch*WALLET_PAGING+i)
 			acc, err := getAccDescsFromHW(hw, t, path)
 			if err != nil {
 				return
@@ -80,10 +81,10 @@ func handleHW(hw HW, t string) {
 			accs = append(accs, acc)
 		}
 		for i, acc := range accs {
-			fmt.Printf("%d. %s (%s)\n", i, acc.Address, acc.Derpath)
+			appUI.Info("%d. %s (%s)", i, acc.Address, acc.Derpath)
 		}
 
-		index := cmdutil.PromptIndex("Please enter the wallet index you want to add (0, 1, 2,..., next, back, custom)", 0, len(accs)-1)
+		index := cmdutil.PromptIndex(appUI, "Please enter the wallet index you want to add (0, 1, 2,..., next, back, custom)", 0, len(accs)-1)
 		if index == cmdutil.NEXT {
 			batch += 1
 			continue
@@ -91,28 +92,27 @@ func handleHW(hw HW, t string) {
 			if batch > 0 {
 				batch -= 1
 			} else {
-				fmt.Printf("It can't be back. Continue with path 0\n")
+				appUI.Warn("It can't be back. Continue with path 0")
 			}
 			continue
 		} else if index == cmdutil.CUSTOM {
-			path := cmdutil.PromptInput("Please enter custom derivation path (eg: m/44'/60'/0'/88)")
+			path := cmdutil.PromptInput(appUI, "Please enter custom derivation path (eg: m/44'/60'/0'/88)")
 			accDesc, err = getAccDescsFromHW(hw, t, path)
 			if err != nil {
 				return
 			}
-			fmt.Printf("%s (%s)\n", accDesc.Address, accDesc.Derpath)
+			appUI.Info("%s (%s)", accDesc.Address, accDesc.Derpath)
 		} else {
 			accDesc = accs[index]
 		}
 
-		des := cmdutil.PromptInput("Please enter description of this wallet, it will be used to search your wallet by keywards")
+		des := cmdutil.PromptInput(appUI, "Please enter description of this wallet, it will be used to search your wallet by keywords")
 		accDesc.Desc = des
-		err := accounts.StoreAccountRecord(*accDesc)
-		if err != nil {
-			fmt.Printf("Couldn't store your wallet info: %s. Abort.\n", err)
+		if err = accounts.StoreAccountRecord(*accDesc); err != nil {
+			appUI.Error("Couldn't store your wallet info: %s. Abort.", err)
 		} else {
-			fmt.Printf("Created `~/.jarvis/%s.json` to store the wallet info.\n", accDesc.Address)
-			fmt.Printf("Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list\n")
+			appUI.Success("Created ~/.jarvis/%s.json to store the wallet info.", accDesc.Address)
+			appUI.Info("Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list")
 		}
 		return
 	}
@@ -121,12 +121,12 @@ func handleHW(hw HW, t string) {
 func handleLedger(version string) {
 	ledger, err := ledgereum.NewLedgereum()
 	if err != nil {
-		fmt.Printf("Jarvis: Can't establish communication channel to your ledger, %s\n", err)
+		appUI.Error("Can't establish communication channel to your ledger, %s", err)
 		return
 	}
 	err = ledger.Unlock()
 	if err != nil {
-		fmt.Printf("Jarvis: Can't unlock your ledger, %s\n", err)
+		appUI.Error("Can't unlock your ledger, %s", err)
 		return
 	}
 	handleHW(ledger, version)
@@ -135,39 +135,37 @@ func handleLedger(version string) {
 func handleTrezor() {
 	trezor, err := trezoreum.NewTrezoreum()
 	if err != nil {
-		fmt.Printf("Jarvis: Can't establish communication channel to your trezor, %s\n", err)
+		appUI.Error("Can't establish communication channel to your trezor, %s", err)
 		return
 	}
 	err = trezor.Unlock()
 	if err != nil {
-		fmt.Printf("Jarvis: Can't unlock your trezor, %s\n", err)
+		appUI.Error("Can't unlock your trezor, %s", err)
 		return
 	}
 	handleHW(trezor, "trezor")
 }
 
 func handleAddPrivateKey() {
-	fmt.Printf("** Storing plain private key is NOT secure. Let's encrypt it to a Keystore.\n")
-	fmt.Printf("Please enter or paste your private key in hex format (without 0x prefix). It will not be displayed on your terminal to avoid stdout logging.\n")
+	appUI.Warn("Storing plain private key is NOT secure. Let's encrypt it to a Keystore.")
+	appUI.Info("Please enter or paste your private key in hex format (without 0x prefix). It will not be displayed on your terminal to avoid stdout logging.")
 	privHex := getPassword("Paste your private key now: ")
 	passphrase := getPassword("\nEnter your passcode to encrypt the private key: ")
-	fmt.Printf("\n")
+	appUI.Info("")
 	path, err := accounts.StorePrivateKeyWithKeystore(privHex, passphrase)
 	if err != nil {
-		fmt.Printf("Private key encryption failed: %s. Abort.\n", err)
+		appUI.Error("Private key encryption failed: %s. Abort.", err)
 		return
 	}
-	fmt.Printf("Stored encrypted private key at %s.\n", path)
+	appUI.Success("Stored encrypted private key at %s.", path)
 
-	err = handleAddKeystoreGivenPath(path)
-	if err != nil {
-		fmt.Printf("Adding private key wallet failed: %s\n", err)
-		return
+	if err = handleAddKeystoreGivenPath(path); err != nil {
+		appUI.Error("Adding private key wallet failed: %s", err)
 	}
 }
 
 func getPassword(prompt string) string {
-	fmt.Print(prompt)
+	appUI.Info(prompt)
 	bytePassword, _ := terminal.ReadPassword(int(syscall.Stdin))
 	return string(bytePassword)
 }
@@ -180,27 +178,25 @@ func handleAddKeystoreGivenPath(keystorePath string) error {
 	}
 	address, err := accounts.VerifyKeystore(keystorePath)
 	if err != nil {
-		fmt.Printf("Jarvis: Keystore path verification failed. %s. Abort.\n", err)
+		appUI.Error("Keystore path verification failed. %s. Abort.", err)
 		return err
 	}
 	accDesc.Address = address
-	fmt.Printf("Jarvis: This keystore is with %s\n", address)
-	des := cmdutil.PromptInput("Jarvis: Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords: ")
+	appUI.Info("This keystore is with %s", address)
+	des := cmdutil.PromptInput(appUI, "Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords")
 	accDesc.Desc = des
-	err = accounts.StoreAccountRecord(*accDesc)
-	if err != nil {
-		fmt.Printf("Jarvis: I couldn't store your wallet info: %s. Abort.\n", err)
+	if err = accounts.StoreAccountRecord(*accDesc); err != nil {
+		appUI.Error("I couldn't store your wallet info: %s. Abort.", err)
 		return err
-	} else {
-		fmt.Printf("Jarvis: I created `~/.jarvis/%s.json` to store the keystore info. That file contains the path of your keystore file so please don't move your keystore file later.\n", address)
-		fmt.Printf("Jarvis: Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list\n")
 	}
+	appUI.Success("I created ~/.jarvis/%s.json to store the keystore info. That file contains the path of your keystore file so please don't move your keystore file later.", address)
+	appUI.Info("Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list")
 	return nil
 }
 
 func handleAddKeystore() {
-	fmt.Printf("Jarvis: Keystore is convenient but not so safe. I recommend you to use it only for unimportant frequent tasks.\n")
-	keystorePath := cmdutil.PromptFilePath("Jarvis: Please enter the path to your keystore file: ")
+	appUI.Warn("Keystore is convenient but not so safe. I recommend you to use it only for unimportant frequent tasks.")
+	keystorePath := cmdutil.PromptFilePath(appUI, "Please enter the path to your keystore file")
 	handleAddKeystoreGivenPath(keystorePath)
 }
 
@@ -208,8 +204,7 @@ var addWalletCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Add a wallet to jarvis",
 	Run: func(cmd *cobra.Command, args []string) {
-		// 1. type
-		keyType := cmdutil.PromptInput("Jarvis: Enter key type (enter either trezor, ledger, ledger-live, keystore or privatekey):")
+		keyType := cmdutil.PromptInput(appUI, "Enter key type (enter either trezor, ledger, ledger-live, keystore or privatekey):")
 		switch keyType {
 		case "trezor":
 			handleTrezor()
@@ -220,11 +215,8 @@ var addWalletCmd = &cobra.Command{
 		case "privatekey":
 			handleAddPrivateKey()
 		default:
-			fmt.Printf("Key: %s is not supported. Abort.\n", keyType)
+			appUI.Error("Key: %s is not supported. Abort.", keyType)
 		}
-		// if type is keystore => path to keystore
-		// if type is ledger/trezor => show 10 addresses
-		// 2. chose address index and register wallet address
 	},
 }
 
@@ -234,30 +226,23 @@ var listWalletCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		accs := accounts.GetAccounts()
-		fmt.Printf("Jarvis: You have %d wallets:\n", len(accs))
+		appUI.Info("You have %d wallets:", len(accs))
 
-		// Create a slice to hold account info for sorting
 		type accountInfo struct {
 			addr string
 			acc  types.AccDesc
 		}
 		var accountList []accountInfo
-
-		// Convert map to slice
 		for addr, acc := range accs {
 			accountList = append(accountList, accountInfo{addr: addr, acc: acc})
 		}
-
-		// Sort by acc.Desc
 		sort.Slice(accountList, func(i, j int) bool {
 			return accountList[i].acc.Desc < accountList[j].acc.Desc
 		})
-
-		// Print sorted accounts
 		for index, item := range accountList {
-			fmt.Printf("%d. %s: %s (%s)\n", index+1, item.addr, item.acc.Kind, item.acc.Desc)
+			appUI.Info("%d. %s: %s (%s)", index+1, item.addr, item.acc.Kind, item.acc.Desc)
 		}
-		fmt.Printf("\nJarvis: If you want to add more wallets to the list, use following command:\n> jarvis wallet add\n")
+		appUI.Info("\nIf you want to add more wallets to the list, use following command:\n> jarvis wallet add")
 	},
 }
 

@@ -1,11 +1,8 @@
 package config
 
 import (
-	"fmt"
-	"math/big"
 	"sync"
 
-	"github.com/tranvictor/jarvis/accounts/types"
 	"github.com/tranvictor/jarvis/networks"
 )
 
@@ -37,23 +34,8 @@ func SetNetwork(networkStr string) error {
 	defer mu.Unlock()
 
 	var err error
-	var inited bool
-
-	if cachedNetwork != nil {
-		inited = true
-	}
-
 	cachedNetwork, err = networks.GetNetwork(networkStr)
-	if err != nil {
-		return err
-	}
-
-	if inited {
-		fmt.Printf("Switched to network: %s\n", cachedNetwork.GetName())
-	} else {
-		fmt.Printf("Network: %s\n", cachedNetwork.GetName())
-	}
-	return nil
+	return err
 }
 
 var NetworkString string
@@ -67,17 +49,12 @@ var (
 	ExtraGasLimit uint64
 	Nonce         uint64
 	From          string
-	FromAcc       types.AccDesc
 	To            string
-	Value         *big.Int
 	RawValue      string
 	MethodIndex   uint64
-	PrefillMode   bool
 	PrefillStr    string
-	PrefillParams []string
 	NoFuncCall    bool
 	Tx            string
-	TxType        uint8
 
 	AllZeroParamsMethods bool
 	AtBlock              int64

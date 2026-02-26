@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-
 	"github.com/spf13/cobra"
 )
 
@@ -15,9 +13,9 @@ var versionCmd = &cobra.Command{
 	Short: "Show jarvis version",
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("Version: %s\n", VERSION)
-		fmt.Printf("Contact author at: @tranvictor on Telegram or victor@kyber.network\n")
-		fmt.Printf("At Kyber, our objective is to grow as a respected team in crypto world\n")
+		appUI.Info("Version: %s", VERSION)
+		appUI.Info("Contact author at: @tranvictor on Telegram or victor@kyber.network")
+		appUI.Info("At Kyber, our objective is to grow as a respected team in crypto world")
 	},
 }
 

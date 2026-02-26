@@ -28,7 +28,13 @@ import (
 
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/ui"
 )
+
+// appUI is the package-level UI used by all cmd/* files. It is initialised
+// once at startup as a TerminalUI and can be replaced in tests with a
+// RecordingUI.
+var appUI ui.UI = ui.NewTerminalUI()
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{

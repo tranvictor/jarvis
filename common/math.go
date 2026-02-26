@@ -109,5 +109,7 @@ func BigToFloatString(value *big.Int, decimal uint64) string {
 		big.NewInt(10), big.NewInt(int64(decimal)), nil,
 	))
 	res := new(big.Float).Quo(f, power)
-	return strings.TrimRight(res.Text('f', int(decimal)), "0")
+	s := strings.TrimRight(res.Text('f', int(decimal)), "0")
+	// TrimRight leaves a trailing "." for whole numbers (e.g. "100."); remove it.
+	return strings.TrimRight(s, ".")
 }

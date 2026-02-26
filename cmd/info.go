@@ -1,65 +1,68 @@
 package cmd
 
 import (
-	"fmt"
+	"encoding/json"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
 
-	jarviscommon "github.com/tranvictor/jarvis/common"
+	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/config"
-	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util"
 )
 
-// txCmd represents the tx command
 var txCmd = &cobra.Command{
-	Use:   "info",
-	Short: "Analyze and show all information about a tx",
-	Long:  ``,
+	Use:              "info",
+	Short:            "Analyze and show all information about a tx",
+	Long:             ``,
+	TraverseChildren: true,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return cmdutil.CommonNetworkPreprocess(appUI, cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+
 		para := strings.Join(args, " ")
 		txs := util.ScanForTxs(para)
 		if len(txs) == 0 {
-			fmt.Printf("Couldn't find any tx hash in the params\n")
-		} else {
-			fmt.Printf("Following tx hash(es) will be analyzed shortly:\n")
-			for i, t := range txs {
-				fmt.Printf("  %d. %s\n", i, t)
-			}
-			fmt.Printf("\n\n")
+			appUI.Error("Couldn't find any tx hash in the params")
+			return
+		}
 
-			reader, err := util.EthReader(config.Network())
-			if err != nil {
-				fmt.Printf("Couldn't init eth reader: %s\n", err)
-				return
-			}
+		appUI.Info("Following tx hash(es) will be analyzed shortly:")
+		for i, t := range txs {
+			appUI.Info("  %d. %s", i, t)
+		}
 
-			analyzer := txanalyzer.NewGenericAnalyzer(reader, config.Network())
+		displays := map[string]*util.TxDisplay{}
 
-			results := jarviscommon.TxResults{}
+		if config.JSONOutputFile != "" {
+			defer func() {
+				data, _ := json.MarshalIndent(displays, "", "  ")
+				if err := os.WriteFile(config.JSONOutputFile, data, 0644); err != nil {
+					appUI.Error("Writing to json file failed: %s", err)
+				}
+			}()
+		}
 
-			if config.JSONOutputFile != "" {
-				defer results.Write(config.JSONOutputFile)
-			}
+		for _, t := range txs {
+			appUI.Info("Analyzing tx: %s...", t)
 
-			for _, t := range txs {
-				fmt.Printf("Analyzing tx: %s...\n", t)
-
-				r := util.AnalyzeAndPrint(
-					reader,
-					analyzer,
-					t,
-					config.Network(),
-					config.ForceERC20ABI,
-					config.CustomABI,
-					nil,
-					nil,
-					config.DegenMode,
-				)
-				results[t] = r
-				fmt.Printf("\n----------------------------------------------------------\n")
-			}
+			d := util.AnalyzeAndPrint(
+				appUI,
+				tc.Reader,
+				tc.Analyzer,
+				t,
+				config.Network(),
+				config.ForceERC20ABI,
+				config.CustomABI,
+				nil,
+				nil,
+				config.DegenMode,
+			)
+			displays[t] = d
+			appUI.Info("----------------------------------------------------------")
 		}
 	},
 }
@@ -70,14 +73,4 @@ func init() {
 	txCmd.PersistentFlags().StringVarP(&config.JSONOutputFile, "json-output", "o", "", "write output of contract read to json file")
 
 	rootCmd.AddCommand(txCmd)
-
-	// Here you will define your flags and configuration settings.
-
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// txCmd.PersistentFlags().String("foo", "", "A help for foo")
-
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// txCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
