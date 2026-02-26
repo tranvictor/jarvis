@@ -21,6 +21,8 @@ func (tm TxMonitor) periodicCheck(tx string, info chan common.TxInfo, interval t
 	defer ticker.Stop()
 	startTime := time.Now()
 	isOnNode := false
+	var notFoundSince time.Time
+
 	for {
 		t := <-ticker.C
 		txinfo, _ := tm.reader.TxInfoFromHash(tx)
@@ -29,18 +31,31 @@ func (tm TxMonitor) periodicCheck(tx string, info chan common.TxInfo, interval t
 		case "error":
 			continue
 		case "notfound":
-			if t.Sub(startTime) > 3*time.Minute && !isOnNode {
+			if isOnNode {
+				// Tx was in the mempool but is now gone —
+				if notFoundSince.IsZero() {
+					notFoundSince = t
+				}
+				if t.Sub(notFoundSince) > 1*time.Minute {
+					info <- common.TxInfo{
+						Status:  "lost",
+						Tx:      tx,
+						Receipt: receipt,
+					}
+					return
+				}
+			} else if t.Sub(startTime) > 3*time.Minute {
 				info <- common.TxInfo{
 					Status:  "lost",
 					Tx:      tx,
 					Receipt: receipt,
 				}
 				return
-			} else {
-				continue
 			}
+			continue
 		case "pending":
 			isOnNode = true
+			notFoundSince = time.Time{} // reset if tx reappears in mempool
 			continue
 		case "reverted":
 			info <- common.TxInfo{
