@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"strings"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/networks"
@@ -118,14 +119,14 @@ func buildTxDisplay(result *jarviscommon.TxResult, fullDetail bool) *TxDisplay {
 
 // ── Print phase (reads only from the display struct, colours via u.Style) ────
 
-// paramSimpleRows returns one [label, value] row for each scalar value in d,
-// or nil if d holds a complex type (tuple / array) that needs its own block.
-// The returned rows are meant to be batched with rows from sibling params so
-// the caller can emit a single unified table rather than one table per param.
-func paramSimpleRows(u ui.UI, d ParamDisplay) [][]string {
-	label := fmt.Sprintf("%s (%s)", d.Name, d.Type)
-	switch {
-	case d.Values != nil:
+// flattenParamRows recursively converts a ParamDisplay into [label, value]
+// rows. Complex types (tuples, arrays) are inlined with deeper indentation
+// so that the entire parameter tree fits inside a single two-column table.
+func flattenParamRows(u ui.UI, d ParamDisplay, indent string) [][]string {
+	label := indent + fmt.Sprintf("%s (%s)", d.Name, d.Type)
+
+	// Scalar value(s).
+	if d.Values != nil {
 		if len(d.Values) == 1 {
 			return [][]string{{label, u.Style(d.Values[0])}}
 		}
@@ -135,45 +136,78 @@ func paramSimpleRows(u ui.UI, d ParamDisplay) [][]string {
 		}
 		return rows
 	}
+
+	// Single tuple: header row + indented children.
+	if d.Tuples != nil && len(d.Tuples) == 1 {
+		rows := [][]string{{label, ""}}
+		for _, field := range d.Tuples[0].Fields {
+			rows = append(rows, flattenParamRows(u, field, indent+"  ")...)
+		}
+		return rows
+	}
+
+	// Multi-tuple (array of structs): header row + indexed children.
+	if d.Tuples != nil {
+		rows := [][]string{{label, ""}}
+		idxWidth := len(fmt.Sprintf("[%d]", len(d.Tuples)-1))
+		for i, tuple := range d.Tuples {
+			indexStr := fmt.Sprintf("[%d]", i)
+			padded := indexStr + strings.Repeat(" ", idxWidth-len(indexStr))
+			blank := strings.Repeat(" ", idxWidth)
+			for j, field := range tuple.Fields {
+				prefix := indent + "  " + blank + " "
+				if j == 0 {
+					prefix = indent + "  " + padded + " "
+				}
+				rows = append(rows, flattenParamRows(u, field, prefix)...)
+			}
+		}
+		return rows
+	}
+
+	// Plain array.
+	if d.Arrays != nil {
+		rows := [][]string{{label, ""}}
+		for _, elem := range d.Arrays {
+			rows = append(rows, flattenParamRows(u, elem, indent+"  ")...)
+		}
+		return rows
+	}
+
 	return nil
 }
 
-// printComplexParam prints tuple / array params that cannot be flattened into
-// a simple two-column row. Called after the combined scalar table is emitted.
-func printComplexParam(u ui.UI, d ParamDisplay) {
-	label := fmt.Sprintf("%s (%s)", d.Name, d.Type)
-	switch {
-	case d.Tuples != nil:
-		u.Info("%s:", label)
-		if len(d.Tuples) == 1 {
-			printParamList(u.Indent(), d.Tuples[0].Fields)
-		} else {
-			for i, tuple := range d.Tuples {
-				u.Indent().Info("[%d]", i)
-				printParamList(u.Indent().Indent(), tuple.Fields)
-			}
-		}
-	case d.Arrays != nil:
-		u.Info("%s:", label)
-		printParamList(u.Indent(), d.Arrays)
-	}
-}
-
-// printParamList renders a slice of ParamDisplays:
-//   - all scalar (Values) params are collected into one combined table
-//   - complex (tuple / array) params are rendered below it
+// printParamList renders a slice of ParamDisplays as a single unified
+// TableWithGroups. Consecutive scalar params share a group; each complex
+// param (tuple / array) gets its own group.
 func printParamList(u ui.UI, params []ParamDisplay) {
-	var rows [][]string
-	for _, p := range params {
-		rows = append(rows, paramSimpleRows(u, p)...)
-	}
-	if len(rows) > 0 {
-		u.Table([]string{"Parameter", "Value"}, rows)
-	}
-	for _, p := range params {
-		if p.Tuples != nil || p.Arrays != nil {
-			printComplexParam(u, p)
+	var groups [][][]string
+	var scalarGroup [][]string
+
+	flushScalars := func() {
+		if len(scalarGroup) > 0 {
+			groups = append(groups, scalarGroup)
+			scalarGroup = nil
 		}
+	}
+
+	for _, p := range params {
+		rows := flattenParamRows(u, p, "")
+		if len(rows) == 0 {
+			continue
+		}
+		if p.Values != nil {
+			scalarGroup = append(scalarGroup, rows...)
+		} else {
+			flushScalars()
+			groups = append(groups, rows)
+		}
+	}
+
+	flushScalars()
+
+	if len(groups) > 0 {
+		u.TableWithGroups([]string{"Parameter", "Value"}, groups)
 	}
 }
 
@@ -203,7 +237,7 @@ func printFunctionCallDisplay(u ui.UI, d *FunctionCallDisplay, nested bool) {
 
 	var paramGroup [][]string
 	for _, p := range d.Params {
-		paramGroup = append(paramGroup, paramSimpleRows(u, p)...)
+		paramGroup = append(paramGroup, flattenParamRows(u, p, "")...)
 	}
 
 	if len(paramGroup) > 0 {
@@ -212,12 +246,6 @@ func printFunctionCallDisplay(u ui.UI, d *FunctionCallDisplay, nested bool) {
 		u.TableWithGroups(nil, [][][]string{metaGroup})
 	}
 
-	// Complex params (tuples / arrays) below the table.
-	for _, p := range d.Params {
-		if p.Tuples != nil || p.Arrays != nil {
-			printComplexParam(u, p)
-		}
-	}
 	for _, inner := range d.InnerCalls {
 		printFunctionCallDisplay(u.Indent(), inner, true)
 	}
@@ -231,15 +259,14 @@ func logSimpleRows(u ui.UI, d LogDisplay) [][]string {
 		rows = append(rows, []string{topic.Name + " (indexed)", u.Style(topic.Verbose)})
 	}
 	for _, param := range d.Data {
-		rows = append(rows, paramSimpleRows(u, param)...)
+		rows = append(rows, flattenParamRows(u, param, "")...)
 	}
 	return rows
 }
 
 // printAllLogs renders all event logs as one unified 3-column table
 // (Event | Parameter | Value). The event name appears only in the first row of
-// each group; subsequent rows in the same log have an empty event cell. Complex
-// params (tuples / arrays) that cannot be flattened are printed below the table.
+// each group; subsequent rows in the same log have an empty event cell.
 func printAllLogs(u ui.UI, logs []LogDisplay) {
 	if len(logs) == 0 {
 		return
@@ -265,16 +292,6 @@ func printAllLogs(u ui.UI, logs []LogDisplay) {
 		groups[i] = group
 	}
 	u.TableWithGroups([]string{"Event", "Parameter", "Value"}, groups)
-
-	// Complex params (tuples / arrays) are printed per-log below the main table.
-	for i, d := range logs {
-		for _, param := range d.Data {
-			if param.Tuples != nil || param.Arrays != nil {
-				u.Info("%d. %s — %s (%s):", i+1, d.Name, param.Name, param.Type)
-				printComplexParam(u.Indent(), param)
-			}
-		}
-	}
 }
 
 // printLogDisplay renders a single log entry. Used by the standalone DisplayLog
@@ -287,15 +304,10 @@ func printLogDisplay(u ui.UI, idx int, d LogDisplay) {
 		rows = append(rows, []string{topic.Name + " (indexed)", u.Style(topic.Verbose)})
 	}
 	for _, param := range d.Data {
-		rows = append(rows, paramSimpleRows(u, param)...)
+		rows = append(rows, flattenParamRows(u, param, "")...)
 	}
 	if len(rows) > 0 {
 		u.Table([]string{"Parameter", "Value"}, rows)
-	}
-	for _, param := range d.Data {
-		if param.Tuples != nil || param.Arrays != nil {
-			printComplexParam(u, param)
-		}
 	}
 }
 
@@ -350,6 +362,19 @@ func DisplayParam(u ui.UI, param jarviscommon.ParamResult) ParamDisplay {
 	d := buildParamDisplay(param)
 	printParamList(u, []ParamDisplay{d})
 	return d
+}
+
+// DisplayParams builds view-models for a slice of ABI parameters and renders
+// them together in one pass: all scalar params appear in a single table and
+// complex params (tuples, arrays) are printed below it. This avoids the
+// fragmented output produced by calling DisplayParam once per param.
+func DisplayParams(u ui.UI, params []jarviscommon.ParamResult) []ParamDisplay {
+	displays := make([]ParamDisplay, len(params))
+	for i, p := range params {
+		displays[i] = buildParamDisplay(p)
+	}
+	printParamList(u, displays)
+	return displays
 }
 
 // DisplayFunctionCall builds the human-readable view-model for a decoded
