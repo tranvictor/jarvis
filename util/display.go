@@ -11,10 +11,10 @@ import (
 
 // ── Severity helpers ─────────────────────────────────────────────────────────
 
-// styledAddress wraps a common.Address in a StyledText.
+// StyledAddress wraps a common.Address in a StyledText.
 // Known addresses (non-empty, non-"unknown" description) are Success (green);
 // unknown ones are Warn (yellow) so they stand out without being alarming.
-func styledAddress(addr jarviscommon.Address) ui.StyledText {
+func StyledAddress(addr jarviscommon.Address) ui.StyledText {
 	text := jarviscommon.PlainAddress(addr)
 	if addr.Desc == "" || addr.Desc == "unknown" {
 		return ui.StyledText{Text: text, Severity: ui.SeverityWarn}
@@ -23,11 +23,11 @@ func styledAddress(addr jarviscommon.Address) ui.StyledText {
 }
 
 // styledValue wraps a common.Value in a StyledText.
-// Address values inherit their severity from styledAddress; all other values
+// Address values inherit their severity from StyledAddress; all other values
 // are SeverityInfo (plain).
 func styledValue(v jarviscommon.Value) ui.StyledText {
 	if v.Kind == jarviscommon.DisplayAddress && v.Address != nil {
-		return styledAddress(*v.Address)
+		return StyledAddress(*v.Address)
 	}
 	return ui.StyledText{Text: jarviscommon.PlainValue(v), Severity: ui.SeverityInfo}
 }
@@ -59,7 +59,7 @@ func buildParamDisplay(param jarviscommon.ParamResult) ParamDisplay {
 
 func buildFunctionCallDisplay(fc *jarviscommon.FunctionCall, nested bool) *FunctionCallDisplay {
 	d := &FunctionCallDisplay{
-		Destination: styledAddress(fc.Destination),
+		Destination: StyledAddress(fc.Destination),
 		Error:       fc.Error,
 		Method:      fc.Method,
 	}
@@ -92,8 +92,8 @@ func buildLogDisplay(log jarviscommon.LogResult) LogDisplay {
 func buildTxDisplay(result *jarviscommon.TxResult, fullDetail bool) *TxDisplay {
 	d := &TxDisplay{
 		Status: result.Status,
-		From:   styledAddress(result.From),
-		To:     styledAddress(result.To),
+		From:   StyledAddress(result.From),
+		To:     StyledAddress(result.To),
 		Value:  result.Value,
 		TxType: result.TxType,
 		Error:  result.Error,
@@ -138,7 +138,7 @@ func flattenParamRows(u ui.UI, d ParamDisplay, indent string) [][]string {
 	}
 
 	// Single tuple: header row + indented children.
-	if d.Tuples != nil && len(d.Tuples) == 1 {
+	if len(d.Tuples) == 1 {
 		rows := [][]string{{label, ""}}
 		for _, field := range d.Tuples[0].Fields {
 			rows = append(rows, flattenParamRows(u, field, indent+"  ")...)

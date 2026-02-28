@@ -28,6 +28,20 @@ import (
 	utilreader "github.com/tranvictor/jarvis/util/reader"
 )
 
+// MsigTxSummary holds a short human-readable description of a multisig
+// transaction's intent, used for compact batch output and summary tables.
+type MsigTxSummary struct {
+	Action  string // e.g. "Send", "Transfer", "Approve", method name
+	Amount  string // e.g. "2.5 BNB", "1750 USDT"
+	To      string // destination address (plain text)
+}
+
+// msigActionTable renders a structured table for the "What the multisig will do"
+// section and returns a short summary for batch display.
+func msigActionTable(u ui.UI, rows [][]string) {
+	u.Table(nil, rows)
+}
+
 // AnalyzeAndShowMsigTxInfo fetches a multisig transaction by ID, decodes and
 // displays its intent, confirmation status, and list of confirmers.
 func AnalyzeAndShowMsigTxInfo(
@@ -37,7 +51,7 @@ func AnalyzeAndShowMsigTxInfo(
 	network jarvisnetworks.Network,
 	resolver ABIResolver,
 	analyzer util.TxAnalyzer,
-) (fc *jarviscommon.FunctionCall, confirmed bool, executed bool) {
+) (fc *jarviscommon.FunctionCall, confirmed bool, executed bool, summary MsigTxSummary) {
 	u.Section("What the multisig will do")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
@@ -53,13 +67,17 @@ func AnalyzeAndShowMsigTxInfo(
 
 	confirmed = len(confirmations) >= int(requirement)
 
+	destAddr := util.GetJarvisAddress(address, network)
+	styledDest := u.Style(util.StyledAddress(destAddr))
+
 	if len(data) == 0 {
-		u.Info(
-			"Sending: %f %s to %s",
-			jarviscommon.BigToFloat(value, network.GetNativeTokenDecimal()),
-			network.GetNativeTokenSymbol(),
-			jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)),
-		)
+		amt := fmt.Sprintf("%f %s", jarviscommon.BigToFloat(value, network.GetNativeTokenDecimal()), network.GetNativeTokenSymbol())
+		msigActionTable(u, [][]string{
+			{"Action", "Send"},
+			{"Amount", amt},
+			{"To", styledDest},
+		})
+		summary = MsigTxSummary{Action: "Send", Amount: amt, To: destAddr.Address}
 	} else {
 		destAbi, err := resolver.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
 		if err != nil {
@@ -96,41 +114,47 @@ func AnalyzeAndShowMsigTxInfo(
 				return
 			}
 
+			msigAddr := util.GetJarvisAddress(multisigContract.Address, network)
+			styledMsig := u.Style(util.StyledAddress(msigAddr))
+
 			switch funcCall.Method {
 			case "transfer":
 				isStandardERC20Call = true
-				u.Info(
-					"from: %s\nSending: %s %s (%s)\nto: %s",
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
-					jarviscommon.InfoColor(fmt.Sprintf("%f", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal))),
-					jarviscommon.InfoColor(symbol),
-					address,
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)),
-				)
+				toAddr := util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)
+				amt := fmt.Sprintf("%f %s (%s)", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal), symbol, address)
+				msigActionTable(u, [][]string{
+					{"Action", "Transfer"},
+					{"From", styledMsig},
+					{"Amount", amt},
+					{"To", u.Style(util.StyledAddress(toAddr))},
+				})
+				summary = MsigTxSummary{Action: "Transfer", Amount: fmt.Sprintf("%f %s", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal), symbol), To: toAddr.Address}
 			case "transferFrom":
 				isStandardERC20Call = true
-				u.Info(
-					"from: %s\nSending: %f %s (%s)\nto: %s",
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)),
-					jarviscommon.StringToFloat(funcCall.Params[2].Values[0].Raw, decimal),
-					symbol,
-					address,
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Values[0].Raw, network)),
-				)
+				fromAddr := util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)
+				toAddr := util.GetJarvisAddress(funcCall.Params[1].Values[0].Raw, network)
+				amt := fmt.Sprintf("%f %s (%s)", jarviscommon.StringToFloat(funcCall.Params[2].Values[0].Raw, decimal), symbol, address)
+				msigActionTable(u, [][]string{
+					{"Action", "TransferFrom"},
+					{"From", u.Style(util.StyledAddress(fromAddr))},
+					{"Amount", amt},
+					{"To", u.Style(util.StyledAddress(toAddr))},
+				})
+				summary = MsigTxSummary{Action: "TransferFrom", Amount: fmt.Sprintf("%f %s", jarviscommon.StringToFloat(funcCall.Params[2].Values[0].Raw, decimal), symbol), To: toAddr.Address}
 			case "approve":
 				isStandardERC20Call = true
-				u.Info(
-					"approving %s to spend upto: %f %s (%s) from the multisig",
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)),
-					jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal),
-					symbol,
-					address,
-				)
+				spender := util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)
+				amt := fmt.Sprintf("%f %s (%s)", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal), symbol, address)
+				msigActionTable(u, [][]string{
+					{"Action", "Approve"},
+					{"Spender", u.Style(util.StyledAddress(spender))},
+					{"Amount", amt},
+				})
+				summary = MsigTxSummary{Action: "Approve", Amount: fmt.Sprintf("%f %s", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal), symbol), To: spender.Address}
 			}
 		}
 
 		if !isStandardERC20Call {
-			u.Info("Calling on %s:", jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)))
 			fc = util.AnalyzeMethodCallAndPrint(
 				u,
 				analyzer,
@@ -142,20 +166,48 @@ func AnalyzeAndShowMsigTxInfo(
 				},
 				network,
 			)
+			methodName := "Unknown"
+			if fc != nil && fc.Method != "" {
+				methodName = fc.Method
+			}
+			summary = MsigTxSummary{Action: methodName, To: destAddr.Address}
 		}
 	}
 
+	// --- Multisig transaction status ---
 	u.Section("Multisig transaction status")
-	u.Info("Executed: %t", executed)
-	u.Info("Confirmed: %t", confirmed)
-	u.Info("Confirmations (among current owners):")
+
+	executedLabel := "no"
+	if executed {
+		executedLabel = u.Style(ui.StyledText{Text: "✓ yes", Severity: ui.SeveritySuccess})
+	}
+	confirmedLabel := fmt.Sprintf("%d/%d", len(confirmations), requirement)
+	if confirmed {
+		confirmedLabel = u.Style(ui.StyledText{Text: fmt.Sprintf("✓ %d/%d", len(confirmations), requirement), Severity: ui.SeveritySuccess})
+	}
+
+	statusGroup := [][]string{
+		{"Executed", executedLabel},
+		{"Confirmed", confirmedLabel},
+	}
+
+	var confirmGroup [][]string
 	for i, c := range confirmations {
 		_, name, err := resolver.GetMatchingAddress(c)
-		if err != nil {
-			u.Info("%d. %s (Unknown)", i+1, c)
-		} else {
-			u.Info("%d. %s (%s)", i+1, c, name)
+		label := "Unknown"
+		if err == nil {
+			label = name
 		}
+		confirmGroup = append(confirmGroup, []string{
+			fmt.Sprintf("%d. %s", i+1, label),
+			c,
+		})
+	}
+
+	if len(confirmGroup) > 0 {
+		u.TableWithGroups(nil, [][][]string{statusGroup, confirmGroup})
+	} else {
+		u.Table(nil, statusGroup)
 	}
 
 	return
@@ -259,7 +311,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	fc, _, executed := AnalyzeAndShowMsigTxInfo(u, multisigContract, txid, config.Network(), tc.Resolver, analyzer)
+	fc, _, executed, _ := AnalyzeAndShowMsigTxInfo(u, multisigContract, txid, config.Network(), tc.Resolver, analyzer)
 
 	if postProcess != nil && postProcess(fc) != nil {
 		return

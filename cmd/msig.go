@@ -280,6 +280,15 @@ func GetApproverAccountFromMsig(multisigContract *msig.MultisigContract) (string
 	return acc.Address, nil
 }
 
+// batchResult tracks the outcome of each tx in a bapprove batch for the
+// summary table rendered at the end.
+type batchResult struct {
+	Index   int
+	Network string
+	Summary cmdutil.MsigTxSummary
+	Result  string
+}
+
 var batchApproveMsigCmd = &cobra.Command{
 	Use:   "bapprove",
 	Short: "Approve multiple gnosis transactions",
@@ -287,26 +296,33 @@ var batchApproveMsigCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cm := walletarmy.NewWalletManager()
 		a := util.GetGnosisMsigABI()
-		networks, txs := cmdutil.ScanForTxs(args[0])
-		if len(networks) == 0 || len(txs) == 0 {
+		nwks, txs := cmdutil.ScanForTxs(args[0])
+		if len(nwks) == 0 || len(txs) == 0 {
 			appUI.Error("No txs passed to the first param. Did nothing.")
 			return
 		}
 
-		for i, n := range networks {
+		total := len(nwks)
+		var results []batchResult
+
+		for i, n := range nwks {
+			idx := i + 1
 			txHash := txs[i]
 			network, err := jarvisnetworks.GetNetwork(n)
 			if err != nil {
-				appUI.Error("%s network is not supported. Skip this tx.", n)
+				appUI.Error("[%d/%d] %s network is not supported. Skip.", idx, total, n)
+				results = append(results, batchResult{Index: idx, Network: n, Result: "Error"})
 				continue
 			}
 			txinfo, err := cm.Reader(network).TxInfoFromHash(txHash)
 			if err != nil {
-				appUI.Error("Couldn't get tx info from hash: %s. Skip this tx.", err)
+				appUI.Error("[%d/%d] Couldn't get tx info: %s. Skip.", idx, total, err)
+				results = append(results, batchResult{Index: idx, Network: n, Result: "Error"})
 				continue
 			}
 			if txinfo.Receipt == nil {
-				appUI.Warn("This tx is still pending. Skip this tx.")
+				appUI.Warn("[%d/%d] Tx still pending. Skip.", idx, total)
+				results = append(results, batchResult{Index: idx, Network: n, Result: "Pending"})
 				continue
 			}
 			var txid *big.Int
@@ -319,46 +335,54 @@ var batchApproveMsigCmd = &cobra.Command{
 				}
 			}
 			if txid == nil {
-				appUI.Warn("This tx is not a gnosis classic multisig init tx. Skip this tx.")
+				appUI.Warn("[%d/%d] Not a gnosis multisig init tx. Skip.", idx, total)
+				results = append(results, batchResult{Index: idx, Network: n, Result: "Skip"})
 				continue
 			}
 
 			multisigContract, err := msig.NewMultisigContract(msigHex, network)
 			if err != nil {
-				appUI.Error("Couldn't interact with the contract: %s. Skip this tx.", err)
+				appUI.Error("[%d/%d] Couldn't interact with contract: %s. Skip.", idx, total, err)
+				results = append(results, batchResult{Index: idx, Network: n, Result: "Error"})
+				continue
+			}
+
+			// Fetch status first — show compact summary for already-handled txs.
+			_, confirmed, executed, summary := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
+			if executed {
+				appUI.Warn("Already executed — skipping.")
+				results = append(results, batchResult{Index: idx, Network: n, Summary: summary, Result: "✓ Executed"})
+				continue
+			}
+			if confirmed {
+				appUI.Warn("Already confirmed — execute it instead. Skipping.")
+				results = append(results, batchResult{Index: idx, Network: n, Summary: summary, Result: "Confirmed"})
 				continue
 			}
 
 			from, err := GetApproverAccountFromMsig(multisigContract)
 			if err != nil {
-				appUI.Error("Couldn't read and get wallet to approve this msig. You might not have any approver wallets.")
-				continue
-			}
-
-			_, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
-			if executed {
-				appUI.Warn("This tx is already executed. You don't have to approve it anymore. Continue with next tx.")
-				continue
-			}
-			if confirmed {
-				appUI.Warn("This tx is already confirmed but not yet executed. You should execute it instead of approving it. Continue to next tx.")
+				appUI.Error("No approver wallet found. Skip.")
+				results = append(results, batchResult{Index: idx, Network: n, Summary: summary, Result: "No wallet"})
 				continue
 			}
 
 			data, err := a.Pack("confirmTransaction", txid)
 			if err != nil {
-				appUI.Error("Couldn't pack data: %s. Continue with next tx.", err)
+				appUI.Error("Couldn't pack data: %s. Skip.", err)
+				results = append(results, batchResult{Index: idx, Network: n, Summary: summary, Result: "Error"})
 				continue
 			}
 
 			txType, err := cmdutil.ValidTxType(cm.Reader(network), network)
 			if err != nil {
-				appUI.Error("Couldn't determine proper tx type: %s", err)
+				appUI.Error("Couldn't determine tx type: %s", err)
+				results = append(results, batchResult{Index: idx, Network: n, Summary: summary, Result: "Error"})
 				return
 			}
 
 			if txType == types.LegacyTxType && config.TipGas > 0 {
-				appUI.Warn("We are doing legacy tx hence we ignore tip gas parameter.")
+				appUI.Warn("Legacy tx — ignoring tip gas parameter.")
 			}
 
 			minedTx, err := cm.EnsureTxWithHooks(
@@ -390,7 +414,7 @@ var batchApproveMsigCmd = &cobra.Command{
 						network,
 					)
 					if err != nil {
-						appUI.Warn("Skip this tx. Continue with next tx.")
+						appUI.Warn("Skipped by user.")
 						return fmt.Errorf("%w: %w", ErrUserAborted, err)
 					}
 					return nil
@@ -412,8 +436,13 @@ var batchApproveMsigCmd = &cobra.Command{
 			)
 
 			if err != nil {
-				if !errors.Is(err, ErrUserAborted) && !errors.Is(err, ErrNotWaitingForMining) {
-					appUI.Error("Failed to broadcast the tx after retries: %s. Aborted.", err)
+				if errors.Is(err, ErrUserAborted) {
+					results = append(results, batchResult{Index: idx, Network: n, Summary: summary, Result: "Skipped"})
+				} else if errors.Is(err, ErrNotWaitingForMining) {
+					results = append(results, batchResult{Index: idx, Network: n, Summary: summary, Result: "Broadcasted"})
+				} else {
+					appUI.Error("Failed to broadcast: %s. Aborted.", err)
+					results = append(results, batchResult{Index: idx, Network: n, Summary: summary, Result: "Failed"})
 				}
 				continue
 			}
@@ -425,6 +454,30 @@ var batchApproveMsigCmd = &cobra.Command{
 					minedTx.Hash().Hex(), network, false, "", a, nil, config.DegenMode,
 				)
 			}
+			results = append(results, batchResult{Index: idx, Network: n, Summary: summary, Result: "Approved"})
+		}
+
+		// --- Batch summary table ---
+		if len(results) > 1 {
+			appUI.Section("Batch Summary")
+			var rows [][]string
+			for _, r := range results {
+				action := r.Summary.Action
+				if action == "" {
+					action = "—"
+				}
+				amount := r.Summary.Amount
+				if amount != "" {
+					action = action + " " + amount
+				}
+				rows = append(rows, []string{
+					fmt.Sprintf("%d", r.Index),
+					r.Network,
+					action,
+					r.Result,
+				})
+			}
+			appUI.Table([]string{"#", "Network", "Action", "Result"}, rows)
 		}
 	},
 }
