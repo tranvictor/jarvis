@@ -1,6 +1,7 @@
 package util
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -28,6 +29,29 @@ import (
 	utilreader "github.com/tranvictor/jarvis/util/reader"
 )
 
+func printBorderedContent(u ui.UI, title string, lines []string) {
+	maxWidth := len(title)
+	for _, line := range lines {
+		if w := ui.VisibleWidth(line); w > maxWidth {
+			maxWidth = w
+		}
+	}
+
+	hLine := strings.Repeat("─", maxWidth+2)
+	boldTitle := u.Style(ui.StyledText{Text: title, Severity: ui.SeverityCritical})
+	titlePad := strings.Repeat(" ", maxWidth-len(title))
+
+	u.Info("")
+	u.Info("┌%s┐", hLine)
+	u.Info("│ %s%s │", boldTitle, titlePad)
+	u.Info("├%s┤", hLine)
+	for _, line := range lines {
+		pad := strings.Repeat(" ", maxWidth-ui.VisibleWidth(line))
+		u.Info("│ %s%s │", line, pad)
+	}
+	u.Info("└%s┘", hLine)
+}
+
 // AnalyzeAndShowMsigTxInfo fetches a multisig transaction by ID, decodes and
 // displays its intent, confirmation status, and list of confirmers.
 func AnalyzeAndShowMsigTxInfo(
@@ -38,7 +62,6 @@ func AnalyzeAndShowMsigTxInfo(
 	resolver ABIResolver,
 	analyzer util.TxAnalyzer,
 ) (fc *jarviscommon.FunctionCall, confirmed bool, executed bool) {
-	u.Section("What the multisig will do")
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
 		u.Error("Couldn't get tx info: %s", err)
@@ -53,86 +76,29 @@ func AnalyzeAndShowMsigTxInfo(
 
 	confirmed = len(confirmations) >= int(requirement)
 
-	if len(data) == 0 {
-		u.Info(
-			"Sending: %f %s to %s",
+	colorsEnabled := u.Style(ui.StyledText{Text: "x", Severity: ui.SeveritySuccess}) != "x"
+	var buf bytes.Buffer
+	bui := ui.NewTerminalUIWithWriter(&buf, colorsEnabled)
+
+	msigStyled := util.StyledAddress(util.GetJarvisAddress(multisigContract.Address, network))
+	targetStyled := util.StyledAddress(util.GetJarvisAddress(address, network))
+
+	bui.Info("From  : %s", bui.Style(msigStyled))
+	bui.Info("To    : %s", bui.Style(targetStyled))
+	if value != nil && value.Sign() > 0 {
+		bui.Info("Value : %f %s",
 			jarviscommon.BigToFloat(value, network.GetNativeTokenDecimal()),
 			network.GetNativeTokenSymbol(),
-			jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)),
 		)
-	} else {
+	}
+
+	if len(data) > 0 {
 		destAbi, err := resolver.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
 		if err != nil {
-			u.Error("Couldn't get abi of destination address: %s", err)
-			return
-		}
-
-		var isStandardERC20Call bool
-
-		if util.IsERC20ABI(destAbi) {
-			funcCall := analyzer.AnalyzeFunctionCallRecursively(
-				resolver.GetABI,
-				value,
-				address,
-				data,
-				map[string]*abi.ABI{
-					strings.ToLower(address): destAbi,
-				},
-			)
-			if funcCall.Error != "" {
-				u.Error("This tx calls an unknown function from %s's ABI. Proceed with tx anyways.", address)
-				return
-			}
-
-			symbol, err := util.GetERC20Symbol(address, network)
-			if err != nil {
-				u.Error("Getting the token's symbol failed: %s. Proceed with tx anyways.", err)
-				return
-			}
-
-			decimal, err := util.GetERC20Decimal(address, network)
-			if err != nil {
-				u.Error("Getting the token's decimal failed: %s. Proceed with tx anyways.", err)
-				return
-			}
-
-			switch funcCall.Method {
-			case "transfer":
-				isStandardERC20Call = true
-				u.Info(
-					"from: %s\nSending: %s %s (%s)\nto: %s",
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(multisigContract.Address, network)),
-					jarviscommon.InfoColor(fmt.Sprintf("%f", jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal))),
-					jarviscommon.InfoColor(symbol),
-					address,
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)),
-				)
-			case "transferFrom":
-				isStandardERC20Call = true
-				u.Info(
-					"from: %s\nSending: %f %s (%s)\nto: %s",
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)),
-					jarviscommon.StringToFloat(funcCall.Params[2].Values[0].Raw, decimal),
-					symbol,
-					address,
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[1].Values[0].Raw, network)),
-				)
-			case "approve":
-				isStandardERC20Call = true
-				u.Info(
-					"approving %s to spend upto: %f %s (%s) from the multisig",
-					jarviscommon.VerboseAddress(util.GetJarvisAddress(funcCall.Params[0].Values[0].Raw, network)),
-					jarviscommon.StringToFloat(funcCall.Params[1].Values[0].Raw, decimal),
-					symbol,
-					address,
-				)
-			}
-		}
-
-		if !isStandardERC20Call {
-			u.Info("Calling on %s:", jarviscommon.VerboseAddress(util.GetJarvisAddress(address, network)))
+			bui.Error("Couldn't get abi of destination address: %s", err)
+		} else {
 			fc = util.AnalyzeMethodCallAndPrint(
-				u,
+				bui,
 				analyzer,
 				value,
 				address,
@@ -145,18 +111,28 @@ func AnalyzeAndShowMsigTxInfo(
 		}
 	}
 
-	u.Section("Multisig transaction status")
-	u.Info("Executed: %t", executed)
-	u.Info("Confirmed: %t", confirmed)
-	u.Info("Confirmations (among current owners):")
-	for i, c := range confirmations {
-		_, name, err := resolver.GetMatchingAddress(c)
-		if err != nil {
-			u.Info("%d. %s (Unknown)", i+1, c)
-		} else {
-			u.Info("%d. %s (%s)", i+1, c, name)
+	bui.Info("")
+	executedStr := bui.Style(ui.StyledText{Text: "false", Severity: ui.SeverityWarn})
+	if executed {
+		executedStr = bui.Style(ui.StyledText{Text: "true", Severity: ui.SeveritySuccess})
+	}
+	confirmedStr := bui.Style(ui.StyledText{Text: fmt.Sprintf("false (%d/%d)", len(confirmations), requirement), Severity: ui.SeverityWarn})
+	if confirmed {
+		confirmedStr = bui.Style(ui.StyledText{Text: fmt.Sprintf("true (%d/%d)", len(confirmations), requirement), Severity: ui.SeveritySuccess})
+	}
+	bui.Info("Executed: %s | Confirmed: %s", executedStr, confirmedStr)
+	if len(confirmations) > 0 {
+		bui.Info("Signers:")
+		for i, c := range confirmations {
+			confirmerAddr := util.StyledAddress(util.GetJarvisAddress(c, network))
+			bui.Info("  %d. %s", i+1, bui.Style(confirmerAddr))
 		}
 	}
+
+	content := strings.TrimRight(buf.String(), "\n")
+	lines := strings.Split(content, "\n")
+	title := fmt.Sprintf("Multisig Transaction #%s", txid.String())
+	printBorderedContent(u, title, lines)
 
 	return
 }

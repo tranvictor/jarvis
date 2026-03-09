@@ -381,54 +381,42 @@ func showTxInfoToConfirm(
 	customABIs map[string]*abi.ABI,
 	network jarvisnetworks.Network,
 ) error {
+	fromStyled := util.StyledAddress(from)
+	u.Critical("From  : %s", u.Style(fromStyled))
+
 	if tx.To() != nil {
-		u.Critical(
-			"from: %s ==> %s",
-			jarviscommon.VerboseAddress(from),
-			jarviscommon.VerboseAddress(util.GetJarvisAddress(tx.To().Hex(), network)),
-		)
+		toStyled := util.StyledAddress(util.GetJarvisAddress(tx.To().Hex(), network))
+		u.Critical("To    : %s", u.Style(toStyled))
 	} else {
 		cAddr := crypto.CreateAddress(
 			jarviscommon.HexToAddress(from.Address),
 			tx.Nonce(),
 		).Hex()
-		u.Critical(
-			"from: %s ==> create contract at %s",
-			jarviscommon.VerboseAddress(from),
-			cAddr,
-		)
+		u.Critical("To    : create contract at %s", cAddr)
 	}
 
-	sendingETH := jarviscommon.BigToFloatString(tx.Value(), network.GetNativeTokenDecimal())
-	if tx.Value().Cmp(big.NewInt(0)) > 0 {
-		u.Critical("Value: %s %s", sendingETH, network.GetNativeTokenSymbol())
+	if tx.Value().Sign() > 0 {
+		sendingETH := jarviscommon.BigToFloatString(tx.Value(), network.GetNativeTokenDecimal())
+		u.Critical("Value : %s %s", sendingETH, network.GetNativeTokenSymbol())
 	}
 
+	gasCost := jarviscommon.BigToFloat(
+		big.NewInt(0).Mul(big.NewInt(int64(tx.Gas())), tx.GasPrice()),
+		18,
+	)
 	switch tx.Type() {
 	case types.LegacyTxType:
-		u.Critical(
-			"Nonce: %d  |  Gas Price: %.4f gwei (%d gas = %.8f %s)",
-			tx.Nonce(),
+		u.Critical("Nonce : %d", tx.Nonce())
+		u.Critical("Gas   : %.4f gwei (%d gas = %.8f %s)",
 			jarviscommon.BigToFloat(tx.GasPrice(), 9),
-			tx.Gas(),
-			jarviscommon.BigToFloat(
-				big.NewInt(0).Mul(big.NewInt(int64(tx.Gas())), tx.GasPrice()),
-				18,
-			),
-			network.GetNativeTokenSymbol(),
+			tx.Gas(), gasCost, network.GetNativeTokenSymbol(),
 		)
 	case types.DynamicFeeTxType:
-		u.Critical(
-			"Nonce: %d  |  Max Gas Price: %.4f gwei, Max Tip Price: %.4f gwei (%d gas = %.8f %s)",
-			tx.Nonce(),
+		u.Critical("Nonce : %d", tx.Nonce())
+		u.Critical("Gas   : Max %.4f gwei, Tip %.4f gwei (%d gas = %.8f %s)",
 			jarviscommon.BigToFloat(tx.GasFeeCap(), 9),
 			jarviscommon.BigToFloat(tx.GasTipCap(), 9),
-			tx.Gas(),
-			jarviscommon.BigToFloat(
-				big.NewInt(0).Mul(big.NewInt(int64(tx.Gas())), tx.GasPrice()),
-				18,
-			),
-			network.GetNativeTokenSymbol(),
+			tx.Gas(), gasCost, network.GetNativeTokenSymbol(),
 		)
 	}
 

@@ -220,6 +220,12 @@ func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network) {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
+// StyledAddress wraps a common.Address in a StyledText for use with u.Style().
+// Known addresses are SeveritySuccess (green); unknown ones are SeverityWarn (yellow).
+func StyledAddress(addr jarviscommon.Address) ui.StyledText {
+	return styledAddress(addr)
+}
+
 // DisplayParam builds the human-readable view-model for a single decoded ABI
 // parameter and writes it to u via u.Style for correct terminal coloring.
 func DisplayParam(u ui.UI, param jarviscommon.ParamResult) ParamDisplay {

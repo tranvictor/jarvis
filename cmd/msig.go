@@ -280,6 +280,61 @@ func GetApproverAccountFromMsig(multisigContract *msig.MultisigContract) (string
 	return acc.Address, nil
 }
 
+type batchResult struct {
+	network  string
+	txHash   string
+	msigTxID string
+	status   string // "approved", "broadcasted", "skipped", "failed"
+	reason   string
+}
+
+func shortHash(h string) string {
+	if len(h) > 14 {
+		return h[:10] + "..." + h[len(h)-4:]
+	}
+	return h
+}
+
+func printBatchSummary(results []batchResult) {
+	appUI.Section("Batch Approve Summary")
+	approved, broadcasted, skipped, failed := 0, 0, 0, 0
+	for i, r := range results {
+		label := fmt.Sprintf("%d. [%s] %s", i+1, r.network, shortHash(r.txHash))
+		if r.msigTxID != "" {
+			label += fmt.Sprintf(" (msig #%s)", r.msigTxID)
+		}
+		switch r.status {
+		case "approved":
+			approved++
+			appUI.Success("  %s — approved", label)
+		case "broadcasted":
+			broadcasted++
+			appUI.Success("  %s — broadcasted (not waiting for mining)", label)
+		case "skipped":
+			skipped++
+			appUI.Warn("  %s — skipped: %s", label, r.reason)
+		case "failed":
+			failed++
+			appUI.Error("  %s — failed: %s", label, r.reason)
+		}
+	}
+	appUI.Info("")
+	parts := []string{}
+	if approved > 0 {
+		parts = append(parts, fmt.Sprintf("%d approved", approved))
+	}
+	if broadcasted > 0 {
+		parts = append(parts, fmt.Sprintf("%d broadcasted", broadcasted))
+	}
+	if skipped > 0 {
+		parts = append(parts, fmt.Sprintf("%d skipped", skipped))
+	}
+	if failed > 0 {
+		parts = append(parts, fmt.Sprintf("%d failed", failed))
+	}
+	appUI.Info("Total: %d transactions (%s)", len(results), strings.Join(parts, ", "))
+}
+
 var batchApproveMsigCmd = &cobra.Command{
 	Use:   "bapprove",
 	Short: "Approve multiple gnosis transactions",
@@ -287,26 +342,45 @@ var batchApproveMsigCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cm := walletarmy.NewWalletManager()
 		a := util.GetGnosisMsigABI()
-		networks, txs := cmdutil.ScanForTxs(args[0])
-		if len(networks) == 0 || len(txs) == 0 {
+		networkNames, txs := cmdutil.ScanForTxs(args[0])
+		if len(networkNames) == 0 || len(txs) == 0 {
 			appUI.Error("No txs passed to the first param. Did nothing.")
 			return
 		}
 
-		for i, n := range networks {
+		total := len(networkNames)
+		results := make([]batchResult, 0, total)
+
+		appUI.Section(fmt.Sprintf("Batch Approve: %d transactions", total))
+
+		for i, n := range networkNames {
 			txHash := txs[i]
+			r := batchResult{network: n, txHash: txHash}
+
+			appUI.Info("")
+			appUI.Critical("━━━ [%d/%d] %s: %s ━━━", i+1, total, n, shortHash(txHash))
+
 			network, err := jarvisnetworks.GetNetwork(n)
 			if err != nil {
-				appUI.Error("%s network is not supported. Skip this tx.", n)
+				appUI.Error("%s network is not supported. Skip.", n)
+				r.status = "skipped"
+				r.reason = "unsupported network"
+				results = append(results, r)
 				continue
 			}
 			txinfo, err := cm.Reader(network).TxInfoFromHash(txHash)
 			if err != nil {
-				appUI.Error("Couldn't get tx info from hash: %s. Skip this tx.", err)
+				appUI.Error("Couldn't get tx info from hash: %s. Skip.", err)
+				r.status = "failed"
+				r.reason = fmt.Sprintf("tx info: %s", err)
+				results = append(results, r)
 				continue
 			}
 			if txinfo.Receipt == nil {
-				appUI.Warn("This tx is still pending. Skip this tx.")
+				appUI.Warn("This tx is still pending. Skip.")
+				r.status = "skipped"
+				r.reason = "tx still pending"
+				results = append(results, r)
 				continue
 			}
 			var txid *big.Int
@@ -319,46 +393,70 @@ var batchApproveMsigCmd = &cobra.Command{
 				}
 			}
 			if txid == nil {
-				appUI.Warn("This tx is not a gnosis classic multisig init tx. Skip this tx.")
+				appUI.Warn("This tx is not a gnosis classic multisig init tx. Skip.")
+				r.status = "skipped"
+				r.reason = "not a gnosis init tx"
+				results = append(results, r)
 				continue
 			}
 
+			r.msigTxID = txid.String()
+
 			multisigContract, err := msig.NewMultisigContract(msigHex, network)
 			if err != nil {
-				appUI.Error("Couldn't interact with the contract: %s. Skip this tx.", err)
+				appUI.Error("Couldn't interact with the contract: %s. Skip.", err)
+				r.status = "failed"
+				r.reason = fmt.Sprintf("contract: %s", err)
+				results = append(results, r)
 				continue
 			}
 
 			from, err := GetApproverAccountFromMsig(multisigContract)
 			if err != nil {
 				appUI.Error("Couldn't read and get wallet to approve this msig. You might not have any approver wallets.")
+				r.status = "failed"
+				r.reason = "no approver wallet"
+				results = append(results, r)
 				continue
 			}
 
 			_, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
 			if executed {
-				appUI.Warn("This tx is already executed. You don't have to approve it anymore. Continue with next tx.")
+				appUI.Warn("Already executed. Skip.")
+				r.status = "skipped"
+				r.reason = "already executed"
+				results = append(results, r)
 				continue
 			}
 			if confirmed {
-				appUI.Warn("This tx is already confirmed but not yet executed. You should execute it instead of approving it. Continue to next tx.")
+				appUI.Warn("Already confirmed but not executed. Consider executing instead. Skip.")
+				r.status = "skipped"
+				r.reason = "already confirmed"
+				results = append(results, r)
 				continue
 			}
 
 			data, err := a.Pack("confirmTransaction", txid)
 			if err != nil {
-				appUI.Error("Couldn't pack data: %s. Continue with next tx.", err)
+				appUI.Error("Couldn't pack data: %s. Skip.", err)
+				r.status = "failed"
+				r.reason = fmt.Sprintf("pack data: %s", err)
+				results = append(results, r)
 				continue
 			}
 
 			txType, err := cmdutil.ValidTxType(cm.Reader(network), network)
 			if err != nil {
-				appUI.Error("Couldn't determine proper tx type: %s", err)
+				appUI.Error("Couldn't determine proper tx type: %s. Aborting.", err)
+				r.status = "failed"
+				r.reason = fmt.Sprintf("tx type: %s", err)
+				results = append(results, r)
+				printBatchSummary(results)
 				return
 			}
 
 			if txType == types.LegacyTxType && config.TipGas > 0 {
-				appUI.Warn("We are doing legacy tx hence we ignore tip gas parameter.")
+				appUI.Warn("Legacy tx — ignoring tip gas parameter.")
 			}
 
 			minedTx, err := cm.EnsureTxWithHooks(
@@ -390,7 +488,7 @@ var batchApproveMsigCmd = &cobra.Command{
 						network,
 					)
 					if err != nil {
-						appUI.Warn("Skip this tx. Continue with next tx.")
+						appUI.Warn("User skipped. Continue with next tx.")
 						return fmt.Errorf("%w: %w", ErrUserAborted, err)
 					}
 					return nil
@@ -412,9 +510,17 @@ var batchApproveMsigCmd = &cobra.Command{
 			)
 
 			if err != nil {
-				if !errors.Is(err, ErrUserAborted) && !errors.Is(err, ErrNotWaitingForMining) {
-					appUI.Error("Failed to broadcast the tx after retries: %s. Aborted.", err)
+				if errors.Is(err, ErrUserAborted) {
+					r.status = "skipped"
+					r.reason = "user aborted"
+				} else if errors.Is(err, ErrNotWaitingForMining) {
+					r.status = "broadcasted"
+				} else {
+					appUI.Error("Failed to broadcast the tx after retries: %s.", err)
+					r.status = "failed"
+					r.reason = fmt.Sprintf("broadcast: %s", err)
 				}
+				results = append(results, r)
 				continue
 			}
 
@@ -425,7 +531,12 @@ var batchApproveMsigCmd = &cobra.Command{
 					minedTx.Hash().Hex(), network, false, "", a, nil, config.DegenMode,
 				)
 			}
+
+			r.status = "approved"
+			results = append(results, r)
 		}
+
+		printBatchSummary(results)
 	},
 }
 

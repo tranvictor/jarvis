@@ -90,22 +90,18 @@ func (u *TerminalUI) Critical(format string, args ...any) {
 	u.writeLine(u.au.Bold(msg).String())
 }
 
-// Section prints a separator line centred around the title, surrounded by
-// blank lines so sections are visually distinct in long output.
+// Section prints a bold title with a thin underline, surrounded by blank
+// lines so sections are visually distinct in long output.
 //
 // Example output:
 //
-//	===== Confirm tx data before signing =====
+//	Confirm tx data before signing
+//	──────────────────────────────
 func (u *TerminalUI) Section(title string) {
-	titled := " " + title + " "
-	bars := sectionWidth - len(titled)
-	if bars < 6 {
-		bars = 6
-	}
-	left := bars / 2
-	right := bars - left
-	line := strings.Repeat("=", left) + titled + strings.Repeat("=", right)
-	fmt.Fprintf(u.out, "\n%s%s\n\n", u.prefix(), line)
+	fmt.Fprintf(u.out, "\n%s%s\n%s%s\n\n",
+		u.prefix(), u.au.Bold(title).String(),
+		u.prefix(), strings.Repeat("─", len(title)),
+	)
 }
 
 // Interpret shows what Jarvis understood from the user's last input.
