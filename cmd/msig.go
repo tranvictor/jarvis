@@ -281,41 +281,42 @@ func GetApproverAccountFromMsig(multisigContract *msig.MultisigContract) (string
 }
 
 type batchResult struct {
-	network  string
-	txHash   string
-	msigTxID string
-	status   string // "approved", "broadcasted", "skipped", "failed"
-	reason   string
-}
-
-func shortHash(h string) string {
-	if len(h) > 14 {
-		return h[:10] + "..." + h[len(h)-4:]
-	}
-	return h
+	network       string
+	initTxHash    string
+	confirmTxHash string
+	msigTxID      string
+	status        string // "approved", "broadcasted", "skipped", "failed"
+	reason        string
 }
 
 func printBatchSummary(results []batchResult) {
 	appUI.Section("Batch Approve Summary")
 	approved, broadcasted, skipped, failed := 0, 0, 0, 0
 	for i, r := range results {
-		label := fmt.Sprintf("%d. [%s] %s", i+1, r.network, shortHash(r.txHash))
+		msigLabel := ""
 		if r.msigTxID != "" {
-			label += fmt.Sprintf(" (msig #%s)", r.msigTxID)
+			msigLabel = fmt.Sprintf(" (msig #%s)", r.msigTxID)
 		}
+
 		switch r.status {
 		case "approved":
 			approved++
-			appUI.Success("  %s — approved", label)
+			appUI.Success("  %d. [%s]%s — approved", i+1, r.network, msigLabel)
+			appUI.Info("       init tx:    %s", r.initTxHash)
+			appUI.Info("       approve tx: %s", r.confirmTxHash)
 		case "broadcasted":
 			broadcasted++
-			appUI.Success("  %s — broadcasted (not waiting for mining)", label)
+			appUI.Success("  %d. [%s]%s — broadcasted (not waiting for mining)", i+1, r.network, msigLabel)
+			appUI.Info("       init tx:    %s", r.initTxHash)
+			appUI.Info("       approve tx: %s", r.confirmTxHash)
 		case "skipped":
 			skipped++
-			appUI.Warn("  %s — skipped: %s", label, r.reason)
+			appUI.Warn("  %d. [%s]%s — skipped: %s", i+1, r.network, msigLabel, r.reason)
+			appUI.Info("       init tx: %s", r.initTxHash)
 		case "failed":
 			failed++
-			appUI.Error("  %s — failed: %s", label, r.reason)
+			appUI.Error("  %d. [%s]%s — failed: %s", i+1, r.network, msigLabel, r.reason)
+			appUI.Info("       init tx: %s", r.initTxHash)
 		}
 	}
 	appUI.Info("")
@@ -355,10 +356,10 @@ var batchApproveMsigCmd = &cobra.Command{
 
 		for i, n := range networkNames {
 			txHash := txs[i]
-			r := batchResult{network: n, txHash: txHash}
+			r := batchResult{network: n, initTxHash: txHash}
 
 			appUI.Info("")
-			appUI.Critical("━━━ [%d/%d] %s: %s ━━━", i+1, total, n, shortHash(txHash))
+			appUI.Critical("━━━ [%d/%d] %s: %s ━━━", i+1, total, n, txHash)
 
 			network, err := jarvisnetworks.GetNetwork(n)
 			if err != nil {
@@ -459,6 +460,7 @@ var batchApproveMsigCmd = &cobra.Command{
 				appUI.Warn("Legacy tx — ignoring tip gas parameter.")
 			}
 
+			var confirmHash string
 			minedTx, err := cm.EnsureTxWithHooks(
 				10,
 				5*time.Second,
@@ -498,6 +500,7 @@ var batchApproveMsigCmd = &cobra.Command{
 						return signError
 					}
 					if broadcastedTx != nil {
+						confirmHash = broadcastedTx.Hash().Hex()
 						util.DisplayBroadcastedTx(appUI, broadcastedTx, true, signError, network)
 					}
 					if config.DontWaitToBeMined {
@@ -509,6 +512,7 @@ var batchApproveMsigCmd = &cobra.Command{
 				nil,
 			)
 
+			r.confirmTxHash = confirmHash
 			if err != nil {
 				if errors.Is(err, ErrUserAborted) {
 					r.status = "skipped"
@@ -524,6 +528,7 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
+			r.confirmTxHash = minedTx.Hash().Hex()
 			if !config.DontWaitToBeMined {
 				util.AnalyzeAndPrint(
 					appUI,
