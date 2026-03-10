@@ -57,9 +57,9 @@ Jarvis supports you on different ends:
 	intuitive command line interface.
 
 By default, Jarvis uses the following nodes to support different chains: %s
-You can also add your custom node by setting the following env vars: %s
-In case you want many custom nodes, you can define it in ~/nodes.json with format describe at
-https://github.com/tranvictor/jarvis#configure-custom-nodes
+You can override the node for a network via env var: %s
+To add, remove, test, or share custom RPC nodes run: jarvis node --help
+Node configurations are stored per-network in ~/.jarvis/nodes/<network>.json.
 
 Jarvis also utilizes chain explorers like Etherscan, Bscscan and Tomoscan in order to look
 up additional informations such as contract ABI, recommended gas price..etc. By default,

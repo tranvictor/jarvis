@@ -120,6 +120,11 @@ type UI interface {
 	// sharing the same underlying writer and reader as the parent.
 	Indent() UI
 
+	// PrintTable renders a bordered Table to the output, applying colour to
+	// each cell according to its Severity. Rows that share the same first-column
+	// value are visually grouped with a horizontal rule between groups.
+	PrintTable(t *Table)
+
 	// Writer returns an io.Writer that prepends the current indentation
 	// to every line. Use this when calling functions that take io.Writer
 	// directly (e.g. common.PrintVerboseParamResultToWriter).

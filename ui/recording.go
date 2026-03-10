@@ -166,6 +166,15 @@ func (r *RecordingUI) Indent() UI {
 	}
 }
 
+// PrintTable renders t as a plain-text bordered table (no ANSI codes) into the
+// internal buffer and records a "Table" entry with the row count.
+func (r *RecordingUI) PrintTable(t *Table) {
+	r.record("Table", fmt.Sprintf("%d rows", len(t.Rows)))
+	renderTable(r.shared.buf, t, func(cell TableCell) string {
+		return cell.Text
+	})
+}
+
 // Writer returns a writer that appends to the internal buffer.
 // Indentation is not applied in RecordingUI since tests rarely need it.
 func (r *RecordingUI) Writer() io.Writer {

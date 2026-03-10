@@ -186,6 +186,13 @@ func (u *TerminalUI) Indent() UI {
 	}
 }
 
+// PrintTable renders t as a bordered table with Aurora colour applied per cell.
+func (u *TerminalUI) PrintTable(t *Table) {
+	renderTable(u.out, t, func(cell TableCell) string {
+		return u.Style(StyledText{Text: cell.Text, Severity: cell.Severity})
+	})
+}
+
 // Writer returns an io.Writer that automatically prepends the current
 // indentation prefix to every line written to it. This lets you pass the
 // UI's output context into functions that accept a plain io.Writer.
