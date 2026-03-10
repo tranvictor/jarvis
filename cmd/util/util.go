@@ -61,7 +61,7 @@ func AnalyzeAndShowMsigTxInfo(
 	network jarvisnetworks.Network,
 	resolver ABIResolver,
 	analyzer util.TxAnalyzer,
-) (fc *jarviscommon.FunctionCall, confirmed bool, executed bool) {
+) (fc *jarviscommon.FunctionCall, numConfirmations int, confirmed bool, executed bool) {
 	address, value, data, executed, confirmations, err := multisigContract.TransactionInfo(txid)
 	if err != nil {
 		u.Error("Couldn't get tx info: %s", err)
@@ -74,7 +74,8 @@ func AnalyzeAndShowMsigTxInfo(
 		return
 	}
 
-	confirmed = len(confirmations) >= int(requirement)
+	numConfirmations = len(confirmations)
+	confirmed = numConfirmations >= int(requirement)
 
 	colorsEnabled := u.Style(ui.StyledText{Text: "x", Severity: ui.SeveritySuccess}) != "x"
 	var buf bytes.Buffer
@@ -235,7 +236,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	fc, _, executed := AnalyzeAndShowMsigTxInfo(u, multisigContract, txid, config.Network(), tc.Resolver, analyzer)
+	fc, _, _, executed := AnalyzeAndShowMsigTxInfo(u, multisigContract, txid, config.Network(), tc.Resolver, analyzer)
 
 	if postProcess != nil && postProcess(fc) != nil {
 		return

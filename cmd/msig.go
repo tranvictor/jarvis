@@ -1,13 +1,16 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/spf13/cobra"
@@ -21,6 +24,7 @@ import (
 	"github.com/tranvictor/jarvis/msig"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/util/reader"
 )
 
 var ErrUserAborted = errors.New("user aborted")
@@ -128,7 +132,7 @@ var transactionInfoMsigCmd = &cobra.Command{
 			return
 		}
 
-		cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, config.Network(), cmdutil.DefaultABIResolver{}, tc.Analyzer)
+		cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, config.Network(), cmdutil.DefaultABIResolver{}, tc.Analyzer) //nolint:dogsled
 	},
 }
 
@@ -280,13 +284,122 @@ func GetApproverAccountFromMsig(multisigContract *msig.MultisigContract) (string
 	return acc.Address, nil
 }
 
+type msigTxConfirmation struct {
+	sender string
+	txHash string
+}
+
+type msigTxHistory struct {
+	confirmations   []msigTxConfirmation
+	executionTxHash string
+}
+
+const logsChunkSize = 9000
+
+func clearProgressLine() {
+	fmt.Fprintf(os.Stdout, "\r%s\r", strings.Repeat(" ", 80))
+}
+
+func queryMsigTxHistory(ethReader *reader.EthReader, msigABI *abi.ABI, msigAddr string, txID *big.Int, fromBlock int64, network jarvisnetworks.Network, executed bool, numConfirmations int) *msigTxHistory {
+	history := &msigTxHistory{}
+	txIDHash := ethcommon.BigToHash(txID)
+
+	currentBlock, err := ethReader.CurrentBlock()
+	if err != nil {
+		appUI.Warn("Couldn't get current block: %s", err)
+		return history
+	}
+	latestBlock := int64(currentBlock)
+	totalBlocks := latestBlock - fromBlock + 1
+
+	confirmTopic := msigABI.Events["Confirmation"].ID.Hex()
+	addrs := []string{msigAddr}
+
+	// Phase 1: find all Confirmation events, stop as soon as we have enough
+	for start := fromBlock; start <= latestBlock && len(history.confirmations) < numConfirmations; start += logsChunkSize {
+		end := start + logsChunkSize - 1
+		if end > latestBlock {
+			end = latestBlock
+		}
+
+		pct := int(float64(start-fromBlock) / float64(totalBlocks) * 100)
+		fmt.Fprintf(os.Stdout, "\r  Querying confirmation logs... %d%%", pct)
+
+		logs, err := ethReader.GetLogs(int(start), int(end), addrs, confirmTopic)
+		if err != nil {
+			clearProgressLine()
+			appUI.Warn("Couldn't query confirmation logs: %s", err)
+			return history
+		}
+		for _, l := range logs {
+			if len(l.Topics) >= 3 && l.Topics[2] == txIDHash {
+				sender := ethcommon.BytesToAddress(l.Topics[1].Bytes()).Hex()
+				history.confirmations = append(history.confirmations, msigTxConfirmation{
+					sender: sender,
+					txHash: l.TxHash.Hex(),
+				})
+			}
+		}
+
+		time.Sleep(200 * time.Millisecond)
+	}
+	clearProgressLine()
+
+	// Phase 2: find the Execution event if the tx is executed.
+	// Execution can only happen at or after the last confirmation, so
+	// start from that block instead of scanning from the beginning.
+	if executed {
+		execFrom := fromBlock
+		if n := len(history.confirmations); n > 0 {
+			lastConfTx := history.confirmations[n-1].txHash
+			txinfo, err := ethReader.TxInfoFromHash(lastConfTx)
+			if err == nil && txinfo.Receipt != nil {
+				execFrom = txinfo.Receipt.BlockNumber.Int64()
+			}
+		}
+
+		execTopic := msigABI.Events["Execution"].ID.Hex()
+		execTotal := latestBlock - execFrom + 1
+
+		for start := execFrom; start <= latestBlock && history.executionTxHash == ""; start += logsChunkSize {
+			end := start + logsChunkSize - 1
+			if end > latestBlock {
+				end = latestBlock
+			}
+
+			pct := int(float64(start-execFrom) / float64(execTotal) * 100)
+			fmt.Fprintf(os.Stdout, "\r  Querying execution logs... %d%%", pct)
+
+			execLogs, err := ethReader.GetLogs(int(start), int(end), addrs, execTopic)
+			if err != nil {
+				clearProgressLine()
+				appUI.Warn("Couldn't query execution logs: %s", err)
+				return history
+			}
+			for _, l := range execLogs {
+				if len(l.Topics) >= 2 && l.Topics[1] == txIDHash {
+					history.executionTxHash = l.TxHash.Hex()
+					break
+				}
+			}
+
+			time.Sleep(200 * time.Millisecond)
+		}
+		clearProgressLine()
+	}
+
+	return history
+}
+
 type batchResult struct {
 	network       string
+	networkObj    jarvisnetworks.Network
 	initTxHash    string
 	confirmTxHash string
 	msigTxID      string
 	status        string // "approved", "broadcasted", "skipped", "failed"
 	reason        string
+	history       *msigTxHistory
 }
 
 func printBatchSummary(results []batchResult) {
@@ -302,21 +415,52 @@ func printBatchSummary(results []batchResult) {
 		case "approved":
 			approved++
 			appUI.Success("  %d. [%s]%s — approved", i+1, r.network, msigLabel)
-			appUI.Info("       init tx:    %s", r.initTxHash)
-			appUI.Info("       approve tx: %s", r.confirmTxHash)
 		case "broadcasted":
 			broadcasted++
 			appUI.Success("  %d. [%s]%s — broadcasted (not waiting for mining)", i+1, r.network, msigLabel)
-			appUI.Info("       init tx:    %s", r.initTxHash)
-			appUI.Info("       approve tx: %s", r.confirmTxHash)
 		case "skipped":
 			skipped++
 			appUI.Warn("  %d. [%s]%s — skipped: %s", i+1, r.network, msigLabel, r.reason)
-			appUI.Info("       init tx: %s", r.initTxHash)
 		case "failed":
 			failed++
 			appUI.Error("  %d. [%s]%s — failed: %s", i+1, r.network, msigLabel, r.reason)
-			appUI.Info("       init tx: %s", r.initTxHash)
+		}
+
+		if r.history != nil && len(r.history.confirmations) > 0 {
+			for j, c := range r.history.confirmations {
+				tag := "confirm"
+				if j == 0 {
+					tag = "init   "
+				}
+				senderName := c.sender
+				if r.networkObj != nil {
+					addr := util.GetJarvisAddress(c.sender, r.networkObj)
+					senderName = appUI.Style(util.StyledAddress(addr))
+				}
+				appUI.Info("       %s tx: %s (by %s)", tag, c.txHash, senderName)
+			}
+			if r.confirmTxHash != "" {
+				found := false
+				for _, c := range r.history.confirmations {
+					if strings.EqualFold(c.txHash, r.confirmTxHash) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					appUI.Info("       confirm tx: %s (pending)", r.confirmTxHash)
+				}
+			}
+			if r.history.executionTxHash != "" {
+				appUI.Info("       exec    tx: %s", r.history.executionTxHash)
+			}
+		} else {
+			if r.initTxHash != "" {
+				appUI.Info("       init tx: %s", r.initTxHash)
+			}
+			if r.confirmTxHash != "" {
+				appUI.Info("       approve tx: %s", r.confirmTxHash)
+			}
 		}
 	}
 	appUI.Info("")
@@ -334,6 +478,83 @@ func printBatchSummary(results []batchResult) {
 		parts = append(parts, fmt.Sprintf("%d failed", failed))
 	}
 	appUI.Info("Total: %d transactions (%s)", len(results), strings.Join(parts, ", "))
+}
+
+type jsonConfirmation struct {
+	TxHash string `json:"tx_hash"`
+	Sender string `json:"sender"`
+}
+
+type jsonBatchResult struct {
+	Network       string             `json:"network"`
+	MsigTxID      string             `json:"msig_tx_id,omitempty"`
+	Status        string             `json:"status"`
+	Reason        string             `json:"reason,omitempty"`
+	InitTxHash    string             `json:"init_tx_hash,omitempty"`
+	ConfirmTxHash string             `json:"confirm_tx_hash,omitempty"`
+	Confirmations []jsonConfirmation `json:"confirmations,omitempty"`
+	ExecutionTx   string             `json:"execution_tx,omitempty"`
+}
+
+type jsonBatchSummary struct {
+	Total       int               `json:"total"`
+	Approved    int               `json:"approved"`
+	Broadcasted int               `json:"broadcasted"`
+	Skipped     int               `json:"skipped"`
+	Failed      int               `json:"failed"`
+	Results     []jsonBatchResult `json:"results"`
+}
+
+func writeBatchSummaryJSON(path string, results []batchResult) {
+	summary := jsonBatchSummary{
+		Total:   len(results),
+		Results: make([]jsonBatchResult, 0, len(results)),
+	}
+
+	for _, r := range results {
+		jr := jsonBatchResult{
+			Network:       r.network,
+			MsigTxID:      r.msigTxID,
+			Status:        r.status,
+			Reason:        r.reason,
+			InitTxHash:    r.initTxHash,
+			ConfirmTxHash: r.confirmTxHash,
+		}
+
+		if r.history != nil {
+			for _, c := range r.history.confirmations {
+				jr.Confirmations = append(jr.Confirmations, jsonConfirmation{
+					TxHash: c.txHash,
+					Sender: c.sender,
+				})
+			}
+			jr.ExecutionTx = r.history.executionTxHash
+		}
+
+		summary.Results = append(summary.Results, jr)
+
+		switch r.status {
+		case "approved":
+			summary.Approved++
+		case "broadcasted":
+			summary.Broadcasted++
+		case "skipped":
+			summary.Skipped++
+		case "failed":
+			summary.Failed++
+		}
+	}
+
+	data, err := json.MarshalIndent(summary, "", "  ")
+	if err != nil {
+		appUI.Error("Couldn't marshal JSON: %s", err)
+		return
+	}
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		appUI.Error("Couldn't write JSON file: %s", err)
+		return
+	}
+	appUI.Success("Summary written to %s", path)
 }
 
 var batchApproveMsigCmd = &cobra.Command{
@@ -369,6 +590,7 @@ var batchApproveMsigCmd = &cobra.Command{
 				results = append(results, r)
 				continue
 			}
+			r.networkObj = network
 			txinfo, err := cm.Reader(network).TxInfoFromHash(txHash)
 			if err != nil {
 				appUI.Error("Couldn't get tx info from hash: %s. Skip.", err)
@@ -402,6 +624,7 @@ var batchApproveMsigCmd = &cobra.Command{
 			}
 
 			r.msigTxID = txid.String()
+			initBlock := txinfo.Receipt.BlockNumber.Int64()
 
 			multisigContract, err := msig.NewMultisigContract(msigHex, network)
 			if err != nil {
@@ -421,9 +644,10 @@ var batchApproveMsigCmd = &cobra.Command{
 				continue
 			}
 
-			_, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
+			_, numConf, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
 			if executed {
 				appUI.Warn("Already executed. Skip.")
+				r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, true, numConf)
 				r.status = "skipped"
 				r.reason = "already executed"
 				results = append(results, r)
@@ -431,6 +655,7 @@ var batchApproveMsigCmd = &cobra.Command{
 			}
 			if confirmed {
 				appUI.Warn("Already confirmed but not executed. Consider executing instead. Skip.")
+				r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, false, numConf)
 				r.status = "skipped"
 				r.reason = "already confirmed"
 				results = append(results, r)
@@ -453,6 +678,9 @@ var batchApproveMsigCmd = &cobra.Command{
 				r.reason = fmt.Sprintf("tx type: %s", err)
 				results = append(results, r)
 				printBatchSummary(results)
+				if config.JSONOutputFile != "" {
+					writeBatchSummaryJSON(config.JSONOutputFile, results)
+				}
 				return
 			}
 
@@ -519,6 +747,7 @@ var batchApproveMsigCmd = &cobra.Command{
 					r.reason = "user aborted"
 				} else if errors.Is(err, ErrNotWaitingForMining) {
 					r.status = "broadcasted"
+					r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, false, numConf)
 				} else {
 					appUI.Error("Failed to broadcast the tx after retries: %s.", err)
 					r.status = "failed"
@@ -537,11 +766,15 @@ var batchApproveMsigCmd = &cobra.Command{
 				)
 			}
 
+			r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, true, numConf+1)
 			r.status = "approved"
 			results = append(results, r)
 		}
 
 		printBatchSummary(results)
+		if config.JSONOutputFile != "" {
+			writeBatchSummaryJSON(config.JSONOutputFile, results)
+		}
 	},
 }
 
@@ -782,6 +1015,7 @@ func init() {
 	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.DontWaitToBeMined, "no-wait", "F", false, "Will not wait the tx to be mined.")
 	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.YesToAllPrompt, "auto-yes", "y", false, "Don't prompt Yes/No before signing.")
 	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.ForceLegacy, "legacy-tx", "L", false, "Force using legacy transaction")
+	batchApproveMsigCmd.PersistentFlags().StringVarP(&config.JSONOutputFile, "json-output", "o", "", "Write batch summary to a JSON file")
 
 	msigCmd.AddCommand(approveMsigCmd)
 	msigCmd.AddCommand(batchApproveMsigCmd)
