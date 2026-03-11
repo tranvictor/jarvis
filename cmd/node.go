@@ -551,6 +551,63 @@ var nodeImportCmd = &cobra.Command{
 	},
 }
 
+// ── bootstrap ────────────────────────────────────────────────────────────────
+
+var nodeBootstrapOverwrite bool
+
+var nodeBootstrapCmd = &cobra.Command{
+	Use:   "bootstrap [network]",
+	Short: "Create node config files from built-in defaults for all (or one) network(s)",
+	Long: `Writes ~/.jarvis/nodes/<network>.json seeded from the built-in default nodes
+for every supported network (or just the one specified). use_defaults is set
+to false so your files are fully self-contained.
+
+By default, existing config files are left untouched. Pass --overwrite to
+replace them with the current built-in defaults.`,
+	Run: func(cmd *cobra.Command, args []string) {
+		var targets []networks.Network
+		if len(args) == 1 {
+			n, err := networks.GetNetwork(args[0])
+			if err != nil {
+				appUI.Error("Network %q not found: %s", args[0], err)
+				return
+			}
+			targets = []networks.Network{n}
+		} else {
+			targets = networks.GetSupportedNetworks()
+		}
+
+		created, skipped, failed := 0, 0, 0
+		for _, n := range targets {
+			_, cfgErr := util.LoadNodeConfig(n.GetName())
+			if cfgErr == nil && !nodeBootstrapOverwrite {
+				appUI.Info("  %-30s already exists — skipped (use --overwrite to replace)", n.GetName())
+				skipped++
+				continue
+			}
+
+			nodes := make(map[string]string, len(n.GetDefaultNodes()))
+			for k, v := range n.GetDefaultNodes() {
+				nodes[k] = v
+			}
+			cfg := util.NodeConfig{Nodes: nodes, UseDefaults: false}
+			if err := util.SaveNodeConfig(n.GetName(), cfg); err != nil {
+				appUI.Error("  %-30s failed: %s", n.GetName(), err)
+				failed++
+				continue
+			}
+			appUI.Success("  %-30s bootstrapped (%d node(s))", n.GetName(), len(nodes))
+			created++
+		}
+
+		appUI.Info("")
+		appUI.Info("Done: %d bootstrapped, %d skipped, %d failed.", created, skipped, failed)
+		if skipped > 0 {
+			appUI.Info("Run with --overwrite to replace existing configs.")
+		}
+	},
+}
+
 // ── defaults ─────────────────────────────────────────────────────────────────
 
 var nodeDefaultsCmd = &cobra.Command{
@@ -585,6 +642,7 @@ var nodeDefaultsCmd = &cobra.Command{
 func init() {
 	nodeListCmd.Flags().BoolVar(&nodeListIncludeDefaults, "include-defaults", false, "Show built-in default nodes alongside custom ones, and probe each node for connectivity")
 	nodeExportCmd.Flags().StringVarP(&nodeOutputFile, "output", "o", "", "Write output to this file instead of stdout")
-	nodeCmd.AddCommand(nodeListCmd, nodeAddCmd, nodeRemoveCmd, nodeTestCmd, nodeExportCmd, nodeImportCmd, nodeDefaultsCmd)
+	nodeBootstrapCmd.Flags().BoolVar(&nodeBootstrapOverwrite, "overwrite", false, "Replace existing config files with the current built-in defaults")
+	nodeCmd.AddCommand(nodeListCmd, nodeAddCmd, nodeRemoveCmd, nodeTestCmd, nodeExportCmd, nodeImportCmd, nodeDefaultsCmd, nodeBootstrapCmd)
 	rootCmd.AddCommand(nodeCmd)
 }
