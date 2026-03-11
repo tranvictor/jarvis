@@ -82,34 +82,51 @@ func SaveNodeConfig(networkName string, cfg NodeConfig) error {
 
 var migrateOnce sync.Once
 
-// GetNodes resolves the active set of RPC nodes for a network by merging the
-// user's custom config (from ~/.jarvis/nodes/<network>.json) with the
-// network's built-in defaults according to the use_defaults flag.
+// bootstrapNodeConfig creates an initial node config file for the given network
+// seeded from its built-in default nodes. use_defaults is set to false so the
+// user owns the configuration explicitly and no longer relies on the built-in
+// list at runtime. The file is written best-effort; the in-memory config is
+// returned regardless of whether the write succeeded.
+func bootstrapNodeConfig(network jarvisnetworks.Network) NodeConfig {
+	nodes := make(map[string]string, len(network.GetDefaultNodes()))
+	for k, v := range network.GetDefaultNodes() {
+		nodes[k] = v
+	}
+	cfg := NodeConfig{Nodes: nodes, UseDefaults: false}
+	// Ignore write errors — the caller can still proceed with the in-memory config.
+	_ = SaveNodeConfig(network.GetName(), cfg)
+	return cfg
+}
+
+// GetNodes resolves the active set of RPC nodes for a network.
+//
+// On the very first call for a given network (no config file present) the
+// built-in default nodes are written to ~/.jarvis/nodes/<network>.json so the
+// user has a concrete file to inspect and edit. From that point on, only the
+// user's own config file is used (use_defaults: false by default).
 //
 // Priority (lowest → highest):
-//  1. Built-in DefaultNodes (when use_defaults is true or no custom config exists)
-//  2. User's custom nodes from ~/.jarvis/nodes/<network>.json
-//  3. Env-var node (NETWORK_NODE_VAR), always applied on top
+//  1. User's config file (~/.jarvis/nodes/<network>.json); bootstrapped from
+//     built-in defaults on first use if the file does not yet exist.
+//  2. Built-in DefaultNodes merged in only when use_defaults: true is set.
+//  3. Env-var node (NETWORK_NODE_VAR), always applied on top.
 func GetNodes(network jarvisnetworks.Network) (map[string]string, error) {
 	migrateOnce.Do(MigrateFromLegacyNodesJSON)
 
-	nodes := make(map[string]string)
-
 	cfg, err := LoadNodeConfig(network.GetName())
 	if err != nil {
-		// No custom config — use all built-in defaults.
+		// No config file yet — seed one from the built-in defaults.
+		cfg = bootstrapNodeConfig(network)
+	}
+
+	nodes := make(map[string]string, len(cfg.Nodes))
+	for k, v := range cfg.Nodes {
+		nodes[k] = v
+	}
+	if cfg.UseDefaults {
 		for k, v := range network.GetDefaultNodes() {
-			nodes[k] = v
-		}
-	} else {
-		for k, v := range cfg.Nodes {
-			nodes[k] = v
-		}
-		if cfg.UseDefaults {
-			for k, v := range network.GetDefaultNodes() {
-				if _, exists := nodes[k]; !exists {
-					nodes[k] = v
-				}
+			if _, exists := nodes[k]; !exists {
+				nodes[k] = v
 			}
 		}
 	}
