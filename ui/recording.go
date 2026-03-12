@@ -191,6 +191,15 @@ func (r *RecordingUI) TableWithGroups(headers []string, groups [][][]string) {
 	}
 }
 
+// PrintTable renders t as plain-text bordered table (no ANSI) into the buffer
+// and records a "Table" entry with the row count for test assertions.
+func (r *RecordingUI) PrintTable(t *Table) {
+	r.record("Table", fmt.Sprintf("%d rows", len(t.Rows)))
+	renderTable(r.shared.buf, t, func(cell TableCell) string {
+		return cell.Text
+	})
+}
+
 // Spinner is a no-op in RecordingUI — no goroutines, no output.
 // The returned function is also a no-op.
 func (r *RecordingUI) Spinner(_ string) func() {

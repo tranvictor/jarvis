@@ -306,6 +306,15 @@ func (u *TerminalUI) TableWithGroups(headers []string, groups [][][]string) {
 	fmt.Fprintf(u.out, "%s%s\n", p, botBorder)
 }
 
+// PrintTable renders t as a bordered table with Aurora colour applied per cell.
+// It delegates to the standalone renderTable helper in table.go, passing a
+// styleCell function that maps each cell's Severity to an Aurora colour.
+func (u *TerminalUI) PrintTable(t *Table) {
+	renderTable(u.out, t, func(cell TableCell) string {
+		return u.Style(StyledText{Text: cell.Text, Severity: cell.Severity})
+	})
+}
+
 // Spinner starts an animated spinner with msg and returns a stop function.
 // The stop function clears the spinner line. On non-terminal outputs the
 // spinner is a no-op and only the message is printed once.

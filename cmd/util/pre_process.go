@@ -13,10 +13,21 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
+	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
+
+// showNodeErrorGuidance prints a structured diagnostic block when an RPC call
+// fails, suggesting how the user can inspect and fix their node configuration.
+func showNodeErrorGuidance(u ui.UI, network networks.Network) {
+	u.Warn("Could not reach any RPC node for network %q.", network.GetName())
+	u.Info("  What to try:")
+	u.Info("    Check your nodes:  jarvis node list %s", network.GetName())
+	u.Info("    Test connectivity: jarvis node test %s", network.GetName())
+	u.Info("    Add a custom node: jarvis node add %s <name> <url>", network.GetName())
+}
 
 // CommonFunctionCallPreprocess populates a TxContext with the values derivable
 // from the function-call arguments: target address, parsed value, prefill params,
@@ -214,6 +225,7 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 	if config.GasPrice == 0 {
 		tc.GasPrice, err = reader.RecommendedGasPrice()
 		if err != nil {
+			showNodeErrorGuidance(u, config.Network())
 			return fmt.Errorf("getting recommended gas price failed: %w", err)
 		}
 	} else {
@@ -223,6 +235,7 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 	if config.Nonce == 0 {
 		tc.Nonce, err = reader.GetMinedNonce(tc.From)
 		if err != nil {
+			showNodeErrorGuidance(u, config.Network())
 			return fmt.Errorf("getting nonce failed: %w", err)
 		}
 	} else {
@@ -231,6 +244,7 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 
 	tc.TxType, err = ValidTxType(reader, config.Network())
 	if err != nil {
+		showNodeErrorGuidance(u, config.Network())
 		return fmt.Errorf("couldn't determine proper tx type: %w", err)
 	}
 
@@ -242,6 +256,7 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 		if config.TipGas == 0 {
 			tc.TipGas, err = reader.GetSuggestedGasTipCap()
 			if err != nil {
+				showNodeErrorGuidance(u, config.Network())
 				return fmt.Errorf("couldn't estimate recommended gas price: %w", err)
 			}
 		} else {
@@ -251,6 +266,7 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 
 	bc, err := util.EthBroadcaster(config.Network())
 	if err != nil {
+		showNodeErrorGuidance(u, config.Network())
 		return fmt.Errorf("couldn't connect to broadcaster: %w", err)
 	}
 	tc.Broadcaster = bc

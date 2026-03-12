@@ -9,8 +9,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/user"
-	"path"
 	"regexp"
 	"strconv"
 	"strings"
@@ -247,13 +245,6 @@ func AnalyzeMethodCallAndPrint(
 	return fc
 }
 
-// AnalyzeAndPrint fetches and decodes a transaction then renders it to u.
-// The optional beforeDisplay callback is invoked just before any output is
-// written — use it to stop a spinner so its goroutine never races with the
-// table renderer:
-//
-//	stop := u.Spinner("Analyzing...")
-//	AnalyzeAndPrint(u, ..., stop)
 func AnalyzeAndPrint(
 	u ui.UI,
 	reader reader.Reader,
@@ -265,7 +256,6 @@ func AnalyzeAndPrint(
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	degenMode bool,
-	beforeDisplay ...func(),
 ) *TxDisplay {
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
@@ -273,26 +263,17 @@ func AnalyzeAndPrint(
 
 	txinfo, err := reader.TxInfoFromHash(tx)
 	if err != nil {
-		for _, fn := range beforeDisplay {
-			fn()
-		}
 		u.Error("getting tx info failed: %s", err)
 		return nil
 	}
 
 	if txinfo.Tx.To() == nil {
-		for _, fn := range beforeDisplay {
-			fn()
-		}
 		return nil
 	}
 	contractAddress := txinfo.Tx.To().Hex()
 
 	isContract, err := IsContract(contractAddress, network)
 	if err != nil {
-		for _, fn := range beforeDisplay {
-			fn()
-		}
 		u.Error("checking tx type failed: %s", err)
 		return nil
 	}
@@ -303,9 +284,6 @@ func AnalyzeAndPrint(
 		if a == nil {
 			a, err = ConfigToABI(contractAddress, forceERC20ABI, customABI, network)
 			if err != nil {
-				for _, fn := range beforeDisplay {
-					fn()
-				}
 				u.Error("Couldn't get abi for %s: %s", contractAddress, err)
 				return nil
 			}
@@ -316,10 +294,6 @@ func AnalyzeAndPrint(
 		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false)
 	}
 
-	// All network work is done — stop the spinner before any output.
-	for _, fn := range beforeDisplay {
-		fn()
-	}
 	return DisplayTxResult(u, result, network, degenMode, tx)
 }
 
@@ -331,22 +305,6 @@ func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {
 	return monitor.NewGenericTxMonitor(r), nil
 }
 
-func GetNodes(network networks.Network) (map[string]string, error) {
-	src, err := getCustomNode(network)
-	if err != nil {
-		src = network.GetDefaultNodes()
-	}
-	// Always work on a fresh copy so concurrent callers never share the same map.
-	nodes := make(map[string]string, len(src)+1)
-	for k, v := range src {
-		nodes[k] = v
-	}
-	customNode := strings.Trim(os.Getenv(network.GetNodeVariableName()), " ")
-	if customNode != "" {
-		nodes["custom-node"] = customNode
-	}
-	return nodes, nil
-}
 
 func EthBroadcaster(network networks.Network) (*broadcaster.Broadcaster, error) {
 	nodes, err := GetNodes(network)
@@ -788,33 +746,3 @@ func NewMultiCall(network networks.Network) (*reader.MultipleCall, error) {
 	return reader.NewMultiCall(r, network.MultiCallContract()), nil
 }
 
-func getCustomNode(network networks.Network) (map[string]string, error) {
-	usr, _ := user.Current()
-	dir := usr.HomeDir
-	file := path.Join(dir, "nodes.json")
-	fi, err := os.Lstat(file)
-	if err != nil {
-		return nil, err
-	}
-	// if the file is a symlink
-	if fi.Mode()&os.ModeSymlink != 0 {
-		file, err = os.Readlink(file)
-		if err != nil {
-			return nil, err
-		}
-	}
-	content, err := os.ReadFile(file)
-	if err != nil {
-		return nil, err
-	}
-	result := map[string]map[string]string{}
-	err = json.Unmarshal(content, &result)
-	if err != nil {
-		return nil, err
-	}
-	node, ok := result[network.GetName()]
-	if !ok {
-		return nil, fmt.Errorf("could not get node from custom file")
-	}
-	return node, nil
-}

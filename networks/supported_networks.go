@@ -165,9 +165,15 @@ func NewNetworkFromJSON(content []byte) (Network, error) {
 }
 
 func GetSupportedNetworks() []Network {
+	// The internal map stores one entry per name AND per alternative name, so
+	// the same network object appears multiple times. Deduplicate by chain ID.
+	seen := map[uint64]bool{}
 	res := []Network{}
 	for _, n := range globalSupportedNetworks.networks {
-		res = append(res, n)
+		if !seen[n.GetChainID()] {
+			seen[n.GetChainID()] = true
+			res = append(res, n)
+		}
 	}
 	return res
 }

@@ -189,54 +189,29 @@ var txContractCmd = &cobra.Command{
 	},
 }
 
-// handleReadOneFunctionOnContract fetches a contract read result and displays
-// it. The optional beforeDisplay func is called just before any output is
-// written so callers can stop a spinner without it racing the table renderer.
-func handleReadOneFunctionOnContract(
-	r readerPkg.Reader,
-	analyzer util.TxAnalyzer,
-	a *abi.ABI,
-	atBlock int64,
-	to string,
-	method *abi.Method,
-	params []interface{},
-	beforeDisplay ...func(),
-) ([]util.ParamDisplay, error) {
+func handleReadOneFunctionOnContract(r readerPkg.Reader, analyzer util.TxAnalyzer, a *abi.ABI, atBlock int64, to string, method *abi.Method, params []interface{}) ([]util.ParamDisplay, error) {
 	responseBytes, err := r.ReadContractToBytes(atBlock, "0x0000000000000000000000000000000000000000", to, a, method.Name, params...)
 	if err != nil {
-		for _, fn := range beforeDisplay {
-			fn()
-		}
 		appUI.Error("getting response failed: %s", err)
 		return nil, err
 	}
 	if len(responseBytes) == 0 {
-		for _, fn := range beforeDisplay {
-			fn()
-		}
 		appUI.Error("the function reverts. please double check your params.")
 		return nil, fmt.Errorf("the function reverted")
 	}
 	ps, err := method.Outputs.UnpackValues(responseBytes)
 	if err != nil {
-		for _, fn := range beforeDisplay {
-			fn()
-		}
 		appUI.Error("Couldn't unpack response to go types: %s", err)
 		return nil, err
 	}
 
-	// All network work done — stop spinner before any output.
-	for _, fn := range beforeDisplay {
-		fn()
-	}
-
-	var rawParams []jarviscommon.ParamResult
-	for i, output := range method.Outputs {
-		rawParams = append(rawParams, analyzer.ParamAsJarvisParamResult(output.Name, output.Type, ps[i]))
-	}
 	appUI.Info("Output:")
-	return util.DisplayParams(appUI, rawParams), nil
+	var result []util.ParamDisplay
+	for i, output := range method.Outputs {
+		oneOutputParamResult := analyzer.ParamAsJarvisParamResult(output.Name, output.Type, ps[i])
+		result = append(result, util.DisplayParam(appUI, oneOutputParamResult))
+	}
+	return result, nil
 }
 
 type contractReadResultJSON struct {
@@ -289,9 +264,7 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			stopABI := appUI.Spinner("Fetching ABI for " + tc.To)
 			a, err := tc.Resolver.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
-			stopABI()
 			if err != nil {
 				appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 				return
@@ -303,8 +276,7 @@ var readContractCmd = &cobra.Command{
 				resultJSON.Functions = append(resultJSON.Functions, method.Name)
 				appUI.Info("%d. %s", i+1, method.Name)
 
-				stopRead := appUI.Spinner("Reading " + method.Name)
-				result, err := handleReadOneFunctionOnContract(reader, tc.Analyzer, a, config.AtBlock, tc.To, &method, []interface{}{}, stopRead)
+				result, err := handleReadOneFunctionOnContract(reader, tc.Analyzer, a, config.AtBlock, tc.To, &method, []interface{}{})
 				if err != nil {
 					resultJSON.Results = append(resultJSON.Results, contractReadResultJSON{
 						Error: fmt.Sprintf("%s", err),
@@ -326,9 +298,7 @@ var readContractCmd = &cobra.Command{
 				defer resultJSON.Write(config.JSONOutputFile)
 			}
 
-			stopABI := appUI.Spinner("Fetching ABI for " + tc.To)
 			a, err := tc.Resolver.ConfigToABI(tc.To, config.ForceERC20ABI, config.CustomABI, config.Network())
-			stopABI()
 			if err != nil {
 				appUI.Error("Couldn't get abi for %s: %s", tc.To, err)
 				return
@@ -351,8 +321,7 @@ var readContractCmd = &cobra.Command{
 				resultJSON.Error = fmt.Sprintf("%s", err)
 				return
 			}
-			stopRead := appUI.Spinner("Reading " + method.Name)
-			result, err := handleReadOneFunctionOnContract(reader, tc.Analyzer, a, config.AtBlock, tc.To, method, params, stopRead)
+			result, err := handleReadOneFunctionOnContract(reader, tc.Analyzer, a, config.AtBlock, tc.To, method, params)
 
 			if err != nil {
 				resultJSON.Error = fmt.Sprintf("%s", err)

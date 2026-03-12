@@ -109,6 +109,12 @@ type UI interface {
 	// rows belong to distinct logical groups (e.g. one group per event log).
 	TableWithGroups(headers []string, groups [][][]string)
 
+	// PrintTable renders a bordered Table to the output, applying colour to
+	// each cell according to its Severity. Rows that share the same first-column
+	// value are visually grouped with a horizontal rule between groups.
+	// Use this instead of Table when cells need per-cell colour (e.g. node status).
+	PrintTable(t *Table)
+
 	// Spinner starts an animated spinner with the given message and returns a
 	// stop function. Call the stop function (or defer it) to clear the spinner
 	// once the work is done:
