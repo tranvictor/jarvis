@@ -57,7 +57,24 @@ func runeLen(s string) int {
 }
 
 func colWidths(t *Table) []int {
+	// Infer column count from the data when no headers are supplied.
 	n := len(t.Headers)
+	for _, row := range t.Rows {
+		if len(row) > n {
+			n = len(row)
+		}
+	}
+	for _, group := range t.Groups {
+		for _, row := range group {
+			if len(row) > n {
+				n = len(row)
+			}
+		}
+	}
+	if n == 0 {
+		return nil
+	}
+
 	widths := make([]int, n)
 	for i, h := range t.Headers {
 		widths[i] = runeLen(h)
@@ -110,11 +127,11 @@ func truncateStr(s string, maxRunes int) string {
 // escape codes; padding is computed from the plain-text width so ANSI codes
 // never break column alignment.
 func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCell) string) {
-	if len(t.Headers) == 0 {
-		return
-	}
 	widths := colWidths(t)
 	n := len(widths)
+	if n == 0 {
+		return
+	}
 
 	// Border characters are dimmed to keep them visually subordinate to content.
 	bdrStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
@@ -150,16 +167,17 @@ func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCel
 			bdr("│")+strings.Join(cells, bdr("│"))+bdr("│"))
 	}
 
-	// header row
 	hline("┌", "┬", "┐")
-	headerCells := make([]string, n)
-	for i, h := range t.Headers {
-		pad := widths[i] - runeLen(h)
-		headerCells[i] = " " + h + strings.Repeat(" ", pad) + " "
+	if len(t.Headers) > 0 {
+		headerCells := make([]string, n)
+		for i, h := range t.Headers {
+			pad := widths[i] - runeLen(h)
+			headerCells[i] = " " + h + strings.Repeat(" ", pad) + " "
+		}
+		fmt.Fprintf(out, "%s%s\n", prefix,
+			bdr("│")+strings.Join(headerCells, bdr("│"))+bdr("│"))
+		hline("├", "┼", "┤")
 	}
-	fmt.Fprintf(out, "%s%s\n", prefix,
-		bdr("│")+strings.Join(headerCells, bdr("│"))+bdr("│"))
-	hline("├", "┼", "┤")
 
 	if len(t.Groups) > 0 {
 		// explicit grouping: each slice in Groups is a separate visual section

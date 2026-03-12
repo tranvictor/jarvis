@@ -5,7 +5,9 @@ import (
 	"io"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/logrusorgru/aurora"
+	runewidth "github.com/mattn/go-runewidth"
 )
 
 // NewTerminalUIWithWriter creates a TerminalUI that writes to w instead of
@@ -18,24 +20,10 @@ func NewTerminalUIWithWriter(w io.Writer, colorsEnabled bool) *TerminalUI {
 	}
 }
 
-// VisibleWidth returns the display width of s, excluding ANSI escape sequences.
+// VisibleWidth returns the terminal display width of s.
+// It strips ANSI escape sequences first, then uses runewidth to correctly
+// account for multi-byte characters (e.g. box-drawing chars, CJK) that occupy
+// more than one byte but exactly one (or two) visual columns.
 func VisibleWidth(s string) int {
-	n := 0
-	i := 0
-	for i < len(s) {
-		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
-			j := i + 2
-			for j < len(s) && (s[j] < '@' || s[j] > '~') {
-				j++
-			}
-			if j < len(s) {
-				j++
-			}
-			i = j
-		} else {
-			n++
-			i++
-		}
-	}
-	return n
+	return runewidth.StringWidth(ansi.Strip(s))
 }

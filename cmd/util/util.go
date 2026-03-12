@@ -30,7 +30,7 @@ import (
 )
 
 func printBorderedContent(u ui.UI, title string, lines []string) {
-	maxWidth := len(title)
+	maxWidth := ui.VisibleWidth(title)
 	for _, line := range lines {
 		if w := ui.VisibleWidth(line); w > maxWidth {
 			maxWidth = w
@@ -39,7 +39,7 @@ func printBorderedContent(u ui.UI, title string, lines []string) {
 
 	hLine := strings.Repeat("─", maxWidth+2)
 	boldTitle := u.Style(ui.StyledText{Text: title, Severity: ui.SeverityCritical})
-	titlePad := strings.Repeat(" ", maxWidth-len(title))
+	titlePad := strings.Repeat(" ", maxWidth-ui.VisibleWidth(title))
 
 	u.Info("")
 	u.Info("┌%s┐", hLine)
@@ -84,6 +84,10 @@ func AnalyzeAndShowMsigTxInfo(
 	msigStyled := util.StyledAddress(util.GetJarvisAddress(multisigContract.Address, network))
 	targetStyled := util.StyledAddress(util.GetJarvisAddress(address, network))
 
+	// ── Metadata card (From / To / status / signers) ────────────────────────
+	// Only plain-text lines go into bui so the bordered card stays clean.
+	// The decoded function call is displayed separately below the card where
+	// its own table can use the full terminal width without being nested.
 	bui.Info("From  : %s", bui.Style(msigStyled))
 	bui.Info("To    : %s", bui.Style(targetStyled))
 	if value != nil && value.Sign() > 0 {
@@ -91,25 +95,6 @@ func AnalyzeAndShowMsigTxInfo(
 			jarviscommon.BigToFloat(value, network.GetNativeTokenDecimal()),
 			network.GetNativeTokenSymbol(),
 		)
-	}
-
-	if len(data) > 0 {
-		destAbi, err := resolver.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
-		if err != nil {
-			bui.Error("Couldn't get abi of destination address: %s", err)
-		} else {
-			fc = util.AnalyzeMethodCallAndPrint(
-				bui,
-				analyzer,
-				value,
-				address,
-				data,
-				map[string]*abi.ABI{
-					strings.ToLower(address): destAbi,
-				},
-				network,
-			)
-		}
 	}
 
 	bui.Info("")
@@ -134,6 +119,26 @@ func AnalyzeAndShowMsigTxInfo(
 	lines := strings.Split(content, "\n")
 	title := fmt.Sprintf("Multisig Transaction #%s", txid.String())
 	printBorderedContent(u, title, lines)
+
+	// ── Decoded function call (rendered directly, full-width) ─────────────
+	if len(data) > 0 {
+		destAbi, err := resolver.ConfigToABI(address, config.ForceERC20ABI, config.CustomABI, network)
+		if err != nil {
+			u.Error("Couldn't get abi of destination address: %s", err)
+		} else {
+			fc = util.AnalyzeMethodCallAndPrint(
+				u,
+				analyzer,
+				value,
+				address,
+				data,
+				map[string]*abi.ABI{
+					strings.ToLower(address): destAbi,
+				},
+				network,
+			)
+		}
+	}
 
 	return
 }
