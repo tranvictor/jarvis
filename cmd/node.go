@@ -277,7 +277,8 @@ func probeNodeRows(rows []nodeRow) []nodeRow {
 // because collectNetworkNodes sets displayName uniformly per network.
 func buildNodeTable(rows []nodeRow, showStatus bool) *ui.Table {
 	t := &ui.Table{
-		Headers: []string{"Network", "Node Name", "RPC URL", "Type", "Status"},
+		Headers:      []string{"Network", "Node Name", "RPC URL", "Type", "Status"},
+		MaxCellWidth: 55, // cap long URLs and error messages so the table stays readable
 	}
 	for _, r := range rows {
 		display := r.displayName

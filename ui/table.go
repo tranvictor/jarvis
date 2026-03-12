@@ -5,13 +5,9 @@ import (
 	"io"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	runewidth "github.com/mattn/go-runewidth"
-)
-
-const (
-	cellPadding  = 1  // spaces on each side of cell text within a column
-	maxCellWidth = 55 // hard cap on any single column's visual width
 )
 
 // TableCell is a single cell in a Table with optional severity styling.
@@ -28,53 +24,71 @@ func TCS(text string, s Severity) TableCell { return TableCell{Text: text, Sever
 
 // Table is a bordered text table.
 //
-// Rows are visually grouped by the first-column value: the first row of each
-// group shows the value; subsequent rows with the same first-column value
-// display an empty first cell. A thin horizontal rule is drawn between groups.
+// Data can be specified in one of two ways (Groups takes precedence):
+//
+//  1. Rows (first-column auto-grouping): consecutive rows that share the same
+//     first-column value form a visual group; a rule is drawn between groups.
+//     Use this when the group key is embedded in the first column
+//     (e.g. network name in the node list).
+//
+//  2. Groups (explicit grouping): each inner slice is a separate group; a
+//     horizontal rule is drawn between adjacent groups.
+//     Use this for structurally distinct sections (e.g. one group per log
+//     event or per function call).
+//
+// MaxCellWidth caps any single column's visual width (0 = no cap).
+// When set, cells wider than the cap are truncated with "...".
 type Table struct {
-	Headers []string
-	Rows    [][]TableCell
+	Headers      []string
+	Rows         [][]TableCell   // first-column grouped; used when Groups is nil
+	Groups       [][][]TableCell // explicit groups; takes precedence over Rows when non-nil
+	MaxCellWidth int             // 0 = no cap
 }
 
-// AddRow appends a row of cells to the table.
+// AddRow appends a row to Rows (first-column auto-grouping mode).
 func (t *Table) AddRow(cells ...TableCell) {
 	t.Rows = append(t.Rows, cells)
 }
 
-// runeLen returns the visible terminal width of s.
-// It strips ANSI escape codes first, then uses runewidth to correctly account
-// for multi-byte characters (✓, ─, …) and East Asian wide characters.
+// runeLen returns the visible terminal width of s, stripping ANSI escape codes
+// first so that colour sequences don't inflate the measurement.
 func runeLen(s string) int {
 	return runewidth.StringWidth(ansi.Strip(s))
 }
 
-// colWidths returns the minimum column widths (in runes/visual chars) required
-// to display all content, capped at maxCellWidth.
 func colWidths(t *Table) []int {
 	n := len(t.Headers)
 	widths := make([]int, n)
 	for i, h := range t.Headers {
 		widths[i] = runeLen(h)
 	}
-	for _, row := range t.Rows {
+	consider := func(row []TableCell) {
 		for i, cell := range row {
 			if i >= n {
 				break
 			}
 			w := runeLen(cell.Text)
-			if w > maxCellWidth {
-				w = maxCellWidth
+			if t.MaxCellWidth > 0 && w > t.MaxCellWidth {
+				w = t.MaxCellWidth
 			}
 			if w > widths[i] {
 				widths[i] = w
 			}
 		}
 	}
+	for _, row := range t.Rows {
+		consider(row)
+	}
+	for _, group := range t.Groups {
+		for _, row := range group {
+			consider(row)
+		}
+	}
 	return widths
 }
 
-// truncateStr truncates s to at most maxRunes Unicode code points, appending
-// "..." when truncation occurs (preserving rune boundaries).
+// truncateStr truncates s to at most maxRunes visible code points, appending
+// "..." when truncation occurs (preserves rune boundaries).
 func truncateStr(s string, maxRunes int) string {
 	runes := []rune(s)
 	if len(runes) <= maxRunes {
@@ -86,82 +100,95 @@ func truncateStr(s string, maxRunes int) string {
 	return string(runes[:maxRunes-3]) + "..."
 }
 
-// renderTable writes a full bordered table to out.
-// styleCell is invoked for every data cell (not headers) and may wrap the
-// cell's text in ANSI escape sequences; the caller decides colour on/off.
-// Padding is computed from the plain text length so ANSI codes don't disrupt
-// column alignment.
-func renderTable(out io.Writer, t *Table, styleCell func(TableCell) string) {
+// renderTable is the single table rendering engine used by PrintTable,
+// Table, and TableWithGroups.
+//
+// prefix is prepended to every output line — callers pass u.prefix() so
+// that nested UI indent levels are respected.
+//
+// styleCell is called for each data cell (not headers) and may inject ANSI
+// escape codes; padding is computed from the plain-text width so ANSI codes
+// never break column alignment.
+func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCell) string) {
 	if len(t.Headers) == 0 {
 		return
 	}
 	widths := colWidths(t)
 	n := len(widths)
 
-	hline := func(left, mid, right, fill string) {
-		fmt.Fprint(out, left)
+	// Border characters are dimmed to keep them visually subordinate to content.
+	bdrStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	bdr := func(s string) string { return bdrStyle.Render(s) }
+
+	hline := func(left, mid, right string) {
+		parts := make([]string, n)
 		for i, w := range widths {
-			fmt.Fprint(out, strings.Repeat(fill, w+2*cellPadding))
-			if i < n-1 {
-				fmt.Fprint(out, mid)
-			}
+			parts[i] = strings.Repeat("─", w+2)
 		}
-		fmt.Fprintln(out, right)
+		fmt.Fprintf(out, "%s%s\n", prefix, bdr(left+strings.Join(parts, mid)+right))
 	}
 
-	// top border
-	hline("┌", "┬", "┐", "─")
-
-	// header row — unstyled
-	fmt.Fprint(out, "│")
-	for i, h := range t.Headers {
-		pad := widths[i] - runeLen(h)
-		fmt.Fprintf(out, " %s%s │", h, strings.Repeat(" ", pad))
-	}
-	fmt.Fprintln(out)
-
-	// header / body separator
-	hline("├", "┼", "┤", "─")
-
-	// data rows — grouped by first-column value
-	prevGroup := ""
-	for ri, row := range t.Rows {
-		firstCol := ""
-		if len(row) > 0 {
-			firstCol = row[0].Text
-		}
-
-		// draw a group separator whenever the first-column value changes
-		// (never before the very first data row — the header separator covers that)
-		if ri > 0 && firstCol != "" && firstCol != prevGroup {
-			hline("├", "┼", "┤", "─")
-		}
-
-		fmt.Fprint(out, "│")
+	writeRow := func(row []TableCell, suppressFirstCol bool) {
+		cells := make([]string, n)
 		for i, w := range widths {
 			var cell TableCell
 			if i < len(row) {
 				cell = row[i]
 			}
-			plain := truncateStr(cell.Text, w)
-			// suppress repeated first-column values within a group
-			if i == 0 && cell.Text == prevGroup {
+			plain := cell.Text
+			if t.MaxCellWidth > 0 {
+				plain = truncateStr(plain, w) // w is already capped by colWidths
+			}
+			if suppressFirstCol && i == 0 {
 				plain = ""
 			}
-			styledCell := TableCell{Text: plain, Severity: cell.Severity}
-			styled := styleCell(styledCell)
-			// pad to column width using rune count (ANSI codes are invisible and
-			// multi-byte chars like ✓/✗ are one visual column each)
+			styled := styleCell(TableCell{Text: plain, Severity: cell.Severity})
 			pad := w - runeLen(plain)
-			fmt.Fprintf(out, " %s%s │", styled, strings.Repeat(" ", pad))
+			cells[i] = " " + styled + strings.Repeat(" ", pad) + " "
 		}
-		fmt.Fprintln(out)
+		fmt.Fprintf(out, "%s%s\n", prefix,
+			bdr("│")+strings.Join(cells, bdr("│"))+bdr("│"))
+	}
 
-		if firstCol != "" {
-			prevGroup = firstCol
+	// header row
+	hline("┌", "┬", "┐")
+	headerCells := make([]string, n)
+	for i, h := range t.Headers {
+		pad := widths[i] - runeLen(h)
+		headerCells[i] = " " + h + strings.Repeat(" ", pad) + " "
+	}
+	fmt.Fprintf(out, "%s%s\n", prefix,
+		bdr("│")+strings.Join(headerCells, bdr("│"))+bdr("│"))
+	hline("├", "┼", "┤")
+
+	if len(t.Groups) > 0 {
+		// explicit grouping: each slice in Groups is a separate visual section
+		for gi, group := range t.Groups {
+			if gi > 0 {
+				hline("├", "┼", "┤")
+			}
+			for _, row := range group {
+				writeRow(row, false)
+			}
+		}
+	} else {
+		// first-column auto-grouping: rows with the same first-column value
+		// are shown together; a rule separates each change in that value.
+		prevGroup := ""
+		for ri, row := range t.Rows {
+			firstCol := ""
+			if len(row) > 0 {
+				firstCol = row[0].Text
+			}
+			if ri > 0 && firstCol != "" && firstCol != prevGroup {
+				hline("├", "┼", "┤")
+			}
+			writeRow(row, firstCol != "" && firstCol == prevGroup)
+			if firstCol != "" {
+				prevGroup = firstCol
+			}
 		}
 	}
 
-	// bottom border
-	hline("└", "┴", "┘", "─")
+	hline("└", "┴", "┘")
 }

@@ -10,10 +10,7 @@ import (
 	"time"
 
 	"github.com/briandowns/spinner"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/logrusorgru/aurora"
-	runewidth "github.com/mattn/go-runewidth"
 	indent "github.com/openconfig/goyang/pkg/indent"
 	"golang.org/x/term"
 )
@@ -201,116 +198,38 @@ func (u *TerminalUI) KeyValue(rows [][2]string) {
 	}
 }
 
-// Table renders a full bordered table. When headers is nil or empty no header
-// row is rendered, producing a clean bordered key-value block useful for
-// compact metadata (e.g. the transaction summary card).
-//
-// Delegates to TableWithGroups (single group) so that ANSI colour codes
-// embedded in cell values (e.g. from u.Style) are preserved correctly.
+// Table renders a full bordered table. Delegates to TableWithGroups.
 func (u *TerminalUI) Table(headers []string, rows [][]string) {
 	u.TableWithGroups(headers, [][][]string{rows})
 }
 
 // TableWithGroups renders a bordered table where each group of rows is
-// separated from the next by a horizontal mid-table divider (├─┼─┤).
-// Column widths are computed across all groups so every column aligns.
-// When headers is nil or empty no header row is rendered.
+// separated from the next by a horizontal rule.
+// Converts plain strings to TableCells and delegates to renderTable in table.go.
 func (u *TerminalUI) TableWithGroups(headers []string, groups [][][]string) {
 	if len(groups) == 0 {
 		return
 	}
-	// Infer column count from the widest row when no headers are supplied.
-	ncols := len(headers)
-	if ncols == 0 {
-		for _, g := range groups {
-			for _, r := range g {
-				if len(r) > ncols {
-					ncols = len(r)
-				}
-			}
-		}
-	}
-
-	// cellWidth returns the visible display width of a string, stripping ANSI.
-	cellWidth := func(s string) int {
-		return runewidth.StringWidth(ansi.Strip(s))
-	}
-
-	// Calculate per-column widths from headers and all rows.
-	widths := make([]int, ncols)
-	for i, h := range headers {
-		widths[i] = cellWidth(h)
-	}
-	for _, group := range groups {
-		for _, row := range group {
-			for i := 0; i < ncols && i < len(row); i++ {
-				if w := cellWidth(row[i]); w > widths[i] {
-					widths[i] = w
-				}
-			}
-		}
-	}
-
-	pad := func(s string, w int) string {
-		visible := cellWidth(s)
-		if visible >= w {
-			return s
-		}
-		return s + strings.Repeat(" ", w-visible)
-	}
-
-	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	border := func(s string) string { return borderStyle.Render(s) }
-
-	// Build border row strings.
-	topParts := make([]string, ncols)
-	midParts := make([]string, ncols)
-	botParts := make([]string, ncols)
-	for i, w := range widths {
-		dash := strings.Repeat("─", w+2)
-		topParts[i] = dash
-		midParts[i] = dash
-		botParts[i] = dash
-	}
-	topBorder := border("┌" + strings.Join(topParts, "┬") + "┐")
-	midBorder := border("├" + strings.Join(midParts, "┼") + "┤")
-	botBorder := border("└" + strings.Join(botParts, "┴") + "┘")
-	headerSep := border("├" + strings.Join(midParts, "┼") + "┤")
-
-	renderRow := func(cells []string) string {
-		parts := make([]string, ncols)
-		for i := 0; i < ncols; i++ {
-			val := ""
-			if i < len(cells) {
-				val = cells[i]
-			}
-			parts[i] = " " + pad(val, widths[i]) + " "
-		}
-		return border("│") + strings.Join(parts, border("│")) + border("│")
-	}
-
-	p := u.prefix()
-	fmt.Fprintf(u.out, "%s%s\n", p, topBorder)
-	if len(headers) > 0 {
-		fmt.Fprintf(u.out, "%s%s\n", p, renderRow(headers))
-		fmt.Fprintf(u.out, "%s%s\n", p, headerSep)
+	t := &Table{
+		Headers: headers,
+		Groups:  make([][][]TableCell, len(groups)),
 	}
 	for gi, group := range groups {
-		if gi > 0 {
-			fmt.Fprintf(u.out, "%s%s\n", p, midBorder)
-		}
-		for _, row := range group {
-			fmt.Fprintf(u.out, "%s%s\n", p, renderRow(row))
+		t.Groups[gi] = make([][]TableCell, len(group))
+		for ri, row := range group {
+			t.Groups[gi][ri] = make([]TableCell, len(row))
+			for ci, cell := range row {
+				t.Groups[gi][ri][ci] = TC(cell)
+			}
 		}
 	}
-	fmt.Fprintf(u.out, "%s%s\n", p, botBorder)
+	renderTable(u.out, u.prefix(), t, func(cell TableCell) string { return cell.Text })
 }
 
 // PrintTable renders t as a bordered table with Aurora colour applied per cell.
-// It delegates to the standalone renderTable helper in table.go, passing a
-// styleCell function that maps each cell's Severity to an Aurora colour.
+// Respects the current indent level by prepending u.prefix() to every line.
 func (u *TerminalUI) PrintTable(t *Table) {
-	renderTable(u.out, t, func(cell TableCell) string {
+	renderTable(u.out, u.prefix(), t, func(cell TableCell) string {
 		return u.Style(StyledText{Text: cell.Text, Severity: cell.Severity})
 	})
 }
