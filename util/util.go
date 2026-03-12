@@ -294,7 +294,7 @@ func AnalyzeAndPrint(
 		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false)
 	}
 
-	return DisplayTxResult(u, result, network, degenMode)
+	return DisplayTxResult(u, result, network, degenMode, tx)
 }
 
 func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {

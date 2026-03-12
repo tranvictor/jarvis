@@ -7,11 +7,15 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/briandowns/spinner"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/logrusorgru/aurora"
-	"golang.org/x/term"
-
+	runewidth "github.com/mattn/go-runewidth"
 	indent "github.com/openconfig/goyang/pkg/indent"
+	"golang.org/x/term"
 )
 
 const (
@@ -90,18 +94,22 @@ func (u *TerminalUI) Critical(format string, args ...any) {
 	u.writeLine(u.au.Bold(msg).String())
 }
 
-// Section prints a bold title with a thin underline, surrounded by blank
-// lines so sections are visually distinct in long output.
+// Section prints a separator line centred around the title, surrounded by
+// blank lines so sections are visually distinct in long output.
 //
 // Example output:
 //
-//	Confirm tx data before signing
-//	──────────────────────────────
+//	===== Confirm tx data before signing =====
 func (u *TerminalUI) Section(title string) {
-	fmt.Fprintf(u.out, "\n%s%s\n%s%s\n\n",
-		u.prefix(), u.au.Bold(title).String(),
-		u.prefix(), strings.Repeat("─", len(title)),
-	)
+	titled := " " + title + " "
+	bars := sectionWidth - len(titled)
+	if bars < 6 {
+		bars = 6
+	}
+	left := bars / 2
+	right := bars - left
+	line := strings.Repeat("=", left) + titled + strings.Repeat("=", right)
+	fmt.Fprintf(u.out, "\n%s%s\n\n", u.prefix(), line)
 }
 
 // Interpret shows what Jarvis understood from the user's last input.
@@ -174,6 +182,158 @@ func (u *TerminalUI) Choose(prompt string, options []string) int {
 	return idx - 1
 }
 
+// KeyValue renders an aligned 2-column block.
+// The label column is right-padded to the width of the longest label so all
+// values line up, making metadata blocks easy to scan at a glance.
+func (u *TerminalUI) KeyValue(rows [][2]string) {
+	if len(rows) == 0 {
+		return
+	}
+	maxLabel := 0
+	for _, r := range rows {
+		if len(r[0]) > maxLabel {
+			maxLabel = len(r[0])
+		}
+	}
+	p := u.prefix()
+	for _, r := range rows {
+		fmt.Fprintf(u.out, "%s%-*s  %s\n", p, maxLabel, r[0], r[1])
+	}
+}
+
+// Table renders a full bordered table. When headers is nil or empty no header
+// row is rendered, producing a clean bordered key-value block useful for
+// compact metadata (e.g. the transaction summary card).
+//
+// Delegates to TableWithGroups (single group) so that ANSI colour codes
+// embedded in cell values (e.g. from u.Style) are preserved correctly.
+func (u *TerminalUI) Table(headers []string, rows [][]string) {
+	u.TableWithGroups(headers, [][][]string{rows})
+}
+
+// TableWithGroups renders a bordered table where each group of rows is
+// separated from the next by a horizontal mid-table divider (├─┼─┤).
+// Column widths are computed across all groups so every column aligns.
+// When headers is nil or empty no header row is rendered.
+func (u *TerminalUI) TableWithGroups(headers []string, groups [][][]string) {
+	if len(groups) == 0 {
+		return
+	}
+	// Infer column count from the widest row when no headers are supplied.
+	ncols := len(headers)
+	if ncols == 0 {
+		for _, g := range groups {
+			for _, r := range g {
+				if len(r) > ncols {
+					ncols = len(r)
+				}
+			}
+		}
+	}
+
+	// cellWidth returns the visible display width of a string, stripping ANSI.
+	cellWidth := func(s string) int {
+		return runewidth.StringWidth(ansi.Strip(s))
+	}
+
+	// Calculate per-column widths from headers and all rows.
+	widths := make([]int, ncols)
+	for i, h := range headers {
+		widths[i] = cellWidth(h)
+	}
+	for _, group := range groups {
+		for _, row := range group {
+			for i := 0; i < ncols && i < len(row); i++ {
+				if w := cellWidth(row[i]); w > widths[i] {
+					widths[i] = w
+				}
+			}
+		}
+	}
+
+	pad := func(s string, w int) string {
+		visible := cellWidth(s)
+		if visible >= w {
+			return s
+		}
+		return s + strings.Repeat(" ", w-visible)
+	}
+
+	borderStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	border := func(s string) string { return borderStyle.Render(s) }
+
+	// Build border row strings.
+	topParts := make([]string, ncols)
+	midParts := make([]string, ncols)
+	botParts := make([]string, ncols)
+	for i, w := range widths {
+		dash := strings.Repeat("─", w+2)
+		topParts[i] = dash
+		midParts[i] = dash
+		botParts[i] = dash
+	}
+	topBorder := border("┌" + strings.Join(topParts, "┬") + "┐")
+	midBorder := border("├" + strings.Join(midParts, "┼") + "┤")
+	botBorder := border("└" + strings.Join(botParts, "┴") + "┘")
+	headerSep := border("├" + strings.Join(midParts, "┼") + "┤")
+
+	renderRow := func(cells []string) string {
+		parts := make([]string, ncols)
+		for i := 0; i < ncols; i++ {
+			val := ""
+			if i < len(cells) {
+				val = cells[i]
+			}
+			parts[i] = " " + pad(val, widths[i]) + " "
+		}
+		return border("│") + strings.Join(parts, border("│")) + border("│")
+	}
+
+	p := u.prefix()
+	fmt.Fprintf(u.out, "%s%s\n", p, topBorder)
+	if len(headers) > 0 {
+		fmt.Fprintf(u.out, "%s%s\n", p, renderRow(headers))
+		fmt.Fprintf(u.out, "%s%s\n", p, headerSep)
+	}
+	for gi, group := range groups {
+		if gi > 0 {
+			fmt.Fprintf(u.out, "%s%s\n", p, midBorder)
+		}
+		for _, row := range group {
+			fmt.Fprintf(u.out, "%s%s\n", p, renderRow(row))
+		}
+	}
+	fmt.Fprintf(u.out, "%s%s\n", p, botBorder)
+}
+
+// PrintTable renders t as a bordered table with Aurora colour applied per cell.
+// It delegates to the standalone renderTable helper in table.go, passing a
+// styleCell function that maps each cell's Severity to an Aurora colour.
+func (u *TerminalUI) PrintTable(t *Table) {
+	renderTable(u.out, t, func(cell TableCell) string {
+		return u.Style(StyledText{Text: cell.Text, Severity: cell.Severity})
+	})
+}
+
+// Spinner starts an animated spinner with msg and returns a stop function.
+// The stop function clears the spinner line. On non-terminal outputs the
+// spinner is a no-op and only the message is printed once.
+func (u *TerminalUI) Spinner(msg string) func() {
+	if !term.IsTerminal(int(os.Stdout.Fd())) {
+		fmt.Fprintf(u.out, "%s%s\n", u.prefix(), msg)
+		return func() {}
+	}
+	s := spinner.New(spinner.CharSets[14], 80*time.Millisecond, spinner.WithWriter(u.out))
+	s.Suffix = " " + msg
+	s.Start()
+	return func() {
+		s.Stop()
+		// briandowns/spinner clears the line with \r but no trailing \n,
+		// so we emit one to ensure the next output starts on a fresh line.
+		fmt.Fprintf(u.out, "\n")
+	}
+}
+
 // Indent returns a child UI at one deeper indent level.
 // The child shares the underlying writer and reader with the parent, so
 // input sequencing and output ordering are preserved across nested scopes.
@@ -184,13 +344,6 @@ func (u *TerminalUI) Indent() UI {
 		in:          u.in,
 		au:          u.au,
 	}
-}
-
-// PrintTable renders t as a bordered table with Aurora colour applied per cell.
-func (u *TerminalUI) PrintTable(t *Table) {
-	renderTable(u.out, t, func(cell TableCell) string {
-		return u.Style(StyledText{Text: cell.Text, Severity: cell.Severity})
-	})
 }
 
 // Writer returns an io.Writer that automatically prepends the current

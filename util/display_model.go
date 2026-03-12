@@ -51,6 +51,7 @@ type FunctionCallDisplay struct {
 // transaction. StyledText fields carry Severity annotations used only by the
 // terminal print phase; JSON consumers receive clean plain strings.
 type TxDisplay struct {
+	Hash   string        `json:"hash,omitempty"`
 	Status string        `json:"status"`
 	From   ui.StyledText `json:"from"` // serializes as string
 	To     ui.StyledText `json:"to"`   // serializes as string

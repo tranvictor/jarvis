@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"io"
 	"strings"
-	"unicode/utf8"
+
+	"github.com/charmbracelet/x/ansi"
+	runewidth "github.com/mattn/go-runewidth"
 )
 
 const (
@@ -39,11 +41,11 @@ func (t *Table) AddRow(cells ...TableCell) {
 	t.Rows = append(t.Rows, cells)
 }
 
-// runeLen returns the number of Unicode code points (visual characters) in s.
-// We use rune count rather than byte count so that multi-byte characters like
-// ✓ (3 bytes) and ─ (3 bytes) each count as one visual column.
+// runeLen returns the visible terminal width of s.
+// It strips ANSI escape codes first, then uses runewidth to correctly account
+// for multi-byte characters (✓, ─, …) and East Asian wide characters.
 func runeLen(s string) int {
-	return utf8.RuneCountInString(s)
+	return runewidth.StringWidth(ansi.Strip(s))
 }
 
 // colWidths returns the minimum column widths (in runes/visual chars) required

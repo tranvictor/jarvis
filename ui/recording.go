@@ -157,6 +157,55 @@ func (r *RecordingUI) Choose(prompt string, options []string) int {
 	))
 }
 
+// KeyValue records each label/value pair as a separate "KeyValue" entry so
+// tests can assert on individual fields with HasMessage.
+func (r *RecordingUI) KeyValue(rows [][2]string) {
+	for _, row := range rows {
+		r.record("KeyValue", row[0]+": "+row[1])
+	}
+}
+
+// Table records each data row (not the header) as a pipe-separated "Table"
+// entry so tests can assert on cell contents with HasMessage.
+func (r *RecordingUI) Table(headers []string, rows [][]string) {
+	r.record("Table", strings.Join(headers, " | "))
+	for _, row := range rows {
+		r.record("Table", strings.Join(row, " | "))
+	}
+}
+
+// TableWithGroups records each group's rows as pipe-separated "Table" entries
+// with a "---" separator entry between groups, mirroring the visual divider
+// that TerminalUI draws.
+func (r *RecordingUI) TableWithGroups(headers []string, groups [][][]string) {
+	if len(headers) > 0 {
+		r.record("Table", strings.Join(headers, " | "))
+	}
+	for gi, group := range groups {
+		if gi > 0 {
+			r.record("Table", "---")
+		}
+		for _, row := range group {
+			r.record("Table", strings.Join(row, " | "))
+		}
+	}
+}
+
+// PrintTable renders t as plain-text bordered table (no ANSI) into the buffer
+// and records a "Table" entry with the row count for test assertions.
+func (r *RecordingUI) PrintTable(t *Table) {
+	r.record("Table", fmt.Sprintf("%d rows", len(t.Rows)))
+	renderTable(r.shared.buf, t, func(cell TableCell) string {
+		return cell.Text
+	})
+}
+
+// Spinner is a no-op in RecordingUI — no goroutines, no output.
+// The returned function is also a no-op.
+func (r *RecordingUI) Spinner(_ string) func() {
+	return func() {}
+}
+
 // Indent returns a child RecordingUI at one deeper indent level.
 // The child shares the same entry log and input queue as the parent.
 func (r *RecordingUI) Indent() UI {
@@ -164,15 +213,6 @@ func (r *RecordingUI) Indent() UI {
 		shared:      r.shared,
 		indentLevel: r.indentLevel + 1,
 	}
-}
-
-// PrintTable renders t as a plain-text bordered table (no ANSI codes) into the
-// internal buffer and records a "Table" entry with the row count.
-func (r *RecordingUI) PrintTable(t *Table) {
-	r.record("Table", fmt.Sprintf("%d rows", len(t.Rows)))
-	renderTable(r.shared.buf, t, func(cell TableCell) string {
-		return cell.Text
-	})
 }
 
 // Writer returns a writer that appends to the internal buffer.
