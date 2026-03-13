@@ -35,17 +35,27 @@ func NewDefault(network jarvisnetworks.Network) AddressResolver {
 // Resolve looks up addr in the local address databases and enriches the result
 // with ERC20 decimal metadata when available from the on-disk cache.
 func (r Default) Resolve(addr string) jarviscommon.Address {
-	// ERC20 decimal enrichment — cache-only, no network call.
-	// The cache is pre-populated by AnalysisContext.ERC20InfoFor during tx
-	// analysis, and by util.IsERC20 for cmd-level address display.
+	// ERC20 enrichment — cache-only, no network call.
+	// Caches are pre-populated by AnalysisContext.ERC20InfoFor during tx
+	// analysis, by util.IsERC20, or by util.GetERC20Symbol/GetERC20Decimal.
 	var decimal int64
+	var symbol string
 	var erc20Detected bool
-	if isERC20, found := cache.GetBoolCache(fmt.Sprintf("%s_isERC20", addr)); found && isERC20 {
-		decimal, erc20Detected = cache.GetInt64Cache(fmt.Sprintf("%s_decimal", addr))
+
+	if s, found := cache.GetCache(fmt.Sprintf("%s_symbol", addr)); found && s != "" {
+		symbol = s
+		erc20Detected = true
+		decimal, _ = cache.GetInt64Cache(fmt.Sprintf("%s_decimal", addr))
+	} else if isERC20, found := cache.GetBoolCache(fmt.Sprintf("%s_isERC20", addr)); found && isERC20 {
+		erc20Detected = true
+		decimal, _ = cache.GetInt64Cache(fmt.Sprintf("%s_decimal", addr))
 	}
 
 	resolvedAddr, name, err := lookupName(addr)
 	if err != nil {
+		if erc20Detected && symbol != "" {
+			return jarviscommon.Address{Address: addr, Desc: symbol + " token", Decimal: decimal}
+		}
 		return jarviscommon.Address{Address: addr, Desc: "unknown"}
 	}
 

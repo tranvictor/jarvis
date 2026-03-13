@@ -385,7 +385,12 @@ func showTxInfoToConfirm(
 	u.Critical("From  : %s", u.Style(fromStyled))
 
 	if tx.To() != nil {
-		toStyled := util.StyledAddress(util.GetJarvisAddress(tx.To().Hex(), network))
+		toHex := tx.To().Hex()
+		if isERC20, _ := util.IsERC20(toHex, network); isERC20 {
+			util.GetERC20Symbol(toHex, network)
+			util.GetERC20Decimal(toHex, network)
+		}
+		toStyled := util.StyledAddress(util.GetJarvisAddress(toHex, network))
 		u.Critical("To    : %s", u.Style(toStyled))
 	} else {
 		cAddr := crypto.CreateAddress(

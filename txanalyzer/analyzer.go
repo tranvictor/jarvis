@@ -260,6 +260,11 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 	// (token amounts) can be annotated with decimal and symbol.
 	hint := self.ctx.ERC20InfoFor(destination)
 
+	if (fc.Destination.Desc == "unknown" || fc.Destination.Desc == "") && hint != nil && hint.Symbol != "" {
+		fc.Destination.Desc = hint.Symbol + " token"
+		fc.Destination.Decimal = int64(hint.Decimal)
+	}
+
 	fc.Method, fc.Params, err = self.analyzeMethodCall(a, data, hint)
 	if err != nil {
 		fc.Error = "couldn't decode bytes data"
