@@ -456,6 +456,13 @@ func (self *TxAnalyzer) AnalyzeOffline(
 		} else {
 			result.TxType = "contract call"
 			self.analyzeContractTx(*txinfo, lookupABI, customABIs, result)
+
+			if result.To.Desc == "unknown" || result.To.Desc == "" {
+				if hint := self.ctx.ERC20InfoFor(txinfo.Tx.To().Hex()); hint != nil && hint.Symbol != "" {
+					result.To.Desc = hint.Symbol + " token"
+					result.To.Decimal = int64(hint.Decimal)
+				}
+			}
 		}
 	}
 	return result
