@@ -5,7 +5,7 @@ JARVIS_VERSION ?= $(shell git describe --tags 2>/dev/null || git rev-parse --sho
 DATE_FMT = +%Y-%m-%d
 
 jarvis: $(BUILD_FILES)
-	@go build -trimpath -o "$@"
+	@go build -trimpath -ldflags "-X github.com/tranvictor/jarvis/cmd.VERSION=$(JARVIS_VERSION)" -o "$@"
 
 test:
 	go test ./...

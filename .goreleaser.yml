@@ -8,6 +8,8 @@ builds:
   - <<: &build_defaults
       binary: bin/jarvis
       main: ./
+      ldflags:
+        - -s -w -X github.com/tranvictor/jarvis/cmd.VERSION={{ .Version }}
     id: macos
     goos: [darwin]
     goarch: [amd64, arm64]
