@@ -299,7 +299,7 @@ func (onr *OneNodeReader) ReadContractToBytes(atBlock int64, from string, caddr 
 	}, blockBig)
 }
 
-func (onr *OneNodeReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
+func (onr *OneNodeReader) EthCall(from string, to string, value *big.Int, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
 
 	contract := jarviscommon.HexToAddress(to)
 
@@ -317,7 +317,7 @@ func (onr *OneNodeReader) EthCall(from string, to string, data []byte, overrides
 			To:       &contract,
 			Gas:      0,
 			GasPrice: nil,
-			Value:    nil,
+			Value:    value,
 			Data:     data,
 		}, big.NewInt(int64(rpc.PendingBlockNumber)), overrides) // pending block number is used to call the contract on the pending block
 	}
@@ -331,7 +331,7 @@ func (onr *OneNodeReader) EthCall(from string, to string, data []byte, overrides
 		To:       &contract,
 		Gas:      0,
 		GasPrice: nil,
-		Value:    nil,
+		Value:    value,
 		Data:     data,
 	}, big.NewInt(int64(rpc.PendingBlockNumber))) // pending block number is used to call the contract on the pending block
 }

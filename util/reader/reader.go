@@ -409,12 +409,12 @@ func (er *EthReader) ReadContractToBytes(
 	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
-func (er *EthReader) EthCall(from string, to string, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
+func (er *EthReader) EthCall(from string, to string, value *big.Int, data []byte, overrides *map[common.Address]gethclient.OverrideAccount) ([]byte, error) {
 	resCh := make(chan readContractToBytesResponse, len(er.nodes))
 	for i := range er.nodes {
 		n := er.nodes[i]
 		go func() {
-			data, err := n.EthCall(from, to, data, overrides)
+			data, err := n.EthCall(from, to, value, data, overrides)
 			resCh <- readContractToBytesResponse{
 				Data:  data,
 				Error: wrapError(err, n.NodeName()),

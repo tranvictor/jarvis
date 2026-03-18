@@ -189,7 +189,7 @@ func (self *MultisigContract) SimulateSubmit(from string, to string, value *big.
 	if err != nil {
 		return err
 	}
-	_, err = self.reader.EthCall(from, self.Address, txdata, overrides)
+	_, err = self.reader.EthCall(from, self.Address, nil, txdata, overrides)
 	return err
 }
 

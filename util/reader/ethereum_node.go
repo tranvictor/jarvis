@@ -39,7 +39,7 @@ type EthereumNode interface {
 		method string,
 		args ...interface{},
 	) ([]byte, error)
-	EthCall(from string, to string, data []byte, overrides *map[ethereum.Address]gethclient.OverrideAccount) ([]byte, error)
+	EthCall(from string, to string, value *big.Int, data []byte, overrides *map[ethereum.Address]gethclient.OverrideAccount) ([]byte, error)
 	StorageAt(atBlock int64, caddr string, slot string) ([]byte, error)
 	HeaderByNumber(number int64) (*types.Header, error)
 	GetLogs(fromBlock, toBlock int, addresses []string, topic string) ([]types.Log, error)
