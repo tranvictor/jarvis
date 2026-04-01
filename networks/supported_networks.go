@@ -107,14 +107,20 @@ func newSupportedNetworks() *networks {
 		return &result
 	}
 
-	for _, n := range customNetworks {
+	for _, entry := range customNetworks {
+		n := entry.network
 		_, nameFound := result.networks[n.GetName()]
-		if nameFound {
-			fmt.Printf("Network with name '%s' already exists. Using custom network.\n", n.GetName())
-		}
 		_, idFound := result.networksByID[n.GetChainID()]
-		if idFound {
-			fmt.Printf("Network with id '%d' already exists. Using custom network.\n", n.GetChainID())
+		if nameFound || idFound {
+			var reasons []string
+			if nameFound {
+				reasons = append(reasons, fmt.Sprintf("name %q", n.GetName()))
+			}
+			if idFound {
+				reasons = append(reasons, fmt.Sprintf("chain id %d", n.GetChainID()))
+			}
+			fmt.Printf("Note: Custom network file %q overlaps a bundled network (%s).\n", entry.path, strings.Join(reasons, " and "))
+			fmt.Printf("      Jarvis uses the RPC and explorer settings from that file. Remove or rename the file to use bundled defaults; you can ignore this if the override is intentional.\n")
 		}
 		result.networks[n.GetName()] = n
 		result.networksByID[n.GetChainID()] = n
@@ -122,7 +128,12 @@ func newSupportedNetworks() *networks {
 	return &result
 }
 
-func loadCustomNetworks() ([]Network, error) {
+type customNetworkFile struct {
+	network Network
+	path    string
+}
+
+func loadCustomNetworks() ([]customNetworkFile, error) {
 	usr, err := user.Current()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get current user: %w", err)
@@ -134,7 +145,7 @@ func loadCustomNetworks() ([]Network, error) {
 		return nil, fmt.Errorf("failed to glob between json files in ./jarvis/networks: %w", err)
 	}
 
-	networks := []Network{}
+	var out []customNetworkFile
 
 	for _, file := range files {
 		content, err := os.ReadFile(file)
@@ -148,10 +159,10 @@ func loadCustomNetworks() ([]Network, error) {
 			continue
 		}
 
-		networks = append(networks, network)
+		out = append(out, customNetworkFile{network: network, path: file})
 	}
 
-	return networks, nil
+	return out, nil
 }
 
 func NewNetworkFromJSON(content []byte) (Network, error) {
