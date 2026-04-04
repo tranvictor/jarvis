@@ -418,7 +418,7 @@ func HandlePostSign(
 					broadcastedCh <- nil
 					close(quit)
 				} else {
-					u.Error("Couldn't broadcast tx: %s. Retry in a while.", err)
+					u.Error("Every RPC node rejected the tx; will retry. Details:\n%s", err)
 				}
 			case <-quit:
 				ticker.Stop()

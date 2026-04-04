@@ -189,7 +189,10 @@ func PathToAddress(path string) (string, error) {
 
 func DisplayBroadcastedTx(u ui.UI, t *types.Transaction, broadcasted bool, err error, network networks.Network) {
 	if !broadcasted {
-		u.Error("Couldn't broadcast tx. Errors: %s", err)
+		u.Error("Couldn't broadcast to any RPC for network %q. The transaction was already signed; rejections come from your node(s), not from Jarvis.", network.GetName())
+		u.Error("Per node:")
+		u.Error("%s", err)
+		u.Info("Check each URL with your chain id (e.g. cast chain-id --rpc-url <url>). Remove or fix nodes that return the wrong chain.")
 	} else {
 		u.Critical("BROADCASTED TX: %s:%s", network.GetName(), t.Hash().Hex())
 	}

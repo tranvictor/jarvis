@@ -18,6 +18,7 @@ import (
 // returns success as soon as at least one node accepts it.
 type Broadcaster struct {
 	clients map[string]*rpc.Client
+	urls    map[string]string // node name -> RPC URL (for error messages)
 }
 
 func (b *Broadcaster) GetNodes() map[string]*rpc.Client {
@@ -69,9 +70,15 @@ func (b *Broadcaster) Broadcast(data string) (string, bool, error) {
 	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
 	for id := range b.clients {
+		nodeName := id
 		cli := b.clients[id]
+		rpcURL := b.urls[nodeName]
 		parallelTasks = append(parallelTasks, func() error {
-			return b.broadcast(timeout, cli, data)
+			err := b.broadcast(timeout, cli, data)
+			if err != nil {
+				return fmt.Errorf("node %q at %s: %w", nodeName, rpcURL, err)
+			}
+			return nil
 		})
 	}
 	err, numErrs := common.RunParallel(parallelTasks...)
@@ -93,7 +100,9 @@ func (b *Broadcaster) BroadcastSync(data string) (*types.Receipt, bool, error) {
 	var hasSuccess bool
 
 	for id := range b.clients {
+		nodeName := id
 		cli := b.clients[id]
+		rpcURL := b.urls[nodeName]
 		parallelTasks = append(parallelTasks, func() error {
 			receipt, err := b.broadcastSync(timeout, cli, data)
 			if err == nil && receipt != nil {
@@ -104,7 +113,10 @@ func (b *Broadcaster) BroadcastSync(data string) (*types.Receipt, bool, error) {
 				}
 				mu.Unlock()
 			}
-			return err
+			if err != nil {
+				return fmt.Errorf("node %q at %s: %w", nodeName, rpcURL, err)
+			}
+			return nil
 		})
 	}
 	err, numErrs := common.RunParallel(parallelTasks...)
@@ -120,7 +132,9 @@ func (b *Broadcaster) BroadcastSync(data string) (*types.Receipt, bool, error) {
 
 func NewGenericBroadcaster(nodes map[string]string) *Broadcaster {
 	clients := map[string]*rpc.Client{}
+	urls := make(map[string]string, len(nodes))
 	for name, c := range nodes {
+		urls[name] = c
 		client, err := rpc.Dial(c)
 		if err != nil {
 			log.Printf("Couldn't connect to: %s - %v", c, err)
@@ -130,5 +144,6 @@ func NewGenericBroadcaster(nodes map[string]string) *Broadcaster {
 	}
 	return &Broadcaster{
 		clients: clients,
+		urls:    urls,
 	}
 }
