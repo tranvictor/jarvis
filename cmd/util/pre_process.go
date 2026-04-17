@@ -34,6 +34,16 @@ func showNodeErrorGuidance(u ui.UI, network networks.Network) {
 // and an optional TxInfo when the argument is a tx hash. It attaches the context
 // to the cobra command so Run functions can retrieve it via TxContextFrom.
 func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) {
+	// Peek at args[0] for a network-prefixed tx hash (e.g. "base:0x...").
+	// The network must be resolved BEFORE the reader/analyzer are built,
+	// otherwise we bind to the default network and fail to fetch the tx.
+	// An explicit -N/--network flag still wins if the user passed it.
+	if len(args) > 0 && !cmd.Flags().Changed("network") {
+		if nwks, txs := ScanForTxs(args[0]); len(txs) > 0 && nwks[0] != "" {
+			config.NetworkString = nwks[0]
+		}
+	}
+
 	if err = config.SetNetwork(config.NetworkString); err != nil {
 		return err
 	}
@@ -71,16 +81,11 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 	} else {
 		tc.To, _, err = util.GetAddressFromString(args[0])
 		if err != nil {
-			nwks, txs := ScanForTxs(args[0])
+			_, txs := ScanForTxs(args[0])
 			if len(txs) == 0 {
 				return fmt.Errorf("can't interpret the contract address")
 			}
 			config.Tx = txs[0]
-			if nwks[0] != "" {
-				if err = config.SetNetwork(nwks[0]); err != nil {
-					return err
-				}
-			}
 
 			txinfo, err := r.TxInfoFromHash(config.Tx)
 			if err != nil {
