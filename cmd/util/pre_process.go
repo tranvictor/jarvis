@@ -14,6 +14,7 @@ import (
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	"github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/safe"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
@@ -275,6 +276,256 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 		return fmt.Errorf("couldn't connect to broadcaster: %w", err)
 	}
 	tc.Broadcaster = bc
+
+	cmd.SetContext(WithTxContext(cmd.Context(), tc))
+	return nil
+}
+
+// CommonSafeReadPreprocess is the read-only counterpart to
+// CommonSafeTxPreprocess: it resolves the Safe address (accepting URL /
+// EIP-3770 / bare address forms) and wires Reader, Analyzer, Resolver,
+// SafeContract and a Safe Transaction Service Collector into TxContext —
+// but does NOT pick a signing wallet, fetch gas/nonce/tx-type, or build a
+// broadcaster. Use this for inspection commands (`summary`, `info`, `gov`)
+// where requiring an owner wallet would be unfriendly.
+func CommonSafeReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("please specify the safe address (or URL) as the first argument")
+	}
+	var ref *safe.SafeAppRef
+	if r, ok := safe.ParseSafeAppURL(args[0]); ok {
+		ref = r
+		args[0] = r.SafeAddress.Hex()
+		if r.ChainID != 0 && !cmd.Flags().Changed("network") {
+			if n, err := networks.GetNetworkByID(r.ChainID); err == nil {
+				config.NetworkString = n.GetName()
+			}
+		}
+	}
+
+	if err := CommonFunctionCallPreprocess(u, cmd, args); err != nil {
+		return err
+	}
+	tc, _ := TxContextFrom(cmd)
+	tc.SafeAppRef = ref
+
+	if tc.To == "" {
+		return fmt.Errorf("please specify the safe address as the first argument")
+	}
+
+	safeContract, err := safe.NewSafeContract(tc.To, config.Network())
+	if err != nil {
+		return fmt.Errorf("couldn't init safe reader: %w", err)
+	}
+	if _, err := safeContract.Owners(); err != nil {
+		return fmt.Errorf(
+			"couldn't read safe owners — %s does not appear to be a Gnosis Safe: %w",
+			tc.To, err,
+		)
+	}
+	tc.Safe = safeContract
+
+	collector, err := safe.NewTxServiceCollector(config.Network().GetChainID())
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't init safe transaction service client for chain %d: %w",
+			config.Network().GetChainID(), err,
+		)
+	}
+	tc.Collector = collector
+
+	cmd.SetContext(WithTxContext(cmd.Context(), tc))
+	return nil
+}
+
+// CommonSafeTxPreprocess prepares a TxContext for Gnosis Safe commands.
+//
+// It expects args[0] to identify a Gnosis Safe contract via any of:
+//   - a bare 0x-prefixed address ("0x71f8...")
+//   - a jarvis address book name ("my-treasury")
+//   - an EIP-3770 short reference ("eth:0x71f8...")
+//   - a Safe-app web URL ("https://app.safe.global/transactions/tx?id=...")
+//
+// When a URL or EIP-3770 reference carries chain information, the network
+// is auto-selected (unless --network was passed explicitly). When the URL
+// also embeds a safeTxHash (e.g. transaction-detail pages), the parsed
+// SafeAppRef is attached to TxContext so approve/execute can use it without
+// a positional safeTxHash argument.
+//
+// The function then:
+//  1. Resolves the network and Safe address via the standard preprocess.
+//  2. Builds a SafeContract reader and verifies that the on-chain ABI
+//     matches the Safe shape (so we don't operate on random addresses).
+//  3. Picks the signing wallet — when --from is empty, looks for a single
+//     local wallet that is also an owner of the Safe.
+//  4. Resolves gas / nonce / tx type for any future on-chain transactions
+//     (e.g. execTransaction) so callers can reuse SignAndBroadcast.
+//  5. Wires a SignatureCollector backed by the Safe Transaction Service
+//     for off-chain signature exchange.
+func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+	// Step 0: try to recognise a Safe-app URL / EIP-3770 reference in
+	// args[0] BEFORE the inner preprocess looks at it. We rewrite args[0]
+	// in place to a bare address so all downstream resolution paths work
+	// unchanged, and we set config.NetworkString from the chain prefix
+	// when the user didn't pass --network explicitly.
+	var ref *safe.SafeAppRef
+	if len(args) > 0 {
+		if r, ok := safe.ParseSafeAppURL(args[0]); ok {
+			ref = r
+			args[0] = r.SafeAddress.Hex()
+			if r.ChainID != 0 && !cmd.Flags().Changed("network") {
+				if n, err := networks.GetNetworkByID(r.ChainID); err == nil {
+					config.NetworkString = n.GetName()
+				} else {
+					u.Warn(
+						"Safe URL refers to chain id %d (%s) which jarvis doesn't have a built-in network for; falling back to --network=%s. Add a custom network or pass -k explicitly to override.",
+						r.ChainID, r.ChainShortName, config.NetworkString,
+					)
+				}
+			}
+		}
+	}
+
+	if err := CommonFunctionCallPreprocess(u, cmd, args); err != nil {
+		return err
+	}
+	tc, _ := TxContextFrom(cmd)
+	tc.SafeAppRef = ref
+
+	if tc.To == "" {
+		return fmt.Errorf("please specify the safe address as the first argument")
+	}
+
+	// The explorer-side ABI is informational only. Almost every Safe is
+	// deployed as a GnosisSafeProxy whose verified ABI is just a fallback
+	// + constructor — that ABI will never satisfy IsGnosisSafe even though
+	// the contract behaves like a Safe via DELEGATECALL. The authoritative
+	// check is the on-chain getOwners() probe a few lines below.
+	if a, abiErr := util.GetABI(tc.To, config.Network()); abiErr == nil {
+		if !safe.IsGnosisSafe(a) {
+			u.Info(
+				"Note: explorer ABI for %s is not a direct Safe ABI (likely a proxy); will verify via on-chain getOwners().",
+				tc.To,
+			)
+		}
+	} else {
+		u.Warn(
+			"Couldn't fetch ABI for %s (%s); will probe on-chain with the minimal Safe ABI.",
+			tc.To, abiErr,
+		)
+	}
+
+	safeContract, err := safe.NewSafeContract(tc.To, config.Network())
+	if err != nil {
+		return fmt.Errorf("couldn't init safe reader: %w", err)
+	}
+	owners, err := safeContract.Owners()
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't read safe owners — %s does not appear to be a Gnosis Safe: %w",
+			tc.To, err,
+		)
+	}
+	tc.Safe = safeContract
+
+	var fromAcc jtypes.AccDesc
+	if config.From == "" {
+		count := 0
+		for _, owner := range owners {
+			acc, err := accounts.GetAccount(owner)
+			if err == nil {
+				fromAcc = acc
+				count++
+			}
+		}
+		if count == 0 {
+			return fmt.Errorf(
+				"you don't have any wallet which is an owner of this Safe; please run `jarvis wallet add` first",
+			)
+		}
+		if count > 1 {
+			return fmt.Errorf(
+				"you have multiple wallets that are owners of this Safe; please specify exactly one with --from",
+			)
+		}
+	} else {
+		fromAcc, err = accounts.GetAccount(config.From)
+		if err != nil {
+			return err
+		}
+		isOwner := false
+		for _, owner := range owners {
+			if strings.EqualFold(owner, fromAcc.Address) {
+				isOwner = true
+				break
+			}
+		}
+		if !isOwner {
+			return fmt.Errorf(
+				"%s is not an owner of Safe %s",
+				fromAcc.Address, tc.To,
+			)
+		}
+	}
+	tc.FromAcc = fromAcc
+	tc.From = fromAcc.Address
+
+	r := tc.Reader
+	if config.GasPrice == 0 {
+		tc.GasPrice, err = r.RecommendedGasPrice()
+		if err != nil {
+			showNodeErrorGuidance(u, config.Network())
+			return fmt.Errorf("getting recommended gas price failed: %w", err)
+		}
+	} else {
+		tc.GasPrice = config.GasPrice
+	}
+
+	if config.Nonce == 0 {
+		tc.Nonce, err = r.GetMinedNonce(tc.From)
+		if err != nil {
+			showNodeErrorGuidance(u, config.Network())
+			return fmt.Errorf("getting nonce failed: %w", err)
+		}
+	} else {
+		tc.Nonce = config.Nonce
+	}
+
+	tc.TxType, err = ValidTxType(r, config.Network())
+	if err != nil {
+		showNodeErrorGuidance(u, config.Network())
+		return fmt.Errorf("couldn't determine proper tx type: %w", err)
+	}
+	if tc.TxType == types.LegacyTxType && config.TipGas > 0 {
+		return fmt.Errorf("we are doing legacy tx hence we ignore tip gas parameter")
+	}
+	if tc.TxType == types.DynamicFeeTxType {
+		if config.TipGas == 0 {
+			tc.TipGas, err = r.GetSuggestedGasTipCap()
+			if err != nil {
+				showNodeErrorGuidance(u, config.Network())
+				return fmt.Errorf("couldn't estimate recommended gas price: %w", err)
+			}
+		} else {
+			tc.TipGas = config.TipGas
+		}
+	}
+
+	bc, err := util.EthBroadcaster(config.Network())
+	if err != nil {
+		showNodeErrorGuidance(u, config.Network())
+		return fmt.Errorf("couldn't connect to broadcaster: %w", err)
+	}
+	tc.Broadcaster = bc
+
+	collector, err := safe.NewTxServiceCollector(config.Network().GetChainID())
+	if err != nil {
+		return fmt.Errorf(
+			"couldn't init safe transaction service client for chain %d: %w",
+			config.Network().GetChainID(), err,
+		)
+	}
+	tc.Collector = collector
 
 	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil

@@ -79,3 +79,21 @@ func (self *Account) SignTx(
 	}
 	return addr, signedTx, nil
 }
+
+// SignSafeHash returns a 65-byte Safe-compatible signature over the EIP-712
+// digest keccak256(0x19 0x01 || domainSeparator || structHash).
+//
+// The encoding of v in the returned signature depends on the underlying
+// signer:
+//   - private key / keystore (KeySigner) and Ledger app >= 1.9.19 / Trezor T
+//     with EthereumSignTypedHash use canonical EIP-712 (v in {27, 28}).
+//   - Older Ledger / Trezor firmware fall back to personal_sign over the
+//     digest and return v in {31, 32} (= original v + 4), which Safe also
+//     accepts via its eth_sign code path.
+func (self *Account) SignSafeHash(domainSeparator, structHash [32]byte) ([]byte, error) {
+	sig, err := self.signer.SignTypedDataHash(domainSeparator, structHash)
+	if err != nil {
+		return nil, fmt.Errorf("couldn't sign safe hash: %w", err)
+	}
+	return sig, nil
+}

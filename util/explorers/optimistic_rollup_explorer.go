@@ -91,3 +91,26 @@ func (ee *OptimisticRollupExplorer) GetABIString(address string) (string, error)
 	err = json.Unmarshal(body, &abiresp)
 	return abiresp.ABI, err
 }
+
+func (ee *OptimisticRollupExplorer) GetContractInfo(address string) (ContractInfo, error) {
+	url := fmt.Sprintf("%s/smart-contract/%s", ee.Domain, address)
+	resp, err := http.Get(url)
+	if err != nil {
+		return ContractInfo{}, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ContractInfo{}, err
+	}
+	sc := SmartContractResponse{}
+	if err := json.Unmarshal(body, &sc); err != nil {
+		return ContractInfo{}, err
+	}
+	return ContractInfo{
+		Name:           sc.Name,
+		Implementation: sc.MinimalProxyAddressHash,
+		IsProxy:        sc.MinimalProxyAddressHash != "",
+		IsVerified:     sc.IsVerified || sc.IsFullyVerified || sc.IsPartiallyVerified,
+	}, nil
+}

@@ -380,6 +380,50 @@ func GetJarvisAddress(addr string, network networks.Network) jarviscommon.Addres
 	return addrbook.NewDefault(network).Resolve(addr)
 }
 
+// PrefetchContractName warms the on-disk address cache with the contract
+// display name reported by the network's block explorer for addr. It follows
+// proxy contracts to their underlying implementation and renders the
+// resulting label as either "<Name>" or "<ProxyName> -> <ImplName>" so the
+// next call to addrbook.Default.Resolve (and therefore the next
+// GetJarvisAddress) can show a meaningful description for contracts that
+// aren't in the local jarvis address book.
+//
+// Network errors and unverified-source responses are non-fatal — the function
+// silently leaves the cache untouched in those cases so callers can use it as
+// a "best-effort enrichment" hook without worrying about latency or failure.
+func PrefetchContractName(addr string, network networks.Network) {
+	if addr == "" {
+		return
+	}
+	addrLower := strings.ToLower(addr)
+	cacheKey := fmt.Sprintf("%s_contract_name", addrLower)
+	if existing, found := cache.GetCache(cacheKey); found && existing != "" {
+		return
+	}
+
+	r, err := EthReader(network)
+	if err != nil {
+		return
+	}
+	info, err := r.GetContractInfo(addr)
+	if err != nil || !info.IsVerified || info.Name == "" {
+		return
+	}
+	label := info.Name
+
+	if info.IsProxy && info.Implementation != "" {
+		implInfo, err := r.GetContractInfo(info.Implementation)
+		if err == nil && implInfo.IsVerified && implInfo.Name != "" && implInfo.Name != info.Name {
+			label = fmt.Sprintf("%s -> %s", info.Name, implInfo.Name)
+		}
+		_ = cache.SetCache(
+			fmt.Sprintf("%s_contract_name", strings.ToLower(info.Implementation)),
+			implInfo.Name,
+		)
+	}
+	_ = cache.SetCache(cacheKey, label)
+}
+
 func isHttpURL(path string) bool {
 	u, err := url.ParseRequestURI(path)
 	if err != nil {

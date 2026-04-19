@@ -2,6 +2,8 @@ package networks
 
 import (
 	"time"
+
+	"github.com/tranvictor/jarvis/util/explorers"
 )
 
 type Network interface {
@@ -19,6 +21,7 @@ type Network interface {
 	GetBlockExplorerAPIURL() string
 	RecommendedGasPrice() (float64, error)
 	GetABIString(address string) (string, error)
+	GetContractInfo(address string) (explorers.ContractInfo, error)
 
 	IsSyncTxSupported() bool
 

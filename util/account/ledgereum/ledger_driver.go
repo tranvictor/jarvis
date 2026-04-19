@@ -48,9 +48,11 @@ type ledgerParam1 byte
 type ledgerParam2 byte
 
 const (
-	ledgerOpRetrieveAddress  ledgerOpcode = 0x02 // Returns the public key and Ethereum address for a given BIP 32 path
-	ledgerOpSignTransaction  ledgerOpcode = 0x04 // Signs an Ethereum transaction after having the user validate the parameters
-	ledgerOpGetConfiguration ledgerOpcode = 0x06 // Returns specific wallet application configuration
+	ledgerOpRetrieveAddress     ledgerOpcode = 0x02 // Returns the public key and Ethereum address for a given BIP 32 path
+	ledgerOpSignTransaction     ledgerOpcode = 0x04 // Signs an Ethereum transaction after having the user validate the parameters
+	ledgerOpGetConfiguration    ledgerOpcode = 0x06 // Returns specific wallet application configuration
+	ledgerOpSignPersonalMessage ledgerOpcode = 0x08 // Signs an Ethereum personal_sign message (EIP-191) over arbitrary bytes
+	ledgerOpSignEIP712          ledgerOpcode = 0x0c // Signs an EIP-712 typed message given precomputed domain & message hashes
 
 	ledgerP1DirectlyFetchAddress    ledgerParam1 = 0x00 // Return address directly from the wallet
 	ledgerP1InitTransactionData     ledgerParam1 = 0x00 // First transaction data block for signing
@@ -403,6 +405,101 @@ func (w *ledgerDriver) ledgerSign(
 	}
 	DebugPrintf("successful. Sender is: %s\n", sender.Hex())
 	return sender, signed, nil
+}
+
+// ledgerSignTypedHash sends precomputed EIP-712 hashes to the Ledger Ethereum
+// app for signing. Requires Ethereum app >= 1.9.19, which exposes opcode 0x0C
+// (SIGN_ETH_EIP_712). Older firmware will reply with an error and callers
+// should fall back to ledgerSignPersonalMessage(safeTxHash) instead.
+//
+// Wire format (from LedgerHQ/app-ethereum docs):
+//
+//	CLA | INS  | P1 | P2 | Lc | Data
+//	----+------+----+----+----+--------------------------------------------
+//	 E0 | 0c   | 00 | 00 | .. | path || domainSeparator(32) || messageHash(32)
+//
+// Reply: V (1) || R (32) || S (32), with V in {27, 28}.
+func (w *ledgerDriver) ledgerSignTypedHash(
+	derivationPath []uint32,
+	domainSeparator [32]byte,
+	messageHash [32]byte,
+) ([]byte, error) {
+	path := make([]byte, 1+4*len(derivationPath))
+	path[0] = byte(len(derivationPath))
+	for i, c := range derivationPath {
+		binary.BigEndian.PutUint32(path[1+4*i:], c)
+	}
+	payload := make([]byte, 0, len(path)+64)
+	payload = append(payload, path...)
+	payload = append(payload, domainSeparator[:]...)
+	payload = append(payload, messageHash[:]...)
+
+	reply, err := w.ledgerExchange(ledgerOpSignEIP712, 0, 0, payload)
+	if err != nil {
+		return nil, err
+	}
+	if len(reply) != 65 {
+		return nil, fmt.Errorf("ledger eip-712 reply has length %d, want 65", len(reply))
+	}
+	// Reorder V||R||S into r||s||v.
+	sig := make([]byte, 65)
+	copy(sig[:64], reply[1:])
+	sig[64] = reply[0]
+	return sig, nil
+}
+
+// ledgerSignPersonalMessage drives opcode 0x08 (SIGN_PERSONAL_MESSAGE). The
+// device computes keccak256("\x19Ethereum Signed Message:\n" + len(msg) + msg)
+// internally and signs that. For Safe compatibility the caller passes the
+// raw safeTxHash as msg and adds 4 to V before stuffing the signature into a
+// `signatures` blob.
+//
+// Wire format:
+//
+//	CLA | INS  | P1 | P2 | Lc | Data
+//	----+------+----+----+----+--------------------------------------------
+//	 E0 | 08   | 00/80 | 00 | .. | first chunk: path || msg_length(4 BE) || msg_bytes
+//	                              | subsequent chunks: msg_bytes
+//
+// Reply: V (1) || R (32) || S (32), with V in {27, 28}.
+func (w *ledgerDriver) ledgerSignPersonalMessage(
+	derivationPath []uint32,
+	message []byte,
+) ([]byte, error) {
+	path := make([]byte, 1+4*len(derivationPath))
+	path[0] = byte(len(derivationPath))
+	for i, c := range derivationPath {
+		binary.BigEndian.PutUint32(path[1+4*i:], c)
+	}
+
+	header := make([]byte, len(path)+4)
+	copy(header, path)
+	binary.BigEndian.PutUint32(header[len(path):], uint32(len(message)))
+
+	payload := append(header, message...)
+
+	op := ledgerP1InitTransactionData
+	var reply []byte
+	for len(payload) > 0 {
+		chunk := 255
+		if chunk > len(payload) {
+			chunk = len(payload)
+		}
+		var err error
+		reply, err = w.ledgerExchange(ledgerOpSignPersonalMessage, op, 0, payload[:chunk])
+		if err != nil {
+			return nil, err
+		}
+		payload = payload[chunk:]
+		op = ledgerP1ContTransactionData
+	}
+	if len(reply) != 65 {
+		return nil, fmt.Errorf("ledger personal_sign reply has length %d, want 65", len(reply))
+	}
+	sig := make([]byte, 65)
+	copy(sig[:64], reply[1:])
+	sig[64] = reply[0]
+	return sig, nil
 }
 
 // ledgerExchange performs a data exchange with the Ledger wallet, sending it a

@@ -443,3 +443,67 @@ func (self *Trezoreum) Sign(
 
 	return common.Address{}, nil, fmt.Errorf("not supported type - trezoreum can't sign")
 }
+
+// SignTypedHash uses EthereumSignTypedHash (added in firmware 2.4.3 / 1.10.5)
+// to sign a precomputed EIP-712 digest. The device shows the two raw hashes
+// to the user — blind-signing must be enabled.
+func (self *Trezoreum) SignTypedHash(
+	path accounts.DerivationPath,
+	domainSeparator [32]byte,
+	messageHash [32]byte,
+) ([]byte, error) {
+	req := &trezor.EthereumSignTypedHash{
+		AddressN:            path,
+		DomainSeparatorHash: domainSeparator[:],
+		MessageHash:         messageHash[:],
+	}
+	resp := new(trezor.EthereumTypedDataSignature)
+	if _, err := self.trezorExchange(req, resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Signature) != 65 {
+		return nil, fmt.Errorf(
+			"trezor EthereumTypedDataSignature has length %d, want 65",
+			len(resp.Signature),
+		)
+	}
+	sig := make([]byte, 65)
+	copy(sig, resp.Signature)
+	// Trezor returns v in {0, 1} for some firmware revisions; normalise to
+	// the canonical {27, 28} pair used by the Safe contract.
+	if sig[64] < 27 {
+		sig[64] += 27
+	}
+	return sig, nil
+}
+
+// SignPersonalMessage signs an arbitrary byte string with the EIP-191
+// "personal_sign" prefix. Used as the fallback path when the connected
+// Trezor firmware is too old for EthereumSignTypedHash.
+func (self *Trezoreum) SignPersonalMessage(
+	path accounts.DerivationPath,
+	message []byte,
+) ([]byte, error) {
+	msg := make([]byte, len(message))
+	copy(msg, message)
+	req := &trezor.EthereumSignMessage{
+		AddressN: path,
+		Message:  msg,
+	}
+	resp := new(trezor.EthereumMessageSignature)
+	if _, err := self.trezorExchange(req, resp); err != nil {
+		return nil, err
+	}
+	if len(resp.Signature) != 65 {
+		return nil, fmt.Errorf(
+			"trezor EthereumMessageSignature has length %d, want 65",
+			len(resp.Signature),
+		)
+	}
+	sig := make([]byte, 65)
+	copy(sig, resp.Signature)
+	if sig[64] < 27 {
+		sig[64] += 27
+	}
+	return sig, nil
+}

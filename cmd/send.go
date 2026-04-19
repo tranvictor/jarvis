@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/spf13/cobra"
 
@@ -16,6 +17,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
+	"github.com/tranvictor/jarvis/safe"
 	"github.com/tranvictor/jarvis/util"
 	utilreader "github.com/tranvictor/jarvis/util/reader"
 )
@@ -345,6 +347,15 @@ exact addresses start with 0x.`,
 
 		acc, err := accounts.GetAccount(config.From)
 		if err != nil {
+			// --from didn't match any local wallet, so it must be a
+			// multisig the user is acting on behalf of. Decide between
+			// Gnosis Safe and Gnosis Classic by probing the on-chain
+			// shape of the contract; both flows then take care of
+			// finding a local wallet that's actually an owner.
+			if sc, ok := detectSafeForSend(reader, resolver, config.From); ok {
+				sendFromSafe(reader, analyzer, resolver, bc, sc)
+				return
+			}
 			sendFromMsig(reader, analyzer, resolver, bc)
 			return
 		}
@@ -504,6 +515,255 @@ exact addresses start with 0x.`,
 		}
 		handleSend(sp, fromAcc, toAddr, amountWei, tokenAddrLocal, data, reader, analyzer, bc)
 	},
+}
+
+// detectSafeForSend resolves keyword (an address, jarvis name, EIP-3770
+// short reference, or Safe-app URL) to a SafeContract, and returns true
+// only when the on-chain probe confirms the address really is a Gnosis
+// Safe. It is intentionally silent on misses so the caller can fall back
+// to Gnosis Classic detection without polluting the output.
+func detectSafeForSend(
+	reader utilreader.Reader,
+	resolver cmdutil.ABIResolver,
+	keyword string,
+) (*safe.SafeContract, bool) {
+	candidate := keyword
+	if ref, ok := safe.ParseSafeAppURL(keyword); ok && ref.SafeAddress != (ethcommon.Address{}) {
+		candidate = ref.SafeAddress.Hex()
+	}
+
+	addr, _, err := resolver.GetMatchingAddress(candidate)
+	if err != nil {
+		// Fall back to the same scan-by-pattern logic getMsigContractFromParams uses.
+		addresses := util.ScanForAddresses(candidate)
+		if len(addresses) == 0 {
+			return nil, false
+		}
+		addr = addresses[0]
+	}
+
+	sc, err := safe.NewSafeContract(addr, config.Network())
+	if err != nil {
+		return nil, false
+	}
+	// The on-chain probe is authoritative: a Safe responds to getOwners().
+	// We don't trust the explorer ABI here because most Safes are deployed
+	// behind GnosisSafeProxy whose verified ABI lacks the Safe methods.
+	if _, err := sc.Owners(); err != nil {
+		return nil, false
+	}
+	return sc, true
+}
+
+// sendFromSafe is the Gnosis-Safe analogue of sendFromMsig: it builds a
+// SafeTx (native transfer or ERC20 transfer) targeting --to with the
+// given amount, signs the EIP-712 safeTxHash with the single local
+// wallet that's also a Safe owner, and submits the proposal to the Safe
+// Transaction Service. The print-out matches `jarvis safe init` so the
+// follow-up commands (approve / execute) are immediately discoverable.
+func sendFromSafe(
+	reader utilreader.Reader,
+	analyzer util.TxAnalyzer,
+	resolver cmdutil.ABIResolver,
+	bc cmdutil.TxBroadcaster,
+	safeContract *safe.SafeContract,
+) {
+	appUI.Section("Safe info")
+	appUI.Info("Safe address : %s", safeContract.Address)
+	if v, err := safeContract.Version(); err == nil {
+		appUI.Info("Safe version : %s", v)
+	}
+	if t, err := safeContract.Threshold(); err == nil {
+		appUI.Info("Threshold    : %d", t)
+	}
+
+	owners, err := safeContract.Owners()
+	if err != nil {
+		appUI.Error("getting safe owners failed: %s", err)
+		return
+	}
+
+	var fromAcc types2.AccDesc
+	var matchingOwners int
+	for _, owner := range owners {
+		acc, err := accounts.GetAccount(owner)
+		if err == nil {
+			fromAcc = acc
+			matchingOwners++
+		}
+	}
+	if matchingOwners == 0 {
+		appUI.Error("You don't have any wallet that is an owner of this Safe. Please run `jarvis wallet add` first.")
+		return
+	}
+	if matchingOwners > 1 {
+		appUI.Error("You have multiple wallets that are owners of this Safe; please pass --from explicitly.")
+		return
+	}
+	fromAddr := fromAcc.Address
+
+	amountStr, currency, err := util.ValueToAmountAndCurrency(value)
+	if err != nil {
+		appUI.Error("Wrong format of the --value/-v param")
+		return
+	}
+
+	var tokenAddrLocal string
+	if currency == util.ETH_ADDR || strings.EqualFold(currency, config.Network().GetNativeTokenSymbol()) {
+		tokenAddrLocal = util.ETH_ADDR
+	} else {
+		addr, _, err := resolver.GetMatchingAddress(currency + " token")
+		if err != nil {
+			if util.IsAddress(currency) {
+				tokenAddrLocal = currency
+			} else {
+				appUI.Error("Couldn't find the token by name or address")
+				return
+			}
+		} else {
+			tokenAddrLocal = addr
+		}
+	}
+
+	toAddr, _, err := resolver.GetMatchingAddress(to)
+	if err != nil {
+		appUI.Error("Couldn't get destination address with keyword: %s", to)
+		return
+	}
+
+	// Compute the wei amount the Safe should move. ALL refers to the
+	// Safe's balance, NOT the EOA's, mirroring sendFromMsig semantics.
+	var amountWei *big.Int
+	if tokenAddrLocal == util.ETH_ADDR {
+		if amountStr == "ALL" {
+			ethBalance, err := reader.GetBalance(safeContract.Address)
+			if err != nil {
+				appUI.Error("Couldn't get balance of the safe: %s", err)
+				return
+			}
+			amountWei = ethBalance
+		} else {
+			amountWei, err = jarviscommon.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
+			if err != nil {
+				appUI.Error("Couldn't calculate the amount: %s", err)
+				return
+			}
+		}
+	} else {
+		if amountStr == "ALL" {
+			amountWei, err = reader.ERC20Balance(tokenAddrLocal, safeContract.Address)
+			if err != nil {
+				appUI.Error("Couldn't read token balance of the safe: %s", err)
+				return
+			}
+		} else {
+			decimals, err := reader.ERC20Decimal(tokenAddrLocal)
+			if err != nil {
+				appUI.Error("Couldn't get token decimal: %s", err)
+				return
+			}
+			amountWei, err = jarviscommon.FloatStringToBig(amountStr, decimals)
+			if err != nil {
+				appUI.Error("Couldn't calculate amount in wei: %s", err)
+				return
+			}
+		}
+	}
+
+	// Inner SafeTx call: native send carries (to, value, --data); ERC20
+	// transfer wraps the value into ERC20.transfer calldata against the
+	// token contract while value=0.
+	var (
+		safeTo    ethcommon.Address
+		safeValue *big.Int
+		safeData  []byte
+	)
+	if tokenAddrLocal == util.ETH_ADDR {
+		safeTo = ethcommon.HexToAddress(toAddr)
+		safeValue = amountWei
+		safeData = cmdutil.StringParamToBytes(data)
+	} else {
+		erc20Data, err := jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
+		if err != nil {
+			appUI.Error("Couldn't pack ERC20 transfer data: %s", err)
+			return
+		}
+		safeTo = ethcommon.HexToAddress(tokenAddrLocal)
+		safeValue = big.NewInt(0)
+		safeData = erc20Data
+	}
+
+	collector, err := safe.NewTxServiceCollector(config.Network().GetChainID())
+	if err != nil {
+		appUI.Error("Couldn't init Safe Transaction Service client for chain %d: %s", config.Network().GetChainID(), err)
+		return
+	}
+
+	safeNonce, err := nextSafeNonce(safeContract, collector)
+	if err != nil {
+		appUI.Error("Couldn't determine the next safe nonce: %s", err)
+		return
+	}
+	appUI.Info("SafeTx nonce: %d", safeNonce)
+
+	domainSep, err := safeContract.DomainSeparator()
+	if err != nil {
+		appUI.Error("Couldn't read on-chain domainSeparator: %s", err)
+		return
+	}
+
+	stx := safe.NewSafeTx(safeTo, safeValue, safeData, safe.OpCall, safeNonce)
+	hash := stx.SafeTxHash(domainSep)
+
+	// Synthesise a TxContext just rich enough for showSafeTxToConfirm to
+	// resolve the destination ABI and decode the inner calldata. The
+	// fields we omit (FromAcc, Broadcaster, etc.) are not consulted by
+	// the display path.
+	tcView := cmdutil.TxContext{
+		Reader:   reader,
+		Analyzer: analyzer,
+		Resolver: resolver,
+	}
+	showSafeTxToConfirm(stx, hash, &tcView)
+
+	if !config.YesToAllPrompt && !appUI.Confirm("Sign and submit this Safe transaction?", true) {
+		appUI.Warn("Aborted by user.")
+		return
+	}
+
+	appUI.Info("Unlock %s and sign the EIP-712 safeTxHash now...", fromAddr)
+	account, err := accounts.UnlockAccount(fromAcc)
+	if err != nil {
+		appUI.Error("Couldn't unlock wallet: %s", err)
+		if errors.Is(err, cmdutil.ErrWalletUnlock) {
+			os.Exit(126)
+		}
+		return
+	}
+
+	structHash := stx.StructHash()
+	sig, err := account.SignSafeHash(domainSep, structHash)
+	if err != nil {
+		appUI.Error("Couldn't sign safeTxHash: %s", err)
+		return
+	}
+
+	if err := collector.Propose(
+		ethcommon.HexToAddress(safeContract.Address),
+		stx, hash,
+		ethcommon.HexToAddress(fromAddr),
+		sig,
+	); err != nil {
+		appUI.Error("Submitting proposal to Safe Transaction Service failed: %s", err)
+		return
+	}
+
+	appUI.Success("Proposal submitted.")
+	appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
+	appUI.Info("Other owners can approve with:")
+	appUI.Info("  jarvis safe approve %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
+	appUI.Info("Once threshold is met, anyone can execute with:")
+	appUI.Info("  jarvis safe execute %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
 }
 
 func init() {

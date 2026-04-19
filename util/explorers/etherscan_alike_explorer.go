@@ -144,3 +144,61 @@ func (ee *EtherscanLikeExplorer) GetABIString(address string) (string, error) {
 	}
 	return abiresp.Result, nil
 }
+
+func (ee *EtherscanLikeExplorer) getSourceCodeAPIURL(address string) string {
+	return fmt.Sprintf(
+		"%s/api?chainid=%d&module=contract&action=getsourcecode&address=%s&apikey=%s",
+		ee.Domain,
+		ee.ChainID,
+		address,
+		ee.APIKey,
+	)
+}
+
+// sourceCodeResponse is the v2 Etherscan-multichain getsourcecode shape.
+// Many fields are omitted; we only keep what's needed to build ContractInfo.
+// Note: Etherscan returns numeric flag fields ("1" / "0") as JSON strings.
+type sourceCodeResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+	Result  []struct {
+		ContractName        string `json:"ContractName"`
+		ABI                 string `json:"ABI"`
+		Proxy               string `json:"Proxy"`
+		Implementation      string `json:"Implementation"`
+		CompilerVersion     string `json:"CompilerVersion"`
+	} `json:"result"`
+}
+
+func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, error) {
+	url := ee.getSourceCodeAPIURL(address)
+	resp, err := http.Get(url)
+	if err != nil {
+		return ContractInfo{}, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ContractInfo{}, fmt.Errorf("error reading body from %s: %w", url, err)
+	}
+	var sc sourceCodeResponse
+	if err := json.Unmarshal(body, &sc); err != nil {
+		return ContractInfo{}, fmt.Errorf("unmarshal getsourcecode body: %w", err)
+	}
+	if sc.Status != "1" || len(sc.Result) == 0 {
+		// Etherscan returns Status="0" / Message="NOTOK" for unverified
+		// contracts. That's not an error from jarvis's POV — we simply
+		// don't have a name to display.
+		return ContractInfo{}, nil
+	}
+	r := sc.Result[0]
+	info := ContractInfo{
+		Name:           r.ContractName,
+		Implementation: r.Implementation,
+		IsProxy:        r.Proxy == "1",
+		// ABI is the literal string "Contract source code not verified" when
+		// the source is missing; treat any other value as verified.
+		IsVerified: r.ABI != "" && r.ABI != "Contract source code not verified",
+	}
+	return info, nil
+}

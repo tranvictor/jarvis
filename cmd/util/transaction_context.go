@@ -12,6 +12,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/safe"
 	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/reader"
 )
@@ -42,6 +43,15 @@ type TxContext struct {
 	Broadcaster TxBroadcaster        // injected by CommonTxPreprocess; nil for read-only commands
 	Analyzer    util.TxAnalyzer      // pre-built from Reader in preprocessing; nil in read-only tests
 	Resolver    ABIResolver          // address/ABI lookup; DefaultABIResolver in production; stub in tests
+
+	// Safe-specific fields, populated by CommonSafeTxPreprocess. Nil for
+	// non-Safe commands so existing code paths are unaffected.
+	Safe      *safe.SafeContract      // resolved Safe contract reader
+	Collector safe.SignatureCollector // off-chain signature backend (Safe Transaction Service in v1)
+	// SafeAppRef is set when the user identified the Safe (and optionally a
+	// pending tx) via a Safe-app URL or EIP-3770 short reference. Run code
+	// should prefer SafeAppRef.SafeTxHash over a positional safeTxHash arg.
+	SafeAppRef *safe.SafeAppRef
 }
 
 type txContextKey struct{}

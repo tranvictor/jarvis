@@ -9,7 +9,35 @@ import (
 	"github.com/tranvictor/jarvis/config"
 )
 
+// uintMaxSentinels maps decimal representations of common uintN.max values
+// to their canonical "infinity" label. Smart contracts widely use these as
+// "do the maximum / unlimited / withdraw all" sentinels (Aave withdraw, ERC20
+// approve, Uniswap deadline, etc.) and rendering them as the literal 78-digit
+// number actively obscures intent. Exact-match only — we never want to round
+// values that just happen to be close to the max.
+var uintMaxSentinels = map[string]string{
+	// 2**256 - 1
+	"115792089237316195423570985008687907853269984665640564039457584007913129639935": "uint256.max (∞)",
+	// 2**128 - 1
+	"340282366920938463463374607431768211455": "uint128.max",
+	// 2**64 - 1
+	"18446744073709551615": "uint64.max",
+	// 2**32 - 1
+	"4294967295": "uint32.max",
+}
+
+// MaxUintLabel returns the canonical "uintN.max" label and true when value
+// matches one of the well-known max-uint sentinels. Empty string and false
+// otherwise. Cheap (map lookup) and safe to call on every integer render.
+func MaxUintLabel(value string) (string, bool) {
+	label, ok := uintMaxSentinels[value]
+	return label, ok
+}
+
 func ReadableNumber(value string) string {
+	if label, ok := MaxUintLabel(value); ok {
+		return label
+	}
 	if len(value) <= 4 {
 		return value
 	}
@@ -34,6 +62,12 @@ func VerboseValue(value Value) string {
 	case DisplayAddress:
 		return VerboseAddress(*value.Address)
 	case DisplayToken:
+		if label, ok := MaxUintLabel(value.Raw); ok {
+			if value.Token.Symbol != "" {
+				return fmt.Sprintf("%s (%s, all %s)", value.Raw, label, value.Token.Symbol)
+			}
+			return fmt.Sprintf("%s (%s)", value.Raw, label)
+		}
 		human := BigToFloatString(StringToBig(value.Raw), value.Token.Decimal)
 		if value.Token.Symbol != "" {
 			return fmt.Sprintf("%s (%s %s)", value.Raw, human, value.Token.Symbol)
@@ -95,6 +129,12 @@ func PlainValue(value Value) string {
 	case DisplayAddress:
 		return PlainAddress(*value.Address)
 	case DisplayToken:
+		if label, ok := MaxUintLabel(value.Raw); ok {
+			if value.Token.Symbol != "" {
+				return fmt.Sprintf("%s (%s, all %s)", value.Raw, label, value.Token.Symbol)
+			}
+			return fmt.Sprintf("%s (%s)", value.Raw, label)
+		}
 		human := BigToFloatString(StringToBig(value.Raw), value.Token.Decimal)
 		if value.Token.Symbol != "" {
 			return fmt.Sprintf("%s (%s %s)", value.Raw, human, value.Token.Symbol)

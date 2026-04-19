@@ -56,6 +56,14 @@ func (r Default) Resolve(addr string) jarviscommon.Address {
 		if erc20Detected && symbol != "" {
 			return jarviscommon.Address{Address: addr, Desc: symbol + " token", Decimal: decimal}
 		}
+		// Last-chance fallback: the contract-name cache populated by
+		// util.PrefetchContractName. This lets jarvis show explorer-derived
+		// names ("Aave: PoolProxy -> Pool") for contracts the local
+		// address book has never heard of, without making Resolve do
+		// network I/O itself.
+		if cn, found := cache.GetCache(fmt.Sprintf("%s_contract_name", strings.ToLower(addr))); found && cn != "" {
+			return jarviscommon.Address{Address: addr, Desc: cn}
+		}
 		return jarviscommon.Address{Address: addr, Desc: "unknown"}
 	}
 

@@ -898,6 +898,15 @@ func (er *EthReader) GetABIString(address string) (string, error) {
 	return er.be.GetABIString(address)
 }
 
+// GetContractInfo returns the verified-contract metadata reported by the
+// network's block explorer (name, proxy flag, underlying implementation).
+// When the explorer reports the source as unverified, the returned
+// ContractInfo has IsVerified=false and an empty Name; callers should treat
+// that as "no name available" rather than as an error.
+func (er *EthReader) GetContractInfo(address string) (jarvisnetworks.ContractInfo, error) {
+	return er.be.GetContractInfo(address)
+}
+
 func (er *EthReader) GetABI(address string) (*abi.ABI, error) {
 	body, err := er.GetABIString(address)
 	if err != nil {
