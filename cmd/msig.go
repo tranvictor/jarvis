@@ -1130,10 +1130,14 @@ func init() {
 	initMsigCmd.Flags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
 	initMsigCmd.Flags().BoolVarP(&config.Simulate, "simulate", "S", false, "True: Simulate execution of underlying call (Classic only).")
 	initMsigCmd.Flags().Uint64Var(&safeNonceOverride, "safe-nonce", 0, "Safe-only: override the SafeTx nonce. Default: on-chain nonce + length of pending queue.")
+	initMsigCmd.Flags().StringVar(&safeTxFile, "safe-tx-file", "", "Safe-only: path to a local file to write the proposed SafeTx + signature to. When set, jarvis skips the Safe Transaction Service and treats the file as the source of truth for later approve/execute runs.")
 	initMsigCmd.MarkFlagRequired("msig-to")
 
 	approveMsigCmd.Flags().BoolVar(&safeNoExecute, "no-execute", false, "Safe-only: don't auto-execute even when this approval reaches the threshold.")
 	approveMsigCmd.Flags().BoolVar(&safeApproveOnChain, "approve-onchain", false, "Safe-only: approve via Safe.approveHash(safeTxHash) on-chain instead of submitting an EIP-712 signature to the Safe Transaction Service.")
+	approveMsigCmd.Flags().StringVar(&safeTxFile, "safe-tx-file", "", "Safe-only: path to a local Safe tx file (as produced by 'jarvis msig init --safe-tx-file'). When set, jarvis uses the file as the pending-tx source and appends the new off-chain signature to it instead of the Safe Transaction Service.")
+	executeMsigCmd.Flags().StringVar(&safeTxFile, "safe-tx-file", "", "Safe-only: path to a local Safe tx file to execute. When set, jarvis loads the SafeTx and collected signatures from the file instead of the Safe Transaction Service.")
+	transactionInfoMsigCmd.Flags().StringVar(&safeTxFile, "safe-tx-file", "", "Safe-only: path to a local Safe tx file to inspect. When set, jarvis reads the SafeTx and signatures from the file instead of the Safe Transaction Service.")
 	batchApproveMsigCmd.PersistentFlags().BoolVar(&safeApproveOnChain, "approve-onchain", false, "Safe-only: approve each Safe ref via Safe.approveHash on-chain instead of the Safe Transaction Service.")
 
 	writeCmds := []*cobra.Command{

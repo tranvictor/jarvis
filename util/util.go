@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -24,9 +25,10 @@ import (
 	db "github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
+	"github.com/tranvictor/jarvis/util/addrbook"
 	"github.com/tranvictor/jarvis/util/broadcaster"
 	"github.com/tranvictor/jarvis/util/cache"
-	"github.com/tranvictor/jarvis/util/addrbook"
+	"github.com/tranvictor/jarvis/util/ens"
 	"github.com/tranvictor/jarvis/util/monitor"
 	"github.com/tranvictor/jarvis/util/reader"
 )
@@ -92,15 +94,28 @@ func getRelevantAddressFromDatabases(str string) (addr string, name string, err 
 }
 
 func GetMatchingAddresses(str string) (addrs []string, names []string, scores []int) {
+	// ENS short-circuit: when the input is a .eth name, don't dilute
+	// results with fuzzy address-book matches — the resolved address is
+	// the single authoritative answer, and any other hits would be a
+	// coincidence on the unrelated label search.
+	if a, n, ok := tryResolveENS(str); ok {
+		return []string{a}, []string{n}, []int{1000}
+	}
 	addrs, names, scores = getRelevantAddressesFromDatabases(str)
 	return addrs, names, scores
 }
 
 func GetMatchingAddress(str string) (addr string, name string, err error) {
+	if a, n, ok := tryResolveENS(str); ok {
+		return a, n, nil
+	}
 	return getRelevantAddressFromDatabases(str)
 }
 
 func GetAddressFromString(str string) (addr string, name string, err error) {
+	if a, n, ok := tryResolveENS(str); ok {
+		return a, n, nil
+	}
 	addr, name, err = getRelevantAddressFromDatabases(str)
 	if err != nil {
 		name = "Unknown"
@@ -111,6 +126,69 @@ func GetAddressFromString(str string) (addr string, name string, err error) {
 		addr = addresses[0]
 	}
 	return addr, name, nil
+}
+
+// ENS resolver wiring. We build a mainnet-only reader lazily so jarvis
+// runs with no ENS-related cost for users who never type a .eth name.
+// The resolver construction is also tolerant of missing mainnet node
+// configs — in that case ens stays disabled, we warn once on first
+// attempted resolution, and every call site falls through to its
+// pre-ENS behavior.
+var (
+	ensResolverOnce sync.Once
+	ensResolver     ens.Resolver
+	ensWarnedMu     sync.Mutex
+	ensWarnedBuild  bool
+)
+
+func getENSResolver() ens.Resolver {
+	ensResolverOnce.Do(func() {
+		r, err := EthReader(networks.EthereumMainnet)
+		if err != nil {
+			ensWarnedMu.Lock()
+			defer ensWarnedMu.Unlock()
+			if !ensWarnedBuild {
+				fmt.Fprintf(
+					os.Stderr,
+					"warning: ENS disabled — couldn't build mainnet reader (%s). "+
+						"Configure ~/.jarvis/nodes/mainnet.json or ETHEREUM_MAINNET_NODE to enable .eth name resolution.\n",
+					err,
+				)
+				ensWarnedBuild = true
+			}
+			return
+		}
+		ensResolver = ens.NewMainnetResolver(r)
+	})
+	return ensResolver
+}
+
+// tryResolveENS attempts to treat str as a .eth name. It returns the
+// resolved address and a display label ("ens:alice.eth") when
+// successful, or ok=false when the input isn't an ENS name or
+// resolution failed. Failures that actually look like ENS names (not
+// just "input didn't match the pattern") emit a single stderr warning
+// so the user is never silently left wondering why their .eth name
+// wasn't honored.
+func tryResolveENS(str string) (addr, name string, ok bool) {
+	if !ens.IsLikelyENSName(str) {
+		return "", "", false
+	}
+	r := getENSResolver()
+	if r == nil {
+		return "", "", false
+	}
+	a, err := r.Resolve(str)
+	if err != nil {
+		fmt.Fprintf(
+			os.Stderr,
+			"warning: ENS resolution of %q failed (%s); falling back to address book / hex scan\n",
+			str, err,
+		)
+		return "", "", false
+	}
+	label := "ens:" + strings.ToLower(strings.TrimSpace(str))
+	return a.Hex(), label, true
 }
 
 func ParamToBigInt(param string) (*big.Int, error) {

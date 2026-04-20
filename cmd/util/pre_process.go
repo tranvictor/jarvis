@@ -216,7 +216,7 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 			)
 		}
 	} else {
-		fromAcc, err = accounts.GetAccount(config.From)
+		fromAcc, _, err = ResolveAccount(tc.Resolver, config.From)
 		if err != nil {
 			return err
 		}
@@ -325,14 +325,28 @@ func CommonSafeReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error 
 	}
 	tc.Safe = safeContract
 
-	collector, err := safe.NewTxServiceCollector(config.Network().GetChainID())
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't init safe transaction service client for chain %d: %w",
+	// The Safe Transaction Service is optional: chains without a URL in
+	// safe/txservice.defaultURLs (and without an env var override) can
+	// still run inspection commands that accept a --safe-tx-file, and
+	// every transactional command that uses --approve-onchain +
+	// --safe-tx-file. We therefore warn and continue with a nil Collector
+	// rather than aborting preprocess. Commands that actually need the
+	// service will surface a more actionable error to the user.
+	if collector, err := safe.NewTxServiceCollector(config.Network().GetChainID()); err == nil {
+		tc.Collector = collector
+	} else {
+		u.Warn(
+			"Safe Transaction Service is not configured for chain %d: %s",
 			config.Network().GetChainID(), err,
 		)
+		u.Warn(
+			"Set SAFE_TX_SERVICE_URL_%d (or a global SAFE_TX_SERVICE_URL) to use a self-hosted deployment,",
+			config.Network().GetChainID(),
+		)
+		u.Warn(
+			"or pass --safe-tx-file / --approve-onchain to operate without the service.",
+		)
 	}
-	tc.Collector = collector
 
 	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil
@@ -449,7 +463,7 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 			)
 		}
 	} else {
-		fromAcc, err = accounts.GetAccount(config.From)
+		fromAcc, _, err = ResolveAccount(tc.Resolver, config.From)
 		if err != nil {
 			return err
 		}
@@ -518,14 +532,22 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 	}
 	tc.Broadcaster = bc
 
-	collector, err := safe.NewTxServiceCollector(config.Network().GetChainID())
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't init safe transaction service client for chain %d: %w",
+	// Optional: see the same handling in CommonSafeReadPreprocess.
+	if collector, err := safe.NewTxServiceCollector(config.Network().GetChainID()); err == nil {
+		tc.Collector = collector
+	} else {
+		u.Warn(
+			"Safe Transaction Service is not configured for chain %d: %s",
 			config.Network().GetChainID(), err,
 		)
+		u.Warn(
+			"Set SAFE_TX_SERVICE_URL_%d (or a global SAFE_TX_SERVICE_URL) to use a self-hosted deployment,",
+			config.Network().GetChainID(),
+		)
+		u.Warn(
+			"or pass --safe-tx-file / --approve-onchain to operate without the service.",
+		)
 	}
-	tc.Collector = collector
 
 	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil

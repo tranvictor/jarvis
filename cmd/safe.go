@@ -44,6 +44,18 @@ var safeNoExecute bool
 // on-chain audit trail over an off-chain signature store.
 var safeApproveOnChain bool
 
+// safeTxFile is the path to a local file used to serialize/deserialize a
+// pending Safe transaction (SafeTx + collected signatures). Useful for
+// chains without a Safe Transaction Service, or for air-gapped / offline
+// signing workflows where signers pass a file around instead of posting
+// to a shared service. For `init`: jarvis writes the proposal + the first
+// signature. For `approve` (off-chain): jarvis reads the file, appends
+// the new signature, and writes it back. For `execute`: jarvis reads the
+// file and broadcasts execTransaction. When this flag is set, jarvis
+// treats the file as the source of truth and does NOT consult the Safe
+// Transaction Service, even if one is configured for the chain.
+var safeTxFile string
+
 // initSafeCmd is the Safe-specific implementation of `jarvis msig init`.
 // It is no longer registered as its own cobra command: cmd/msig.go reads
 // initSafeCmd.Run / .PersistentPreRunE and invokes them after the unified
@@ -108,6 +120,16 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 			}
 		}
 
+		if safeTxFile == "" && tc.Collector == nil {
+			appUI.Error(
+				"Safe Transaction Service is not available for chain %d, and --safe-tx-file was not set.",
+				config.Network().GetChainID(),
+			)
+			appUI.Info("Either configure SAFE_TX_SERVICE_URL_%d to point at a self-hosted deployment,", config.Network().GetChainID())
+			appUI.Info("or re-run with --safe-tx-file <path> to write the proposal to a local file.")
+			return
+		}
+
 		safeNonce, err := nextSafeNonce(safeContract, tc.Collector)
 		if err != nil {
 			appUI.Error("Couldn't determine the next safe nonce: %s", err)
@@ -150,6 +172,35 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 		sig, err := account.SignSafeHash(domainSep, structHash)
 		if err != nil {
 			appUI.Error("Couldn't sign safeTxHash: %s", err)
+			return
+		}
+
+		firstSig := []safe.OwnerSig{{
+			Owner: ethcommon.HexToAddress(tc.From),
+			Sig:   sig,
+		}}
+
+		if safeTxFile != "" {
+			// File mode: persist the proposal locally and tell the user how
+			// to hand the file off to the next signer. We deliberately do
+			// NOT also POST to the Safe Transaction Service in this mode,
+			// since the file becomes the source of truth going forward and
+			// mixing the two would create split-brain state.
+			if err := safe.WriteTxFile(
+				safeTxFile,
+				safeContract.Address,
+				config.Network().GetChainID(),
+				stx, hash, firstSig,
+			); err != nil {
+				appUI.Error("Couldn't write Safe tx file: %s", err)
+				return
+			}
+			appUI.Success("Proposal written to %s", safeTxFile)
+			appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
+			appUI.Info("Share the file with other owners; each can run:")
+			appUI.Info("  jarvis msig approve %s --safe-tx-file %s", safeContract.Address, safeTxFile)
+			appUI.Info("Once threshold is met, any owner can run:")
+			appUI.Info("  jarvis msig execute %s --safe-tx-file %s", safeContract.Address, safeTxFile)
 			return
 		}
 
@@ -218,15 +269,61 @@ over an off-chain signature store. Other owners' off-chain signatures
 		appUI.Section("Safe info")
 		showSafeInfo(safeContract)
 
-		identifier, err := pickPendingTxIdentifier(tc, args)
-		if err != nil {
-			appUI.Error("%s", err)
-			return
-		}
-		pending, err := resolvePendingTx(tc, identifier)
-		if err != nil {
-			appUI.Error("%s", err)
-			return
+		var pending *safe.PendingTx
+		var err error
+		useFile := safeTxFile != ""
+		if useFile {
+			_, pending, err = loadPendingFromTxFile(tc, safeTxFile)
+			if err != nil {
+				appUI.Error("%s", err)
+				return
+			}
+		} else {
+			if tc.Collector == nil && !safeApproveOnChain {
+				appUI.Error(
+					"Safe Transaction Service is not available for chain %d.",
+					config.Network().GetChainID(),
+				)
+				appUI.Info("Pass --approve-onchain to approve via Safe.approveHash directly, or")
+				appUI.Info("pass --safe-tx-file <path> to load the pending SafeTx from a local file.")
+				return
+			}
+			if tc.Collector == nil && safeApproveOnChain {
+				// On-chain approval without a Tx Service: we need the
+				// safeTxHash directly (can't list the queue). The caller
+				// must have passed it as an argument or via a Safe-app URL.
+				if tc.SafeAppRef != nil && tc.SafeAppRef.HasTxHash() {
+					var hash [32]byte
+					copy(hash[:], tc.SafeAppRef.SafeTxHash[:])
+					pending = &safe.PendingTx{
+						Safe:       ethcommon.HexToAddress(safeContract.Address),
+						SafeTxHash: hash,
+					}
+				} else if len(args) >= 2 && strings.HasPrefix(strings.ToLower(strings.TrimSpace(args[1])), "0x") && len(strings.TrimSpace(args[1])) == 66 {
+					var hash [32]byte
+					copy(hash[:], ethcommon.FromHex(strings.TrimSpace(args[1])))
+					pending = &safe.PendingTx{
+						Safe:       ethcommon.HexToAddress(safeContract.Address),
+						SafeTxHash: hash,
+					}
+				} else {
+					appUI.Error(
+						"--approve-onchain without a Safe Transaction Service requires an explicit safeTxHash (0x... 32 bytes) or a Safe-app URL that carries one.",
+					)
+					return
+				}
+			} else {
+				identifier, err := pickPendingTxIdentifier(tc, args)
+				if err != nil {
+					appUI.Error("%s", err)
+					return
+				}
+				pending, err = resolvePendingTx(tc, identifier)
+				if err != nil {
+					appUI.Error("%s", err)
+					return
+				}
+			}
 		}
 		if pending.IsExecuted {
 			appUI.Warn("This transaction has already been executed; nothing to approve.")
@@ -239,14 +336,22 @@ over an off-chain signature store. Other owners' off-chain signatures
 			return
 		}
 
-		expected := pending.SafeTx.SafeTxHash(domainSep)
-		if expected != pending.SafeTxHash {
-			appUI.Error(
-				"safeTxHash from service (0x%s) doesn't match locally recomputed hash (0x%s); refusing to sign",
-				ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
-				ethcommon.Bytes2Hex(expected[:]),
-			)
-			return
+		// When we have SafeTx fields in hand (file mode, or service mode),
+		// verify the declared safeTxHash is what the on-chain domainSep
+		// and SafeTx fields produce. In the service-less --approve-onchain
+		// corner case above we only have the hash, so there's nothing to
+		// cross-check — the Safe itself will reject a wrong hash at
+		// approveHash / execute time.
+		if pending.SafeTx != nil {
+			expected := pending.SafeTx.SafeTxHash(domainSep)
+			if expected != pending.SafeTxHash {
+				appUI.Error(
+					"declared safeTxHash (0x%s) doesn't match locally recomputed hash (0x%s); refusing to sign",
+					ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+					ethcommon.Bytes2Hex(expected[:]),
+				)
+				return
+			}
 		}
 
 		// Merge on-chain approvals into the in-memory Sigs before the
@@ -257,7 +362,11 @@ over an off-chain signature store. Other owners' off-chain signatures
 			appUI.Warn("Couldn't merge on-chain approvals: %s", err)
 		}
 
-		showSafeTxToConfirm(pending.SafeTx, pending.SafeTxHash, &tc)
+		if pending.SafeTx != nil {
+			showSafeTxToConfirm(pending.SafeTx, pending.SafeTxHash, &tc)
+		} else {
+			appUI.Info("safeTxHash: 0x%s (no SafeTx body available; only approving the hash on-chain)", ethcommon.Bytes2Hex(pending.SafeTxHash[:]))
+		}
 		showSafeSigners("Existing signatures", pending.Sigs)
 
 		me := ethcommon.HexToAddress(tc.From)
@@ -274,6 +383,11 @@ over an off-chain signature store. Other owners' off-chain signatures
 
 		if safeApproveOnChain {
 			runSafeApproveOnChain(tc, safeContract, pending, domainSep, me)
+			return
+		}
+
+		if pending.SafeTx == nil {
+			appUI.Error("Off-chain approval requires the full SafeTx body; either pass --safe-tx-file, configure the Safe Transaction Service, or use --approve-onchain.")
 			return
 		}
 
@@ -296,12 +410,30 @@ over an off-chain signature store. Other owners' off-chain signatures
 			return
 		}
 
-		if err := tc.Collector.Confirm(pending.SafeTxHash, me, sig); err != nil {
-			appUI.Error("Submitting confirmation to Safe Transaction Service failed: %s", err)
-			return
+		// Persist the new signature. In file mode we append to the file
+		// (the collective source of truth); otherwise we POST to the Safe
+		// Transaction Service.
+		if useFile {
+			updatedSigs := append(append([]safe.OwnerSig{}, pending.Sigs...), safe.OwnerSig{
+				Owner: me, Sig: sig,
+			})
+			if err := safe.WriteTxFile(
+				safeTxFile,
+				safeContract.Address,
+				config.Network().GetChainID(),
+				pending.SafeTx, pending.SafeTxHash, updatedSigs,
+			); err != nil {
+				appUI.Error("Couldn't write updated Safe tx file: %s", err)
+				return
+			}
+			appUI.Success("Signature appended to %s", safeTxFile)
+		} else {
+			if err := tc.Collector.Confirm(pending.SafeTxHash, me, sig); err != nil {
+				appUI.Error("Submitting confirmation to Safe Transaction Service failed: %s", err)
+				return
+			}
+			appUI.Success("Confirmation submitted.")
 		}
-
-		appUI.Success("Confirmation submitted.")
 		totalSigs := len(pending.Sigs) + 1
 		appUI.Info("Total signatures now: %d", totalSigs)
 
@@ -310,15 +442,16 @@ over an off-chain signature store. Other owners' off-chain signatures
 			appUI.Warn("Couldn't read safe threshold post-approval: %s", err)
 			return
 		}
+		nextCmdHint := fmt.Sprintf("  jarvis msig execute %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]))
+		if useFile {
+			nextCmdHint = fmt.Sprintf("  jarvis msig execute %s --safe-tx-file %s", safeContract.Address, safeTxFile)
+		}
 		if uint64(totalSigs) < threshold {
 			appUI.Info(
 				"Need %d more approval(s). Once threshold is met, any owner can run:",
 				threshold-uint64(totalSigs),
 			)
-			appUI.Info(
-				"  jarvis msig execute %s 0x%s",
-				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
-			)
+			appUI.Info("%s", nextCmdHint)
 			return
 		}
 
@@ -330,18 +463,12 @@ over an off-chain signature store. Other owners' off-chain signatures
 		appUI.Success("Threshold (%d) met with this approval.", threshold)
 		if safeNoExecute {
 			appUI.Info("--no-execute set; skipping execTransaction. Run later with:")
-			appUI.Info(
-				"  jarvis msig execute %s 0x%s",
-				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
-			)
+			appUI.Info("%s", nextCmdHint)
 			return
 		}
 		if !config.YesToAllPrompt && !appUI.Confirm("Broadcast execTransaction now?", true) {
 			appUI.Warn("Skipping execution. Run later with:")
-			appUI.Info(
-				"  jarvis msig execute %s 0x%s",
-				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
-			)
+			appUI.Info("%s", nextCmdHint)
 			return
 		}
 
@@ -534,15 +661,33 @@ The pending tx can be identified by:
 		appUI.Section("Safe info")
 		showSafeInfo(safeContract)
 
-		identifier, err := pickPendingTxIdentifier(tc, args)
-		if err != nil {
-			appUI.Error("%s", err)
-			return
-		}
-		pending, err := resolvePendingTx(tc, identifier)
-		if err != nil {
-			appUI.Error("%s", err)
-			return
+		var pending *safe.PendingTx
+		var err error
+		if safeTxFile != "" {
+			_, pending, err = loadPendingFromTxFile(tc, safeTxFile)
+			if err != nil {
+				appUI.Error("%s", err)
+				return
+			}
+		} else {
+			if tc.Collector == nil {
+				appUI.Error(
+					"Safe Transaction Service is not available for chain %d, and --safe-tx-file was not set.",
+					config.Network().GetChainID(),
+				)
+				appUI.Info("Pass --safe-tx-file <path> to execute from a local file, or configure SAFE_TX_SERVICE_URL_%d.", config.Network().GetChainID())
+				return
+			}
+			identifier, err := pickPendingTxIdentifier(tc, args)
+			if err != nil {
+				appUI.Error("%s", err)
+				return
+			}
+			pending, err = resolvePendingTx(tc, identifier)
+			if err != nil {
+				appUI.Error("%s", err)
+				return
+			}
 		}
 		if pending.IsExecuted {
 			appUI.Warn("This transaction has already been executed.")
@@ -580,6 +725,14 @@ prints the on-chain Safe nonce so you can see how far ahead the queue is.`,
 		appUI.Section("Safe info")
 		showSafeInfo(safeContract)
 
+		if tc.Collector == nil {
+			appUI.Error(
+				"Safe Transaction Service is not available for chain %d; `summary` needs it to list the pending queue.",
+				config.Network().GetChainID(),
+			)
+			appUI.Info("Configure SAFE_TX_SERVICE_URL_%d to point at a self-hosted service.", config.Network().GetChainID())
+			return
+		}
 		threshold, _ := safeContract.Threshold()
 		pending, err := tc.Collector.ListPending(ethcommon.HexToAddress(safeContract.Address))
 		if err != nil {
@@ -637,15 +790,33 @@ Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
 		appUI.Section("Safe info")
 		showSafeInfo(safeContract)
 
-		identifier, err := pickPendingTxIdentifier(tc, args)
-		if err != nil {
-			appUI.Error("%s", err)
-			return
-		}
-		pending, err := resolvePendingTx(tc, identifier)
-		if err != nil {
-			appUI.Error("%s", err)
-			return
+		var pending *safe.PendingTx
+		var err error
+		if safeTxFile != "" {
+			_, pending, err = loadPendingFromTxFile(tc, safeTxFile)
+			if err != nil {
+				appUI.Error("%s", err)
+				return
+			}
+		} else {
+			if tc.Collector == nil {
+				appUI.Error(
+					"Safe Transaction Service is not available for chain %d, and --safe-tx-file was not set.",
+					config.Network().GetChainID(),
+				)
+				appUI.Info("Pass --safe-tx-file <path> to inspect a local Safe tx file, or configure SAFE_TX_SERVICE_URL_%d.", config.Network().GetChainID())
+				return
+			}
+			identifier, err := pickPendingTxIdentifier(tc, args)
+			if err != nil {
+				appUI.Error("%s", err)
+				return
+			}
+			pending, err = resolvePendingTx(tc, identifier)
+			if err != nil {
+				appUI.Error("%s", err)
+				return
+			}
 		}
 
 		if _, err := safeContract.MergeOnChainApprovals(pending); err != nil {
@@ -894,7 +1065,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		return res
 	}
 	if config.From != "" {
-		acc, err := accounts.GetAccount(config.From)
+		acc, _, err := cmdutil.ResolveAccount(cmdutil.DefaultABIResolver{}, config.From)
 		if err != nil {
 			res.status = "failed"
 			res.reason = fmt.Sprintf("--from %q: %s", config.From, err)
@@ -1479,6 +1650,12 @@ func nextSafeNonce(s *safe.SafeContract, c safe.SignatureCollector) (uint64, err
 	if err != nil {
 		return 0, fmt.Errorf("reading on-chain nonce: %w", err)
 	}
+	// Without a Safe Transaction Service we have no source of truth for
+	// the pending queue. Fall back to the on-chain nonce and let the user
+	// override with --safe-nonce if they need to stack proposals.
+	if c == nil {
+		return onchain, nil
+	}
 	next := onchain
 	// Walk forward until we find a free slot. The service is authoritative
 	// for "is there an in-flight proposal at nonce N?" so we just probe.
@@ -1498,6 +1675,38 @@ func nextSafeNonce(s *safe.SafeContract, c safe.SignatureCollector) (uint64, err
 		next++
 	}
 	return next, nil
+}
+
+// loadPendingFromTxFile reads safeTxFile, cross-checks that it matches
+// the Safe and chain the user is currently targeting, and returns a
+// PendingTx in the same shape the Safe Transaction Service would. It is
+// the --safe-tx-file counterpart to pickPendingTxIdentifier +
+// resolvePendingTx, used when no service is available or when the user
+// deliberately chose file-based signing. Returns the file handle too so
+// callers that need to append a signature (approve, off-chain) can write
+// back to it without re-reading.
+func loadPendingFromTxFile(tc cmdutil.TxContext, path string) (*safe.TxFile, *safe.PendingTx, error) {
+	tf, err := safe.ReadTxFile(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if tf.ChainID != config.Network().GetChainID() {
+		return nil, nil, fmt.Errorf(
+			"tx file %s was built for chain %d but current --network is chain %d",
+			path, tf.ChainID, config.Network().GetChainID(),
+		)
+	}
+	if !strings.EqualFold(tf.Safe, tc.Safe.Address) {
+		return nil, nil, fmt.Errorf(
+			"tx file %s is for safe %s, but this command targets %s",
+			path, tf.Safe, tc.Safe.Address,
+		)
+	}
+	pending, err := tf.ToPending()
+	if err != nil {
+		return nil, nil, fmt.Errorf("decode tx file: %w", err)
+	}
+	return tf, pending, nil
 }
 
 // pickPendingTxIdentifier returns the safeTxHash / nonce string that

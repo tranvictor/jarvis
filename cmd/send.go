@@ -345,19 +345,29 @@ exact addresses start with 0x.`,
 			extraGasLimit = 0
 		}
 
-		acc, err := accounts.GetAccount(config.From)
+		// Resolve --from via the address-resolver (ENS, address book,
+		// hex scan) as a fallback to the fuzzy wallet lookup: this
+		// keeps `--from alice.eth` working when alice.eth resolves to a
+		// local EOA wallet. When resolution succeeds we also pin
+		// config.From to the hex form so downstream multisig detection
+		// doesn't re-interpret the original keyword.
+		acc, resolvedFrom, err := cmdutil.ResolveAccount(resolver, config.From)
 		if err != nil {
-			// --from didn't match any local wallet, so it must be a
-			// multisig the user is acting on behalf of. Decide between
-			// Gnosis Safe and Gnosis Classic by probing the on-chain
-			// shape of the contract; both flows then take care of
-			// finding a local wallet that's actually an owner.
+			// --from didn't match any local wallet (directly or via
+			// ENS/address-book resolution), so it must be a multisig
+			// the user is acting on behalf of. Decide between Gnosis
+			// Safe and Gnosis Classic by probing the on-chain shape of
+			// the contract; both flows then take care of finding a
+			// local wallet that's actually an owner.
 			if sc, ok := detectSafeForSend(reader, resolver, config.From); ok {
 				sendFromSafe(reader, analyzer, resolver, bc, sc)
 				return
 			}
 			sendFromMsig(reader, analyzer, resolver, bc)
 			return
+		}
+		if resolvedFrom != "" && !strings.EqualFold(resolvedFrom, config.From) {
+			config.From = resolvedFrom
 		}
 
 		fromAcc := acc
