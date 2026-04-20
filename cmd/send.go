@@ -519,9 +519,14 @@ exact addresses start with 0x.`,
 
 // detectSafeForSend resolves keyword (an address, jarvis name, EIP-3770
 // short reference, or Safe-app URL) to a SafeContract, and returns true
-// only when the on-chain probe confirms the address really is a Gnosis
-// Safe. It is intentionally silent on misses so the caller can fall back
-// to Gnosis Classic detection without polluting the output.
+// only when the unified multisig detector reports the address as a Safe.
+// It is intentionally silent on misses so the caller can fall back to
+// Gnosis Classic detection without polluting the output.
+//
+// We delegate to cmdutil.DetectMultisigType so the result is shared with
+// the on-disk type cache populated by `jarvis msig` commands — running
+// `jarvis send --from <safe>` after a previous `jarvis msig info <safe>`
+// avoids paying the on-chain probe again.
 func detectSafeForSend(
 	reader utilreader.Reader,
 	resolver cmdutil.ABIResolver,
@@ -534,7 +539,6 @@ func detectSafeForSend(
 
 	addr, _, err := resolver.GetMatchingAddress(candidate)
 	if err != nil {
-		// Fall back to the same scan-by-pattern logic getMsigContractFromParams uses.
 		addresses := util.ScanForAddresses(candidate)
 		if len(addresses) == 0 {
 			return nil, false
@@ -542,14 +546,12 @@ func detectSafeForSend(
 		addr = addresses[0]
 	}
 
-	sc, err := safe.NewSafeContract(addr, config.Network())
-	if err != nil {
+	typ, err := cmdutil.DetectMultisigType(config.Network(), addr)
+	if err != nil || typ != cmdutil.MultisigSafe {
 		return nil, false
 	}
-	// The on-chain probe is authoritative: a Safe responds to getOwners().
-	// We don't trust the explorer ABI here because most Safes are deployed
-	// behind GnosisSafeProxy whose verified ABI lacks the Safe methods.
-	if _, err := sc.Owners(); err != nil {
+	sc, err := safe.NewSafeContract(addr, config.Network())
+	if err != nil {
 		return nil, false
 	}
 	return sc, true

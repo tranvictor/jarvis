@@ -32,9 +32,22 @@ var ErrNotWaitingForMining = errors.New("not waiting for mining")
 
 var summaryMsigCmd = &cobra.Command{
 	Use:   "summary",
-	Short: "Print all txs confirmation and execution status of the multisig",
-	Long:  ``,
+	Short: "List pending Gnosis multisig transactions (Classic on-chain queue or Safe Transaction Service queue)",
+	Long: `Inspects the multisig at args[0] and lists pending transactions.
+
+Works against both Gnosis Classic (scans on-chain transaction ids) and
+Gnosis Safe (queries the Safe Transaction Service), dispatched
+automatically based on an on-chain probe of the address.`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return cmdutil.CommonMultisigReadPreprocess(appUI, cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+		if tc.MultisigType == cmdutil.MultisigSafe {
+			summarySafeCmd.Run(cmd, args)
+			return
+		}
+
 		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
 		if err != nil {
 			return
@@ -98,13 +111,20 @@ var summaryMsigCmd = &cobra.Command{
 
 var transactionInfoMsigCmd = &cobra.Command{
 	Use:   "info",
-	Short: "Print all information about a multisig init",
-	Long:  ``,
+	Short: "Show full detail of a single pending multisig transaction",
+	Long: `Inspects the multisig at args[0] and prints the full detail of one
+pending transaction (decoded calldata, signers, status). The second
+argument identifies the tx: SafeTx hash / SafeTx nonce for Safe targets,
+or msig tx id / init tx hash for Classic targets.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		return cmdutil.CommonNetworkPreprocess(appUI, cmd, args)
+		return cmdutil.CommonMultisigReadPreprocess(appUI, cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
+		if tc.MultisigType == cmdutil.MultisigSafe {
+			infoSafeCmd.Run(cmd, args)
+			return
+		}
 
 		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
 		if err != nil {
@@ -138,9 +158,21 @@ var transactionInfoMsigCmd = &cobra.Command{
 
 var govInfoMsigCmd = &cobra.Command{
 	Use:   "gov",
-	Short: "Print goverance information of a Gnosis multisig",
-	Long:  ``,
+	Short: "Show owners, threshold (and version, for Safe) of a Gnosis multisig",
+	Long: `Prints the governance shape of the multisig at args[0]. For Gnosis
+Safe targets this includes owners, threshold, version and on-chain Safe
+nonce; for Gnosis Classic this includes owners, vote requirement and
+the on-chain transaction count.`,
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+		return cmdutil.CommonMultisigReadPreprocess(appUI, cmd, args)
+	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+		if tc.MultisigType == cmdutil.MultisigSafe {
+			govSafeCmd.Run(cmd, args)
+			return
+		}
+
 		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
 		if err != nil {
 			return
@@ -224,36 +256,70 @@ func getMsigContractFromParams(args []string, resolver cmdutil.ABIResolver) (msi
 
 var revokeMsigCmd = &cobra.Command{
 	Use:   "revoke",
-	Short: "Revoke gnosis transaction",
-	Long:  ``,
+	Short: "Revoke a Gnosis Classic multisig confirmation (Classic only)",
+	Long: `Revoke is a Gnosis Classic-specific operation: it sends an on-chain
+revokeConfirmation(txid) call to undo a previously-given confirmation.
+Gnosis Safe doesn't expose an equivalent — Safe approvals live in the
+off-chain Safe Transaction Service; to "un-approve", just don't submit
+your signature, or contact the proposer to delete the queued tx in the
+Safe-app UI.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		return cmdutil.CommonTxPreprocess(appUI, cmd, args)
+		return cmdutil.CommonMultisigTxPreprocess(appUI, cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+		if tc.MultisigType == cmdutil.MultisigSafe {
+			appUI.Error(
+				"`revoke` is only available for Gnosis Classic multisigs. " +
+					"For Gnosis Safe, simply do not submit your approval, or " +
+					"ask the proposer to delete the queued tx in the Safe-app UI.",
+			)
+			return
+		}
 		cmdutil.HandleApproveOrRevokeOrExecuteMsig(appUI, "revokeConfirmation", cmd, args, nil)
 	},
 }
 
 var executeMsigCmd = &cobra.Command{
 	Use:   "execute",
-	Short: "Execute a confirmed gnosis transaction",
-	Long:  ``,
+	Short: "Execute a confirmed multisig transaction (Classic execTransaction or Safe execTransaction)",
+	Long: `Broadcast the on-chain execution of a multisig transaction whose
+confirmations meet the threshold. Classic targets call
+executeTransaction(txid); Safe targets call execTransaction(...) with
+the off-chain-collected signatures assembled from the Safe Transaction
+Service.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		return cmdutil.CommonTxPreprocess(appUI, cmd, args)
+		return cmdutil.CommonMultisigTxPreprocess(appUI, cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+		if tc.MultisigType == cmdutil.MultisigSafe {
+			executeSafeCmd.Run(cmd, args)
+			return
+		}
 		cmdutil.HandleApproveOrRevokeOrExecuteMsig(appUI, "executeTransaction", cmd, args, nil)
 	},
 }
 
 var approveMsigCmd = &cobra.Command{
 	Use:   "approve",
-	Short: "Approve gnosis transaction",
-	Long:  ``,
+	Short: "Approve a pending multisig transaction (Classic confirmTransaction or Safe off-chain confirm)",
+	Long: `Add your approval to a pending multisig transaction. For Gnosis
+Classic this sends an on-chain confirmTransaction(txid); for Gnosis
+Safe this signs the EIP-712 safeTxHash and posts the signature to the
+Safe Transaction Service. For Safe targets, when your approval brings
+the signature count to or above the Safe's threshold, jarvis chains
+the on-chain execTransaction in the same invocation unless --no-execute
+is set.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		return cmdutil.CommonTxPreprocess(appUI, cmd, args)
+		return cmdutil.CommonMultisigTxPreprocess(appUI, cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
+		tc, _ := cmdutil.TxContextFrom(cmd)
+		if tc.MultisigType == cmdutil.MultisigSafe {
+			approveSafeCmd.Run(cmd, args)
+			return
+		}
 		cmdutil.HandleApproveOrRevokeOrExecuteMsig(appUI, "confirmTransaction", cmd, args, nil)
 	},
 }
@@ -559,28 +625,86 @@ func writeBatchSummaryJSON(path string, results []batchResult) {
 
 var batchApproveMsigCmd = &cobra.Command{
 	Use:   "bapprove",
-	Short: "Approve multiple gnosis transactions",
-	Long:  `This command only works with list of init transactions as the first param`,
+	Short: "Approve a mixed batch of pending Classic and Safe multisig transactions",
+	Long: `Process a list of multisig transaction references and approve each.
+Each whitespace- or comma-separated token may be:
+
+  - a Gnosis Classic init tx hash, optionally network-prefixed:
+      mainnet:0x<64-hex>   or   bsc 0x<64-hex>
+
+  - a Gnosis Safe app URL:
+      https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=<chain>:<safe>
+
+  - a bare Safe multisig token: multisig_<safe>_<hash>
+
+  - an EIP-3770 Safe triple: <chain>:<safe>:<hash>
+
+Safe references are extracted first; remaining tokens are treated as
+Gnosis Classic init tx hashes. A summary table is printed at the end;
+with --json-output, the same data is also written as JSON.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		cm := walletarmy.NewWalletManager()
-		a := util.GetGnosisMsigABI()
-		networkNames, txs := cmdutil.ScanForTxs(args[0])
-		if len(networkNames) == 0 || len(txs) == 0 {
-			appUI.Error("No txs passed to the first param. Did nothing.")
+		if len(args) == 0 {
+			appUI.Error("Please provide one or more multisig tx references.")
 			return
 		}
+		raw := strings.Join(args, " ")
+
+		safeRefs := scanForSafeRefs(raw)
+		residual := raw
+		for _, sr := range safeRefs {
+			residual = strings.ReplaceAll(residual, sr.original, " ")
+		}
+
+		// Process the Safe portion of the input first so any auto-execute
+		// flow runs before we start touching Classic broadcasters that may
+		// share a wallet.
+		if len(safeRefs) > 0 {
+			total := len(safeRefs)
+			results := make([]safeBatchResult, 0, total)
+			appUI.Section(fmt.Sprintf("Batch Approve (Safe): %d transactions", total))
+			for i, ref := range safeRefs {
+				r := safeBatchResult{ref: ref.original}
+				appUI.Info("")
+				appUI.Critical("━━━ Safe [%d/%d] %s ━━━", i+1, total, ref.original)
+				res := approveSafeRef(ref)
+				r.network = res.network
+				r.networkObj = res.networkObj
+				r.safeAddress = res.safeAddress
+				r.safeTxHash = res.safeTxHash
+				r.confirmType = res.confirmType
+				r.execTxHash = res.execTxHash
+				r.status = res.status
+				r.reason = res.reason
+				results = append(results, r)
+			}
+			printSafeBatchSummary(results)
+			if config.JSONOutputFile != "" {
+				writeSafeBatchSummaryJSON(config.JSONOutputFile, results)
+			}
+		}
+
+		networkNames, txs := cmdutil.ScanForTxs(residual)
+		if len(networkNames) == 0 || len(txs) == 0 {
+			if len(safeRefs) == 0 {
+				appUI.Error("No txs passed to the first param. Did nothing.")
+			}
+			return
+		}
+
+		cm := walletarmy.NewWalletManager()
+		a := util.GetGnosisMsigABI()
 
 		total := len(networkNames)
 		results := make([]batchResult, 0, total)
 
-		appUI.Section(fmt.Sprintf("Batch Approve: %d transactions", total))
+		appUI.Section(fmt.Sprintf("Batch Approve (Classic): %d transactions", total))
 
 		for i, n := range networkNames {
 			txHash := txs[i]
 			r := batchResult{network: n, initTxHash: txHash}
 
 			appUI.Info("")
-			appUI.Critical("━━━ [%d/%d] %s: %s ━━━", i+1, total, n, txHash)
+			appUI.Critical("━━━ Classic [%d/%d] %s: %s ━━━", i+1, total, n, txHash)
 
 			network, err := jarvisnetworks.GetNetwork(n)
 			if err != nil {
@@ -855,10 +979,14 @@ var newMsigCmd = &cobra.Command{
 
 var initMsigCmd = &cobra.Command{
 	Use:   "init",
-	Short: "Init gnosis transaction",
-	Long:  ``,
+	Short: "Propose a new multisig transaction (Classic submitTransaction or Safe off-chain proposal)",
+	Long: `Propose a new multisig transaction targeting --msig-to with calldata
+built interactively from the target's ABI. For Gnosis Classic this
+sends an on-chain submitTransaction(...); for Gnosis Safe this signs
+the EIP-712 safeTxHash and posts the proposal to the Safe Transaction
+Service so other owners can approve it.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		if err = cmdutil.CommonTxPreprocess(appUI, cmd, args); err != nil {
+		if err = cmdutil.CommonMultisigTxPreprocess(appUI, cmd, args); err != nil {
 			return err
 		}
 
@@ -877,6 +1005,10 @@ var initMsigCmd = &cobra.Command{
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
+		if tc.MultisigType == cmdutil.MultisigSafe {
+			initSafeCmd.Run(cmd, args)
+			return
+		}
 
 		reader := tc.Reader
 		if reader == nil {
@@ -991,8 +1123,11 @@ func init() {
 	initMsigCmd.Flags().Uint64VarP(&config.MethodIndex, "method-index", "M", 0, "Index of the method in alphabeth sorted method list of the contract. Index counts from 1.")
 	initMsigCmd.Flags().BoolVarP(&config.NoFuncCall, "no-func-call", "N", false, "True: will not send any data to multisig destination.")
 	initMsigCmd.Flags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
-	initMsigCmd.Flags().BoolVarP(&config.Simulate, "simulate", "S", false, "True: Simulate execution of underlying call.")
+	initMsigCmd.Flags().BoolVarP(&config.Simulate, "simulate", "S", false, "True: Simulate execution of underlying call (Classic only).")
+	initMsigCmd.Flags().Uint64Var(&safeNonceOverride, "safe-nonce", 0, "Safe-only: override the SafeTx nonce. Default: on-chain nonce + length of pending queue.")
 	initMsigCmd.MarkFlagRequired("msig-to")
+
+	approveMsigCmd.Flags().BoolVar(&safeNoExecute, "no-execute", false, "Safe-only: don't auto-execute even when this approval reaches the threshold.")
 
 	writeCmds := []*cobra.Command{
 		approveMsigCmd,

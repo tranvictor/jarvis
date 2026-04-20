@@ -52,6 +52,11 @@ type TxContext struct {
 	// pending tx) via a Safe-app URL or EIP-3770 short reference. Run code
 	// should prefer SafeAppRef.SafeTxHash over a positional safeTxHash arg.
 	SafeAppRef *safe.SafeAppRef
+	// MultisigType is populated by the unified multisig preprocess
+	// (CommonMultisigReadPreprocess / CommonMultisigTxPreprocess) so the
+	// dispatch in cmd/msig.go can route to the Safe or Classic handler
+	// without re-probing on chain.
+	MultisigType MultisigType
 }
 
 type txContextKey struct{}

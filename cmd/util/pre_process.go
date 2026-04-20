@@ -530,3 +530,137 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil
 }
+
+// preResolveMultisigArg normalises args[0] for the unified multisig
+// preprocesses. It handles three cases identically to the Safe-only path:
+//
+//   - bare addresses and jarvis names: passed through unchanged
+//   - Safe-app web URLs / EIP-3770 short refs: rewritten to a bare address
+//     in args[0], with config.NetworkString auto-set from the chain hint
+//   - the network is preserved when --network was passed explicitly
+//
+// It returns any SafeAppRef parsed out of the URL so a downstream
+// preprocess can attach it to TxContext.SafeAppRef even when the chosen
+// dispatch path is the classic one (it's a no-op there).
+func preResolveMultisigArg(u ui.UI, cmd *cobra.Command, args []string) (*safe.SafeAppRef, error) {
+	if len(args) == 0 {
+		return nil, fmt.Errorf("please specify the multisig address as the first argument")
+	}
+	r, ok := safe.ParseSafeAppURL(args[0])
+	if !ok {
+		return nil, nil
+	}
+	args[0] = r.SafeAddress.Hex()
+	if r.ChainID != 0 && !cmd.Flags().Changed("network") {
+		if n, err := networks.GetNetworkByID(r.ChainID); err == nil {
+			config.NetworkString = n.GetName()
+		} else {
+			u.Warn(
+				"URL refers to chain id %d (%s) which jarvis does not have a built-in network for; falling back to --network=%s.",
+				r.ChainID, r.ChainShortName, config.NetworkString,
+			)
+		}
+	}
+	return r, nil
+}
+
+// CommonMultisigReadPreprocess is the unified read-only preprocess for
+// `jarvis msig` inspection commands (info / summary / gov). It accepts
+// the same first-argument shapes as the Safe-only equivalent (bare
+// address, jarvis name, EIP-3770 ref, Safe-app URL) and dispatches to
+// the Safe or Classic read setup based on an on-chain probe of the
+// resolved address. The detected MultisigType is stored on TxContext so
+// the dispatching command's Run can route accordingly.
+//
+// For Classic addresses it falls back to CommonNetworkPreprocess (which
+// is what classic msig info/gov/summary use today). For Safe addresses
+// it calls CommonSafeReadPreprocess so SafeContract + Collector are wired.
+func CommonMultisigReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+	ref, err := preResolveMultisigArg(u, cmd, args)
+	if err != nil {
+		return err
+	}
+	if err := config.SetNetwork(config.NetworkString); err != nil {
+		return err
+	}
+
+	addr, _, err := DefaultABIResolver{}.GetAddressFromString(args[0])
+	if err != nil {
+		addr = args[0]
+	}
+
+	typ, err := DetectMultisigType(config.Network(), addr)
+	if err != nil {
+		return err
+	}
+
+	switch typ {
+	case MultisigSafe:
+		if err := CommonSafeReadPreprocess(u, cmd, args); err != nil {
+			return err
+		}
+	case MultisigClassic:
+		if err := CommonNetworkPreprocess(u, cmd, args); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown multisig type for %s", addr)
+	}
+
+	tc, _ := TxContextFrom(cmd)
+	tc.MultisigType = typ
+	if ref != nil {
+		tc.SafeAppRef = ref
+	}
+	cmd.SetContext(WithTxContext(cmd.Context(), tc))
+	return nil
+}
+
+// CommonMultisigTxPreprocess is the transactional twin of
+// CommonMultisigReadPreprocess: it picks the right preprocessing pipeline
+// (Safe-aware vs. Classic-aware) for `jarvis msig` write commands
+// (init / approve / execute / revoke). The resolved MultisigType is left
+// on TxContext for the dispatcher to inspect.
+//
+// Note: revoke is classic-only; the Run dispatcher is expected to refuse
+// the operation when MultisigType == MultisigSafe with an actionable error.
+func CommonMultisigTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+	ref, err := preResolveMultisigArg(u, cmd, args)
+	if err != nil {
+		return err
+	}
+	if err := config.SetNetwork(config.NetworkString); err != nil {
+		return err
+	}
+
+	addr, _, err := DefaultABIResolver{}.GetAddressFromString(args[0])
+	if err != nil {
+		addr = args[0]
+	}
+
+	typ, err := DetectMultisigType(config.Network(), addr)
+	if err != nil {
+		return err
+	}
+
+	switch typ {
+	case MultisigSafe:
+		if err := CommonSafeTxPreprocess(u, cmd, args); err != nil {
+			return err
+		}
+	case MultisigClassic:
+		if err := CommonTxPreprocess(u, cmd, args); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unknown multisig type for %s", addr)
+	}
+
+	tc, _ := TxContextFrom(cmd)
+	tc.MultisigType = typ
+	if ref != nil {
+		tc.SafeAppRef = ref
+	}
+	cmd.SetContext(WithTxContext(cmd.Context(), tc))
+	return nil
+}

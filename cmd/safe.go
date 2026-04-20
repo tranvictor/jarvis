@@ -29,32 +29,26 @@ import (
 var safeNonceOverride uint64
 
 // safeNoExecute disables the convenience auto-execute behavior of
-// `jarvis safe approve`. By default, when an approval brings the signature
+// `jarvis msig approve`. By default, when an approval brings the signature
 // count to or above the Safe's threshold, jarvis chains an execute in the
 // same invocation so the last signer doesn't have to run a second command.
 // Setting --no-execute keeps the legacy "approve only" behavior.
 var safeNoExecute bool
 
-var safeCmd = &cobra.Command{
-	Use:   "safe",
-	Short: "Gnosis Safe (v1.x / v1.3+ / v1.4) multisig operations",
-	Long: `jarvis safe lets you propose, approve and execute Gnosis Safe
-multisig transactions using the Safe Transaction Service for off-chain
-signature collection. The UX deliberately mirrors 'jarvis msig' (which
-targets Gnosis Classic), so the same -j / -V / -M / -I / -S flags work.
-
-v1 supports init / approve / execute. Hardware wallets (Ledger, Trezor)
-are supported alongside private-key and keystore wallets.`,
-}
-
+// initSafeCmd is the Safe-specific implementation of `jarvis msig init`.
+// It is no longer registered as its own cobra command: cmd/msig.go reads
+// initSafeCmd.Run / .PersistentPreRunE and invokes them after the unified
+// preprocess detects a Safe target. We keep the cobra wrapper (rather
+// than splitting Run into a free function) so flags, Long descriptions
+// and the existing in-Run TxContextFrom calls stay untouched.
 var initSafeCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Propose a new Safe transaction (off-chain via Safe Transaction Service)",
 	Long: `Build a SafeTx targeting --msig-to with the call data interactively
 constructed from the target's ABI, sign the EIP-712 safeTxHash with --from
 (or the only owner you have a wallet for), and submit the proposal to the
-Safe Transaction Service. Other owners can later approve via 'jarvis safe
-approve' and any owner can finalise via 'jarvis safe execute'.`,
+Safe Transaction Service. Other owners can later approve via 'jarvis msig
+approve' and any owner can finalise via 'jarvis msig execute'.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
 		if err = cmdutil.CommonSafeTxPreprocess(appUI, cmd, args); err != nil {
 			return err
@@ -163,12 +157,17 @@ approve' and any owner can finalise via 'jarvis safe execute'.`,
 		appUI.Success("Proposal submitted.")
 		appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
 		appUI.Info("Other owners can approve with:")
-		appUI.Info("  jarvis safe approve %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
+		appUI.Info("  jarvis msig approve %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
 		appUI.Info("Once threshold is met, anyone can execute with:")
-		appUI.Info("  jarvis safe execute %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
+		appUI.Info("  jarvis msig execute %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
 	},
 }
 
+// approveSafeCmd is the Safe-specific implementation of `jarvis msig
+// approve`. Dispatched from cmd/msig.go after the unified preprocess
+// detects a Safe target and CommonSafeTxPreprocess has wired the
+// Safe-specific TxContext fields. See initSafeCmd's docstring for why we
+// keep the cobra wrapper rather than splitting Run into a free function.
 var approveSafeCmd = &cobra.Command{
 	Use:   "approve",
 	Short: "Off-chain approve a pending Safe transaction (adds your signature to the service)",
@@ -177,10 +176,10 @@ submit your signature to the Safe Transaction Service. Identify the
 pending tx by:
 
   - a Safe-app URL (the easiest form for non-CLI signers):
-      jarvis safe approve "https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=eth:<safe>"
+      jarvis msig approve "https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=eth:<safe>"
 
   - the safe address followed by a safeTxHash or SafeTx nonce:
-      jarvis safe approve <safe> <safeTxHash|nonce>
+      jarvis msig approve <safe> <safeTxHash|nonce>
 
 If your approval brings the signature count to or above the Safe's
 threshold, jarvis automatically chains an execTransaction in the same
@@ -190,7 +189,7 @@ pay for execution gas).
 `,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("usage: jarvis safe approve <safe-or-url> [safeTxHash|nonce]")
+			return fmt.Errorf("usage: jarvis msig approve <safe-or-url> [safeTxHash|nonce]")
 		}
 		return cmdutil.CommonSafeTxPreprocess(appUI, cmd, args)
 	},
@@ -282,7 +281,7 @@ pay for execution gas).
 				threshold-uint64(totalSigs),
 			)
 			appUI.Info(
-				"  jarvis safe execute %s 0x%s",
+				"  jarvis msig execute %s 0x%s",
 				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
 			)
 			return
@@ -297,7 +296,7 @@ pay for execution gas).
 		if safeNoExecute {
 			appUI.Info("--no-execute set; skipping execTransaction. Run later with:")
 			appUI.Info(
-				"  jarvis safe execute %s 0x%s",
+				"  jarvis msig execute %s 0x%s",
 				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
 			)
 			return
@@ -305,7 +304,7 @@ pay for execution gas).
 		if !config.YesToAllPrompt && !appUI.Confirm("Broadcast execTransaction now?", true) {
 			appUI.Warn("Skipping execution. Run later with:")
 			appUI.Info(
-				"  jarvis safe execute %s 0x%s",
+				"  jarvis msig execute %s 0x%s",
 				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
 			)
 			return
@@ -330,14 +329,14 @@ from --from (or the single matching owner you have a wallet for).
 The pending tx can be identified by:
 
   - a Safe-app URL:
-      jarvis safe execute "https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=eth:<safe>"
+      jarvis msig execute "https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=eth:<safe>"
 
   - the safe address followed by a safeTxHash or SafeTx nonce:
-      jarvis safe execute <safe> <safeTxHash|nonce>
+      jarvis msig execute <safe> <safeTxHash|nonce>
 `,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
-			return fmt.Errorf("usage: jarvis safe execute <safe-or-url> [safeTxHash|nonce]")
+			return fmt.Errorf("usage: jarvis msig execute <safe-or-url> [safeTxHash|nonce]")
 		}
 		return cmdutil.CommonSafeTxPreprocess(appUI, cmd, args)
 	},
@@ -403,7 +402,7 @@ prints the on-chain Safe nonce so you can see how far ahead the queue is.`,
 
 		appUI.Section(fmt.Sprintf("Pending Safe transactions: %d", len(pending)))
 		if len(pending) == 0 {
-			appUI.Info("Queue is empty. Use `jarvis safe init` to propose a new tx.")
+			appUI.Info("Queue is empty. Use `jarvis msig init` to propose a new tx.")
 			return
 		}
 		for i, p := range pending {
@@ -468,7 +467,7 @@ Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
 		case threshold > 0 && uint64(len(pending.Sigs)) >= threshold:
 			appUI.Success("Status: threshold met — ready to execute.")
 			appUI.Info(
-				"  jarvis safe execute %s 0x%s",
+				"  jarvis msig execute %s 0x%s",
 				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
 			)
 		default:
@@ -478,7 +477,7 @@ Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
 			}
 			appUI.Info("Status: pending — needs %d more approval(s).", needed)
 			appUI.Info(
-				"  jarvis safe approve %s 0x%s",
+				"  jarvis msig approve %s 0x%s",
 				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
 			)
 		}
@@ -500,7 +499,7 @@ var govSafeCmd = &cobra.Command{
 	},
 }
 
-// safeBatchResult is the per-ref outcome of `jarvis safe bapprove`.
+// safeBatchResult is the per-ref outcome of `jarvis msig bapprove`.
 type safeBatchResult struct {
 	ref         string
 	network     string
@@ -632,7 +631,7 @@ type approveSafeRefResult struct {
 	reason      string
 }
 
-// approveSafeRef performs the same logical steps as `jarvis safe approve`
+// approveSafeRef performs the same logical steps as `jarvis msig approve`
 // for one ref: resolve the network + safe, find a local owner wallet,
 // sign the EIP-712 hash, submit to the Tx Service, and (when this approval
 // brings the count past threshold and --no-execute is not set) chain into
@@ -826,7 +825,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 	}
 
 	if !config.YesToAllPrompt && !appUI.Confirm("Threshold met — broadcast execTransaction now?", true) {
-		appUI.Info("Skipping execution. Run later with `jarvis safe execute ...`.")
+		appUI.Info("Skipping execution. Run later with `jarvis msig execute ...`.")
 		return res
 	}
 
@@ -1011,7 +1010,7 @@ func writeSafeBatchSummaryJSON(path string, results []safeBatchResult) {
 
 // runSafeExecute drives the on-chain execTransaction call for a Safe
 // transaction whose signatures have already been collected. It is shared
-// between `jarvis safe execute` and the auto-execute path of `jarvis safe
+// between `jarvis msig execute` and the auto-execute path of `jarvis msig
 // approve` so both flows enforce the same threshold check, hash verification,
 // gas estimation and broadcast confirmation. domainSep is taken as an
 // argument because the approve-then-execute path has already paid for that
@@ -1283,7 +1282,7 @@ func pickPendingTxIdentifier(tc cmdutil.TxContext, args []string) (string, error
 	switch len(pending) {
 	case 0:
 		return "", fmt.Errorf(
-			"no pending Safe transactions found for %s. Initiate one with `jarvis safe init`, or pass a safeTxHash / nonce explicitly.",
+			"no pending Safe transactions found for %s. Initiate one with `jarvis msig init`, or pass a safeTxHash / nonce explicitly.",
 			tc.Safe.Address,
 		)
 	case 1:
@@ -1340,69 +1339,11 @@ func resolvePendingTx(tc cmdutil.TxContext, identifier string) (*safe.PendingTx,
 	return pt, nil
 }
 
-func init() {
-	initSafeCmd.Flags().Float64VarP(
-		&config.MsigValue, "msig-value", "V", 0,
-		"Native-token amount the Safe should forward (in eth/bnb/matic units).",
-	)
-	initSafeCmd.Flags().StringVarP(
-		&config.MsigTo, "msig-to", "j", "",
-		"Target address the Safe will call. Address or jarvis name.",
-	)
-	initSafeCmd.Flags().Uint64VarP(
-		&config.MethodIndex, "method-index", "M", 0,
-		"1-based index of the target method (alphabetically sorted).",
-	)
-	initSafeCmd.Flags().BoolVarP(
-		&config.NoFuncCall, "no-func-call", "N", false,
-		"True: send empty calldata to the Safe destination.",
-	)
-	initSafeCmd.Flags().StringVarP(
-		&config.PrefillStr, "prefills", "I", "",
-		"Prefill params separated by '|'. '?' means prompt.",
-	)
-	initSafeCmd.Flags().Uint64Var(
-		&safeNonceOverride, "safe-nonce", 0,
-		"Override the SafeTx nonce. Default: on-chain nonce + length of pending queue.",
-	)
-	initSafeCmd.MarkFlagRequired("msig-to")
-
-	approveSafeCmd.Flags().BoolVar(
-		&safeNoExecute, "no-execute", false,
-		"Don't auto-execute even when this approval reaches the threshold.",
-	)
-
-	writeCmds := []*cobra.Command{
-		initSafeCmd,
-		approveSafeCmd,
-		executeSafeCmd,
-	}
-	for _, c := range writeCmds {
-		AddCommonFlagsToTransactionalCmds(c)
-		c.Flags().StringVarP(
-			&config.RawValue, "amount", "v", "0",
-			"Native-token amount to attach to the EOA tx that drives the Safe (almost always 0).",
-		)
-		c.PersistentFlags().BoolVarP(
-			&config.ForceERC20ABI, "erc20-abi", "e", false,
-			"Use ERC20 ABI for the target where possible.",
-		)
-		c.PersistentFlags().StringVarP(
-			&config.CustomABI, "abi", "c", "",
-			"Custom ABI for the target. Address, file path or URL.",
-		)
-		c.PersistentFlags().BoolVarP(
-			&config.YesToAllPrompt, "auto-yes", "y", false,
-			"Don't prompt Yes/No before signing.",
-		)
-	}
-
-	safeCmd.AddCommand(initSafeCmd)
-	safeCmd.AddCommand(approveSafeCmd)
-	safeCmd.AddCommand(executeSafeCmd)
-	safeCmd.AddCommand(summarySafeCmd)
-	safeCmd.AddCommand(infoSafeCmd)
-	safeCmd.AddCommand(govSafeCmd)
-	safeCmd.AddCommand(bapproveSafeCmd)
-	rootCmd.AddCommand(safeCmd)
-}
+// Safe-specific flag bindings are wired onto the unified `jarvis msig`
+// commands in cmd/msig.go's init(). The cobra command vars in this file
+// (initSafeCmd, approveSafeCmd, ...) are intentionally NOT registered as
+// their own subcommand tree — the msig dispatcher invokes their .Run /
+// .PersistentPreRunE closures directly after the unified preprocess
+// detects a Gnosis Safe target. Keeping them as cobra structs (rather
+// than free functions) is just a refactor convenience: it avoids
+// touching the body of each Run closure.
