@@ -303,14 +303,19 @@ Service.`,
 
 var approveMsigCmd = &cobra.Command{
 	Use:   "approve",
-	Short: "Approve a pending multisig transaction (Classic confirmTransaction or Safe off-chain confirm)",
+	Short: "Approve a pending multisig transaction (Classic confirmTransaction or Safe off-chain/on-chain confirm)",
 	Long: `Add your approval to a pending multisig transaction. For Gnosis
 Classic this sends an on-chain confirmTransaction(txid); for Gnosis
 Safe this signs the EIP-712 safeTxHash and posts the signature to the
 Safe Transaction Service. For Safe targets, when your approval brings
 the signature count to or above the Safe's threshold, jarvis chains
 the on-chain execTransaction in the same invocation unless --no-execute
-is set.`,
+is set.
+
+For Safe, pass --approve-onchain to approve via Safe.approveHash(...) on
+chain rather than posting an EIP-712 signature to the Safe Transaction
+Service. On-chain and off-chain approvals are merged transparently at
+execution time, so the two modes can be mixed freely across signers.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return cmdutil.CommonMultisigTxPreprocess(appUI, cmd, args)
 	},
@@ -1128,6 +1133,8 @@ func init() {
 	initMsigCmd.MarkFlagRequired("msig-to")
 
 	approveMsigCmd.Flags().BoolVar(&safeNoExecute, "no-execute", false, "Safe-only: don't auto-execute even when this approval reaches the threshold.")
+	approveMsigCmd.Flags().BoolVar(&safeApproveOnChain, "approve-onchain", false, "Safe-only: approve via Safe.approveHash(safeTxHash) on-chain instead of submitting an EIP-712 signature to the Safe Transaction Service.")
+	batchApproveMsigCmd.PersistentFlags().BoolVar(&safeApproveOnChain, "approve-onchain", false, "Safe-only: approve each Safe ref via Safe.approveHash on-chain instead of the Safe Transaction Service.")
 
 	writeCmds := []*cobra.Command{
 		approveMsigCmd,

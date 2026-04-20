@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
 	"os"
 	"regexp"
 	"strings"
@@ -34,6 +35,14 @@ var safeNonceOverride uint64
 // same invocation so the last signer doesn't have to run a second command.
 // Setting --no-execute keeps the legacy "approve only" behavior.
 var safeNoExecute bool
+
+// safeApproveOnChain switches `jarvis msig approve` from the off-chain
+// default (sign EIP-712 safeTxHash + POST to Safe Transaction Service) to
+// the on-chain path (call Safe.approveHash(safeTxHash) from --from). This
+// is useful on chains without a Transaction Service, for contract signers
+// that can't produce EIP-712 signatures, or for operators who prefer an
+// on-chain audit trail over an off-chain signature store.
+var safeApproveOnChain bool
 
 // initSafeCmd is the Safe-specific implementation of `jarvis msig init`.
 // It is no longer registered as its own cobra command: cmd/msig.go reads
@@ -186,6 +195,15 @@ threshold, jarvis automatically chains an execTransaction in the same
 invocation so you don't have to run a second command. Pass --no-execute
 to opt out (the typical use case is when you want a different EOA to
 pay for execution gas).
+
+By default jarvis signs off-chain: it produces an EIP-712 signature of
+safeTxHash and POSTs it to the Safe Transaction Service. Pass
+--approve-onchain to use the on-chain path instead — jarvis will send a
+Safe.approveHash(safeTxHash) transaction from --from. This mode is
+useful on chains without a Transaction Service, for wallets that can't
+produce EIP-712 signatures, or when you prefer an on-chain audit trail
+over an off-chain signature store. Other owners' off-chain signatures
+(and other owners' on-chain approvals) are merged at execution time.
 `,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) < 1 {
@@ -231,15 +249,32 @@ pay for execution gas).
 			return
 		}
 
+		// Merge on-chain approvals into the in-memory Sigs before the
+		// self-signed check and display. This way we correctly recognise
+		// owners who approved via approveHash (and may not appear in the
+		// service's confirmation list) as having already signed.
+		if _, err := safeContract.MergeOnChainApprovals(pending); err != nil {
+			appUI.Warn("Couldn't merge on-chain approvals: %s", err)
+		}
+
 		showSafeTxToConfirm(pending.SafeTx, pending.SafeTxHash, &tc)
 		showSafeSigners("Existing signatures", pending.Sigs)
 
 		me := ethcommon.HexToAddress(tc.From)
 		for _, s := range pending.Sigs {
 			if s.Owner == me {
-				appUI.Warn("You (%s) have already signed this transaction.", me.Hex())
+				if safe.IsOnChainApproval(s.Sig) {
+					appUI.Warn("You (%s) have already approved this transaction on-chain (approveHash).", me.Hex())
+				} else {
+					appUI.Warn("You (%s) have already signed this transaction off-chain.", me.Hex())
+				}
 				return
 			}
+		}
+
+		if safeApproveOnChain {
+			runSafeApproveOnChain(tc, safeContract, pending, domainSep, me)
+			return
 		}
 
 		if !config.YesToAllPrompt && !appUI.Confirm("Sign and submit your approval?", true) {
@@ -317,6 +352,158 @@ pay for execution gas).
 		})
 		runSafeExecute(tc, safeContract, &augmented, domainSep)
 	},
+}
+
+// runSafeApproveOnChain is the --approve-onchain code path for
+// `jarvis msig approve`. It broadcasts a Safe.approveHash(safeTxHash)
+// transaction from me and, if the resulting approval brings the set past
+// threshold, chains an execTransaction in the same invocation just like
+// the off-chain path does. The merge in runSafeExecute picks up the
+// just-landed approval via approvedHashes(...) so we don't need to hand
+// assemble signatures here.
+//
+// We deliberately do NOT short-circuit by synthesising a v=0 marker
+// in-memory and jumping straight to execTransaction: a broadcast of
+// approveHash may fail, or the user may have passed --no-wait, in which
+// case executing immediately would revert on-chain with GS025. Running
+// the merge after a successful mined approveHash keeps the two steps
+// independent and correct.
+func runSafeApproveOnChain(
+	tc cmdutil.TxContext,
+	safeContract *safe.SafeContract,
+	pending *safe.PendingTx,
+	domainSep [32]byte,
+	me ethcommon.Address,
+) {
+	data, err := safeContract.Abi.Pack("approveHash", pending.SafeTxHash)
+	if err != nil {
+		appUI.Error("Couldn't pack approveHash calldata: %s", err)
+		return
+	}
+
+	zeroValue := big.NewInt(0)
+	gasLimit := config.GasLimit
+	if gasLimit == 0 {
+		gasLimit, err = tc.Reader.EstimateExactGas(tc.From, safeContract.Address, 0, zeroValue, data)
+		if err != nil {
+			appUI.Error("Couldn't estimate gas limit for approveHash: %s", err)
+			return
+		}
+	}
+
+	tx := jarviscommon.BuildExactTx(
+		tc.TxType,
+		tc.Nonce,
+		safeContract.Address,
+		zeroValue,
+		gasLimit+config.ExtraGasLimit,
+		tc.GasPrice+config.ExtraGasPrice,
+		tc.TipGas+config.ExtraTipGas,
+		data,
+		config.Network().GetChainID(),
+	)
+
+	customABIs := map[string]*abi.ABI{
+		strings.ToLower(safeContract.Address): safeContract.Abi,
+	}
+
+	appUI.Info("Broadcasting approveHash(0x%s) from %s...",
+		ethcommon.Bytes2Hex(pending.SafeTxHash[:]), me.Hex(),
+	)
+	broadcasted, err := cmdutil.SignAndBroadcast(
+		appUI, tc.FromAcc, tx, customABIs,
+		tc.Reader, tc.Analyzer, safeContract.Abi, tc.Broadcaster,
+	)
+	if err != nil && !broadcasted {
+		appUI.Error("approveHash failed: %s", err)
+		return
+	}
+	if err != nil {
+		appUI.Warn("approveHash was broadcast but post-processing reported: %s", err)
+	}
+	if !broadcasted {
+		// --dont-broadcast path: signed blob was printed, nothing on chain.
+		return
+	}
+	appUI.Success("approveHash broadcast.")
+
+	// We can only safely chain an execute if the approveHash transaction
+	// has been mined — otherwise approvedHashes(me, safeTxHash) is still
+	// 0 and execTransaction would revert with GS025.
+	if config.DontBroadcast || config.DontWaitToBeMined {
+		appUI.Info("--no-wait / --dont-broadcast is in effect; skipping auto-execute.")
+		appUI.Info("Once the approveHash tx is mined, finalise with:")
+		appUI.Info(
+			"  jarvis msig execute %s 0x%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+		)
+		return
+	}
+
+	// Re-read approvedHashes to confirm our approval actually landed. If
+	// the node returned an early "mined" result that got re-orged out, or
+	// an explorer-side caching quirk caused a false negative, we refuse
+	// to execute rather than produce a guaranteed-revert transaction.
+	v, err := safeContract.ApprovedHash(me.Hex(), pending.SafeTxHash)
+	if err != nil {
+		appUI.Warn("Couldn't confirm approveHash landed: %s", err)
+		return
+	}
+	if v.Sign() == 0 {
+		appUI.Warn("approveHash transaction was broadcast but approvedHashes(%s, ...) is still 0; skipping auto-execute.", me.Hex())
+		return
+	}
+	pending.Sigs = append(pending.Sigs, safe.OnChainApprovalSig(me))
+
+	threshold, err := safeContract.Threshold()
+	if err != nil {
+		appUI.Warn("Couldn't read safe threshold post-approval: %s", err)
+		return
+	}
+	totalSigs := len(pending.Sigs)
+	appUI.Info("Total signatures now: %d (threshold %d)", totalSigs, threshold)
+	if uint64(totalSigs) < threshold {
+		appUI.Info(
+			"Need %d more approval(s). Once threshold is met, any owner can run:",
+			threshold-uint64(totalSigs),
+		)
+		appUI.Info(
+			"  jarvis msig execute %s 0x%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+		)
+		return
+	}
+
+	appUI.Success("Threshold (%d) met with this approval.", threshold)
+	if safeNoExecute {
+		appUI.Info("--no-execute set; skipping execTransaction. Run later with:")
+		appUI.Info(
+			"  jarvis msig execute %s 0x%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+		)
+		return
+	}
+	if !config.YesToAllPrompt && !appUI.Confirm("Broadcast execTransaction now?", true) {
+		appUI.Warn("Skipping execution. Run later with:")
+		appUI.Info(
+			"  jarvis msig execute %s 0x%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+		)
+		return
+	}
+
+	// Important: the execTransaction below will consume the EOA nonce of
+	// tc.From just like the approveHash we just sent. Since
+	// cmdutil.CommonSafeTxPreprocess populated tc.Nonce once, at the top
+	// of this command, it is now one behind reality. Re-read it so the
+	// execute tx uses the correct nonce.
+	if nextNonce, err := tc.Reader.GetMinedNonce(tc.From); err == nil {
+		tc.Nonce = nextNonce
+	} else {
+		appUI.Warn("Couldn't refresh nonce before execute: %s", err)
+	}
+
+	runSafeExecute(tc, safeContract, pending, domainSep)
 }
 
 var executeSafeCmd = &cobra.Command{
@@ -406,6 +593,12 @@ prints the on-chain Safe nonce so you can see how far ahead the queue is.`,
 			return
 		}
 		for i, p := range pending {
+			// Fold in on-chain approvals so the signature count reflects
+			// reality rather than just the Safe Transaction Service view.
+			// Errors here are non-fatal: we still want the queue listing.
+			if _, err := safeContract.MergeOnChainApprovals(p); err != nil {
+				appUI.Warn("  nonce %s: couldn't merge on-chain approvals (%s); count may be low", p.SafeTx.Nonce.String(), err)
+			}
 			toJarvis := util.GetJarvisAddress(p.SafeTx.To.Hex(), config.Network())
 			progress := fmt.Sprintf("%d/%d", len(p.Sigs), threshold)
 			status := "pending"
@@ -453,6 +646,10 @@ Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
 		if err != nil {
 			appUI.Error("%s", err)
 			return
+		}
+
+		if _, err := safeContract.MergeOnChainApprovals(pending); err != nil {
+			appUI.Warn("Couldn't merge on-chain approvals: %s", err)
 		}
 
 		showSafeTxToConfirm(pending.SafeTx, pending.SafeTxHash, &tc)
@@ -755,11 +952,24 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		return res
 	}
 
+	// Merge on-chain approvals so the self-signed check and display
+	// reflect the true state of the Safe, not just the Transaction
+	// Service's view. Failures are tolerated — the worst outcome is that
+	// we ask an owner to re-sign something they already on-chain
+	// approved, and the Safe would reject that at execution time.
+	if _, err := safeContract.MergeOnChainApprovals(pending); err != nil {
+		appUI.Warn("couldn't merge on-chain approvals: %s", err)
+	}
+
 	me := ethcommon.HexToAddress(fromAcc.Address)
 	for _, s := range pending.Sigs {
 		if s.Owner == me {
 			res.status = "skipped"
-			res.reason = fmt.Sprintf("%s already signed", me.Hex())
+			if safe.IsOnChainApproval(s.Sig) {
+				res.reason = fmt.Sprintf("%s already approved on-chain", me.Hex())
+			} else {
+				res.reason = fmt.Sprintf("%s already signed off-chain", me.Hex())
+			}
 			appUI.Warn("%s", res.reason)
 			return res
 		}
@@ -779,6 +989,24 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 
 	showSafeTxToConfirm(pending.SafeTx, pending.SafeTxHash, &tc)
 	showSafeSigners("Existing signatures", pending.Sigs)
+
+	if safeApproveOnChain {
+		// On-chain batch approval: broadcast approveHash and let
+		// runSafeApproveOnChain handle the (possibly auto-executing)
+		// follow-up. We don't attempt to distinguish between approved
+		// and approved+executed outcomes in the summary here because
+		// runSafeApproveOnChain doesn't report that back — the user
+		// can still see what happened in the stream above.
+		if !config.YesToAllPrompt && !appUI.Confirm("Broadcast approveHash on-chain?", true) {
+			res.status = "skipped"
+			res.reason = "user aborted"
+			return res
+		}
+		runSafeApproveOnChain(tc, safeContract, pending, domainSep, me)
+		res.status = "approved"
+		res.confirmType = "approve-onchain"
+		return res
+	}
 
 	if !config.YesToAllPrompt && !appUI.Confirm("Sign and submit your approval?", true) {
 		res.status = "skipped"
@@ -1021,6 +1249,17 @@ func runSafeExecute(
 	pending *safe.PendingTx,
 	domainSep [32]byte,
 ) {
+	// Before counting signatures, pull in any on-chain approvals the Safe
+	// Transaction Service doesn't know about (owners who invoked
+	// approveHash directly). Without this step we'd refuse to execute
+	// SafeTxs whose threshold is only met by a mix of off-chain and
+	// on-chain approvals — even though the Safe itself would accept them.
+	if merged, err := safeContract.MergeOnChainApprovals(pending); err != nil {
+		appUI.Warn("Couldn't fully merge on-chain approvals: %s (proceeding with %d off-chain sig(s))", err, len(pending.Sigs))
+	} else if merged > 0 {
+		appUI.Info("Merged %d on-chain approval(s) into signature set.", merged)
+	}
+
 	threshold, err := safeContract.Threshold()
 	if err != nil {
 		appUI.Error("Couldn't read safe threshold: %s", err)
@@ -1199,7 +1438,9 @@ func showSafeTxToConfirm(stx *safe.SafeTx, hash [32]byte, tc *cmdutil.TxContext)
 
 // showSafeSigners renders the list of owners that have already signed,
 // resolving each address through the jarvis address book so names show up
-// the same way `jarvis msig` displays confirmation lists.
+// the same way `jarvis msig` displays confirmation lists. Entries produced
+// by OnChainApprovalSig (v=0) are tagged "[on-chain]" so users can tell at a
+// glance which owners approved via approveHash rather than off-chain signing.
 func showSafeSigners(label string, sigs []safe.OwnerSig) {
 	if len(sigs) == 0 {
 		appUI.Info("%s: (none yet)", label)
@@ -1208,7 +1449,11 @@ func showSafeSigners(label string, sigs []safe.OwnerSig) {
 	appUI.Info("%s (%d):", label, len(sigs))
 	for i, s := range sigs {
 		jarvisAddr := util.GetJarvisAddress(s.Owner.Hex(), config.Network())
-		appUI.Info("  %d. %s", i+1, appUI.Style(util.StyledAddress(jarvisAddr)))
+		tag := "[off-chain]"
+		if safe.IsOnChainApproval(s.Sig) {
+			tag = "[on-chain] "
+		}
+		appUI.Info("  %d. %s %s", i+1, tag, appUI.Style(util.StyledAddress(jarvisAddr)))
 	}
 }
 

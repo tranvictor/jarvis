@@ -107,9 +107,40 @@ func (t *SafeTx) SafeTxHash(domainSeparator [32]byte) [32]byte {
 // OwnerSig pairs a 65-byte Safe-compatible signature with the address of the
 // owner who produced it. Callers obtain Sig from Account.SignSafeHash, which
 // already encodes the device-specific v adjustment Safe expects.
+//
+// For owners who approved on-chain via approveHash(safeTxHash), use
+// OnChainApprovalSig(owner) to build a Sig. That variant carries no
+// cryptographic material; GnosisSafe.checkSignatures recognises it by the
+// sentinel v=0 byte and verifies it against the approvedHashes mapping.
 type OwnerSig struct {
 	Owner common.Address
 	Sig   []byte // 65 bytes: r (32) || s (32) || v (1)
+}
+
+// OnChainApprovalSig returns a 65-byte "pre-approved hash" marker for owner
+// in the format GnosisSafe.checkSignatures consumes when v == 0:
+//
+//	r = left-padded owner address (32 bytes)
+//	s = zero (32 bytes)
+//	v = 0 (1 byte)
+//
+// The Safe contract detects the v=0 sentinel and, instead of running
+// ecrecover, reads approvedHashes[owner][safeTxHash] from storage. An
+// execution that includes this marker will therefore revert with GS025
+// unless the owner has actually called approveHash(...) on chain.
+func OnChainApprovalSig(owner common.Address) OwnerSig {
+	sig := make([]byte, 65)
+	copy(sig[12:32], owner.Bytes())
+	// s (sig[32:64]) stays zero; v (sig[64]) stays zero — the sentinel.
+	return OwnerSig{Owner: owner, Sig: sig}
+}
+
+// IsOnChainApproval reports whether sig is the v=0 pre-approved-hash marker
+// produced by OnChainApprovalSig (as opposed to an ECDSA / eth_sign sig).
+// Callers use this to annotate UI output ("on-chain") and to skip the self
+// already-signed check for the on-chain-approve path.
+func IsOnChainApproval(sig []byte) bool {
+	return len(sig) == 65 && sig[64] == 0
 }
 
 // EncodeSignatures returns the `signatures` blob in the exact layout

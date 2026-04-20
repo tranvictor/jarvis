@@ -105,3 +105,48 @@ func (s *SafeContract) ApprovedHash(owner string, txHash [32]byte) (*big.Int, er
 	}
 	return r, nil
 }
+
+// MergeOnChainApprovals augments pending.Sigs with a v=0 marker for every
+// current owner who has called approveHash(pending.SafeTxHash) on chain
+// but whose signature is not yet present in pending.Sigs. Returns the
+// number of on-chain approvals that were merged.
+//
+// This is how jarvis gives execTransaction a complete view of the
+// Safe's authorisation state: the Safe Transaction Service only tracks
+// off-chain EIP-712 / eth_sign signatures, so any owner who chose the
+// on-chain approveHash path (or who used a non-ECDSA flow the service
+// can't index) would otherwise be invisible at execution time.
+//
+// The merge is idempotent: owners already represented in pending.Sigs
+// (off-chain or on-chain) are never touched. If a single approvedHashes
+// read fails we stop and return the error together with the partial
+// merge count, letting the caller decide whether to proceed.
+func (s *SafeContract) MergeOnChainApprovals(pending *PendingTx) (int, error) {
+	if pending == nil {
+		return 0, fmt.Errorf("nil pending tx")
+	}
+	owners, err := s.Owners()
+	if err != nil {
+		return 0, fmt.Errorf("reading owners: %w", err)
+	}
+	present := make(map[common.Address]struct{}, len(pending.Sigs))
+	for _, sig := range pending.Sigs {
+		present[sig.Owner] = struct{}{}
+	}
+	merged := 0
+	for _, ownerHex := range owners {
+		addr := common.HexToAddress(ownerHex)
+		if _, ok := present[addr]; ok {
+			continue
+		}
+		v, err := s.ApprovedHash(ownerHex, pending.SafeTxHash)
+		if err != nil {
+			return merged, fmt.Errorf("approvedHashes(%s): %w", ownerHex, err)
+		}
+		if v.Sign() > 0 {
+			pending.Sigs = append(pending.Sigs, OnChainApprovalSig(addr))
+			merged++
+		}
+	}
+	return merged, nil
+}
