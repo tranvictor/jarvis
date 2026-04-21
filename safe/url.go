@@ -7,33 +7,23 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+
+	"github.com/tranvictor/jarvis/safe/chainregistry"
 )
 
-// SafeShortNameChainID maps the chain "short names" used by Safe app URLs
-// (e.g. "eth", "arb1", "matic") to their EIP-155 chain IDs.
+// ShortNameChainID resolves a Safe-app / EIP-3770 short name
+// (e.g. "eth", "arb1", "matic") to its EIP-155 chain ID. It returns 0
+// when the short name is unknown.
 //
-// Source: https://docs.safe.global/core-api/transaction-service-supported-networks
-// and the EIP-3770 short-name registry. Keep in sync with safe/txservice.defaultURLs.
-var SafeShortNameChainID = map[string]uint64{
-	"eth":     1,
-	"oeth":    10,
-	"bnb":     56,
-	"gno":     100,
-	"matic":   137,
-	"ftm":     250,
-	"zkevm":   1101,
-	"base":    8453,
-	"arb1":    42161,
-	"avax":    43114,
-	"linea":   59144,
-	"scr":     534352,
-	"sep":     11155111,
-	"basesep": 84532,
-	"celo":    42220,
-	"mantle":  5000,
-	"blast":   81457,
-	"sonic":   146,
-	"aurora":  1313161554,
+// The lookup is backed by safe/chainregistry, which merges a built-in
+// baseline with any snapshot the user has pulled via
+// `jarvis msig chains refresh` — so newly Safe-supported chains can
+// be recognised without a jarvis release.
+func ShortNameChainID(shortName string) uint64 {
+	if ci, ok := chainregistry.ByShortName(shortName); ok {
+		return ci.ChainID
+	}
+	return 0
 }
 
 // SafeAppRef is what jarvis extracts from a Safe-app URL or an EIP-3770
@@ -128,7 +118,7 @@ func ParseSafeAppURL(in string) (*SafeAppRef, bool) {
 			ChainShortName: strings.ToLower(m[1]),
 			SafeAddress:    common.HexToAddress(m[2]),
 		}
-		ref.ChainID = SafeShortNameChainID[ref.ChainShortName]
+		ref.ChainID = ShortNameChainID(ref.ChainShortName)
 		return ref, true
 	}
 
@@ -145,7 +135,7 @@ func ParseSafeAppURL(in string) (*SafeAppRef, bool) {
 		// fragment also survived (rare but cheap to support).
 		if mm := chainPrefixRe.FindStringSubmatch(in); mm != nil {
 			ref.ChainShortName = strings.ToLower(mm[1])
-			ref.ChainID = SafeShortNameChainID[ref.ChainShortName]
+			ref.ChainID = ShortNameChainID(ref.ChainShortName)
 		}
 		return ref, true
 	}
@@ -178,7 +168,7 @@ func ParseSafeAppURL(in string) (*SafeAppRef, bool) {
 		// resolution; for the address, only use it when id= didn't already
 		// give us one. The two are virtually always identical.
 		ref.ChainShortName = strings.ToLower(m[1])
-		ref.ChainID = SafeShortNameChainID[ref.ChainShortName]
+		ref.ChainID = ShortNameChainID(ref.ChainShortName)
 		var zero common.Address
 		if ref.SafeAddress == zero {
 			ref.SafeAddress = common.HexToAddress(m[2])

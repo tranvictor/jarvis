@@ -967,7 +967,7 @@ func scanForSafeRefs(raw string) []safeRefInput {
 				ChainShortName: strings.ToLower(extra[1]),
 				SafeAddress:    ethcommon.HexToAddress(extra[2]),
 			}
-			ref.ChainID = safe.SafeShortNameChainID[ref.ChainShortName]
+			ref.ChainID = safe.ShortNameChainID(ref.ChainShortName)
 			copy(ref.SafeTxHash[:], ethcommon.FromHex(extra[3]))
 			out = append(out, safeRefInput{original: f, ref: ref})
 			continue
