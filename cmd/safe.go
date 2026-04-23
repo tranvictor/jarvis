@@ -1545,15 +1545,11 @@ func showSafeInfo(s *safe.SafeContract) {
 func showSafeTxToConfirm(stx *safe.SafeTx, hash [32]byte, tc *cmdutil.TxContext) {
 	appUI.Section("Safe transaction details")
 
-	// Best-effort: ask the network's block explorer for the destination's
-	// contract name (and follow proxies to the implementation). Populates
-	// the local cache so the addrbook resolver below can render a real
-	// name instead of "unknown" for contracts that aren't in jarvis's
-	// embedded address DB.
-	util.PrefetchContractName(stx.To.Hex(), config.Network())
-
-	// Resolve the destination through the address book so users see a name
-	// (or "unknown" highlighted) instead of an opaque hex string.
+	// util.GetJarvisAddress runs through util.NewEnrichedResolver, which
+	// transparently fetches verified contract names (and follows
+	// proxies) from the block explorer on first miss — no manual
+	// PrefetchContractName plumbing required here or in the analyzer
+	// pipeline below.
 	toJarvis := util.GetJarvisAddress(stx.To.Hex(), config.Network())
 	appUI.Critical("To             : %s", appUI.Style(util.StyledAddress(toJarvis)))
 

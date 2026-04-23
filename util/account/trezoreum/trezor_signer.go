@@ -5,12 +5,22 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 )
+
+// deviceWaitTimeout is how long we block Unlock() waiting for a
+// Trezor to be physically connected/awake before giving up. Tuned
+// for WalletConnect flows where the user often needs to plug the
+// device in after the dApp already issued the request.
+const deviceWaitTimeout = 90 * time.Second
+
+// deviceWaitPoll is how often we retry enumeration while waiting.
+const deviceWaitPoll = 2 * time.Second
 
 type TrezorSigner struct {
 	path           accounts.DerivationPath
@@ -27,15 +37,79 @@ func (self *TrezorSigner) SignTx(
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	fmt.Printf("Going to proceed signing procedure\n")
-	var err error
-	if !self.deviceUnlocked {
-		err = self.trezor.Unlock()
-		if err != nil {
-			return common.Address{}, tx, err
-		}
-		self.deviceUnlocked = true
+	if err := self.ensureUnlocked(); err != nil {
+		return common.Address{}, tx, err
 	}
 	return self.trezor.Sign(self.path, tx, chainId)
+}
+
+// ensureUnlocked unlocks the device on first use. If the device is
+// not yet connected we poll for deviceWaitTimeout, printing progress,
+// so users can plug the Trezor in after a dApp has already requested
+// a signature.
+func (self *TrezorSigner) ensureUnlocked() error {
+	if self.deviceUnlocked {
+		return nil
+	}
+	if err := unlockWithWait(self.trezor.Unlock, deviceWaitTimeout); err != nil {
+		return err
+	}
+	self.deviceUnlocked = true
+	return nil
+}
+
+// unlockWithWait repeatedly calls unlock until it succeeds, a
+// non-"device not found" error happens, or timeout elapses. The
+// user sees progress roughly every 10s.
+func unlockWithWait(unlock func() error, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	attempt := 0
+	for {
+		attempt++
+		err := unlock()
+		if err == nil {
+			return nil
+		}
+		if !isTrezorNotConnected(err) {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf(
+				"trezor not connected after %s (last error: %w). Plug it in and try again",
+				timeout, err)
+		}
+		if attempt == 1 {
+			fmt.Printf(
+				"Trezor not detected. Please connect and unlock it within %s...\n",
+				timeout,
+			)
+		} else if attempt%5 == 0 {
+			remaining := time.Until(deadline).Round(time.Second)
+			fmt.Printf("  ...still waiting for Trezor (~%s left)\n", remaining)
+		}
+		time.Sleep(deviceWaitPoll)
+	}
+}
+
+// isTrezorNotConnected reports whether err comes from the USB
+// enumeration step failing to find a Trezor. We only retry these;
+// any other error (PIN wrong, user reject, transport I/O) should
+// surface immediately.
+func isTrezorNotConnected(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, needle := range []string{
+		"couldn't find any trezor devices",
+		"couldn't open trezor device",
+		"no such device",
+	} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 // SignTypedDataHash signs a Gnosis-Safe EIP-712 digest. We try the native
@@ -50,11 +124,8 @@ func (self *TrezorSigner) SignTypedDataHash(
 ) ([]byte, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
-	if !self.deviceUnlocked {
-		if err := self.trezor.Unlock(); err != nil {
-			return nil, err
-		}
-		self.deviceUnlocked = true
+	if err := self.ensureUnlocked(); err != nil {
+		return nil, err
 	}
 
 	fmt.Printf(
@@ -84,6 +155,20 @@ func (self *TrezorSigner) SignTypedDataHash(
 	}
 	sig[64] += 4
 	return sig, nil
+}
+
+// SignPersonalMessage signs message with the EIP-191 personal_sign
+// prefix via the Trezor's EthereumSignMessage opcode. Trezor firmware
+// applies the "\x19Ethereum Signed Message:\n<len>" prefix internally,
+// so callers pass the raw message bytes. v is normalised to {27, 28}
+// inside Trezoreum.SignPersonalMessage.
+func (self *TrezorSigner) SignPersonalMessage(message []byte) ([]byte, error) {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if err := self.ensureUnlocked(); err != nil {
+		return nil, err
+	}
+	return self.trezor.SignPersonalMessage(self.path, message)
 }
 
 // shouldFallBackToPersonalSign returns true when the failure indicates the

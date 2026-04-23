@@ -27,4 +27,19 @@ type Signer interface {
 	// Implementations may pick whichever variant their backend natively
 	// supports; both are accepted by Safe v1.1.x .. v1.4.x.
 	SignTypedDataHash(domainSeparator, structHash [32]byte) ([]byte, error)
+
+	// SignPersonalMessage signs an arbitrary message with the EIP-191
+	// "personal_sign" prefix, i.e. the device (or key) hashes and
+	// signs keccak256("\x19Ethereum Signed Message:\n" || len(msg) || msg).
+	//
+	// The returned signature is the canonical 65-byte r||s||v form with
+	// v in {27, 28} — the shape WalletConnect dApps, viem/ethers, and
+	// EIP-191-verifying contracts all expect. Hardware wallets that
+	// natively return v in {0, 1} MUST normalise before returning.
+	//
+	// This is intentionally separate from SignTypedDataHash because
+	// eth_sign (raw keccak over the message) is a footgun we do not
+	// want to expose — a hostile dApp could trick a user into signing
+	// an unprefixed 32-byte value that is also a valid tx hash.
+	SignPersonalMessage(message []byte) ([]byte, error)
 }

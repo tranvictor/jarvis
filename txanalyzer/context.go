@@ -45,14 +45,23 @@ type AnalysisContext struct {
 }
 
 // NewAnalysisContext creates a fresh AnalysisContext using the default
-// (production) address resolver backed by the local address databases.
+// (production) address resolver backed by the local address databases
+// and transparently enriched with verified contract names fetched from
+// the network's block explorer on first miss (util.EnrichedResolver).
+// Callers never need to invoke util.PrefetchContractName manually —
+// any address the analyzer decodes (including nested calldata params)
+// is resolved through this single chokepoint.
 func NewAnalysisContext(r reader.Reader, network Network) *AnalysisContext {
-	return NewAnalysisContextWithResolver(r, network, addrbook.NewDefault(network))
+	return NewAnalysisContextWithResolver(r, network, util.NewEnrichedResolver(network))
 }
 
 // NewAnalysisContextWithResolver creates a fresh AnalysisContext with a
 // custom AddressResolver. Use this in tests to inject an addrbook.Map
 // (or any other deterministic implementation) instead of the local databases.
+//
+// Production callers who want to keep the explorer-backed contract-name
+// enrichment should pass util.NewEnrichedResolver(network) explicitly —
+// NewAnalysisContext does that for you by default.
 func NewAnalysisContextWithResolver(r reader.Reader, network Network, res addrbook.AddressResolver) *AnalysisContext {
 	return &AnalysisContext{
 		Network:  network,

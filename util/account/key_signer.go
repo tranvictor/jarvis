@@ -45,8 +45,37 @@ func (self *KeySigner) SignTypedDataHash(domainSeparator, structHash [32]byte) (
 	return sig, nil
 }
 
+// SignPersonalMessage hashes message with the EIP-191 personal_sign
+// prefix and signs the digest with the wrapped private key. v is
+// normalised to {27, 28}.
+func (self *KeySigner) SignPersonalMessage(message []byte) ([]byte, error) {
+	digest := personalMessageDigest(message)
+	sig, err := crypto.Sign(digest[:], self.key)
+	if err != nil {
+		return nil, fmt.Errorf("crypto.Sign: %w", err)
+	}
+	if len(sig) != 65 {
+		return nil, fmt.Errorf("expected 65-byte signature, got %d", len(sig))
+	}
+	sig[64] += 27
+	return sig, nil
+}
+
 func NewKeySigner(key *ecdsa.PrivateKey) *KeySigner {
 	return &KeySigner{key}
+}
+
+// personalMessageDigest returns keccak256("\x19Ethereum Signed Message:\n"
+// || len(msg) || msg). Shared between KeySigner's local implementation and
+// any test helper that needs to pre-compute the digest.
+func personalMessageDigest(message []byte) [32]byte {
+	prefix := fmt.Sprintf("\x19Ethereum Signed Message:\n%d", len(message))
+	buf := make([]byte, 0, len(prefix)+len(message))
+	buf = append(buf, prefix...)
+	buf = append(buf, message...)
+	var out [32]byte
+	copy(out[:], crypto.Keccak256(buf))
+	return out
 }
 
 // safeEIP712Digest computes keccak256(0x19 0x01 || domainSeparator || structHash).

@@ -455,7 +455,47 @@ func GetJarvisValue(value string, network networks.Network) jarviscommon.Value {
 // AnalysisContext) should use that resolver directly so the implementation
 // can be swapped in tests.
 func GetJarvisAddress(addr string, network networks.Network) jarviscommon.Address {
-	return addrbook.NewDefault(network).Resolve(addr)
+	return NewEnrichedResolver(network).Resolve(addr)
+}
+
+// EnrichedResolver wraps addrbook.Default with a lazy fallback that
+// fetches verified contract names from the network's block explorer
+// (following proxies) the first time an unknown address is seen.
+// Successful lookups land in the persistent jarvis cache so subsequent
+// resolves — whether through GetJarvisAddress, the TxAnalyzer, or
+// PromptTxConfirmation — return the enriched name with no extra work
+// from the caller.
+//
+// Callers therefore never need to remember to call PrefetchContractName
+// manually; any address that flows through the analyzer or util
+// helpers gets the same treatment, including addresses decoded out of
+// nested calldata.
+type EnrichedResolver struct {
+	inner   addrbook.AddressResolver
+	network networks.Network
+}
+
+// NewEnrichedResolver returns an EnrichedResolver backed by addrbook.Default.
+func NewEnrichedResolver(network networks.Network) *EnrichedResolver {
+	return &EnrichedResolver{
+		inner:   addrbook.NewDefault(network),
+		network: network,
+	}
+}
+
+// Resolve first consults the local address book / ERC20 cache. If that
+// comes back as "unknown", it best-effort prefetches a verified
+// contract name from the explorer and retries the lookup. Failures are
+// silent: network errors, rate limits, or unverified contracts all
+// just fall back to the original "unknown" result, and the in-memory
+// probed-set guarantees we don't retry within the same process.
+func (r *EnrichedResolver) Resolve(addr string) jarviscommon.Address {
+	a := r.inner.Resolve(addr)
+	if a.Desc != "unknown" {
+		return a
+	}
+	PrefetchContractName(addr, r.network)
+	return r.inner.Resolve(addr)
 }
 
 // PrefetchContractName warms the on-disk address cache with the contract
@@ -478,6 +518,16 @@ func PrefetchContractName(addr string, network networks.Network) {
 	if existing, found := cache.GetCache(cacheKey); found && existing != "" {
 		return
 	}
+	// In-memory "already tried" guard: keeps us from hammering the
+	// block explorer for unverified / unknown contracts on repeated
+	// lookups within a single jarvis process. Positive results land
+	// in the persistent disk cache above, so they short-circuit this
+	// check on the next run; negative results are deliberately not
+	// persisted (a contract might get verified later).
+	if markedProbed(network, addrLower) {
+		return
+	}
+	markProbed(network, addrLower)
 
 	r, err := EthReader(network)
 	if err != nil {
@@ -500,6 +550,32 @@ func PrefetchContractName(addr string, network networks.Network) {
 		)
 	}
 	_ = cache.SetCache(cacheKey, label)
+}
+
+// contractNameProbed tracks (network, address) pairs whose explorer
+// contract-name lookup has already been attempted this process. Used
+// only by PrefetchContractName; the shared jarvis on-disk cache
+// handles cross-run persistence of *successful* lookups.
+var (
+	contractNameProbedMu sync.Mutex
+	contractNameProbed   = map[string]struct{}{}
+)
+
+func probeKey(network networks.Network, addrLower string) string {
+	return network.GetName() + "|" + addrLower
+}
+
+func markedProbed(network networks.Network, addrLower string) bool {
+	contractNameProbedMu.Lock()
+	defer contractNameProbedMu.Unlock()
+	_, ok := contractNameProbed[probeKey(network, addrLower)]
+	return ok
+}
+
+func markProbed(network networks.Network, addrLower string) {
+	contractNameProbedMu.Lock()
+	defer contractNameProbedMu.Unlock()
+	contractNameProbed[probeKey(network, addrLower)] = struct{}{}
 }
 
 func isHttpURL(path string) bool {

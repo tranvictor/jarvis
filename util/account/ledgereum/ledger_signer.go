@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -13,6 +14,15 @@ import (
 
 	kusb "github.com/tranvictor/jarvis/util/account/usb"
 )
+
+// deviceWaitTimeout is how long we block Unlock() waiting for the
+// Ledger to be physically connected and the Ethereum app open. Tuned
+// for WalletConnect flows where the user often needs to plug the
+// device in after the dApp already issued the request.
+const deviceWaitTimeout = 90 * time.Second
+
+// deviceWaitPoll is how often we retry enumeration while waiting.
+const deviceWaitPoll = 2 * time.Second
 
 // minLedgerEthAppVersionForEIP712 is the lowest Ethereum app version known to
 // implement opcode 0x0C (SIGN_ETH_EIP_712 with precomputed hashes). For older
@@ -41,31 +51,105 @@ type LedgerSigner struct {
 func (self *LedgerSigner) Unlock() error {
 	self.devmu.Lock()
 	defer self.devmu.Unlock()
+	return self.unlockOnce()
+}
+
+// unlockOnce attempts a single unlock pass without the retry loop.
+// Callers that want "wait for the user to plug the device in" should
+// go through ensureUnlocked / unlockWithWait.
+func (self *LedgerSigner) unlockOnce() error {
 	infos, err := kusb.Enumerate(LEDGER_VENDOR_ID, 0)
 	if err != nil {
 		return err
 	}
 	if len(infos) == 0 {
 		return fmt.Errorf("Ledger device is not found")
-	} else {
-		for _, info := range infos {
-			for _, id := range LEDGER_PRODUCT_IDS {
-				// Windows and Macos use UsageID matching, Linux uses Interface matching
-				if info.ProductID == id && (info.UsagePage == LEDGER_USAGE_ID || info.Interface == LEDGER_ENDPOINT_ID) {
-					self.device, err = info.Open()
-					if err != nil {
-						return err
-					}
-					if err = self.driver.Open(self.device, ""); err != nil {
-						return err
-					}
-					break
+	}
+	for _, info := range infos {
+		for _, id := range LEDGER_PRODUCT_IDS {
+			// Windows and Macos use UsageID matching, Linux uses Interface matching
+			if info.ProductID == id && (info.UsagePage == LEDGER_USAGE_ID || info.Interface == LEDGER_ENDPOINT_ID) {
+				self.device, err = info.Open()
+				if err != nil {
+					return err
 				}
+				if err = self.driver.Open(self.device, ""); err != nil {
+					return err
+				}
+				break
 			}
 		}
 	}
 	self.deviceUnlocked = true
 	return nil
+}
+
+// ensureUnlocked runs unlockOnce under devmu, retrying on
+// "device not found" errors for up to deviceWaitTimeout so the user
+// can connect the Ledger after jarvis has already started waiting.
+func (self *LedgerSigner) ensureUnlocked() error {
+	self.devmu.Lock()
+	defer self.devmu.Unlock()
+	if self.deviceUnlocked {
+		return nil
+	}
+	return unlockWithWait(self.unlockOnce, deviceWaitTimeout)
+}
+
+// unlockWithWait repeatedly calls unlock until it succeeds, a
+// non-"device not found" error happens, or timeout elapses. The
+// user sees progress roughly every 10s.
+func unlockWithWait(unlock func() error, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	attempt := 0
+	for {
+		attempt++
+		err := unlock()
+		if err == nil {
+			return nil
+		}
+		if !isLedgerNotConnected(err) {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf(
+				"ledger not connected after %s (last error: %w). Plug it in, unlock and open the Ethereum app, then try again",
+				timeout, err)
+		}
+		if attempt == 1 {
+			fmt.Printf(
+				"Ledger not detected. Please connect it, unlock and open the Ethereum app within %s...\n",
+				timeout,
+			)
+		} else if attempt%5 == 0 {
+			remaining := time.Until(deadline).Round(time.Second)
+			fmt.Printf("  ...still waiting for Ledger (~%s left)\n", remaining)
+		}
+		time.Sleep(deviceWaitPoll)
+	}
+}
+
+// isLedgerNotConnected reports whether err comes from the USB
+// enumeration step failing to find a Ledger, or from opening it
+// before the Ethereum app is ready. We only retry these; any other
+// error (user reject, APDU error) should surface immediately.
+func isLedgerNotConnected(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, needle := range []string{
+		"ledger device is not found",
+		"no such device",
+		"device not configured",
+		"6511", // APDU "no app selected" while waiting for Ethereum app
+		"6e00", // CLA not supported — returned by the dashboard
+	} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func (self *LedgerSigner) SignTx(
@@ -75,12 +159,8 @@ func (self *LedgerSigner) SignTx(
 	self.mu.Lock()
 	defer self.mu.Unlock()
 	fmt.Printf("Going to proceed signing procedure\n")
-	var err error
-	if !self.deviceUnlocked {
-		err = self.Unlock()
-		if err != nil {
-			return common.Address{}, tx, err
-		}
+	if err := self.ensureUnlocked(); err != nil {
+		return common.Address{}, tx, err
 	}
 	return self.driver.ledgerSign(self.path, tx, chainId)
 }
@@ -97,10 +177,8 @@ func (self *LedgerSigner) SignTypedDataHash(
 ) ([]byte, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
-	if !self.deviceUnlocked {
-		if err := self.Unlock(); err != nil {
-			return nil, err
-		}
+	if err := self.ensureUnlocked(); err != nil {
+		return nil, err
 	}
 
 	if ledgerVersionAtLeast(self.driver.version, minLedgerEthAppVersionForEIP712) {
@@ -137,6 +215,28 @@ func (self *LedgerSigner) SignTypedDataHash(
 	}
 	// Tell Safe this signature came through the eth_sign code path.
 	sig[64] += 4
+	return sig, nil
+}
+
+// SignPersonalMessage signs message with the EIP-191 personal_sign
+// prefix via the Ledger's SIGN_PERSONAL_MESSAGE opcode. The Ledger
+// Ethereum app applies the "\x19Ethereum Signed Message:\n<len>" prefix
+// and hashes internally, so callers pass the raw message bytes. The
+// returned v is canonical ({27, 28}); no +4 offset is applied (unlike
+// the Safe-hash fallback path).
+func (self *LedgerSigner) SignPersonalMessage(message []byte) ([]byte, error) {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if err := self.ensureUnlocked(); err != nil {
+		return nil, err
+	}
+	sig, err := self.driver.ledgerSignPersonalMessage(self.path, message)
+	if err != nil {
+		return nil, err
+	}
+	if len(sig) != 65 {
+		return nil, fmt.Errorf("ledger personal_sign returned %d bytes, want 65", len(sig))
+	}
 	return sig, nil
 }
 
