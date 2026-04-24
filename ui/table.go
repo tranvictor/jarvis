@@ -3,11 +3,13 @@ package ui
 import (
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	runewidth "github.com/mattn/go-runewidth"
+	"golang.org/x/term"
 )
 
 // TableCell is a single cell in a Table with optional severity styling.
@@ -37,7 +39,13 @@ func TCS(text string, s Severity) TableCell { return TableCell{Text: text, Sever
 //     event or per function call).
 //
 // MaxCellWidth caps any single column's visual width (0 = no cap).
-// When set, cells wider than the cap are truncated with "...".
+// When set, cells wider than the cap are wrapped across multiple
+// physical lines so the full content remains visible without blowing
+// the table out to terminal-breaking widths.
+//
+// Even when MaxCellWidth is 0, renderTable auto-fits the table to the
+// current terminal width (shrinking the widest columns first) and
+// wraps any cell that exceeds its computed column width.
 type Table struct {
 	Headers      []string
 	Rows         [][]TableCell   // first-column grouped; used when Groups is nil
@@ -101,20 +109,123 @@ func colWidths(t *Table) []int {
 			consider(row)
 		}
 	}
+
+	// Fit-to-terminal: if the table as-measured would overflow the
+	// current terminal, shrink the widest column(s) until the whole
+	// row fits. Otherwise very long hex calldata blows the table out
+	// to several thousand columns wide and ruins readability. The
+	// rendering path below will wrap any cell whose content exceeds
+	// its column width, so no information is lost.
+	shrinkToTerminal(widths)
 	return widths
 }
 
-// truncateStr truncates s to at most maxRunes visible code points, appending
-// "..." when truncation occurs (preserves rune boundaries).
-func truncateStr(s string, maxRunes int) string {
-	runes := []rune(s)
-	if len(runes) <= maxRunes {
-		return s
+// minWrapWidth is the smallest column width we'll ever shrink to when
+// auto-fitting to the terminal. Narrower than this and hex strings
+// become a scroll of 10-char fragments with more border than content.
+const minWrapWidth = 20
+
+// shrinkToTerminal adjusts widths in place so that the total rendered
+// row width fits within the current terminal columns. It preferentially
+// shrinks the widest column, repeating until the budget is satisfied
+// or every column is at minWrapWidth (in which case the table will
+// still overflow, but by as little as possible).
+func shrinkToTerminal(widths []int) {
+	termCols := detectTerminalWidth()
+	if termCols <= 0 {
+		return
 	}
-	if maxRunes <= 3 {
-		return string(runes[:maxRunes])
+	// Each column renders as " content " plus one separator glyph; a
+	// final glyph caps the right side. So the total frame overhead is
+	// 2*n (paddings) + n + 1 (separators including the outer rails).
+	n := len(widths)
+	const safetyMargin = 1 // avoid writing into the very last column
+	overhead := 3*n + 1 + safetyMargin
+	budget := termCols - overhead
+	if budget <= 0 {
+		return
 	}
-	return string(runes[:maxRunes-3]) + "..."
+	total := 0
+	for _, w := range widths {
+		total += w
+	}
+	for total > budget {
+		// Find the widest column that's still wider than the floor.
+		maxIdx, maxW := -1, -1
+		for i, w := range widths {
+			if w > maxW && w > minWrapWidth {
+				maxIdx, maxW = i, w
+			}
+		}
+		if maxIdx < 0 {
+			return // every column already at or below the floor
+		}
+		widths[maxIdx]--
+		total--
+	}
+}
+
+// detectTerminalWidth returns os.Stdout's current column count, or 0
+// if we can't determine it (not a TTY, error, etc.) — callers treat 0
+// as "no cap".
+func detectTerminalWidth() int {
+	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
+		return w
+	}
+	return 0
+}
+
+// wrapCell splits s into visual lines of at most maxWidth columns each,
+// preserving rune boundaries. Input line breaks in s are respected: each
+// source line is wrapped independently so explicit newlines stay aligned
+// with the original content.
+//
+// Wrapping is char-based (no word boundaries) because cell content in
+// jarvis is usually long hex strings with no natural break points; for
+// human-readable text this still looks acceptable because most such
+// content is short enough not to wrap at all.
+func wrapCell(s string, maxWidth int) []string {
+	if maxWidth <= 0 {
+		return []string{s}
+	}
+	if s == "" {
+		return []string{""}
+	}
+	var lines []string
+	for _, src := range strings.Split(s, "\n") {
+		if src == "" {
+			lines = append(lines, "")
+			continue
+		}
+		runes := []rune(src)
+		start := 0
+		for start < len(runes) {
+			end := start
+			width := 0
+			for end < len(runes) {
+				rw := runewidth.RuneWidth(runes[end])
+				if rw == 0 {
+					rw = 1
+				}
+				if width+rw > maxWidth {
+					break
+				}
+				width += rw
+				end++
+			}
+			if end == start {
+				// Single rune wider than maxWidth — take it anyway
+				// so we make forward progress.
+				end = start + 1
+			}
+			lines = append(lines, string(runes[start:end]))
+			start = end
+		}
+	}
+	if len(lines) == 0 {
+		lines = []string{""}
+	}
+	return lines
 }
 
 // renderTable is the single table rendering engine used by PrintTable,
@@ -145,37 +256,86 @@ func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCel
 		fmt.Fprintf(out, "%s%s\n", prefix, bdr(left+strings.Join(parts, mid)+right))
 	}
 
+	// writeRow renders a logical table row, wrapping any cell whose
+	// content exceeds its column width onto additional physical lines.
+	// Cells whose content fits stay on the first physical line only;
+	// their continuation lines are rendered as blank padding so the
+	// bordered layout stays aligned.
 	writeRow := func(row []TableCell, suppressFirstCol bool) {
-		cells := make([]string, n)
+		// Precompute the wrapped lines and severity for each column.
+		type wrapped struct {
+			lines    []string
+			severity Severity
+		}
+		cols := make([]wrapped, n)
+		maxLines := 1
 		for i, w := range widths {
 			var cell TableCell
 			if i < len(row) {
 				cell = row[i]
 			}
 			plain := cell.Text
-			if t.MaxCellWidth > 0 {
-				plain = truncateStr(plain, w) // w is already capped by colWidths
-			}
 			if suppressFirstCol && i == 0 {
 				plain = ""
 			}
-			styled := styleCell(TableCell{Text: plain, Severity: cell.Severity})
-			pad := w - runeLen(plain)
-			cells[i] = " " + styled + strings.Repeat(" ", pad) + " "
+			lines := wrapCell(plain, w)
+			cols[i] = wrapped{lines: lines, severity: cell.Severity}
+			if len(lines) > maxLines {
+				maxLines = len(lines)
+			}
 		}
-		fmt.Fprintf(out, "%s%s\n", prefix,
-			bdr("│")+strings.Join(cells, bdr("│"))+bdr("│"))
+		for li := 0; li < maxLines; li++ {
+			cells := make([]string, n)
+			for i, w := range widths {
+				plain := ""
+				if li < len(cols[i].lines) {
+					plain = cols[i].lines[li]
+				}
+				styled := styleCell(TableCell{Text: plain, Severity: cols[i].severity})
+				pad := w - runeLen(plain)
+				if pad < 0 {
+					pad = 0
+				}
+				cells[i] = " " + styled + strings.Repeat(" ", pad) + " "
+			}
+			fmt.Fprintf(out, "%s%s\n", prefix,
+				bdr("│")+strings.Join(cells, bdr("│"))+bdr("│"))
+		}
 	}
 
 	hline("┌", "┬", "┐")
 	if len(t.Headers) > 0 {
-		headerCells := make([]string, n)
-		for i, h := range t.Headers {
-			pad := widths[i] - runeLen(h)
-			headerCells[i] = " " + h + strings.Repeat(" ", pad) + " "
+		// Headers wrap the same way data cells do so auto-shrinking
+		// to terminal width doesn't corrupt alignment when a header
+		// is longer than its (shrunken) column.
+		headerLines := make([][]string, n)
+		maxHdrLines := 1
+		for i, w := range widths {
+			var h string
+			if i < len(t.Headers) {
+				h = t.Headers[i]
+			}
+			headerLines[i] = wrapCell(h, w)
+			if len(headerLines[i]) > maxHdrLines {
+				maxHdrLines = len(headerLines[i])
+			}
 		}
-		fmt.Fprintf(out, "%s%s\n", prefix,
-			bdr("│")+strings.Join(headerCells, bdr("│"))+bdr("│"))
+		for li := 0; li < maxHdrLines; li++ {
+			cells := make([]string, n)
+			for i, w := range widths {
+				h := ""
+				if li < len(headerLines[i]) {
+					h = headerLines[i][li]
+				}
+				pad := w - runeLen(h)
+				if pad < 0 {
+					pad = 0
+				}
+				cells[i] = " " + h + strings.Repeat(" ", pad) + " "
+			}
+			fmt.Fprintf(out, "%s%s\n", prefix,
+				bdr("│")+strings.Join(cells, bdr("│"))+bdr("│"))
+		}
 		hline("├", "┼", "┤")
 	}
 

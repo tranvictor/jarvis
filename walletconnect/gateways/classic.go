@@ -13,8 +13,11 @@ import (
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/txanalyzer"
+	jarvisui "github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/account"
 	"github.com/tranvictor/jarvis/util/broadcaster"
@@ -240,7 +243,27 @@ func (g *ClassicGateway) SendTransaction(
 		"Other owners approve with:  jarvis msig approve %s %s",
 		g.addr.Hex(), hash,
 	)
+
+	// Same treatment as the EOA gateway: after broadcast, wait for
+	// the outer submitTransaction to be mined and print the full
+	// jarvis receipt (decoded Submission/Confirmation events, etc.)
+	// via the standard analyzer. Runs off the hot path so the dApp
+	// gets its eth_sendTransaction response immediately.
+	if fullUI, ok := g.ui.(jarvisui.UI); ok {
+		go g.waitAndAnalyze(fullUI, signedTx)
+	}
 	return hash, nil
+}
+
+func (g *ClassicGateway) waitAndAnalyze(
+	fullUI jarvisui.UI,
+	signedTx *types.Transaction,
+) {
+	analyzer := txanalyzer.NewGenericAnalyzer(g.reader, g.network)
+	util.DisplayWaitAnalyze(
+		fullUI, g.reader, analyzer, signedTx, true, nil, g.network,
+		nil, nil, config.DegenMode,
+	)
 }
 
 func (g *ClassicGateway) unlock() (*account.Account, error) {

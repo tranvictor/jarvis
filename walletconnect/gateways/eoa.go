@@ -15,6 +15,7 @@ import (
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
+	"github.com/tranvictor/jarvis/config"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	jarvisui "github.com/tranvictor/jarvis/ui"
@@ -263,7 +264,40 @@ func (g *EOAGateway) SendTransaction(
 		return "", fmt.Errorf("broadcast rejected: %w", err)
 	}
 	g.ui.Success("Broadcasted. Tx hash: %s", hash)
+
+	// Wait for the tx to be mined and print the full jarvis receipt
+	// analysis (decoded logs, ERC20 transfers, …) — same output as
+	// `jarvis send` gives you. Runs in a goroutine so the dApp gets
+	// its eth_sendTransaction response back immediately; if the user
+	// Ctrl-Cs the session before the tx mines, the goroutine dies
+	// with the process.
+	if fullUI, ok := g.ui.(jarvisui.UI); ok {
+		go g.waitAndAnalyze(fullUI, rd, net, signedTx, signedTxTo)
+	}
 	return hash, nil
+}
+
+// waitAndAnalyze blocks until signedTx is mined, then prints the
+// jarvis-standard receipt summary using the full ui.UI. Runs in a
+// goroutine so the dApp's eth_sendTransaction response isn't
+// gated on block confirmation. On session teardown the goroutine
+// dies with the process.
+func (g *EOAGateway) waitAndAnalyze(
+	fullUI jarvisui.UI,
+	rd utilreader.Reader,
+	net jarvisnetworks.Network,
+	signedTx *types.Transaction,
+	to string,
+) {
+	analyzer := txanalyzer.NewGenericAnalyzer(rd, net)
+	var customABIs map[string]*abi.ABI
+	if a, err := g.resolver.ConfigToABI(to, false, "", net); err == nil && a != nil {
+		customABIs = map[string]*abi.ABI{strings.ToLower(to): a}
+	}
+	jarvisutil.DisplayWaitAnalyze(
+		fullUI, rd, analyzer, signedTx, true, nil, net,
+		nil, customABIs, config.DegenMode,
+	)
 }
 
 func (g *EOAGateway) PersonalSign(ctx context.Context, chain string, message []byte) (string, error) {
