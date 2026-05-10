@@ -800,6 +800,10 @@ with --json-output, the same data is also written as JSON.`,
 				continue
 			}
 
+			customABIs := map[string]*abi.ABI{
+				strings.ToLower(msigHex): a,
+			}
+
 			txType, err := cmdutil.ValidTxType(cm.Reader(network), network)
 			if err != nil {
 				appUI.Error("Couldn't determine proper tx type: %s. Aborting.", err)
@@ -843,7 +847,7 @@ with --json-output, the same data is also written as JSON.`,
 						cm.Analyzer(network),
 						util.GetJarvisAddress(from, network),
 						tx,
-						nil,
+						customABIs,
 						network,
 					)
 					if err != nil {
