@@ -101,6 +101,17 @@ func (r *RecordingUI) Section(title string) {
 	r.record("Section", title)
 }
 
+// BoxedSection records a "BoxedSection" entry with the title, then runs
+// body against the same RecordingUI so the inner output remains visible
+// in Entries() exactly as if it had been emitted without the box. Tests
+// can therefore assert on the inner content with HasMessage without
+// caring about the framing.
+func (r *RecordingUI) BoxedSection(severity Severity, title string, body func(UI)) {
+	r.record("BoxedSection", title)
+	body(r)
+	r.record("BoxedSectionEnd", title)
+}
+
 func (r *RecordingUI) Interpret(value string) {
 	r.record("Interpret", value)
 }

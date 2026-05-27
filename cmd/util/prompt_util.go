@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"fmt"
 	"math/big"
 	"sort"
@@ -14,6 +15,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -444,7 +446,46 @@ func showTxInfoToConfirm(
 		tx.Data(),
 		customABIs,
 	)
+
+	// ERC-7730 clear-signing layer: when a descriptor matches the
+	// destination contract, render the curated green-bordered view
+	// above the raw ABI decode so the operator can scan the intent
+	// at a glance and still cross-check against the full breakdown.
+	// Failures (descriptor not found, registry miss, formatter
+	// error) silently fall through to the existing display — we
+	// never make the review worse than today.
+	if fc != nil && fc.Method != "" {
+		renderContractClearSign(u, tx, fc, network)
+	}
+
 	util.DisplayFunctionCall(u, fc)
 	u.Info("")
 	return nil
+}
+
+// renderContractClearSign asks the shared ERC-7730 engine for a
+// ClearSignedView of this transaction and, when one is available,
+// emits it inside a green-bordered box. The engine is lazy-loaded
+// process-wide so first invocation pays a one-time directory walk
+// (and a registry sync on the very first run with no local cache).
+func renderContractClearSign(
+	u ui.UI,
+	tx *types.Transaction,
+	fc *jarviscommon.FunctionCall,
+	network jarvisnetworks.Network,
+) {
+	engine := erc7730.DefaultEngine()
+	view, err := engine.ContractView(
+		context.Background(),
+		network.GetChainID(),
+		tx.To().Hex(),
+		tx.Value(),
+		tx.Data(),
+		fc.Params,
+		nil,
+	)
+	if err != nil || view == nil {
+		return
+	}
+	erc7730.Render(u, view)
 }

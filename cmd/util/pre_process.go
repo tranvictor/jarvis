@@ -586,6 +586,53 @@ func preResolveMultisigArg(u ui.UI, cmd *cobra.Command, args []string) (*safe.Sa
 	return r, nil
 }
 
+// applyMultisigArgNetworkHint sets config.NetworkString from a
+// network-prefixed first argument (e.g. "mainnet:0x…") when the user
+// did not pass -k/--network explicitly.
+func applyMultisigArgNetworkHint(cmd *cobra.Command, args []string) {
+	if len(args) == 0 || cmd.Flags().Changed("network") {
+		return
+	}
+	if nwks, txs := ScanForTxs(args[0]); len(txs) > 0 && nwks[0] != "" {
+		config.NetworkString = nwks[0]
+	}
+}
+
+// resolveMultisigProbeAddress turns args[0] into the contract address
+// DetectMultisigType should probe. Jarvis names and bare addresses pass
+// through; Gnosis Classic init tx hashes (optionally network-prefixed)
+// are resolved via the tx's `to` field, matching bapprove and the
+// legacy single-argument approve/execute flow.
+func resolveMultisigProbeAddress(arg string) (string, error) {
+	addr, _, err := DefaultABIResolver{}.GetAddressFromString(arg)
+	if err == nil {
+		return addr, nil
+	}
+
+	_, txs := ScanForTxs(arg)
+	if len(txs) == 0 {
+		return arg, nil
+	}
+
+	txHash := txs[0]
+	if !strings.HasPrefix(txHash, "0x") {
+		txHash = "0x" + txHash
+	}
+
+	r, err := util.EthReader(config.Network())
+	if err != nil {
+		return "", fmt.Errorf("couldn't connect to blockchain: %w", err)
+	}
+	txinfo, err := r.TxInfoFromHash(txHash)
+	if err != nil {
+		return "", fmt.Errorf("couldn't get tx info from the blockchain: %w", err)
+	}
+	if txinfo.Tx.To() == nil {
+		return "", fmt.Errorf("%q is a contract-creation tx, not a multisig init tx", arg)
+	}
+	return txinfo.Tx.To().Hex(), nil
+}
+
 // CommonMultisigReadPreprocess is the unified read-only preprocess for
 // `jarvis msig` inspection commands (info / summary / gov). It accepts
 // the same first-argument shapes as the Safe-only equivalent (bare
@@ -602,13 +649,14 @@ func CommonMultisigReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) er
 	if err != nil {
 		return err
 	}
+	applyMultisigArgNetworkHint(cmd, args)
 	if err := config.SetNetwork(config.NetworkString); err != nil {
 		return err
 	}
 
-	addr, _, err := DefaultABIResolver{}.GetAddressFromString(args[0])
+	addr, err := resolveMultisigProbeAddress(args[0])
 	if err != nil {
-		addr = args[0]
+		return err
 	}
 
 	typ, err := DetectMultisigType(config.Network(), addr)
@@ -651,13 +699,14 @@ func CommonMultisigTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) erro
 	if err != nil {
 		return err
 	}
+	applyMultisigArgNetworkHint(cmd, args)
 	if err := config.SetNetwork(config.NetworkString); err != nil {
 		return err
 	}
 
-	addr, _, err := DefaultABIResolver{}.GetAddressFromString(args[0])
+	addr, err := resolveMultisigProbeAddress(args[0])
 	if err != nil {
-		addr = args[0]
+		return err
 	}
 
 	typ, err := DetectMultisigType(config.Network(), addr)

@@ -94,6 +94,22 @@ type UI interface {
 	// Example: "===== Confirm tx data before signing ====="
 	Section(title string)
 
+	// BoxedSection renders the output emitted by body inside a rounded
+	// rectangular box whose border colour reflects severity. The optional
+	// title is injected into the top border ("╭─ <title> ─...─╮") so the
+	// box self-labels.
+	//
+	// Use it to highlight curated content the user should focus on — for
+	// instance the ERC-7730 clear-signed intent that sits above the raw
+	// ABI-decoded view in PromptTxConfirmation.
+	//
+	// body receives a child UI that delegates its output through this
+	// renderer; calls like Info / Critical / Table / KeyValue inside body
+	// behave normally but are captured, framed, and emitted as a single
+	// block. The child shares input state (Ask, Confirm, …) with the
+	// parent so interactive prompts still work if needed.
+	BoxedSection(severity Severity, title string, body func(UI))
+
 	// KeyValue renders an aligned 2-column block — label on the left,
 	// value on the right — with all values left-aligned to the same column.
 	// Use for compact metadata like Status/From/To/Value or gas details.

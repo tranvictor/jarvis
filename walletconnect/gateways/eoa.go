@@ -18,6 +18,7 @@ import (
 	"github.com/tranvictor/jarvis/config"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer"
+	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	jarvisui "github.com/tranvictor/jarvis/ui"
 	jarvisutil "github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/account"
@@ -322,6 +323,9 @@ func (g *EOAGateway) SignTypedData(ctx context.Context, chain string, typedDataJ
 	if err != nil {
 		return "", err
 	}
+
+	g.ui.Section("Confirm typed-data message before signing")
+	g.ui.Info("Signer    : %s", g.addr.Hex())
 	g.ui.Info("Domain    : %s (chainId %v)",
 		td.Domain.Name,
 		td.Domain.ChainId,
@@ -330,6 +334,20 @@ func (g *EOAGateway) SignTypedData(ctx context.Context, chain string, typedDataJ
 		g.ui.Info("Verifying : %s", td.Domain.VerifyingContract)
 	}
 	g.ui.Info("PrimaryType: %s", td.PrimaryType)
+
+	// ERC-7730 clear-signing: when a descriptor binds to this
+	// EIP-712 message (matched by domain or domainSeparator), render
+	// the curated view inside the green-bordered box. Falls through
+	// silently otherwise; we still print the truncated raw JSON
+	// below so the operator always has the full message available
+	// (matching the previous behavior).
+	if fullUI, ok := g.ui.(jarvisui.UI); ok {
+		engine := erc7730.DefaultEngine()
+		if view, vErr := engine.EIP712View(ctx, &td.TypedData, g.addr.Hex()); vErr == nil && view != nil {
+			erc7730.Render(fullUI, view)
+		}
+	}
+
 	g.ui.Info("Message   : %s", firstLineOf(string(typedDataJSON), 200))
 	if !g.ui.Confirm("Sign this typed-data message?", true) {
 		return "", walletconnect.ErrUserRejected

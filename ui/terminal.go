@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -107,6 +108,25 @@ func (u *TerminalUI) Section(title string) {
 	right := bars - left
 	line := strings.Repeat("=", left) + titled + strings.Repeat("=", right)
 	fmt.Fprintf(u.out, "\n%s%s\n\n", u.prefix(), line)
+}
+
+// BoxedSection renders body inside a rounded coloured-border box.
+//
+// We capture body's output into an in-memory buffer by spawning a
+// detached TerminalUI that shares the input reader (so any prompts
+// still work) but writes to the buffer instead of os.Stdout. The
+// captured text is then framed by lipgloss and emitted to the outer
+// writer with this UI's indent prefix preserved.
+func (u *TerminalUI) BoxedSection(severity Severity, title string, body func(UI)) {
+	var buf bytes.Buffer
+	inner := &TerminalUI{
+		indentLevel: 0,
+		out:         &buf,
+		in:          u.in,
+		au:          u.au,
+	}
+	body(inner)
+	writeBoxed(u.out, u.prefix(), severity, title, buf.String())
 }
 
 // Interpret shows what Jarvis understood from the user's last input.

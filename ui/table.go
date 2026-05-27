@@ -51,6 +51,13 @@ type Table struct {
 	Rows         [][]TableCell   // first-column grouped; used when Groups is nil
 	Groups       [][][]TableCell // explicit groups; takes precedence over Rows when non-nil
 	MaxCellWidth int             // 0 = no cap
+
+	// BorderSeverity controls the colour of the table's border characters.
+	// The zero value (SeverityInfo) keeps the existing dim grey rendering so
+	// untouched callers are unaffected. Set to SeveritySuccess (green) for
+	// curated content like ERC-7730 clear-signed fields, SeverityWarn /
+	// SeverityError for highlighted warning/error tables, etc.
+	BorderSeverity Severity
 }
 
 // AddRow appends a row to Rows (first-column auto-grouping mode).
@@ -244,8 +251,11 @@ func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCel
 		return
 	}
 
-	// Border characters are dimmed to keep them visually subordinate to content.
-	bdrStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+	// Border characters are dimmed by default (lipgloss colour "240") so
+	// they stay visually subordinate to content. Callers that want to make
+	// a table stand out — e.g. ERC-7730 clear-signed views — bump the
+	// BorderSeverity so the borders pick up the matching ANSI colour.
+	bdrStyle := lipgloss.NewStyle().Foreground(BorderColor(t.BorderSeverity))
 	bdr := func(s string) string { return bdrStyle.Render(s) }
 
 	hline := func(left, mid, right string) {
