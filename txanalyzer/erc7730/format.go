@@ -141,12 +141,14 @@ func (f *Formatter) resolveRef(field Field) (Field, error) {
 	if field.Format != "" {
 		merged.Format = field.Format
 	}
-	if merged.Params == nil {
-		merged.Params = map[string]any{}
+	merged.Params = map[string]any{}
+	for k, v := range def.Params {
+		merged.Params[k] = v
 	}
 	for k, v := range field.Params {
 		merged.Params[k] = v
 	}
+	merged.Visible = field.Visible
 	return merged, nil
 }
 
@@ -266,7 +268,7 @@ func (f *Formatter) formatTokenAmount(field Field, v ResolvedValue) FormattedFie
 	tokenAddr, _ := f.resolveTokenParam(field, "tokenPath", "token")
 	threshold, hasThreshold := f.thresholdParam(field)
 	message := stringParam(field, "message", "Unlimited")
-	nativeAddrs := nativeCurrencyAddresses(field)
+	nativeAddrs := f.nativeCurrencyAddresses(field)
 
 	// Above-threshold display.
 	if hasThreshold && v.Int.Cmp(threshold) >= 0 {
@@ -589,7 +591,10 @@ func intParam(field Field, key string, fallback int) int {
 	return fallback
 }
 
-func nativeCurrencyAddresses(field Field) []string {
+func (f *Formatter) nativeCurrencyAddresses(field Field) []string {
+	if s := f.resolveParamRef(field.Params["nativeCurrencyAddress"]); s != "" {
+		return []string{s}
+	}
 	switch v := field.Params["nativeCurrencyAddress"].(type) {
 	case string:
 		return []string{v}
@@ -603,6 +608,32 @@ func nativeCurrencyAddresses(field Field) []string {
 		return out
 	}
 	return nil
+}
+
+func (f *Formatter) resolveParamRef(v any) string {
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return ""
+	}
+	if s[0] != '$' && s[0] != '#' && s[0] != '@' {
+		return s
+	}
+	p, err := ParsePath(s)
+	if err != nil {
+		return ""
+	}
+	rv, err := f.Resolver.Resolve(p)
+	if err != nil {
+		return ""
+	}
+	switch rv.Kind {
+	case ResolvedAddress:
+		return rv.Addr
+	case ResolvedString:
+		return rv.Str
+	default:
+		return resolvedToAddressLike(rv)
+	}
 }
 
 func containsCI(haystack []string, needle string) bool {

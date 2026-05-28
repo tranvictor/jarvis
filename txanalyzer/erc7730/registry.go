@@ -144,6 +144,9 @@ func (r *LocalRegistry) loadTreeLocked(root, source string) {
 		if !strings.HasSuffix(strings.ToLower(info.Name()), ".json") {
 			return nil
 		}
+		if strings.HasSuffix(strings.ToLower(info.Name()), ".tests.json") {
+			return nil
+		}
 		d, err := loadFile(path)
 		if err != nil || d == nil {
 			return nil

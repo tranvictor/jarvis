@@ -74,7 +74,7 @@ func (e *Engine) ContractView(
 	value *big.Int,
 	calldata []byte,
 	params []jarviscommon.ParamResult,
-	abiTypes []abi.Argument,
+	contractABI *abi.ABI,
 ) (*ClearSignedView, error) {
 	if len(calldata) < 4 {
 		return nil, nil
@@ -95,10 +95,20 @@ func (e *Engine) ContractView(
 	}
 
 	data := BuildDataFromParams(params)
+	// Prefer a direct ABI unpack when the caller supplies the
+	// contract ABI — this mirrors go-ethereum's struct binding and
+	// avoids subtle name/shape drift in the ParamResult conversion.
+	if contractABI != nil {
+		if method, err := contractABI.MethodById(calldata[:4]); err == nil {
+			if decoded, err := buildDataFromCalldata(matched, calldata, method); err == nil {
+				data = decoded
+			}
+		}
+	}
 
-	// If the underlying ABI returned unnamed params, replace them
-	// with the names declared in the format key — the spec
-	// guarantees those are the names paths reference.
+	// Align top-level param names with the descriptor format key.
+	// Verified ABIs often use compiler-internal names (_execution)
+	// that differ from the descriptor's declared names (execution).
 	data = applyParamNames(data, matched.ParamNames)
 
 	resolver := &Resolver{
@@ -197,15 +207,13 @@ func (e *Engine) buildView(resolver *Resolver, matched *MatchedFormat) *ClearSig
 	return view
 }
 
-// applyParamNames ensures the resolver's ResolvedTuple uses the names
-// declared in the descriptor's format key. The ABI decode might have
-// produced anonymous fields (Etherscan-fetched ABI with stripped
-// names), in which case paths like `#.to` would otherwise fail.
-//
-// When the original ABI provided real names, we preserve them — the
-// spec requires the format key's names match the ABI's; descriptors
-// that violate this won't path-resolve either way and that's the
-// authoring bug we want exposed.
+// applyParamNames aligns the resolver's top-level tuple field names
+// with those declared in the descriptor's format key. The spec
+// mandates that paths like `#.execution.desc.amount` use the format
+// key's parameter names, not necessarily the compiler's internal ABI
+// names (_execution, etc.). When the ABI omitted names entirely we
+// still fill them in; when the ABI named them differently the
+// descriptor wins as long as the arity matches.
 func applyParamNames(data ResolvedValue, names []string) ResolvedValue {
 	if data.Kind != ResolvedTuple {
 		return data
@@ -216,7 +224,7 @@ func applyParamNames(data ResolvedValue, names []string) ResolvedValue {
 	out := ResolvedValue{Kind: ResolvedTuple}
 	for i, f := range data.Tuple {
 		nm := f.Name
-		if nm == "" {
+		if i < len(names) && names[i] != "" {
 			nm = names[i]
 		}
 		out.Tuple = append(out.Tuple, ResolvedField{Name: nm, Value: f.Value})
@@ -273,13 +281,16 @@ func (e *Engine) implForChain(chainID uint64) func(string) (string, bool) {
 	return e.ImplFor
 }
 
-// lazySyncAndRetryContract is the auto-refresh hook: if the source
-// is a LocalRegistry and we've never seen its current copy give an
-// answer for (chainID, to), and AutoSyncEvery has elapsed since the
-// last sync, trigger one sync and retry. Failures are silent.
+// lazySyncAndRetryContract refreshes the upstream registry when we
+// have no descriptor bound to (chainID, to) and the local mirror is
+// older than AutoSyncEvery. A selector mismatch against a known
+// binding is not a sync candidate — refreshing won't add formats.
 func (e *Engine) lazySyncAndRetryContract(ctx context.Context, in ContractMatchInput) *MatchedFormat {
 	lr, ok := e.Source.(*LocalRegistry)
-	if !ok || e.AutoSyncEvery == 0 {
+	if !ok || e.AutoSyncEvery <= 0 {
+		return nil
+	}
+	if len(lr.FindByContract(in.ChainID, in.To)) > 0 {
 		return nil
 	}
 	if lr.LastSyncAge() < e.AutoSyncEvery {

@@ -104,7 +104,9 @@ func (r *LocalRegistry) SyncRegistry(ctx context.Context, opts SyncOptions) (int
 			continue
 		}
 		rel := name[idx+1:] // "registry/<owner>/<file>.json"
-		if !strings.HasSuffix(strings.ToLower(rel), ".json") {
+		base := filepath.Base(rel)
+		if !strings.HasSuffix(strings.ToLower(base), ".json") ||
+			strings.HasSuffix(strings.ToLower(base), ".tests.json") {
 			continue
 		}
 		dst := filepath.Join(tmp, rel)

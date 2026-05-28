@@ -455,7 +455,7 @@ func showTxInfoToConfirm(
 	// error) silently fall through to the existing display — we
 	// never make the review worse than today.
 	if fc != nil && fc.Method != "" {
-		renderContractClearSign(u, tx, fc, network)
+		renderContractClearSign(u, tx, fc, network, customABIs)
 	}
 
 	util.DisplayFunctionCall(u, fc)
@@ -473,7 +473,17 @@ func renderContractClearSign(
 	tx *types.Transaction,
 	fc *jarviscommon.FunctionCall,
 	network jarvisnetworks.Network,
+	customABIs map[string]*abi.ABI,
 ) {
+	var contractABI *abi.ABI
+	if customABIs != nil {
+		contractABI = customABIs[strings.ToLower(tx.To().Hex())]
+	}
+	if contractABI == nil {
+		if a, err := util.GetABI(tx.To().Hex(), network); err == nil {
+			contractABI = a
+		}
+	}
 	engine := erc7730.DefaultEngine()
 	view, err := engine.ContractView(
 		context.Background(),
@@ -482,7 +492,7 @@ func renderContractClearSign(
 		tx.Value(),
 		tx.Data(),
 		fc.Params,
-		nil,
+		contractABI,
 	)
 	if err != nil || view == nil {
 		return

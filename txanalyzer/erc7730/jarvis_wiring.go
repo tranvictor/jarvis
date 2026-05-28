@@ -3,6 +3,7 @@ package erc7730
 import (
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util"
@@ -168,7 +169,7 @@ var (
 	sharedRegistry     *LocalRegistry
 )
 
-const defaultAutoSync = 0 // disabled by default; CLI `clearsign update` is the explicit path
+const defaultAutoSync = 15 * time.Minute // refresh on miss when registry is older than this
 
 func sharedLocalRegistry() *LocalRegistry {
 	sharedRegistryOnce.Do(func() {
