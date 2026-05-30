@@ -284,7 +284,7 @@ func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCel
 			if i < len(row) {
 				cell = row[i]
 			}
-			plain := cell.Text
+			plain := ansi.Strip(cell.Text)
 			if suppressFirstCol && i == 0 {
 				plain = ""
 			}

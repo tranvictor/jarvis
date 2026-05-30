@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/spf13/cobra"
 
@@ -178,16 +179,11 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 		}
 	}
 
-	isGnosisMultisig := false
-	if err == nil {
-		isGnosisMultisig, err = util.IsGnosisMultisig(a)
-		if err != nil {
-			return fmt.Errorf("checking if the address is gnosis multisig classic failed: %w", err)
-		}
-	}
-
 	var fromAcc jtypes.AccDesc
-	if config.From == "" && isGnosisMultisig {
+	if config.From == "" {
+		if !classicMultisigOwnerPickEligible(config.Network(), tc.To, a) {
+			return fmt.Errorf("please specify the signing wallet with --from")
+		}
 		multisigContract, err := msig.NewMultisigContract(tc.To, config.Network())
 		if err != nil {
 			return err
@@ -596,6 +592,24 @@ func applyMultisigArgNetworkHint(cmd *cobra.Command, args []string) {
 	if nwks, txs := ScanForTxs(args[0]); len(txs) > 0 && nwks[0] != "" {
 		config.NetworkString = nwks[0]
 	}
+}
+
+// classicMultisigOwnerPickEligible reports whether tc.To is a Gnosis Classic
+// multisig so an empty --from can be resolved by picking the sole local owner.
+// Explorer ABIs are often incomplete (proxy/factory shapes), so we fall back
+// to the same on-chain NOTransactions probe used by DetectMultisigType.
+func classicMultisigOwnerPickEligible(network networks.Network, to string, contractABI *abi.ABI) bool {
+	if contractABI != nil {
+		if ok, err := util.IsGnosisMultisig(contractABI); err == nil && ok {
+			return true
+		}
+	}
+	mc, err := msig.NewMultisigContract(to, network)
+	if err != nil {
+		return false
+	}
+	_, err = mc.NOTransactions()
+	return err == nil
 }
 
 // resolveMultisigProbeAddress turns args[0] into the contract address

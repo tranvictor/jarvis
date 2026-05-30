@@ -32,6 +32,10 @@ func styledValue(v jarviscommon.Value) ui.StyledText {
 	return ui.StyledText{Text: jarviscommon.PlainValue(v), Severity: ui.SeverityInfo}
 }
 
+func tableCell(st ui.StyledText) ui.TableCell {
+	return ui.TCS(st.Text, st.Severity)
+}
+
 // ── Build phase (pure: no UI side-effects) ──────────────────────────────────
 
 func buildParamDisplay(param jarviscommon.ParamResult) ParamDisplay {
@@ -122,33 +126,33 @@ func buildTxDisplay(result *jarviscommon.TxResult, fullDetail bool) *TxDisplay {
 // flattenParamRows recursively converts a ParamDisplay into [label, value]
 // rows. Complex types (tuples, arrays) are inlined with deeper indentation
 // so that the entire parameter tree fits inside a single two-column table.
-func flattenParamRows(u ui.UI, d ParamDisplay, indent string) [][]string {
+func flattenParamRows(d ParamDisplay, indent string) [][]ui.TableCell {
 	label := indent + fmt.Sprintf("%s (%s)", d.Name, d.Type)
 
 	// Scalar value(s).
 	if d.Values != nil {
 		if len(d.Values) == 1 {
-			return [][]string{{label, u.Style(d.Values[0])}}
+			return [][]ui.TableCell{{ui.TC(label), tableCell(d.Values[0])}}
 		}
-		rows := make([][]string, len(d.Values))
+		rows := make([][]ui.TableCell, len(d.Values))
 		for i, v := range d.Values {
-			rows[i] = []string{fmt.Sprintf("%s [%d]", label, i+1), u.Style(v)}
+			rows[i] = []ui.TableCell{ui.TC(fmt.Sprintf("%s [%d]", label, i+1)), tableCell(v)}
 		}
 		return rows
 	}
 
 	// Single tuple: header row + indented children.
 	if len(d.Tuples) == 1 {
-		rows := [][]string{{label, ""}}
+		rows := [][]ui.TableCell{{ui.TC(label), ui.TC("")}}
 		for _, field := range d.Tuples[0].Fields {
-			rows = append(rows, flattenParamRows(u, field, indent+"  ")...)
+			rows = append(rows, flattenParamRows(field, indent+"  ")...)
 		}
 		return rows
 	}
 
 	// Multi-tuple (array of structs): header row + indexed children.
 	if d.Tuples != nil {
-		rows := [][]string{{label, ""}}
+		rows := [][]ui.TableCell{{ui.TC(label), ui.TC("")}}
 		idxWidth := len(fmt.Sprintf("[%d]", len(d.Tuples)-1))
 		for i, tuple := range d.Tuples {
 			indexStr := fmt.Sprintf("[%d]", i)
@@ -159,7 +163,7 @@ func flattenParamRows(u ui.UI, d ParamDisplay, indent string) [][]string {
 				if j == 0 {
 					prefix = indent + "  " + padded + " "
 				}
-				rows = append(rows, flattenParamRows(u, field, prefix)...)
+				rows = append(rows, flattenParamRows(field, prefix)...)
 			}
 		}
 		return rows
@@ -167,9 +171,9 @@ func flattenParamRows(u ui.UI, d ParamDisplay, indent string) [][]string {
 
 	// Plain array.
 	if d.Arrays != nil {
-		rows := [][]string{{label, ""}}
+		rows := [][]ui.TableCell{{ui.TC(label), ui.TC("")}}
 		for _, elem := range d.Arrays {
-			rows = append(rows, flattenParamRows(u, elem, indent+"  ")...)
+			rows = append(rows, flattenParamRows(elem, indent+"  ")...)
 		}
 		return rows
 	}
@@ -181,8 +185,8 @@ func flattenParamRows(u ui.UI, d ParamDisplay, indent string) [][]string {
 // TableWithGroups. Consecutive scalar params share a group; each complex
 // param (tuple / array) gets its own group.
 func printParamList(u ui.UI, params []ParamDisplay) {
-	var groups [][][]string
-	var scalarGroup [][]string
+	var groups [][][]ui.TableCell
+	var scalarGroup [][]ui.TableCell
 
 	flushScalars := func() {
 		if len(scalarGroup) > 0 {
@@ -192,7 +196,7 @@ func printParamList(u ui.UI, params []ParamDisplay) {
 	}
 
 	for _, p := range params {
-		rows := flattenParamRows(u, p, "")
+		rows := flattenParamRows(p, "")
 		if len(rows) == 0 {
 			continue
 		}
@@ -207,7 +211,10 @@ func printParamList(u ui.UI, params []ParamDisplay) {
 	flushScalars()
 
 	if len(groups) > 0 {
-		u.TableWithGroups([]string{"Parameter", "Value"}, groups)
+		u.PrintTable(&ui.Table{
+			Headers: []string{"Parameter", "Value"},
+			Groups:  groups,
+		})
 	}
 }
 
@@ -230,20 +237,20 @@ func printFunctionCallDisplay(u ui.UI, d *FunctionCallDisplay, nested bool) {
 	u.Section(fmt.Sprintf("Function call: %s", d.Method))
 
 	// Build a single TableWithGroups: contract metadata (group 0) + params (group 1).
-	metaGroup := [][]string{{"Contract", u.Style(d.Destination)}}
+	metaGroup := [][]ui.TableCell{{ui.TC("Contract"), tableCell(d.Destination)}}
 	if d.Value != "" {
-		metaGroup = append(metaGroup, []string{"Value", d.Value})
+		metaGroup = append(metaGroup, []ui.TableCell{ui.TC("Value"), ui.TC(d.Value)})
 	}
 
-	var paramGroup [][]string
+	var paramGroup [][]ui.TableCell
 	for _, p := range d.Params {
-		paramGroup = append(paramGroup, flattenParamRows(u, p, "")...)
+		paramGroup = append(paramGroup, flattenParamRows(p, "")...)
 	}
 
 	if len(paramGroup) > 0 {
-		u.TableWithGroups(nil, [][][]string{metaGroup, paramGroup})
+		u.PrintTable(&ui.Table{Groups: [][][]ui.TableCell{metaGroup, paramGroup}})
 	} else {
-		u.TableWithGroups(nil, [][][]string{metaGroup})
+		u.PrintTable(&ui.Table{Groups: [][][]ui.TableCell{metaGroup}})
 	}
 
 	for _, inner := range d.InnerCalls {
@@ -253,13 +260,13 @@ func printFunctionCallDisplay(u ui.UI, d *FunctionCallDisplay, nested bool) {
 
 // logSimpleRows returns all simple [param, value] rows for a single log,
 // used when building the combined all-logs table.
-func logSimpleRows(u ui.UI, d LogDisplay) [][]string {
-	var rows [][]string
+func logSimpleRows(d LogDisplay) [][]ui.TableCell {
+	var rows [][]ui.TableCell
 	for _, topic := range d.Topics {
-		rows = append(rows, []string{topic.Name + " (indexed)", u.Style(topic.Verbose)})
+		rows = append(rows, []ui.TableCell{ui.TC(topic.Name + " (indexed)"), tableCell(topic.Verbose)})
 	}
 	for _, param := range d.Data {
-		rows = append(rows, flattenParamRows(u, param, "")...)
+		rows = append(rows, flattenParamRows(param, "")...)
 	}
 	return rows
 }
@@ -273,25 +280,28 @@ func printAllLogs(u ui.UI, logs []LogDisplay) {
 	}
 	u.Section("Event Logs")
 
-	groups := make([][][]string, len(logs))
+	groups := make([][][]ui.TableCell, len(logs))
 	for i, d := range logs {
 		eventLabel := fmt.Sprintf("%d. %s", i+1, d.Name)
-		paramRows := logSimpleRows(u, d)
+		paramRows := logSimpleRows(d)
 		if len(paramRows) == 0 {
-			groups[i] = [][]string{{eventLabel, "", ""}}
+			groups[i] = [][]ui.TableCell{{ui.TC(eventLabel), ui.TC(""), ui.TC("")}}
 			continue
 		}
-		group := make([][]string, len(paramRows))
+		group := make([][]ui.TableCell, len(paramRows))
 		for j, pr := range paramRows {
-			name := ""
+			name := ui.TC("")
 			if j == 0 {
-				name = eventLabel
+				name = ui.TC(eventLabel)
 			}
-			group[j] = []string{name, pr[0], pr[1]}
+			group[j] = []ui.TableCell{name, pr[0], pr[1]}
 		}
 		groups[i] = group
 	}
-	u.TableWithGroups([]string{"Event", "Parameter", "Value"}, groups)
+	u.PrintTable(&ui.Table{
+		Headers: []string{"Event", "Parameter", "Value"},
+		Groups:  groups,
+	})
 }
 
 // printLogDisplay renders a single log entry. Used by the standalone DisplayLog
@@ -299,15 +309,18 @@ func printAllLogs(u ui.UI, logs []LogDisplay) {
 func printLogDisplay(u ui.UI, idx int, d LogDisplay) {
 	u.Section(fmt.Sprintf("Log %d: %s", idx+1, d.Name))
 
-	var rows [][]string
+	var rows [][]ui.TableCell
 	for _, topic := range d.Topics {
-		rows = append(rows, []string{topic.Name + " (indexed)", u.Style(topic.Verbose)})
+		rows = append(rows, []ui.TableCell{ui.TC(topic.Name + " (indexed)"), tableCell(topic.Verbose)})
 	}
 	for _, param := range d.Data {
-		rows = append(rows, flattenParamRows(u, param, "")...)
+		rows = append(rows, flattenParamRows(param, "")...)
 	}
 	if len(rows) > 0 {
-		u.Table([]string{"Parameter", "Value"}, rows)
+		u.PrintTable(&ui.Table{
+			Headers: []string{"Parameter", "Value"},
+			Rows:    rows,
+		})
 	}
 }
 
@@ -317,28 +330,28 @@ func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network) {
 	if d.Status == "done" {
 		statusVal = "✓ " + d.Status
 	}
-	txGroup := [][]string{
-		{"Status", statusVal},
-		{"From", u.Style(d.From)},
-		{"Value", d.Value + " " + network.GetNativeTokenSymbol()},
-		{"To", u.Style(d.To)},
+	txGroup := [][]ui.TableCell{
+		{ui.TC("Status"), ui.TC(statusVal)},
+		{ui.TC("From"), tableCell(d.From)},
+		{ui.TC("Value"), ui.TC(d.Value + " " + network.GetNativeTokenSymbol())},
+		{ui.TC("To"), tableCell(d.To)},
 	}
 	if d.Hash != "" {
-		txGroup = append([][]string{{"Hash", d.Hash}}, txGroup...)
+		txGroup = append([][]ui.TableCell{{ui.TC("Hash"), ui.TC(d.Hash)}}, txGroup...)
 	}
 
 	if d.Nonce != "" {
 		// Degen mode: gas details in the same card, separated by a divider.
-		gasGroup := [][]string{
-			{"Nonce", d.Nonce},
-			{"Gas price", d.GasPrice + " gwei"},
-			{"Gas limit", d.GasLimit},
-			{"Gas used", d.GasUsed},
-			{"Gas cost", d.GasCost},
+		gasGroup := [][]ui.TableCell{
+			{ui.TC("Nonce"), ui.TC(d.Nonce)},
+			{ui.TC("Gas price"), ui.TC(d.GasPrice + " gwei")},
+			{ui.TC("Gas limit"), ui.TC(d.GasLimit)},
+			{ui.TC("Gas used"), ui.TC(d.GasUsed)},
+			{ui.TC("Gas cost"), ui.TC(d.GasCost)},
 		}
-		u.TableWithGroups(nil, [][][]string{txGroup, gasGroup})
+		u.PrintTable(&ui.Table{Groups: [][][]ui.TableCell{txGroup, gasGroup}})
 	} else {
-		u.Table(nil, txGroup)
+		u.PrintTable(&ui.Table{Rows: txGroup})
 	}
 
 	if d.TxType == "" {

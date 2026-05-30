@@ -143,6 +143,17 @@ func AnalyzeAndShowMsigTxInfo(
 	return
 }
 
+// classicMsigABI returns the ABI for packing Gnosis Classic multisig calls.
+// It prefers the verified explorer ABI when available and falls back to the
+// built-in classic ABI when the contract is unverified — same as bapprove.
+func classicMsigABI(resolver ABIResolver, addr string, network jarvisnetworks.Network) *abi.ABI {
+	a, err := resolver.GetABI(addr, network)
+	if err == nil {
+		return a
+	}
+	return util.GetGnosisMsigABI()
+}
+
 // PostProcessFunc is a callback called with the decoded function call after
 // displaying a multisig transaction. Return an error to abort the flow.
 type PostProcessFunc func(fc *jarviscommon.FunctionCall) error
@@ -252,11 +263,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	a, err := tc.Resolver.GetABI(tc.To, config.Network())
-	if err != nil {
-		u.Error("Couldn't get the ABI for %s: %s", tc.To, err)
-		return
-	}
+	a := classicMsigABI(tc.Resolver, tc.To, config.Network())
 
 	data, err := a.Pack(method, txid)
 	if err != nil {
