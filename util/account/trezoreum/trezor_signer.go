@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 )
 
 // deviceWaitTimeout is how long we block Unlock() waiting for a
@@ -155,6 +156,16 @@ func (self *TrezorSigner) SignTypedDataHash(
 	}
 	sig[64] += 4
 	return sig, nil
+}
+
+func (self *TrezorSigner) SignTypedDataV4(td *apitypes.TypedData) ([]byte, error) {
+	self.mu.Lock()
+	defer self.mu.Unlock()
+	if err := self.ensureUnlocked(); err != nil {
+		return nil, err
+	}
+	fmt.Printf("Asking Trezor to sign EIP-712 typed data (%s)...\n", td.PrimaryType)
+	return self.trezor.SignTypedData(self.path, td)
 }
 
 // SignPersonalMessage signs message with the EIP-191 personal_sign

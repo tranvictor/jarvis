@@ -369,6 +369,10 @@ func (self *TxAnalyzer) AnalyzeLog(
 
 	var err error
 
+	if len(l.Topics) == 0 {
+		return logResult, fmt.Errorf("log from %s has no topics", l.Address.Hex())
+	}
+
 	a := customABIs[strings.ToLower(l.Address.Hex())]
 	if a == nil {
 		a, err = util.GetABI(l.Address.Hex(), self.ctx.Network)
@@ -387,9 +391,14 @@ func (self *TxAnalyzer) AnalyzeLog(
 
 	iArgs, niArgs := SplitEventArguments(event.Inputs)
 	for j, topic := range l.Topics[1:] {
-		arg := iArgs[j]
+		name := fmt.Sprintf("topic%d", j+1)
+		var arg abi.Argument
+		if j < len(iArgs) {
+			arg = iArgs[j]
+			name = arg.Name
+		}
 		var topicValue Value
-		if isValueType(arg.Type) {
+		if j < len(iArgs) && isValueType(arg.Type) {
 			// Value types are ABI-encoded as 32-byte words in the topic slot;
 			// we can decode them with full type fidelity.
 			singleArg := abi.Arguments{abi.Argument{Name: arg.Name, Type: arg.Type}}
@@ -403,7 +412,7 @@ func (self *TxAnalyzer) AnalyzeLog(
 			topicValue = Value{Raw: topic.Hex(), Kind: DisplayRaw}
 		}
 		logResult.Topics = append(logResult.Topics, TopicResult{
-			Name:  arg.Name,
+			Name:  name,
 			Value: topicValue,
 		})
 	}

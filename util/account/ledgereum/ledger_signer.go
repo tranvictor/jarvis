@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 
 	kusb "github.com/tranvictor/jarvis/util/account/usb"
 )
@@ -215,6 +216,28 @@ func (self *LedgerSigner) SignTypedDataHash(
 	}
 	// Tell Safe this signature came through the eth_sign code path.
 	sig[64] += 4
+	return sig, nil
+}
+
+func (self *LedgerSigner) SignTypedDataV4(td *apitypes.TypedData) ([]byte, error) {
+	domainHash, err := td.HashStruct("EIP712Domain", td.Domain.Map())
+	if err != nil {
+		return nil, fmt.Errorf("hash EIP712Domain: %w", err)
+	}
+	structHash, err := td.HashStruct(td.PrimaryType, td.Message)
+	if err != nil {
+		return nil, fmt.Errorf("hash %s: %w", td.PrimaryType, err)
+	}
+	var domainSep, msgHash [32]byte
+	copy(domainSep[:], domainHash)
+	copy(msgHash[:], structHash)
+	sig, err := self.SignTypedDataHash(domainSep, msgHash)
+	if err != nil {
+		return nil, err
+	}
+	if len(sig) == 65 && (sig[64] == 31 || sig[64] == 32) {
+		sig[64] -= 4
+	}
 	return sig, nil
 }
 

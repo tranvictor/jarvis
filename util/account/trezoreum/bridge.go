@@ -6,6 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 
 	"github.com/tranvictor/jarvis/util/account/trezoreum/trezor"
 )
@@ -42,6 +43,13 @@ type Bridge interface {
 		path accounts.DerivationPath,
 		domainSeparator [32]byte,
 		messageHash [32]byte,
+	) ([]byte, error)
+
+	// SignTypedData drives the structured EthereumSignTypedData protocol
+	// required by Trezor Model T / Safe devices for eth_signTypedData_v4.
+	SignTypedData(
+		path accounts.DerivationPath,
+		td *apitypes.TypedData,
 	) ([]byte, error)
 
 	// SignPersonalMessage signs an arbitrary byte string with the

@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 )
 
 type KeySigner struct {
@@ -43,6 +44,15 @@ func (self *KeySigner) SignTypedDataHash(domainSeparator, structHash [32]byte) (
 	// crypto.Sign returns v in {0, 1}; Safe expects {27, 28}.
 	sig[64] += 27
 	return sig, nil
+}
+
+func (self *KeySigner) SignTypedDataV4(td *apitypes.TypedData) ([]byte, error) {
+	wrapped := &TypedDataV4{TypedData: *td}
+	domainSep, structHash, err := wrapped.Hashes()
+	if err != nil {
+		return nil, err
+	}
+	return self.SignTypedDataHash(domainSep, structHash)
 }
 
 // SignPersonalMessage hashes message with the EIP-191 personal_sign

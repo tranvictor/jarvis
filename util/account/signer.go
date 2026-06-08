@@ -5,6 +5,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 )
 
 // Signer is the minimal capability set expected of every wallet backend
@@ -27,6 +28,12 @@ type Signer interface {
 	// Implementations may pick whichever variant their backend natively
 	// supports; both are accepted by Safe v1.1.x .. v1.4.x.
 	SignTypedDataHash(domainSeparator, structHash [32]byte) ([]byte, error)
+
+	// SignTypedDataV4 signs a full eth_signTypedData_v4 payload. Hardware
+	// wallets that only support hash-only EIP-712 (Ledger, Trezor One) may
+	// implement this by hashing locally and delegating to SignTypedDataHash.
+	// Touch-screen Trezors require the structured EthereumSignTypedData flow.
+	SignTypedDataV4(td *apitypes.TypedData) ([]byte, error)
 
 	// SignPersonalMessage signs an arbitrary message with the EIP-191
 	// "personal_sign" prefix, i.e. the device (or key) hashes and
