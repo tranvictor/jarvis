@@ -141,58 +141,43 @@ func (self *Trezoreum) GetDevice() ([]usb.DeviceInfo, error) {
 	return devices, nil
 }
 
-func (self *Trezoreum) Init() (trezor.Features, TrezorState, error) {
+func (self *Trezoreum) Init() (*trezor.Features, TrezorState, error) {
 	devices, err := self.GetDevice()
 	if err != nil {
-		return trezor.Features{}, Unexpected, err
+		return nil, Unexpected, err
 	}
 	if len(devices) == 0 {
-		return trezor.Features{}, Unexpected, fmt.Errorf("Couldn't find any trezor devices")
+		return nil, Unexpected, fmt.Errorf("Couldn't find any trezor devices")
 	}
 
 	// assume we only have 1 valid device
 	device := devices[0]
 	driver, err := device.Open()
 	if err != nil {
-		return trezor.Features{}, Unexpected, fmt.Errorf("Couldn't open trezor device: %s", err)
+		return nil, Unexpected, fmt.Errorf("Couldn't open trezor device: %s", err)
 	}
 	self.core.SetDevice(driver)
-	// session := device.Session
-	// if session == nil {
-	// 	self.session = ""
-	// } else {
-	// 	self.session = *session
-	// }
-	// s, err := self.core.Acquire(device.Path, self.session, false)
-	// if err != nil {
-	// 	return trezor.Features{}, Unexpected, err
-	// }
-	// self.session = s
 
 	// test init device
 	initMsg := trezor.Initialize{}
-	features := trezor.Features{}
+	features := &trezor.Features{}
 	success := trezor.Success{}
 
 	// fmt.Printf("DEBUG trezor comms: init message, expecting features message\n")
-	_, err = self.trezorExchange(&initMsg, &features, &success)
+	_, err = self.trezorExchange(&initMsg, features, &success)
 	if err != nil {
-		return trezor.Features{}, Unexpected, err
+		return nil, Unexpected, err
 	}
-
-	// fmt.Printf(
-	// 	"DEBUG trezor comms: ping message, expecting pinMatrix, passphrase, success message\n",
-	// )
 
 	res, err := self.trezorExchange(
 		&trezor.Ping{},
 		new(trezor.PinMatrixRequest),
 		new(trezor.PassphraseRequest),
 		new(trezor.Success),
-		&features,
+		features,
 	)
 	if err != nil {
-		return trezor.Features{}, Unexpected, err
+		return nil, Unexpected, err
 	}
 
 	switch res {
@@ -201,11 +186,6 @@ func (self *Trezoreum) Init() (trezor.Features, TrezorState, error) {
 	case 1:
 		return features, WaitingForPassphrase, nil
 	case 2:
-		// if *features.PinCached {
-		// 	return features, Ready, nil
-		// } else {
-		// 	return features, WaitingForPin, nil
-		// }
 		return features, Ready, nil
 	case 3:
 		return features, Ready, nil

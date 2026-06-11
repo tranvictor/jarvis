@@ -70,6 +70,10 @@ func (self *Trezoreum) SignTypedData(
 				return nil, err
 			}
 			respIdx, err = self.trezorExchange(ack, structReq, valueReq, sigResp)
+			if err != nil {
+				signErr = err
+				return nil, err
+			}
 		case 1:
 			value, err := buildTypedDataValueAck(td, valueReq.GetMemberPath())
 			if err != nil {
@@ -80,6 +84,10 @@ func (self *Trezoreum) SignTypedData(
 				&trezor.EthereumTypedDataValueAck{Value: value},
 				structReq, valueReq, sigResp,
 			)
+			if err != nil {
+				signErr = err
+				return nil, err
+			}
 		case 2:
 			sig, err := normalizeTrezorSignature(sigResp.GetSignature())
 			signErr = err
@@ -87,10 +95,6 @@ func (self *Trezoreum) SignTypedData(
 		default:
 			signErr = fmt.Errorf("unexpected Trezor EIP-712 response index %d", respIdx)
 			return nil, signErr
-		}
-		if err != nil {
-			signErr = err
-			return nil, err
 		}
 	}
 }

@@ -24,7 +24,7 @@ type Bridge interface {
 	// init the connection to trezor via libusb and return the status
 	// of the device as well as indication to next step to unlock the
 	// device.
-	Init() (info trezor.Features, state TrezorState, err error)
+	Init() (info *trezor.Features, state TrezorState, err error)
 
 	Unlock() error
 
