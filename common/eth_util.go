@@ -41,6 +41,11 @@ func GetERC20ABI() *abi.ABI {
 	return &result
 }
 
+func GetMultiSendABI() *abi.ABI {
+	result, _ := abi.JSON(strings.NewReader(multisendabi))
+	return &result
+}
+
 func GetEIP1967BeaconABI() *abi.ABI {
 	result, _ := abi.JSON(strings.NewReader(eip1967beacon))
 	return &result

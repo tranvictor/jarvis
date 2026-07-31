@@ -993,14 +993,33 @@ var initMsigCmd = &cobra.Command{
 built interactively from the target's ABI. For Gnosis Classic this
 sends an on-chain submitTransaction(...); for Gnosis Safe this signs
 the EIP-712 safeTxHash and posts the proposal to the Safe Transaction
-Service so other owners can approve it.`,
+Service so other owners can approve it.
+
+Alternatively, pass --tx-builder-file (a path) or --tx-builder-json (the
+JSON itself) to propose a batch exported from the Safe{Wallet}
+Transaction Builder app (Safe only). The export names both the chain and
+the Safe, so the positional Safe address and --network become optional.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		// The tx-builder file has to be read before the preprocess pipeline
+		// runs: its chainId feeds the network hint and its
+		// meta.createdFromSafeAddress can stand in for args[0], both of which
+		// the pipeline consumes rather than produces.
+		if args, err = prepareTxBuilderBatch(cmd, args); err != nil {
+			return err
+		}
+
 		if err = cmdutil.CommonMultisigTxPreprocess(appUI, cmd, args); err != nil {
 			return err
 		}
 
 		if config.MsigValue < 0 {
 			return fmt.Errorf("multisig value can't be negative")
+		}
+
+		if txBuilderBatch != nil {
+			// The batch supplies every target and value, so --msig-to is
+			// neither required nor meaningful here.
+			return nil
 		}
 
 		tc, _ := cmdutil.TxContextFrom(cmd)
@@ -1016,6 +1035,14 @@ Service so other owners can approve it.`,
 		tc, _ := cmdutil.TxContextFrom(cmd)
 		if tc.MultisigType == cmdutil.MultisigSafe {
 			initSafeCmd.Run(cmd, args)
+			return
+		}
+
+		if txBuilderBatch != nil {
+			appUI.Error(
+				"Transaction Builder batches are Safe-only; %s is a Gnosis Classic multisig.",
+				tc.To,
+			)
 			return
 		}
 
@@ -1135,7 +1162,13 @@ func init() {
 	initMsigCmd.Flags().BoolVarP(&config.Simulate, "simulate", "S", false, "True: Simulate execution of underlying call (Classic only).")
 	initMsigCmd.Flags().Uint64Var(&safeNonceOverride, "safe-nonce", 0, "Safe-only: override the SafeTx nonce. Default: on-chain nonce + length of pending queue.")
 	initMsigCmd.Flags().StringVar(&safeTxFile, "safe-tx-file", "", "Safe-only: path to a local file to write the proposed SafeTx + signature to. When set, jarvis skips the Safe Transaction Service and treats the file as the source of truth for later approve/execute runs.")
-	initMsigCmd.MarkFlagRequired("msig-to")
+	initMsigCmd.Flags().StringVar(&txBuilderFile, "tx-builder-file", "", "Safe-only: path to a Safe{Wallet} Transaction Builder JSON export. Proposes every call in it as one batched SafeTx via MultiSendCallOnly. The batch's chainId and meta.createdFromSafeAddress make --network and the positional Safe address optional. Mutually exclusive with --msig-to and --tx-builder-json.")
+	initMsigCmd.Flags().StringVar(&txBuilderJSON, "tx-builder-json", "", "Safe-only: same as --tx-builder-file but takes the Transaction Builder JSON document itself, so a batch can be pasted straight onto the command line without saving it first.")
+	initMsigCmd.Flags().StringVar(&multiSendAddressOverride, "multisend-address", "", "Safe-only: MultiSendCallOnly contract to delegatecall for tx-builder batches. Default: probe the canonical Safe deployments for the chain.")
+	// NOT MarkFlagRequired("msig-to"): cobra validates required flags before
+	// PersistentPreRunE, which would reject a tx-builder batch run that
+	// legitimately has no --msig-to. prepareTxBuilderBatch enforces
+	// "one of --msig-to / --tx-builder-file / --tx-builder-json" instead.
 
 	approveMsigCmd.Flags().BoolVar(&safeNoExecute, "no-execute", false, "Safe-only: don't auto-execute even when this approval reaches the threshold.")
 	approveMsigCmd.Flags().BoolVar(&safeApproveOnChain, "approve-onchain", false, "Safe-only: approve via Safe.approveHash(safeTxHash) on-chain instead of submitting an EIP-712 signature to the Safe Transaction Service.")

@@ -92,7 +92,7 @@ of multisig you're talking to.
 
 | Subcommand | Classic | Safe | Notes |
 |------------|:-------:|:----:|-------|
-| `jarvis msig init`     | yes | yes | Propose a new multisig tx. |
+| `jarvis msig init`     | yes | yes | Propose a new multisig tx. Safe also accepts a Transaction Builder batch via `--tx-builder-file` / `--tx-builder-json`. |
 | `jarvis msig approve`  | yes | yes | Add your approval. Auto-executes when threshold is met. |
 | `jarvis msig execute`  | yes | yes | Broadcast the on-chain execution. |
 | `jarvis msig info`     | yes | yes | Show a specific pending tx with decoded calldata. |
@@ -152,6 +152,69 @@ When your approval brings the signature count to the Safe's threshold,
 jarvis **auto-chains `execTransaction` in the same invocation** so the
 last signer doesn't need to run a second command. Pass `--no-execute` to
 opt out.
+
+### Batching with the Safe Transaction Builder (`--tx-builder-file` / `--tx-builder-json`)
+
+Assemble a batch in the **Transaction Builder** app on
+[app.safe.global](https://app.safe.global), then propose it with jarvis —
+so you get hardware-wallet signing, offline flows, and jarvis's decoded
+review screen for a batch you composed in the browser. Download the JSON
+and pass the path with `--tx-builder-file`, or skip the file entirely and
+paste the JSON itself with `--tx-builder-json`.
+
+The export names both the chain (`chainId`) and the Safe
+(`meta.createdFromSafeAddress`), so **the positional Safe address and
+`--network` are optional** here — the one place in `jarvis msig` where
+that's true:
+
+```bash
+# chain and Safe both inferred from the downloaded file
+jarvis msig init --tx-builder-file ./batch.json --from 0xALICE
+
+# or name them explicitly; they must agree with the batch
+jarvis msig init 0xSAFE --network bsc --tx-builder-file ./batch.json --from 0xALICE
+
+# paste the JSON straight from the Transaction Builder, no file needed
+jarvis msig init --tx-builder-json '{"version":"1.0","chainId":"56","meta":{...},"transactions":[...]}' --from 0xALICE
+```
+
+Wrap the JSON in **single** quotes so your shell doesn't eat the double
+quotes inside it. The two flags are mutually exclusive.
+
+How the batch is executed:
+
+- **One transaction** in the file → proposed as a plain `CALL` to that
+  target, exactly as if you had used `--msig-to`.
+- **Several transactions** → one SafeTx that `DELEGATECALL`s
+  **MultiSendCallOnly** with the calls packed into `multiSend(bytes)`.
+  This is what the Safe UI does too. `value` on the outer SafeTx is 0
+  because the delegatecall spends the Safe's balance directly.
+
+Jarvis resolves MultiSendCallOnly from the Safe's on-chain `VERSION()`,
+verifies the candidate actually has code, and prints which one it picked.
+Override it with `--multisend-address 0x…` if you run your own
+deployment.
+
+Batches are **fully expanded in every review screen** — `msig init`'s
+confirmation prompt, and `msig info` / `msig approve` for the other
+owners — so nobody signs an opaque blob. Each inner call is decoded with
+the ABI from the file, which means it stays readable even when the target
+contract is unverified on the block explorer.
+
+Guard rails, all of them fatal with no override flag:
+
+- `chainId` disagreeing with an explicit `--network`.
+- `meta.createdFromSafeAddress` disagreeing with the Safe you're
+  proposing through.
+- No Safe address given *and* no usable `meta.createdFromSafeAddress`.
+- An empty batch, an entry with neither `data` nor `contractMethod`, or a
+  `contractInputsValues` entry missing for a declared input. Nothing is
+  ever silently skipped or defaulted to zero.
+
+Both flags are Safe-only and mutually exclusive with the interactive
+single-call flags (`--msig-to`, `--msig-value`, `--method-index`,
+`--no-func-call`, `--prefills`). They do compose with `--safe-nonce`,
+`--safe-tx-file` and `--from`.
 
 ### Chains without a Safe Transaction Service (`--safe-tx-file`)
 
