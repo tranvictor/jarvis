@@ -56,6 +56,234 @@ var safeApproveOnChain bool
 // Transaction Service, even if one is configured for the chain.
 var safeTxFile string
 
+// txBuilderFile is the --tx-builder-file value: a path to a Safe{Wallet}
+// Transaction Builder JSON export.
+var txBuilderFile string
+
+// txBuilderJSON is the --tx-builder-json value: the same export handed over as
+// a literal JSON document, for pasting a batch straight onto the command line.
+// Mutually exclusive with txBuilderFile.
+var txBuilderJSON string
+
+// multiSendAddressOverride is the --multisend-address value. When empty,
+// jarvis probes the canonical MultiSendCallOnly deployments on-chain.
+var multiSendAddressOverride string
+
+// txBuilderBatch holds the parsed batch from --tx-builder-file or
+// --tx-builder-json. It is populated by
+// initMsigCmd's PersistentPreRunE (which has to parse the file before the
+// preprocess pipeline runs, so the file's chainId can act as a network hint
+// and its meta.createdFromSafeAddress can stand in for the positional Safe
+// argument) and consumed by initSafeCmd's Run. nil means "not in batch mode".
+var txBuilderBatch *safe.TxBuilderFile
+
+// txBuilderExclusiveFlags are the interactive single-call flags that a batch
+// makes meaningless. Silently ignoring them would let an operator believe a
+// value/target they typed had been applied, so they're rejected outright.
+var txBuilderExclusiveFlags = []string{
+	"msig-to", "msig-value", "method-index", "no-func-call", "prefills",
+}
+
+// prepareTxBuilderBatch parses --tx-builder-file / --tx-builder-json (when
+// given) and reconciles
+// what the file says with what the operator typed. It returns the args slice
+// the preprocess pipeline should see, which in batch mode may be synthesised
+// from the file's meta.createdFromSafeAddress.
+//
+// It runs before any preprocess step, because the two facts it establishes —
+// which chain and which Safe — are inputs to that pipeline. Every mismatch
+// here is fatal by design: identical calldata replayed on the wrong chain or
+// through the wrong Safe is precisely the accident this format can prevent.
+func prepareTxBuilderBatch(cmd *cobra.Command, args []string) ([]string, error) {
+	txBuilderBatch = nil
+
+	path := strings.TrimSpace(txBuilderFile)
+	inline := strings.TrimSpace(txBuilderJSON)
+
+	switch {
+	case path != "" && inline != "":
+		return nil, fmt.Errorf(
+			"--tx-builder-file and --tx-builder-json are mutually exclusive; pass one",
+		)
+	case path == "" && inline == "":
+		if strings.TrimSpace(config.MsigTo) == "" {
+			return nil, fmt.Errorf(
+				"one of --msig-to, --tx-builder-file or --tx-builder-json is required",
+			)
+		}
+		return args, nil
+	}
+
+	source := "--tx-builder-file"
+	if inline != "" {
+		source = "--tx-builder-json"
+	}
+	for _, name := range txBuilderExclusiveFlags {
+		if f := cmd.Flags().Lookup(name); f != nil && f.Changed {
+			return nil, fmt.Errorf(
+				"--%s can't be combined with %s; the batch supplies targets, values and parameters",
+				name, source,
+			)
+		}
+	}
+
+	var (
+		batch *safe.TxBuilderFile
+		err   error
+	)
+	if inline != "" {
+		batch, err = safe.ParseTxBuilderJSON(inline)
+	} else {
+		batch, err = safe.ReadTxBuilderFile(path)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	chainID, err := batch.ChainIDUint()
+	if err != nil {
+		return nil, fmt.Errorf("tx builder batch: %w", err)
+	}
+	network, err := jarvisnetworks.GetNetworkByID(chainID)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"tx builder batch targets chain id %d which jarvis has no network for; "+
+				"add it with 'jarvis network add' first", chainID,
+		)
+	}
+	if cmd.Flags().Changed("network") {
+		// Resolve the operator's --network the same way config.SetNetwork
+		// would, so aliases ("bsc" vs "bsc-mainnet") compare correctly.
+		chosen, err := jarvisnetworks.GetNetwork(config.NetworkString)
+		if err != nil {
+			return nil, err
+		}
+		if chosen.GetChainID() != chainID {
+			return nil, fmt.Errorf(
+				"tx builder batch targets chain id %d (%s) but --network=%s is chain id %d",
+				chainID, network.GetName(), config.NetworkString, chosen.GetChainID(),
+			)
+		}
+	} else {
+		config.NetworkString = network.GetName()
+	}
+
+	if len(args) == 0 {
+		fileSafe := batch.SafeAddress()
+		if fileSafe == "" {
+			return nil, fmt.Errorf(
+				"no Safe address given and the tx builder batch has no usable " +
+					"meta.createdFromSafeAddress; pass the Safe address explicitly",
+			)
+		}
+		args = []string{fileSafe}
+		appUI.Info("Safe (from %s): %s", source, fileSafe)
+	} else if ethcommon.IsHexAddress(strings.TrimSpace(args[0])) {
+		// Catch a plain-hex disagreement now, before jarvis spends RPC calls
+		// probing an address the operator is going to have to retype anyway.
+		// Aliases and Safe-app URLs can't be compared until the preprocess
+		// pipeline has resolved them, so those fall through to the
+		// authoritative check in initSafeCmd.Run.
+		if err := assertTxBuilderSafeMatches(batch, strings.TrimSpace(args[0])); err != nil {
+			return nil, err
+		}
+	}
+
+	txBuilderBatch = batch
+	return args, nil
+}
+
+// assertTxBuilderSafeMatches fails when the batch was exported from a
+// different Safe than the one being proposed through. An empty
+// meta.createdFromSafeAddress means the file doesn't claim a Safe, so there is
+// nothing to contradict.
+func assertTxBuilderSafeMatches(batch *safe.TxBuilderFile, safeAddress string) error {
+	fileSafe := batch.SafeAddress()
+	if fileSafe == "" {
+		return nil
+	}
+	if !strings.EqualFold(fileSafe, ethcommon.HexToAddress(safeAddress).Hex()) {
+		return fmt.Errorf(
+			"tx builder batch was created from Safe %s but you asked to propose through %s",
+			fileSafe, safeAddress,
+		)
+	}
+	return nil
+}
+
+// buildTxBuilderSafeTx encodes the parsed batch into the four SafeTx fields
+// that vary by input mode, plus the per-target ABIs the confirmation screen
+// needs and a label describing the MultiSend contract in use.
+//
+// A single-entry batch is proposed as a plain CALL straight to its target
+// rather than wrapped in MultiSend — that's what the Safe UI does too, and it
+// avoids asking an operator to approve a DELEGATECALL for no reason.
+//
+// A nil data return means the failure was already reported to the UI.
+func buildTxBuilderSafeTx(tc cmdutil.TxContext) (
+	to string,
+	value *big.Int,
+	data []byte,
+	op safe.Operation,
+	abis map[string]*abi.ABI,
+	label string,
+) {
+	network := config.Network()
+
+	calls, err := txBuilderBatch.EncodeCalls(network)
+	if err != nil {
+		appUI.Error("Couldn't encode the tx builder batch: %s", err)
+		return "", nil, nil, safe.OpCall, nil, ""
+	}
+
+	abis = map[string]*abi.ABI{}
+	for _, c := range calls {
+		if c.ABI != nil {
+			abis[strings.ToLower(c.To.Hex())] = c.ABI
+		}
+	}
+
+	appUI.Section(fmt.Sprintf("Tx builder batch: %d transaction(s)", len(calls)))
+	if name := strings.TrimSpace(txBuilderBatch.Meta.Name); name != "" {
+		appUI.Info("Name        : %s", name)
+	}
+	if desc := strings.TrimSpace(txBuilderBatch.Meta.Description); desc != "" {
+		appUI.Info("Description : %s", desc)
+	}
+	if v := strings.TrimSpace(txBuilderBatch.Meta.TxBuilderVersion); v != "" {
+		appUI.Info("Builder ver : %s", v)
+	}
+
+	if len(calls) == 1 {
+		c := calls[0]
+		return c.To.Hex(), c.Value, c.Data, safe.OpCall, abis, ""
+	}
+
+	multiSend, label, err := safe.ResolveMultiSendCallOnly(
+		tc.Safe, network, multiSendAddressOverride,
+	)
+	if err != nil {
+		appUI.Error("%s", err)
+		return "", nil, nil, safe.OpCall, nil, ""
+	}
+
+	msCalls := make([]jarviscommon.MultiSendCall, 0, len(calls))
+	for _, c := range calls {
+		msCalls = append(msCalls, c.MultiSendCall)
+	}
+	packed, err := jarviscommon.PackMultiSend(msCalls)
+	if err != nil {
+		appUI.Error("Couldn't pack the MultiSend batch: %s", err)
+		return "", nil, nil, safe.OpCall, nil, ""
+	}
+
+	// Value stays 0: MultiSend runs as a delegatecall in the Safe's own
+	// context, so each sub-call spends the Safe's balance directly. Passing
+	// the sum here would try to send the Safe its own ether.
+	return multiSend.Hex(), big.NewInt(0), packed, safe.OpDelegateCall,
+		abis, fmt.Sprintf("%s (%s)", multiSend.Hex(), label)
+}
+
 // initSafeCmd is the Safe-specific implementation of `jarvis msig init`.
 // It is no longer registered as its own cobra command: cmd/msig.go reads
 // initSafeCmd.Run / .PersistentPreRunE and invokes them after the unified
@@ -93,31 +321,58 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 		appUI.Section("Safe info")
 		showSafeInfo(safeContract)
 
-		targetABI, err := tc.Resolver.ConfigToABI(
-			config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network(),
+		// txTo/txValue/txData/txOp are the four SafeTx fields the two input
+		// modes disagree on; everything after this point is shared.
+		var (
+			txTo       string
+			txValue    *big.Int
+			txData     []byte
+			txOp       = safe.OpCall
+			batchABIs  map[string]*abi.ABI
+			batchLabel string
 		)
-		if err != nil {
-			appUI.Warn("Couldn't get abi for %s: %s. Continue:", config.MsigTo, err)
-		}
 
-		callData := []byte{}
-		if targetABI != nil && !config.NoFuncCall {
-			callData, err = cmdutil.PromptTxData(
-				appUI,
-				tc.Analyzer,
-				config.MsigTo,
-				config.MethodIndex,
-				tc.PrefillParams,
-				tc.PrefillMode,
-				targetABI,
-				nil,
-				config.Network(),
+		if txBuilderBatch != nil {
+			if err := assertTxBuilderSafeMatches(txBuilderBatch, safeContract.Address); err != nil {
+				appUI.Error("%s", err)
+				return
+			}
+			txTo, txValue, txData, txOp, batchABIs, batchLabel = buildTxBuilderSafeTx(tc)
+			if txData == nil {
+				return // buildTxBuilderSafeTx already reported the failure
+			}
+		} else {
+			targetABI, err := tc.Resolver.ConfigToABI(
+				config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network(),
 			)
 			if err != nil {
-				appUI.Error("Couldn't pack target call data: %s", err)
-				appUI.Warn("Continue with EMPTY CALLING DATA")
-				callData = []byte{}
+				appUI.Warn("Couldn't get abi for %s: %s. Continue:", config.MsigTo, err)
 			}
+
+			callData := []byte{}
+			if targetABI != nil && !config.NoFuncCall {
+				callData, err = cmdutil.PromptTxData(
+					appUI,
+					tc.Analyzer,
+					config.MsigTo,
+					config.MethodIndex,
+					tc.PrefillParams,
+					tc.PrefillMode,
+					targetABI,
+					nil,
+					config.Network(),
+				)
+				if err != nil {
+					appUI.Error("Couldn't pack target call data: %s", err)
+					appUI.Warn("Continue with EMPTY CALLING DATA")
+					callData = []byte{}
+				}
+			}
+			txTo = config.MsigTo
+			txValue = jarviscommon.FloatToBigInt(
+				config.MsigValue, config.Network().GetNativeTokenDecimal(),
+			)
+			txData = callData
 		}
 
 		if safeTxFile == "" && tc.Collector == nil {
@@ -143,19 +398,19 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 			return
 		}
 
-		valueWei := jarviscommon.FloatToBigInt(
-			config.MsigValue, config.Network().GetNativeTokenDecimal(),
-		)
 		stx := safe.NewSafeTx(
-			ethcommon.HexToAddress(config.MsigTo),
-			valueWei,
-			callData,
-			safe.OpCall,
+			ethcommon.HexToAddress(txTo),
+			txValue,
+			txData,
+			txOp,
 			safeNonce,
 		)
 		hash := stx.SafeTxHash(domainSep)
 
-		showSafeTxToConfirm(stx, hash, &tc)
+		if batchLabel != "" {
+			appUI.Info("MultiSend   : %s", batchLabel)
+		}
+		showSafeTxToConfirmWithABIs(stx, hash, &tc, batchABIs)
 		if !config.YesToAllPrompt && !appUI.Confirm("Sign and submit this Safe transaction?", true) {
 			appUI.Warn("Aborted by user.")
 			return
@@ -196,11 +451,12 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 				return
 			}
 			appUI.Success("Proposal written to %s", safeTxFile)
+			appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
 			appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
 			appUI.Info("Share the file with other owners; each can run:")
-			appUI.Info("  jarvis msig approve %s --safe-tx-file %s", safeContract.Address, safeTxFile)
+			appUI.Info("  jarvis msig approve %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
 			appUI.Info("Once threshold is met, any owner can run:")
-			appUI.Info("  jarvis msig execute %s --safe-tx-file %s", safeContract.Address, safeTxFile)
+			appUI.Info("  jarvis msig execute %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
 			return
 		}
 
@@ -215,11 +471,12 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 		}
 
 		appUI.Success("Proposal submitted.")
+		appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
 		appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
 		appUI.Info("Other owners can approve with:")
-		appUI.Info("  jarvis msig approve %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
+		appUI.Info("  jarvis msig approve %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
 		appUI.Info("Once threshold is met, anyone can execute with:")
-		appUI.Info("  jarvis msig execute %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
+		appUI.Info("  jarvis msig execute %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
 	},
 }
 
@@ -442,9 +699,9 @@ over an off-chain signature store. Other owners' off-chain signatures
 			appUI.Warn("Couldn't read safe threshold post-approval: %s", err)
 			return
 		}
-		nextCmdHint := fmt.Sprintf("  jarvis msig execute %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]))
+		nextCmdHint := fmt.Sprintf("  jarvis msig execute %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag())
 		if useFile {
-			nextCmdHint = fmt.Sprintf("  jarvis msig execute %s --safe-tx-file %s", safeContract.Address, safeTxFile)
+			nextCmdHint = fmt.Sprintf("  jarvis msig execute %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
 		}
 		if uint64(totalSigs) < threshold {
 			appUI.Info(
@@ -561,8 +818,8 @@ func runSafeApproveOnChain(
 		appUI.Info("--no-wait / --dont-broadcast is in effect; skipping auto-execute.")
 		appUI.Info("Once the approveHash tx is mined, finalise with:")
 		appUI.Info(
-			"  jarvis msig execute %s 0x%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+			"  jarvis msig execute %s 0x%s%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 		)
 		return
 	}
@@ -595,8 +852,8 @@ func runSafeApproveOnChain(
 			threshold-uint64(totalSigs),
 		)
 		appUI.Info(
-			"  jarvis msig execute %s 0x%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+			"  jarvis msig execute %s 0x%s%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 		)
 		return
 	}
@@ -605,16 +862,16 @@ func runSafeApproveOnChain(
 	if safeNoExecute {
 		appUI.Info("--no-execute set; skipping execTransaction. Run later with:")
 		appUI.Info(
-			"  jarvis msig execute %s 0x%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+			"  jarvis msig execute %s 0x%s%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 		)
 		return
 	}
 	if !config.YesToAllPrompt && !appUI.Confirm("Broadcast execTransaction now?", true) {
 		appUI.Warn("Skipping execution. Run later with:")
 		appUI.Info(
-			"  jarvis msig execute %s 0x%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+			"  jarvis msig execute %s 0x%s%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 		)
 		return
 	}
@@ -835,8 +1092,8 @@ Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
 		case threshold > 0 && uint64(len(pending.Sigs)) >= threshold:
 			appUI.Success("Status: threshold met — ready to execute.")
 			appUI.Info(
-				"  jarvis msig execute %s 0x%s",
-				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+				"  jarvis msig execute %s 0x%s%s",
+				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 			)
 		default:
 			needed := uint64(0)
@@ -845,8 +1102,8 @@ Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
 			}
 			appUI.Info("Status: pending — needs %d more approval(s).", needed)
 			appUI.Info(
-				"  jarvis msig approve %s 0x%s",
-				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+				"  jarvis msig approve %s 0x%s%s",
+				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 			)
 		}
 	},
@@ -1543,6 +1800,20 @@ func showSafeInfo(s *safe.SafeContract) {
 // classic-multisig transactions. Pass tc so we can reach the network reader,
 // analyzer, and ABI resolver; pass nil to fall back to a raw-hex display.
 func showSafeTxToConfirm(stx *safe.SafeTx, hash [32]byte, tc *cmdutil.TxContext) {
+	showSafeTxToConfirmWithABIs(stx, hash, tc, nil)
+}
+
+// showSafeTxToConfirmWithABIs is showSafeTxToConfirm plus a set of extra ABIs
+// keyed by lowercased address. Batch proposals need it: the calls inside a
+// MultiSend payload frequently target contracts the block explorer can't give
+// an ABI for, and jarvis already knows their signatures because it just
+// encoded them from the tx builder batch.
+func showSafeTxToConfirmWithABIs(
+	stx *safe.SafeTx,
+	hash [32]byte,
+	tc *cmdutil.TxContext,
+	extraABIs map[string]*abi.ABI,
+) {
 	appUI.Section("Safe transaction details")
 
 	// util.GetJarvisAddress runs through util.NewEnrichedResolver, which
@@ -1563,6 +1834,12 @@ func showSafeTxToConfirm(stx *safe.SafeTx, hash [32]byte, tc *cmdutil.TxContext)
 		appUI.Critical("Value          : 0")
 	}
 	appUI.Critical("Operation      : %s", operationLabel(stx.Operation))
+	if stx.Operation == safe.OpDelegateCall && jarviscommon.IsMultiSendCallData(stx.Data) {
+		// The DANGEROUS label above stays: a delegatecall really does run
+		// foreign code in the Safe's context. This adds the missing why, so a
+		// reviewing owner can tell a routine batch from an actual red flag.
+		appUI.Critical("                 ^ this is a MultiSend batch; every call it makes is listed below")
+	}
 	appUI.Critical("Nonce (Safe)   : %s", stx.Nonce.String())
 	appUI.Critical("safeTxGas      : %s", stx.SafeTxGas.String())
 	appUI.Critical("baseGas        : %s", stx.BaseGas.String())
@@ -1584,21 +1861,34 @@ func showSafeTxToConfirm(stx *safe.SafeTx, hash [32]byte, tc *cmdutil.TxContext)
 		appUI.Critical("Data (%d bytes): 0x%s", len(stx.Data), ethcommon.Bytes2Hex(stx.Data))
 		return
 	}
+	customABIs := map[string]*abi.ABI{}
+	for addr, a := range extraABIs {
+		customABIs[strings.ToLower(addr)] = a
+	}
+
 	destAbi, err := tc.Resolver.ConfigToABI(
 		stx.To.Hex(), config.ForceERC20ABI, config.CustomABI, config.Network(),
 	)
 	if err != nil {
+		// MultiSend / MultiSendCallOnly is unverified on many explorers, so a
+		// failure here is expected for batches and must not abort the decode:
+		// the analyzer has a built-in multiSend ABI to fall back on.
 		appUI.Warn("Couldn't resolve ABI of destination %s: %s", stx.To.Hex(), err)
-		appUI.Critical("Data (%d bytes): 0x%s", len(stx.Data), ethcommon.Bytes2Hex(stx.Data))
-		return
+		if len(customABIs) == 0 && !jarviscommon.IsMultiSendCallData(stx.Data) {
+			appUI.Critical("Data (%d bytes): 0x%s", len(stx.Data), ethcommon.Bytes2Hex(stx.Data))
+			return
+		}
+	} else if _, taken := customABIs[strings.ToLower(stx.To.Hex())]; !taken {
+		customABIs[strings.ToLower(stx.To.Hex())] = destAbi
 	}
+
 	util.AnalyzeMethodCallAndPrint(
 		appUI,
 		tc.Analyzer,
 		stx.Value,
 		stx.To.Hex(),
 		stx.Data,
-		map[string]*abi.ABI{strings.ToLower(stx.To.Hex()): destAbi},
+		customABIs,
 		config.Network(),
 	)
 }

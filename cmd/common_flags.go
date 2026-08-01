@@ -6,6 +6,16 @@ import (
 	"github.com/tranvictor/jarvis/config"
 )
 
+// networkFlag renders the ` --network <name>` suffix that every
+// copy-pasteable next-step command jarvis prints must carry. Without it a
+// pasted hint silently runs against the default network, and since a Safe is
+// usually deployed at the same address on several chains, jarvis will read a
+// real-but-wrong Safe before failing with an opaque "not found" from that
+// chain's transaction service.
+func networkFlag() string {
+	return " --network " + config.Network().GetName()
+}
+
 func AddCommonFlagsToTransactionalCmds(c *cobra.Command) {
 	c.PersistentFlags().
 		Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")

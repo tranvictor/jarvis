@@ -256,6 +256,14 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 		}
 	}
 
+	// Safe batches are delegatecalls into MultiSend / MultiSendCallOnly. Those
+	// libraries are often unverified on block explorers, so without this the
+	// whole batch would render as "couldn't decode bytes data" — the operator
+	// would be asked to sign an opaque blob.
+	if IsMultiSendCallData(data) && !abiHasSelector(a, data[:4]) {
+		a = GetMultiSendABI()
+	}
+
 	// Look up ERC20 context for the destination so that integer params
 	// (token amounts) can be annotated with decimal and symbol.
 	hint := self.ctx.ERC20InfoFor(destination)
@@ -271,6 +279,15 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 	}
 
 	if depth >= maxRecursionDepth {
+		return fc
+	}
+
+	// A MultiSend batch carries its sub-calls in a hand-packed blob that no
+	// amount of ABI decoding will expand, so unpack it explicitly and recurse.
+	// This is what lets `msig init`, `msig info` and `msig approve` show every
+	// call an owner is actually signing off on rather than one hex argument.
+	if IsMultiSendCallData(data) {
+		self.appendMultiSendCalls(fc, lookupABI, data, customABIs, depth)
 		return fc
 	}
 
@@ -304,6 +321,84 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 	}
 
 	return fc
+}
+
+// abiHasSelector reports whether a defines a method with the given 4-byte
+// selector.
+func abiHasSelector(a *abi.ABI, selector []byte) bool {
+	if a == nil {
+		return false
+	}
+	_, err := a.MethodById(selector)
+	return err == nil
+}
+
+// appendMultiSendCalls expands a multiSend(bytes) call into one child
+// FunctionCall per batched sub-call. Decode failures are surfaced as child
+// entries carrying an Error rather than dropped, so a payload jarvis can't
+// read never looks like a payload with nothing in it.
+func (self *TxAnalyzer) appendMultiSendCalls(
+	fc *FunctionCall,
+	lookupABI ABIDatabase,
+	data []byte,
+	customABIs map[string]*abi.ABI,
+	depth int,
+) {
+	payload, err := unpackMultiSendPayload(data)
+	if err != nil {
+		fc.DecodedFunctionCalls = append(fc.DecodedFunctionCalls, &FunctionCall{
+			Error: fmt.Sprintf("couldn't unpack multiSend argument: %s", err),
+		})
+		return
+	}
+	calls, err := DecodeMultiSendPayload(payload)
+	if err != nil {
+		fc.DecodedFunctionCalls = append(fc.DecodedFunctionCalls, &FunctionCall{
+			Error: fmt.Sprintf("couldn't decode multiSend batch: %s", err),
+		})
+		return
+	}
+
+	for _, c := range calls {
+		inner := self.analyzeFunctionCallRecursively(
+			lookupABI,
+			c.Value,
+			c.To.Hex(),
+			c.Data,
+			customABIs,
+			depth+1,
+		)
+		// Operation is 0 for every entry MultiSendCallOnly will accept, so
+		// anything else is worth shouting about right where it appears.
+		if c.Operation != 0 {
+			inner.Error = strings.TrimSpace(fmt.Sprintf(
+				"%s [batch entry uses operation %d (DELEGATECALL) — DANGEROUS]",
+				inner.Error, c.Operation,
+			))
+		}
+		fc.DecodedFunctionCalls = append(fc.DecodedFunctionCalls, inner)
+	}
+}
+
+// unpackMultiSendPayload pulls the `transactions` argument out of
+// multiSend(bytes) calldata.
+func unpackMultiSendPayload(data []byte) ([]byte, error) {
+	m, ok := GetMultiSendABI().Methods[MultiSendMethodName]
+	if !ok {
+		return nil, fmt.Errorf("multiSend missing from the built-in ABI")
+	}
+	values, err := m.Inputs.UnpackValues(data[4:])
+	if err != nil {
+		return nil, err
+	}
+	if len(values) != 1 {
+		return nil, fmt.Errorf("expected 1 argument, got %d", len(values))
+	}
+	payload, ok := values[0].([]byte)
+	if !ok {
+		return nil, fmt.Errorf("expected bytes, got %T", values[0])
+	}
+	return payload, nil
 }
 
 // analyzeMethodCall is the internal variant that accepts a token hint so that

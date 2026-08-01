@@ -771,11 +771,12 @@ func sendFromSafe(
 	}
 
 	appUI.Success("Proposal submitted.")
+	appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
 	appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
 	appUI.Info("Other owners can approve with:")
-	appUI.Info("  jarvis safe approve %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
+	appUI.Info("  jarvis msig approve %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
 	appUI.Info("Once threshold is met, anyone can execute with:")
-	appUI.Info("  jarvis safe execute %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
+	appUI.Info("  jarvis msig execute %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
 }
 
 func init() {
