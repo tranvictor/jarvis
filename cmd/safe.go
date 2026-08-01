@@ -451,11 +451,12 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 				return
 			}
 			appUI.Success("Proposal written to %s", safeTxFile)
+			appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
 			appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
 			appUI.Info("Share the file with other owners; each can run:")
-			appUI.Info("  jarvis msig approve %s --safe-tx-file %s", safeContract.Address, safeTxFile)
+			appUI.Info("  jarvis msig approve %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
 			appUI.Info("Once threshold is met, any owner can run:")
-			appUI.Info("  jarvis msig execute %s --safe-tx-file %s", safeContract.Address, safeTxFile)
+			appUI.Info("  jarvis msig execute %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
 			return
 		}
 
@@ -470,11 +471,12 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 		}
 
 		appUI.Success("Proposal submitted.")
+		appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
 		appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
 		appUI.Info("Other owners can approve with:")
-		appUI.Info("  jarvis msig approve %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
+		appUI.Info("  jarvis msig approve %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
 		appUI.Info("Once threshold is met, anyone can execute with:")
-		appUI.Info("  jarvis msig execute %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]))
+		appUI.Info("  jarvis msig execute %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
 	},
 }
 
@@ -697,9 +699,9 @@ over an off-chain signature store. Other owners' off-chain signatures
 			appUI.Warn("Couldn't read safe threshold post-approval: %s", err)
 			return
 		}
-		nextCmdHint := fmt.Sprintf("  jarvis msig execute %s 0x%s", safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]))
+		nextCmdHint := fmt.Sprintf("  jarvis msig execute %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag())
 		if useFile {
-			nextCmdHint = fmt.Sprintf("  jarvis msig execute %s --safe-tx-file %s", safeContract.Address, safeTxFile)
+			nextCmdHint = fmt.Sprintf("  jarvis msig execute %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
 		}
 		if uint64(totalSigs) < threshold {
 			appUI.Info(
@@ -816,8 +818,8 @@ func runSafeApproveOnChain(
 		appUI.Info("--no-wait / --dont-broadcast is in effect; skipping auto-execute.")
 		appUI.Info("Once the approveHash tx is mined, finalise with:")
 		appUI.Info(
-			"  jarvis msig execute %s 0x%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+			"  jarvis msig execute %s 0x%s%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 		)
 		return
 	}
@@ -850,8 +852,8 @@ func runSafeApproveOnChain(
 			threshold-uint64(totalSigs),
 		)
 		appUI.Info(
-			"  jarvis msig execute %s 0x%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+			"  jarvis msig execute %s 0x%s%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 		)
 		return
 	}
@@ -860,16 +862,16 @@ func runSafeApproveOnChain(
 	if safeNoExecute {
 		appUI.Info("--no-execute set; skipping execTransaction. Run later with:")
 		appUI.Info(
-			"  jarvis msig execute %s 0x%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+			"  jarvis msig execute %s 0x%s%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 		)
 		return
 	}
 	if !config.YesToAllPrompt && !appUI.Confirm("Broadcast execTransaction now?", true) {
 		appUI.Warn("Skipping execution. Run later with:")
 		appUI.Info(
-			"  jarvis msig execute %s 0x%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+			"  jarvis msig execute %s 0x%s%s",
+			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 		)
 		return
 	}
@@ -1090,8 +1092,8 @@ Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
 		case threshold > 0 && uint64(len(pending.Sigs)) >= threshold:
 			appUI.Success("Status: threshold met — ready to execute.")
 			appUI.Info(
-				"  jarvis msig execute %s 0x%s",
-				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+				"  jarvis msig execute %s 0x%s%s",
+				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 			)
 		default:
 			needed := uint64(0)
@@ -1100,8 +1102,8 @@ Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
 			}
 			appUI.Info("Status: pending — needs %d more approval(s).", needed)
 			appUI.Info(
-				"  jarvis msig approve %s 0x%s",
-				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+				"  jarvis msig approve %s 0x%s%s",
+				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
 			)
 		}
 	},
