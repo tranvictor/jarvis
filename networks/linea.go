@@ -22,6 +22,7 @@ func NewlineaMainnet() *lineaMainnet {
 			NodeVariableName:   "LINEA_MAINNET_NODE",
 			DefaultNodes: map[string]string{
 				"infura-linea": "https://linea-mainnet.infura.io/v3/1556a477007b49cda01f9f3df4d97edd",
+				"mainnet-linea": "https://rpc.linea.build",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
 			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
