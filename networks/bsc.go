@@ -21,6 +21,8 @@ func NewBSCMainnet() *bscMainnet {
 			BlockTime:          2,
 			NodeVariableName:   "BSC_MAINNET_NODE",
 			DefaultNodes: map[string]string{
+				"kyber": "https://bsc-rpc.kyberswap.com",
+				"kyber-protection": "https://bsc-rpc-mev-protection.kyberswap.com",
 				"binance":  "https://bsc-dataseed.binance.org",
 				"defibit":  "https://bsc-dataseed1.defibit.io",
 				"ninicoin": "https://bsc-dataseed1.ninicoin.io",

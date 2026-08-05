@@ -21,6 +21,7 @@ func NewAvalanche() *avalanche {
 			BlockTime:          2,
 			NodeVariableName:   "AVALANCHE_MAINNET_NODE",
 			DefaultNodes: map[string]string{
+				"kyber": "https://avalanche-rpc.kyberswap.com",
 				"avalanche": "https://api.avax.network/ext/bc/C/rpc",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
