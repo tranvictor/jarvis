@@ -135,6 +135,16 @@ func PromptNetwork() networks.Network {
 		return nil
 	})
 
+	safeTxServiceURL := cmdutil.PromptInputWithValidation(appUI, "Please enter the Safe Transaction Service URL of the network (optional, leave empty if the chain has none)", func(v string) error {
+		if v == "" {
+			return nil
+		}
+		if _, err := url.Parse(v); err != nil {
+			return fmt.Errorf("safe transaction service URL %s is not a valid url", v)
+		}
+		return nil
+	})
+
 	networkConfig := networks.GenericEtherscanNetworkConfig{
 		Name:                            name,
 		AlternativeNames:                alternativeNames,
@@ -147,6 +157,7 @@ func PromptNetwork() networks.Network {
 		BlockExplorerAPIKeyVariableName: blockExplorerAPIKeyVariableName,
 		BlockExplorerAPIURL:             blockExplorerAPIURL,
 		MultiCallContractAddress:        common.HexToAddress(multiCallContractAddress),
+		SafeTxServiceURL:                strings.TrimSpace(safeTxServiceURL),
 	}
 
 	return networks.NewGenericEtherscanNetwork(networkConfig)
@@ -170,8 +181,15 @@ var addNetworkCmd = &cobra.Command{
 		},
 		"block_explorer_api_key_variable_name": "JARVIS_ETHERSCAN_API_KEY",
 		"block_explorer_api_url": "https://api.etherscan.io/api",
-		"multi_call_contract_address": "0x5394753688800000000000000000000000000000000000000000000000000000"
-	}`,
+		"multi_call_contract_address": "0x5394753688800000000000000000000000000000000000000000000000000000",
+		"safe_tx_service_url": "https://safe-transaction.example.com"
+	}
+
+"safe_tx_service_url" is optional. Set it for chains Safe doesn't list in its own
+registry so 'jarvis msig' can propose, approve and execute through a (usually
+self-hosted) Safe Transaction Service without exporting SAFE_TX_SERVICE_URL_<chainID>
+in every shell. Leave it out when the chain has no service — 'jarvis msig' then
+needs --safe-tx-file to keep proposals in a local file instead.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cfg, err := cmd.Flags().GetString("config")
 		if err != nil {

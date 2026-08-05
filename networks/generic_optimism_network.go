@@ -24,6 +24,9 @@ type GenericOptimismNetworkConfig struct {
 	BlockExplorerAPIURL             string            `json:"block_explorer_api_url"`
 	MultiCallContractAddress        common.Address    `json:"multi_call_contract_address"`
 	SyncTxSupported                 bool              `json:"sync_tx_supported"`
+	// SafeTxServiceURL is optional — see the field of the same name on
+	// GenericEtherscanNetworkConfig.
+	SafeTxServiceURL string `json:"safe_tx_service_url,omitempty"`
 }
 
 // GenericOptimismNetwork is a generic implementation of a network that uses Etherscan as their official explorer
@@ -81,6 +84,12 @@ func (gn *GenericOptimismNetwork) GetBlockExplorerAPIKeyVariableName() string {
 
 func (gn *GenericOptimismNetwork) GetBlockExplorerAPIURL() string {
 	return gn.config.BlockExplorerAPIURL
+}
+
+// GetSafeTxServiceURL normalises the configured URL the same way
+// txservice does for the env overrides: trimmed, with no trailing slash.
+func (gn *GenericOptimismNetwork) GetSafeTxServiceURL() string {
+	return strings.TrimRight(strings.TrimSpace(gn.config.SafeTxServiceURL), "/")
 }
 
 func (gn *GenericOptimismNetwork) MultiCallContract() string {

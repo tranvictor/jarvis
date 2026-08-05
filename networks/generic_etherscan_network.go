@@ -26,6 +26,11 @@ type GenericEtherscanNetworkConfig struct {
 	BlockExplorerAPIURL             string            `json:"block_explorer_api_url"`
 	MultiCallContractAddress        common.Address    `json:"multi_call_contract_address"`
 	SyncedTxSupported               bool              `json:"synced_tx_supported"`
+	// SafeTxServiceURL is optional: chains that Safe doesn't list in its
+	// own registry (private/custom chains especially) can point jarvis at
+	// a self-hosted Safe Transaction Service here. omitempty keeps it out
+	// of the JSON of the bundled networks, which all leave it unset.
+	SafeTxServiceURL string `json:"safe_tx_service_url,omitempty"`
 }
 
 // GenericEtherscanNetwork is a generic implementation of a network that uses Etherscan as their official explorer
@@ -84,6 +89,13 @@ func (gn *GenericEtherscanNetwork) GetBlockExplorerAPIKeyVariableName() string {
 
 func (gn *GenericEtherscanNetwork) GetBlockExplorerAPIURL() string {
 	return gn.Config.BlockExplorerAPIURL
+}
+
+// GetSafeTxServiceURL normalises the configured URL the same way
+// txservice does for the env overrides: trimmed, with no trailing slash,
+// so callers can concatenate paths onto it unconditionally.
+func (gn *GenericEtherscanNetwork) GetSafeTxServiceURL() string {
+	return strings.TrimRight(strings.TrimSpace(gn.Config.SafeTxServiceURL), "/")
 }
 
 func (gn *GenericEtherscanNetwork) MultiCallContract() string {
