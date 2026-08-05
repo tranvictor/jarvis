@@ -21,7 +21,8 @@ func NewEthereumMainnet() *ethereumMainnet {
 			BlockTime:          14,
 			NodeVariableName:   "ETHEREUM_MAINNET_NODE",
 			DefaultNodes: map[string]string{
-				"mainnet-kyber": "https://ethereum.kyberengineering.io",
+				"mainnet-kyber": "https://ethereum-rpc.kyberswap.com",
+				"kyber-protection": "https://ethereum-rpc-mev-protection.kyberswap.com",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
 			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
