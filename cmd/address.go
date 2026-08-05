@@ -14,8 +14,13 @@ var addressCmd = &cobra.Command{
 	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		para := strings.Join(args, " ")
-		addrs, names, err := util.GetMatchingAddresses(para)
-		if err != nil || len(addrs) == 0 {
+		// GetMatchingAddresses's third return is match scores, not an
+		// error — it was previously misnamed `err` here, which made this
+		// branch fire (and print "No matching addresses found") on every
+		// successful, non-empty result too, since a populated scores
+		// slice is non-nil.
+		addrs, names, _ := util.GetMatchingAddresses(para)
+		if len(addrs) == 0 {
 			appUI.Warn("No matching addresses found for \"%s\"", para)
 			return
 		}

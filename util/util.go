@@ -20,7 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	bleve "github.com/tranvictor/jarvis/bleve"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
 	"github.com/tranvictor/jarvis/networks"
@@ -55,32 +54,22 @@ func CalculateTimeDurationFromBlock(network networks.Network, from, to uint64) t
 	return time.Duration(uint64(time.Second) * (to - from) * uint64(network.GetBlockTime()))
 }
 
+// GetExactAddressFromDatabases resolves str against the local address
+// database. Kept as a separate name for callers (e.g. `jarvis whois`) that
+// historically wanted "exact" lookups; since db.GetAddresses already
+// resolves address-shaped input by exact key match (see
+// jarviscommon.LooksLikeAddress) and only fuzzy-matches free text, this is
+// now equivalent to getRelevantAddressesFromDatabases.
 func GetExactAddressFromDatabases(str string) (addrs []string, names []string, scores []int) {
-	addrDescs1, scores1 := bleve.GetAddresses(str)
-	for i, addr := range addrDescs1 {
-		addrs = append(addrs, addr.Address)
-		names = append(names, addr.Desc)
-		scores = append(scores, scores1[i])
-	}
-	return addrs, names, scores
+	return getRelevantAddressesFromDatabases(str)
 }
 
 func getRelevantAddressesFromDatabases(str string) (addrs []string, names []string, scores []int) {
-	addrDescs1, scores1 := bleve.GetAddresses(str)
-	addrDescs2, scores2 := db.GetAddresses(str)
-	buffer := map[string]bool{}
-	for i, addr := range addrDescs1 {
+	addrDescs, matchScores := db.GetAddresses(str)
+	for i, addr := range addrDescs {
 		addrs = append(addrs, addr.Address)
 		names = append(names, addr.Desc)
-		scores = append(scores, scores1[i])
-		buffer[strings.ToLower(addr.Address)] = true
-	}
-	for i, addr := range addrDescs2 {
-		if !buffer[strings.ToLower(addr.Address)] {
-			addrs = append(addrs, addr.Address)
-			names = append(names, addr.Desc)
-			scores = append(scores, scores2[i])
-		}
+		scores = append(scores, matchScores[i])
 	}
 	return addrs, names, scores
 }
@@ -385,7 +374,6 @@ func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {
 	}
 	return monitor.NewGenericTxMonitor(r), nil
 }
-
 
 func EthBroadcaster(network networks.Network) (*broadcaster.Broadcaster, error) {
 	nodes, err := GetNodes(network)
@@ -946,4 +934,3 @@ func NewMultiCall(network networks.Network) (*reader.MultipleCall, error) {
 	}
 	return reader.NewMultiCall(r, network.MultiCallContract()), nil
 }
-
