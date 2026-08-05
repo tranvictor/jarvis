@@ -22,6 +22,7 @@ func NewMatic() *matic {
 			NodeVariableName:   "MATIC_MAINNET_NODE",
 			DefaultNodes: map[string]string{
 				"kyber": "https://polygon.kyberengineering.io",
+				"drpc": "https://polygon.drpc.org",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
 			BlockExplorerAPIURL:             "https://api.etherscan.io/v2",

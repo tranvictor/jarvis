@@ -20,6 +20,7 @@ func NewArbitrumMainnet() *arbitrumMainnet {
 			BlockTime:          2,
 			NodeVariableName:   "ARBITRUM_MAINNET_NODE",
 			DefaultNodes: map[string]string{
+				"kyber": "https://arbitrum-rpc.kyberswap.com",
 				"infura": "https://arb1.arbitrum.io/rpc",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",

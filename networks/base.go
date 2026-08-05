@@ -21,6 +21,8 @@ func NewBaseMainnet() *baseMainnet {
 			BlockTime:          2,
 			NodeVariableName:   "BASE_MAINNET_NODE",
 			DefaultNodes: map[string]string{
+				"kyber": "https://base-rpc.kyberswap.com",
+				"kyber-protection": "https://base-rpc-mev-protection.kyberswap.com",
 				"public-base": "https://mainnet.base.org",
 			},
 			BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
