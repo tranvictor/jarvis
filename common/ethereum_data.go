@@ -45,10 +45,15 @@ type Value struct {
 }
 
 type FunctionCall struct {
-	Destination          Address
-	Value                *big.Int
-	Method               string
-	Params               []ParamResult
+	Destination Address
+	Value       *big.Int
+	Method      string
+	Params      []ParamResult
+	// Data is the raw calldata this call was decoded from. It is kept around so
+	// a call jarvis fails to decode can still be shown to the operator with its
+	// destination and payload, instead of a bare "couldn't decode" error that
+	// doesn't say which contract is missing an ABI.
+	Data                 []byte
 	DecodedFunctionCalls []*FunctionCall
 	Error                string
 }

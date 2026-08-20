@@ -15,7 +15,7 @@ func TestAnalyzeLogEmptyTopics(t *testing.T) {
 		t.Fatal(err)
 	}
 	ta := NewGenericAnalyzer(nil, network)
-	_, err = ta.AnalyzeLog(nil, &types.Log{
+	_, err = ta.AnalyzeLog(nil, nil, &types.Log{
 		Address: common.HexToAddress("0x48B8419B2Bc0fB63Ee96e3a370e30B200cC2e672"),
 		Topics:  nil,
 	})

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
+
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
@@ -69,6 +71,11 @@ func buildFunctionCallDisplay(fc *jarviscommon.FunctionCall, nested bool) *Funct
 	}
 	if nested && fc.Value != nil {
 		d.Value = fmt.Sprintf("%f ETH", jarviscommon.BigToFloat(fc.Value, 18))
+	}
+	// Only carried when the method couldn't be resolved — a decoded call already
+	// shows everything the calldata contains.
+	if fc.Method == "" && len(fc.Data) > 0 {
+		d.Data = hexutil.Encode(fc.Data)
 	}
 	for _, param := range fc.Params {
 		d.Params = append(d.Params, buildParamDisplay(param))
@@ -218,15 +225,86 @@ func printParamList(u ui.UI, params []ParamDisplay) {
 	}
 }
 
+// rawCalldataWidth is how many hex characters of raw calldata are printed per
+// line. 64 keeps the line inside a standard terminal even a couple of indent
+// levels deep, and lines up with 32-byte ABI words.
+const rawCalldataWidth = 64
+
+// printRawCalldata prints hex calldata as wrapped lines under a byte-count
+// label. It stays outside any table on purpose: a multi-kilobyte blob in a
+// table cell blows the box out past the terminal width and becomes unreadable,
+// and truncating it is not an option on a signing path.
+func printRawCalldata(u ui.UI, data string) {
+	body := strings.TrimPrefix(data, "0x")
+	u.Info("Raw calldata (%d bytes):", len(body)/2)
+	uu := u.Indent()
+	for i := 0; i < len(body); i += rawCalldataWidth {
+		end := i + rawCalldataWidth
+		if end > len(body) {
+			end = len(body)
+		}
+		// "0x" on the first line only, continuation lines padded by two so the
+		// hex columns still line up (and a copy-paste still reads as one blob).
+		prefix := "  "
+		if i == 0 {
+			prefix = "0x"
+		}
+		uu.Info("%s%s", prefix, body[i:end])
+	}
+}
+
+// printUndecodedCall renders a call jarvis couldn't decode. Showing the
+// destination, the selector and the raw calldata is what lets an operator tell
+// *which* contract is missing an ABI (and inspect the payload by hand) instead
+// of staring at a bare decode error — which matters most for one entry of a
+// multisig batch, where the failing contract is otherwise invisible.
+func printUndecodedCall(u ui.UI, d *FunctionCallDisplay, nested bool) {
+	var rows [][]ui.TableCell
+	if nested {
+		// The arrow label already carries the destination; don't repeat it.
+		u.Error("↳ <undecoded call>  [%s]", u.Style(d.Destination))
+		u = u.Indent()
+	} else {
+		u.Section("Function call: <undecoded>")
+		rows = append(rows, []ui.TableCell{ui.TC("Contract"), tableCell(d.Destination)})
+	}
+
+	if d.Value != "" {
+		rows = append(rows, []ui.TableCell{ui.TC("Value"), ui.TC(d.Value)})
+	}
+	if len(d.Data) >= 10 {
+		rows = append(rows, []ui.TableCell{ui.TC("Method ID"), ui.TC(d.Data[:10])})
+	}
+	if d.Error != "" {
+		rows = append(
+			rows,
+			[]ui.TableCell{ui.TC("Error"), ui.TCS(d.Error, ui.SeverityError)},
+		)
+	}
+	if len(rows) > 0 {
+		u.PrintTable(&ui.Table{Groups: [][][]ui.TableCell{rows}})
+	}
+	if d.Data != "" {
+		printRawCalldata(u, d.Data)
+	}
+
+	for _, inner := range d.InnerCalls {
+		printFunctionCallDisplay(u.Indent(), inner, true)
+	}
+}
+
 func printFunctionCallDisplay(u ui.UI, d *FunctionCallDisplay, nested bool) {
 	if d.Method == "" {
-		u.Error("Getting ABI and function name failed: %s", d.Error)
+		printUndecodedCall(u, d, nested)
 		return
 	}
 
 	if nested {
 		// Inner calls are visually subordinate — a simple arrow label, no Section.
 		u.Info("↳ %s  [%s]", d.Method, u.Style(d.Destination))
+		if d.Error != "" {
+			u.Indent().Error("%s", d.Error)
+		}
 		printParamList(u.Indent(), d.Params)
 		for _, inner := range d.InnerCalls {
 			printFunctionCallDisplay(u.Indent(), inner, true)
@@ -240,6 +318,14 @@ func printFunctionCallDisplay(u ui.UI, d *FunctionCallDisplay, nested bool) {
 	metaGroup := [][]ui.TableCell{{ui.TC("Contract"), tableCell(d.Destination)}}
 	if d.Value != "" {
 		metaGroup = append(metaGroup, []ui.TableCell{ui.TC("Value"), ui.TC(d.Value)})
+	}
+	// A method can resolve while its arguments fail to unpack; say so instead of
+	// showing a name over an empty parameter list.
+	if d.Error != "" {
+		metaGroup = append(
+			metaGroup,
+			[]ui.TableCell{ui.TC("Error"), ui.TCS(d.Error, ui.SeverityError)},
+		)
 	}
 
 	var paramGroup [][]ui.TableCell

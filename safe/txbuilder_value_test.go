@@ -2,10 +2,13 @@ package safe
 
 import (
 	"encoding/hex"
+	"encoding/json"
+	"math/big"
 	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	gethcommon "github.com/ethereum/go-ethereum/common"
 
 	"github.com/tranvictor/jarvis/networks"
 )
@@ -276,4 +279,133 @@ func TestNormalizedValuesActuallyPack(t *testing.T) {
 	if got, ok := values[4].([]byte); !ok || hex.EncodeToString(got) != "deadbeef" {
 		t.Errorf("extra = %#v", values[4])
 	}
+}
+
+// TestBareJSONLiteralValues covers exports where the Safe UI wrote a value as
+// a bare JSON literal instead of a quoted string — `"allowed": true` rather
+// than `"allowed": "true"`. Those files used to fail at unmarshal time with
+// "cannot unmarshal bool into Go struct field ... of type string", which told
+// the operator nothing about which entry was at fault and, worse, rejected a
+// batch the Safe UI itself produced.
+func TestBareJSONLiteralValues(t *testing.T) {
+	f, err := ParseTxBuilderJSON(`{"version":"1.0","chainId":"1","createdAt":1787138928141,
+	  "meta":{"name":"Transactions Batch","txBuilderVersion":"2.0.1",
+	    "createdFromSafeAddress":"0x5B8c76E2a97746f375F629bDbf54B0e4FF19b803"},
+	  "transactions":[
+	  {"to":"0x1bD5af8e731D0969E8eBf7ea87f06d9Dc096d155","value":"0","data":null,
+	   "contractMethod":{"name":"setOperator","payable":false,"inputs":[
+	     {"name":"operator","type":"address","internalType":"address"},
+	     {"name":"allowed","type":"bool","internalType":"bool"}]},
+	   "contractInputsValues":{
+	     "operator":"0xFf017006107E0255aD786Ab4CF92855448F605fc",
+	     "allowed":true}},
+	  {"to":"0x1bD5af8e731D0969E8eBf7ea87f06d9Dc096d155","value":"0","data":null,
+	   "contractMethod":{"name":"setLimits","payable":false,"inputs":[
+	     {"name":"cap","type":"uint256","internalType":"uint256"},
+	     {"name":"enabled","type":"bool","internalType":"bool"},
+	     {"name":"targets","type":"address[]","internalType":"address[]"}]},
+	   "contractInputsValues":{
+	     "cap":115792089237316195423570985008687907853269984665640564039457584007913129639935,
+	     "enabled":false,
+	     "targets":["0x1af18F06F97679B16A8F553326ab2857e6cFd920"]}}]}`)
+	if err != nil {
+		t.Fatalf("parse: %s", err)
+	}
+
+	calls, err := f.EncodeCalls(networks.EthereumMainnet)
+	if err != nil {
+		t.Fatalf("encode: %s", err)
+	}
+	if len(calls) != 2 {
+		t.Fatalf("got %d calls, want 2", len(calls))
+	}
+
+	first := unpackCall(t, calls[0])
+	if got := first[0].(gethcommon.Address); got != gethcommon.HexToAddress("0xFf017006107E0255aD786Ab4CF92855448F605fc") {
+		t.Errorf("operator = %s", got.Hex())
+	}
+	if first[1] != true {
+		t.Errorf("allowed = %#v, want true", first[1])
+	}
+
+	second := unpackCall(t, calls[1])
+	// A bare JSON number above 2^53: it must survive digit for digit, which
+	// is why the raw text is kept instead of decoding into float64.
+	wantCap, _ := new(big.Int).SetString(
+		"115792089237316195423570985008687907853269984665640564039457584007913129639935", 10,
+	)
+	if got, ok := second[0].(*big.Int); !ok || got.Cmp(wantCap) != 0 {
+		t.Errorf("cap = %#v, want %s", second[0], wantCap)
+	}
+	if second[1] != false {
+		t.Errorf("enabled = %#v, want false", second[1])
+	}
+	if got, ok := second[2].([]gethcommon.Address); !ok || len(got) != 1 ||
+		got[0] != gethcommon.HexToAddress("0x1af18F06F97679B16A8F553326ab2857e6cFd920") {
+		t.Errorf("targets = %#v", second[2])
+	}
+}
+
+// TestTxBuilderValueRoundTrip pins that re-serialising a parsed batch gives
+// back the spelling the file used, so a bare literal never turns into a
+// string (or the other way round) behind the operator's back.
+func TestTxBuilderValueRoundTrip(t *testing.T) {
+	var v TxBuilderValue
+	for _, raw := range []string{`"true"`, `true`, `123`, `["0xaa"]`, `null`} {
+		if err := json.Unmarshal([]byte(raw), &v); err != nil {
+			t.Fatalf("unmarshal %s: %s", raw, err)
+		}
+		out, err := json.Marshal(v)
+		if err != nil {
+			t.Fatalf("marshal %s: %s", raw, err)
+		}
+		if string(out) != raw {
+			t.Errorf("round trip of %s gave %s", raw, out)
+		}
+	}
+}
+
+// TestTxBuilderValueText documents the normalisation both spellings go
+// through: quoted values are unquoted, bare literals are kept verbatim, and
+// null degrades to the empty string the old map[string]string produced.
+func TestTxBuilderValueText(t *testing.T) {
+	cases := map[string]string{
+		`"true"`:         "true",
+		`true`:           "true",
+		`"0xdeadbeef"`:   "0xdeadbeef",
+		`123`:            "123",
+		`  false `:       "false",
+		`"[\"0xaa\",1]"`: `["0xaa",1]`,
+		`["0xaa",1]`:     `["0xaa",1]`,
+		`null`:           "",
+		`"prod rollout"`: "prod rollout",
+	}
+	for raw, want := range cases {
+		var v TxBuilderValue
+		if err := json.Unmarshal([]byte(raw), &v); err != nil {
+			t.Fatalf("unmarshal %s: %s", raw, err)
+		}
+		if got := v.String(); got != want {
+			t.Errorf("%s -> %q, want %q", raw, got, want)
+		}
+	}
+}
+
+func unpackCall(t *testing.T, call TxBuilderCall) []any {
+	t.Helper()
+	if call.ABI == nil {
+		t.Fatal("no synthesized ABI")
+	}
+	if len(call.Data) < 4 {
+		t.Fatalf("calldata too short: %x", call.Data)
+	}
+	m, err := call.ABI.MethodById(call.Data[:4])
+	if err != nil {
+		t.Fatalf("method lookup: %s", err)
+	}
+	values, err := m.Inputs.UnpackValues(call.Data[4:])
+	if err != nil {
+		t.Fatalf("unpack: %s", err)
+	}
+	return values
 }
