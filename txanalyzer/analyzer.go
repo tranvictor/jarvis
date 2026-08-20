@@ -245,6 +245,7 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 	fc = &FunctionCall{}
 	fc.Destination = self.ctx.GetJarvisAddress(destination)
 	fc.Value = value
+	fc.Data = data
 
 	var err error
 
@@ -254,12 +255,22 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 		if err != nil {
 			a = GetERC20ABI()
 		}
+	} else if len(data) >= 4 && !abiHasSelector(a, data[:4]) {
+		// A custom ABI that doesn't cover this selector is a partial ABI, not
+		// the wrong contract: --abi may name one method, and a Safe batch
+		// carries one synthesised method per entry. Fall back to the resolved
+		// ABI so an entry the custom one can't describe still decodes; keep
+		// the custom ABI when the database has nothing better.
+		if resolved, resolveErr := lookupABI(destination, self.ctx.Network); resolveErr == nil &&
+			abiHasSelector(resolved, data[:4]) {
+			a = resolved
+		}
 	}
 
 	// Safe batches are delegatecalls into MultiSend / MultiSendCallOnly. Those
 	// libraries are often unverified on block explorers, so without this the
-	// whole batch would render as "couldn't decode bytes data" — the operator
-	// would be asked to sign an opaque blob.
+	// whole batch would render as one undecoded blob — the operator would be
+	// asked to sign an opaque payload.
 	if IsMultiSendCallData(data) && !abiHasSelector(a, data[:4]) {
 		a = GetMultiSendABI()
 	}
@@ -275,7 +286,9 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 
 	fc.Method, fc.Params, err = self.analyzeMethodCall(a, data, hint)
 	if err != nil {
-		fc.Error = "couldn't decode bytes data"
+		// Keep the underlying reason: "no method with id: 0x..." tells the
+		// operator the ABI is missing/wrong, which a generic message doesn't.
+		fc.Error = fmt.Sprintf("couldn't decode calldata: %s", err)
 	}
 
 	if depth >= maxRecursionDepth {
@@ -304,6 +317,8 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 			innerData, err := hexutil.Decode(dataStrs[i])
 			if err != nil {
 				nextFc := &FunctionCall{}
+				nextFc.Destination = self.ctx.GetJarvisAddress(destinations[i])
+				nextFc.Value = StringToBig(valueStrs[i])
 				nextFc.Error = fmt.Sprintf("couldn't decode inner calldata: %s", err)
 				fc.DecodedFunctionCalls = append(fc.DecodedFunctionCalls, nextFc)
 				continue
@@ -452,7 +467,12 @@ func isValueType(t abi.Type) bool {
 	}
 }
 
+// AnalyzeLog decodes one event log. lookupABI resolves the emitting contract's
+// ABI when customABIs has no entry for it; pass nil to use the plain util.GetABI
+// lookup. Callers that hold a --abi fallback should pass the same ABIDatabase
+// they used for the calldata so an unverified contract's events decode too.
 func (self *TxAnalyzer) AnalyzeLog(
+	lookupABI ABIDatabase,
 	customABIs map[string]*abi.ABI,
 	l *types.Log,
 ) (LogResult, error) {
@@ -470,7 +490,10 @@ func (self *TxAnalyzer) AnalyzeLog(
 
 	a := customABIs[strings.ToLower(l.Address.Hex())]
 	if a == nil {
-		a, err = util.GetABI(l.Address.Hex(), self.ctx.Network)
+		if lookupABI == nil {
+			lookupABI = util.GetABI
+		}
+		a, err = lookupABI(l.Address.Hex(), self.ctx.Network)
 		if err != nil {
 			return logResult, fmt.Errorf("getting abi for %s failed: %s", l.Address.Hex(), err)
 		}
@@ -536,7 +559,7 @@ func (self *TxAnalyzer) analyzeContractTx(
 		customABIs)
 
 	for _, l := range txinfo.Receipt.Logs {
-		logResult, err := self.AnalyzeLog(customABIs, l)
+		logResult, err := self.AnalyzeLog(lookupABI, customABIs, l)
 		if err != nil {
 			if result.Error != "" {
 				result.Error += "; "

@@ -236,12 +236,9 @@ func buildTxBuilderSafeTx(tc cmdutil.TxContext) (
 		return "", nil, nil, safe.OpCall, nil, ""
 	}
 
-	abis = map[string]*abi.ABI{}
-	for _, c := range calls {
-		if c.ABI != nil {
-			abis[strings.ToLower(c.To.Hex())] = c.ABI
-		}
-	}
+	// Merged per address, not one entry per call: several entries hitting the
+	// same contract must all stay decodable (see safe.MergeCallABIs).
+	abis = safe.MergeCallABIs(calls)
 
 	appUI.Section(fmt.Sprintf("Tx builder batch: %d transaction(s)", len(calls)))
 	if name := strings.TrimSpace(txBuilderBatch.Meta.Name); name != "" {
@@ -1550,7 +1547,6 @@ func buildTxContextForBatch(
 	}
 	return tc, nil
 }
-
 
 // printSafeBatchSummary renders a per-ref outcome list followed by a
 // totals line, mirroring printBatchSummary for classic msig.

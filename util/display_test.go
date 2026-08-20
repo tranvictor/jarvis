@@ -279,3 +279,56 @@ func assertScalarContains(t *testing.T, d util.ParamDisplay, substr string) {
 		t.Errorf("param %q: want value containing %q, got %q", d.Name, substr, got)
 	}
 }
+
+// TestUndecodedCallShowsContractAndData pins the behaviour that a call jarvis
+// can't decode is still reported with its destination and raw calldata — an
+// operator reviewing a batch needs to know *which* contract is missing an ABI.
+func TestUndecodedCallShowsContractAndData(t *testing.T) {
+	rec := ui.NewRecordingUI()
+
+	inner := &jarviscommon.FunctionCall{
+		Destination: jarviscommon.Address{
+			Address: "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+			Desc:    "unknown",
+		},
+		Value: big.NewInt(0),
+		Data:  ethcommon.FromHex("0xdeadbeef0000000000000000000000000000000000000000000000000000000000000001"),
+		Error: "couldn't decode calldata: no method with id: 0xdeadbeef",
+	}
+	outer := &jarviscommon.FunctionCall{
+		Destination: jarviscommon.Address{
+			Address: "0x9642b23Ed1E01Df1092B92641051881a322F5D4E",
+			Desc:    "MultiSendCallOnly",
+		},
+		Value:                big.NewInt(0),
+		Method:               "multiSend",
+		DecodedFunctionCalls: []*jarviscommon.FunctionCall{inner},
+	}
+
+	d := util.DisplayFunctionCall(rec, outer)
+
+	if d.InnerCalls[0].Data != "0xdeadbeef0000000000000000000000000000000000000000000000000000000000000001" {
+		t.Errorf("inner Data not carried into the view-model: %q", d.InnerCalls[0].Data)
+	}
+	if d.Data != "" {
+		t.Errorf("decoded call should not carry raw Data, got %q", d.Data)
+	}
+
+	var all []string
+	for _, e := range rec.Entries() {
+		all = append(all, e.Method+": "+e.Value)
+	}
+	joined := strings.Join(all, "\n")
+
+	for _, want := range []string{
+		"0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+		"Method ID | 0xdeadbeef",
+		"Raw calldata (36 bytes):",
+		"0xdeadbeef00000000000000000000000000000000000000000000000000000000",
+		"no method with id: 0xdeadbeef",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("output missing %q:\n%s", want, joined)
+		}
+	}
+}

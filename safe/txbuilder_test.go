@@ -236,3 +236,111 @@ func TestTotalValueWei(t *testing.T) {
 		t.Errorf("total = %s, want 42", total)
 	}
 }
+
+// TestMergeCallABIsKeepsEveryMethodPerAddress covers the case that made a
+// batch render as "<undecoded call>": four setters on one contract, where a
+// single-ABI-per-address map kept only the last entry's method and every
+// earlier selector became undecodable.
+func TestMergeCallABIsKeepsEveryMethodPerAddress(t *testing.T) {
+	const raw = `{
+	  "version": "1.0",
+	  "chainId": "1",
+	  "meta": {"name": "Transactions Batch"},
+	  "transactions": [
+	    {"to": "0x1bD5af8e731D0969E8eBf7ea87f06d9Dc096d155", "value": "0", "data": null,
+	     "contractMethod": {"inputs": [
+	        {"name": "operator", "type": "address", "internalType": "address"},
+	        {"name": "allowed", "type": "bool", "internalType": "bool"}],
+	      "name": "setOperator", "payable": false},
+	     "contractInputsValues": {"operator": "0x990bC4fE8B3f75Fe02F58b939a5fc4F76C725fc7", "allowed": true}},
+	    {"to": "0x1bD5af8e731D0969E8eBf7ea87f06d9Dc096d155", "value": "0", "data": null,
+	     "contractMethod": {"inputs": [
+	        {"name": "newVT", "type": "address", "internalType": "address"}],
+	      "name": "setVT", "payable": false},
+	     "contractInputsValues": {"newVT": "0xbeeB9eeE061925cC6d2122F05a4e6536F0FEB000"}},
+	    {"to": "0x1bD5af8e731D0969E8eBf7ea87f06d9Dc096d155", "value": "0", "data": null,
+	     "contractMethod": {"inputs": [
+	        {"name": "dest", "type": "address", "internalType": "address"},
+	        {"name": "allowed", "type": "bool", "internalType": "bool"}],
+	      "name": "setEthDestination", "payable": false},
+	     "contractInputsValues": {"dest": "0x0FB7f20a75DFeD378D73a742c00197Ff7aB5172e", "allowed": true}},
+	    {"to": "0x1bD5af8e731D0969E8eBf7ea87f06d9Dc096d155", "value": "0", "data": null,
+	     "contractMethod": {"inputs": [
+	        {"name": "dest", "type": "address", "internalType": "address"},
+	        {"name": "allowed", "type": "bool", "internalType": "bool"}],
+	      "name": "setTokenDestination", "payable": false},
+	     "contractInputsValues": {"dest": "0x0FB7f20a75DFeD378D73a742c00197Ff7aB5172e", "allowed": true}}
+	  ]
+	}`
+
+	f, err := ParseTxBuilderJSON(raw)
+	if err != nil {
+		t.Fatalf("parse: %s", err)
+	}
+	calls, err := f.EncodeCalls(networks.EthereumMainnet)
+	if err != nil {
+		t.Fatalf("encode: %s", err)
+	}
+
+	abis := MergeCallABIs(calls)
+	if len(abis) != 1 {
+		t.Fatalf("expected 1 address entry, got %d", len(abis))
+	}
+	merged := abis[strings.ToLower(calls[0].To.Hex())]
+	if merged == nil {
+		t.Fatal("no merged ABI for the batch target")
+	}
+
+	want := []string{"setOperator", "setVT", "setEthDestination", "setTokenDestination"}
+	for i, c := range calls {
+		m, err := merged.MethodById(c.Data[:4])
+		if err != nil {
+			t.Fatalf("call %d (%s): %s", i+1, want[i], err)
+		}
+		if m.Name != want[i] {
+			t.Errorf("call %d decoded as %s, want %s", i+1, m.Name, want[i])
+		}
+	}
+}
+
+// TestMergeCallABIsDedupesRepeatedMethod keeps a batch that calls the same
+// method twice from growing duplicate entries in the merged ABI.
+func TestMergeCallABIsDedupesRepeatedMethod(t *testing.T) {
+	const raw = `{
+	  "version": "1.0",
+	  "chainId": "1",
+	  "meta": {"name": "b"},
+	  "transactions": [
+	    {"to": "0x1bD5af8e731D0969E8eBf7ea87f06d9Dc096d155", "value": "0", "data": null,
+	     "contractMethod": {"inputs": [{"name": "newVT", "type": "address", "internalType": "address"}],
+	      "name": "setVT", "payable": false},
+	     "contractInputsValues": {"newVT": "0xbeeB9eeE061925cC6d2122F05a4e6536F0FEB000"}},
+	    {"to": "0x1bD5af8e731D0969E8eBf7ea87f06d9Dc096d155", "value": "0", "data": null,
+	     "contractMethod": {"inputs": [{"name": "newVT", "type": "address", "internalType": "address"}],
+	      "name": "setVT", "payable": false},
+	     "contractInputsValues": {"newVT": "0x990bC4fE8B3f75Fe02F58b939a5fc4F76C725fc7"}}
+	  ]
+	}`
+
+	f, err := ParseTxBuilderJSON(raw)
+	if err != nil {
+		t.Fatalf("parse: %s", err)
+	}
+	calls, err := f.EncodeCalls(networks.EthereumMainnet)
+	if err != nil {
+		t.Fatalf("encode: %s", err)
+	}
+	merged := MergeCallABIs(calls)[strings.ToLower(calls[0].To.Hex())]
+	if merged == nil {
+		t.Fatal("no merged ABI")
+	}
+	if len(merged.Methods) != 1 {
+		t.Errorf("merged ABI has %d methods, want 1", len(merged.Methods))
+	}
+	// The per-call ABIs must not have been mutated by the merge.
+	for i, c := range calls {
+		if len(c.ABI.Methods) != 1 {
+			t.Errorf("call %d ABI has %d methods, want 1", i+1, len(c.ABI.Methods))
+		}
+	}
+}

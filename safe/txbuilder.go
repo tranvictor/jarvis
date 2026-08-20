@@ -55,17 +55,66 @@ type TxBuilderMeta struct {
 //
 //   - "custom data": Data holds raw hex calldata and ContractMethod is null.
 //   - ABI-driven: ContractMethod describes the function and
-//     ContractInputsValues holds one string per input, keyed by input name,
+//     ContractInputsValues holds one value per input, keyed by input name,
 //     in whatever form the user typed into the UI.
 //
 // A transaction with neither is a plain native-token transfer, which is
 // only meaningful when Value is non-zero.
 type TxBuilderTx struct {
-	To                   string            `json:"to"`
-	Value                string            `json:"value"`
-	Data                 *string           `json:"data"`
-	ContractMethod       *TxBuilderMethod  `json:"contractMethod"`
-	ContractInputsValues map[string]string `json:"contractInputsValues"`
+	To                   string                    `json:"to"`
+	Value                string                    `json:"value"`
+	Data                 *string                   `json:"data"`
+	ContractMethod       *TxBuilderMethod          `json:"contractMethod"`
+	ContractInputsValues map[string]TxBuilderValue `json:"contractInputsValues"`
+}
+
+// TxBuilderValue is one contractInputsValues entry. The Safe UI usually
+// quotes every value — even arrays and tuples, which arrive as JSON text
+// inside a JSON string — but it writes bare JSON literals for some types
+// (notably `true`/`false` for bool inputs, and unquoted numbers), so this
+// cannot simply be a string without rejecting real exports.
+//
+// Unmarshalling normalises both spellings to the same text: a JSON string is
+// unquoted, any other literal is kept verbatim. That way `true` and `"true"`
+// reach builderValueToJarvisInput identically, and a bare uint256 above 2^53
+// survives because its decimal digits are never routed through float64.
+type TxBuilderValue struct {
+	text string
+	raw  []byte
+}
+
+// NewTxBuilderValue builds a value from its textual form, for tests and for
+// callers assembling a batch in Go instead of reading a file.
+func NewTxBuilderValue(text string) TxBuilderValue {
+	return TxBuilderValue{text: text}
+}
+
+// String returns the value as text, in the form the Safe UI would have typed
+// it — which is what the input normaliser consumes.
+func (v TxBuilderValue) String() string {
+	return v.text
+}
+
+func (v *TxBuilderValue) UnmarshalJSON(data []byte) error {
+	v.raw = append([]byte(nil), data...)
+	var s string
+	if err := json.Unmarshal(data, &s); err == nil {
+		// Also the null case: unmarshalling null into a string is a no-op,
+		// leaving "" — the same thing map[string]string used to yield.
+		v.text = s
+		return nil
+	}
+	v.text = strings.TrimSpace(string(data))
+	return nil
+}
+
+// MarshalJSON re-emits exactly what was read, so serialising a parsed batch
+// doesn't rewrite bare literals as strings.
+func (v TxBuilderValue) MarshalJSON() ([]byte, error) {
+	if len(v.raw) > 0 {
+		return append([]byte(nil), v.raw...), nil
+	}
+	return json.Marshal(v.text)
 }
 
 // TxBuilderMethod describes the target function. Inputs are kept as raw
@@ -311,13 +360,14 @@ func (tx *TxBuilderTx) encode(network networks.Network) (TxBuilderCall, error) {
 
 	params := make([]any, 0, len(method.Inputs))
 	for _, input := range method.Inputs {
-		raw, ok := tx.ContractInputsValues[input.Name]
+		value, ok := tx.ContractInputsValues[input.Name]
 		if !ok {
 			return TxBuilderCall{}, fmt.Errorf(
 				"contractInputsValues has no value for input %q (%s)",
 				input.Name, input.Type.String(),
 			)
 		}
+		raw := value.String()
 		normalized, err := builderValueToJarvisInput(input.Type, raw)
 		if err != nil {
 			return TxBuilderCall{}, fmt.Errorf(
@@ -372,4 +422,60 @@ func (m *TxBuilderMethod) SynthesizeABI() (*abi.ABI, error) {
 		return nil, fmt.Errorf("building ABI for %s: %w", m.Name, err)
 	}
 	return a, nil
+}
+
+// MergeCallABIs groups the synthesised per-call ABIs by target address so the
+// confirmation screen can decode every entry of a batch.
+//
+// Merging (rather than one entry per call) is required because a batch very
+// often hits the same contract several times — four setters on one config
+// contract, say — and the analyzer looks a call's ABI up by destination
+// address alone. Keeping one ABI per address meant the last entry's
+// single-method ABI won and every earlier call into that address rendered as
+// "<undecoded call>": its selector simply wasn't in the ABI jarvis had
+// installed for that destination.
+//
+// Methods are keyed by name, with a numeric suffix on collision the same way
+// go-ethereum disambiguates overloads; decoding goes by selector, so the key
+// only has to be unique, not pretty.
+func MergeCallABIs(calls []TxBuilderCall) map[string]*abi.ABI {
+	merged := map[string]*abi.ABI{}
+	for _, c := range calls {
+		if c.ABI == nil {
+			continue
+		}
+		key := strings.ToLower(c.To.Hex())
+		into, ok := merged[key]
+		if !ok {
+			// Copy so merging never mutates the ABI hanging off the call
+			// itself, which callers may hold on to per entry.
+			clone := *c.ABI
+			clone.Methods = make(map[string]abi.Method, len(c.ABI.Methods))
+			merged[key] = &clone
+			into = &clone
+		}
+		for _, m := range c.ABI.Methods {
+			addMethodToABI(into, m)
+		}
+	}
+	return merged
+}
+
+// addMethodToABI inserts m under a free key, skipping it when the same
+// signature is already present (the common case: the same method called twice
+// in one batch with different arguments).
+func addMethodToABI(dst *abi.ABI, m abi.Method) {
+	for _, have := range dst.Methods {
+		if have.Sig == m.Sig {
+			return
+		}
+	}
+	key := m.Name
+	for i := 0; ; i++ {
+		if _, taken := dst.Methods[key]; !taken {
+			break
+		}
+		key = fmt.Sprintf("%s%d", m.Name, i)
+	}
+	dst.Methods[key] = m
 }
