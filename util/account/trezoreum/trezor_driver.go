@@ -135,6 +135,9 @@ func (self *TrezorDriver) Exchange(req proto.Message, results ...proto.Message) 
 		// Trezor is waiting for user confirmation, ack and wait for the next message
 		return self.Exchange(&trezor.ButtonAck{}, results...)
 	}
+	if kind == uint16(trezor.MessageType_MessageType_Deprecated_PassphraseStateRequest) {
+		return self.Exchange(&trezor.Deprecated_PassphraseStateAck{}, results...)
+	}
 	for i, res := range results {
 		if trezor.Type(res) == kind {
 			return i, proto.Unmarshal(reply, res)

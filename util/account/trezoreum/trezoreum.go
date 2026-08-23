@@ -31,9 +31,10 @@ var (
 )
 
 type Trezoreum struct {
-	// session string
-	core  *TrezorDriver
-	devmu sync.Mutex
+	core         *TrezorDriver
+	devmu        sync.Mutex
+	features     *trezor.Features
+	expectedAddr common.Address
 }
 
 func NewTrezoreum() (*Trezoreum, error) {
@@ -41,6 +42,10 @@ func NewTrezoreum() (*Trezoreum, error) {
 		core:  NewTrezorDriver(),
 		devmu: sync.Mutex{},
 	}, nil
+}
+
+func (self *Trezoreum) SetExpectedAddress(addr common.Address) {
+	self.expectedAddr = addr
 }
 
 func (self *Trezoreum) Unlock() error {
@@ -52,9 +57,9 @@ func (self *Trezoreum) Unlock() error {
 	}
 	fmt.Printf(
 		"Firmware version: %d.%d.%d\n",
-		*info.MajorVersion,
-		*info.MinorVersion,
-		*info.PatchVersion,
+		info.GetMajorVersion(),
+		info.GetMinorVersion(),
+		info.GetPatchVersion(),
 	)
 	for state != Ready {
 		if state == WaitingForPin {
@@ -66,7 +71,14 @@ func (self *Trezoreum) Unlock() error {
 			}
 			state = Ready
 		} else if state == WaitingForPassphrase {
-			return fmt.Errorf("Not support passphrase yet")
+			_, err = self.PromptAndProvidePassphrase()
+			if err != nil {
+				fmt.Printf("Passphrase error: %s\n", err)
+				continue
+			}
+			state = Ready
+		} else {
+			return fmt.Errorf("unexpected trezor state")
 		}
 	}
 	return nil
@@ -102,13 +114,47 @@ func (self *Trezoreum) trezorExchange(req proto.Message, results ...proto.Messag
 }
 
 func (self *Trezoreum) PromptAndProvidePassphrase(results ...proto.Message) (int, error) {
-	passphrase := getPassword("Enter passphrase for this session: ")
-	resIndex, err := self.ProvidePassphrase(passphrase, results...)
+	return self.promptAndProvidePassphrase(false, results...)
+}
+
+func (self *Trezoreum) promptAndProvidePassphrase(skipCache bool, results ...proto.Message) (int, error) {
+	if !skipCache {
+		if cached, ok := lookupCachedPassphrase(self.expectedAddr); ok {
+			if cached.onDevice {
+				fmt.Printf("Reusing on-device passphrase from this session\n")
+				return self.ProvidePassphrase("", true, results...)
+			}
+			fmt.Printf("Reusing passphrase %s\n", passphraseMask)
+			return self.ProvidePassphrase(cached.secret, false, results...)
+		}
+	}
+
+	if self.passphraseAlwaysOnDevice() {
+		fmt.Printf("Enter the passphrase on the Trezor\n")
+		return self.ProvidePassphrase("", true, results...)
+	}
+
+	passphrase := promptPassphraseFromStdin()
+	resIndex, err := self.ProvidePassphrase(passphrase, false, results...)
 	if err != nil {
 		fmt.Printf("Passphrase error: %s\n", err)
 		return resIndex, err
 	}
 	return resIndex, nil
+}
+
+func (self *Trezoreum) passphraseAlwaysOnDevice() bool {
+	return self.features != nil && self.features.GetPassphraseAlwaysOnDevice()
+}
+
+func (self *Trezoreum) rememberFeatures(f *trezor.Features) {
+	if f == nil {
+		return
+	}
+	self.features = f
+	if sid := f.GetSessionId(); len(sid) > 0 {
+		storeSessionID(sid)
+	}
 }
 
 func (self *Trezoreum) GetDevice() ([]usb.DeviceInfo, error) {
@@ -158,16 +204,19 @@ func (self *Trezoreum) Init() (*trezor.Features, TrezorState, error) {
 	}
 	self.core.SetDevice(driver)
 
-	// test init device
-	initMsg := trezor.Initialize{}
 	features := &trezor.Features{}
 	success := trezor.Success{}
-
-	// fmt.Printf("DEBUG trezor comms: init message, expecting features message\n")
+	initMsg := trezor.Initialize{SessionId: currentSessionID()}
 	_, err = self.trezorExchange(&initMsg, features, &success)
+	if err != nil && len(initMsg.SessionId) > 0 {
+		forgetDeviceSession()
+		features = &trezor.Features{}
+		_, err = self.trezorExchange(&trezor.Initialize{}, features, &success)
+	}
 	if err != nil {
 		return nil, Unexpected, err
 	}
+	self.rememberFeatures(features)
 
 	res, err := self.trezorExchange(
 		&trezor.Ping{},
@@ -180,6 +229,7 @@ func (self *Trezoreum) Init() (*trezor.Features, TrezorState, error) {
 		return nil, Unexpected, err
 	}
 
+	self.rememberFeatures(features)
 	switch res {
 	case 0:
 		return features, WaitingForPin, nil
@@ -212,26 +262,25 @@ func (self *Trezoreum) UnlockByPin(pin string, results ...proto.Message) (int, e
 	return res, nil
 }
 
-func (self *Trezoreum) ProvidePassphrase(passphrase string, results ...proto.Message) (int, error) {
+func (self *Trezoreum) ProvidePassphrase(passphrase string, onDevice bool, results ...proto.Message) (int, error) {
+	ack := &trezor.PassphraseAck{}
+	if onDevice {
+		yes := true
+		ack.OnDevice = &yes
+	} else {
+		ack.Passphrase = &passphrase
+	}
 	results = append(results, new(trezor.Success))
 	results = append(results, new(trezor.PassphraseRequest))
-	// fmt.Printf(
-	// 	"DEBUG trezor comms: PassphraseAck message, expecting passphrase, success message and original requested messages\n",
-	// )
-	res, err := self.core.Exchange(
-		&trezor.PassphraseAck{
-			Passphrase: &passphrase,
-		},
-		results...,
-	)
+	res, err := self.core.Exchange(ack, results...)
 	if err != nil {
 		return 0, err
 	}
 
 	if res == len(results)-1 {
-		// this is to handle passphrase
-		return 0, fmt.Errorf("passphrase is not supported")
+		return self.promptAndProvidePassphrase(true, results...)
 	}
+	rememberPending(passphrase, onDevice)
 	return res, nil
 }
 

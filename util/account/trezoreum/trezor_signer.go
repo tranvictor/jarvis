@@ -25,6 +25,7 @@ const deviceWaitPoll = 2 * time.Second
 
 type TrezorSigner struct {
 	path           accounts.DerivationPath
+	address        common.Address
 	mu             sync.Mutex
 	devmu          sync.Mutex
 	deviceUnlocked bool
@@ -55,8 +56,39 @@ func (self *TrezorSigner) ensureUnlocked() error {
 	if err := unlockWithWait(self.trezor.Unlock, deviceWaitTimeout); err != nil {
 		return err
 	}
+	if self.address != (common.Address{}) {
+		if err := self.confirmAddress(); err != nil {
+			return err
+		}
+	}
 	self.deviceUnlocked = true
 	return nil
+}
+
+// confirmAddress derives the path with the current Trezor session and
+// checks it against the Jarvis account address. A mismatch means the
+// passphrase selected a different hidden wallet; drop the session and
+// unlock again.
+func (self *TrezorSigner) confirmAddress() error {
+	for {
+		got, err := self.trezor.Derive(self.path)
+		if err != nil {
+			return err
+		}
+		if got == self.address {
+			bindPassphrase(self.address)
+			return nil
+		}
+		fmt.Printf(
+			"Passphrase did not produce this wallet (got %s, want %s). Try again.\n",
+			got.Hex(),
+			self.address.Hex(),
+		)
+		ResetPassphraseSession(self.address)
+		if err := unlockWithWait(self.trezor.Unlock, deviceWaitTimeout); err != nil {
+			return err
+		}
+	}
 }
 
 // unlockWithWait repeatedly calls unlock until it succeeds, a
@@ -221,15 +253,18 @@ func NewTrezorSigner(path string, address string) (*TrezorSigner, error) {
 	if err != nil {
 		return nil, err
 	}
-	trezor, err := NewTrezoreum()
+	dev, err := NewTrezoreum()
 	if err != nil {
 		return nil, err
 	}
+	addr := common.HexToAddress(address)
+	dev.SetExpectedAddress(addr)
 	return &TrezorSigner{
-		p,
-		sync.Mutex{},
-		sync.Mutex{},
-		false,
-		trezor,
+		path:           p,
+		address:        addr,
+		mu:             sync.Mutex{},
+		devmu:          sync.Mutex{},
+		deviceUnlocked: false,
+		trezor:         dev,
 	}, nil
 }

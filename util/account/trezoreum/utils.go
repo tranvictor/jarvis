@@ -24,3 +24,7 @@ func PromptPINFromStdin() string {
 			"Enter your PIN: ",
 	)
 }
+
+func promptPassphraseFromStdin() string {
+	return getPassword("Enter passphrase for this session (empty = standard wallet): ")
+}
