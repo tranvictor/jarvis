@@ -756,25 +756,97 @@ func ConfigToABI(
 		return a, err
 	}
 
-	if IsProxyABI(a) {
-		r, err := EthReader(network)
-		if err != nil {
-			return nil, err
-		}
+	implABI, followed, err := followProxyImplementation(address, a, network)
+	if followed {
+		return implABI, err
+	}
+	return a, nil
+}
 
-		impl, err := r.ImplementationOf(-1, address)
-		if err != nil {
-			fmt.Printf("getting implementation of %s failed: %s\n", address, err)
-			return nil, err
-		}
-		a, err := GetABI(impl.Hex(), network)
-		if err != nil {
-			fmt.Printf("getting abi for implementation %s of %s failed: %s\n", impl.Hex(), address, err)
-		}
-		return a, err
+// isMethodlessABI reports whether a has no callable functions. Gnosis Safe
+// proxies (and many other minimal proxies) verify on explorers as just a
+// constructor + fallback, so their parsed ABI has an empty Methods map.
+func isMethodlessABI(a *abi.ABI) bool {
+	return a == nil || len(a.Methods) == 0
+}
+
+// explorerImplementation returns the implementation address reported by the
+// block explorer when it flags the contract as a proxy. Empty string means
+// the explorer did not provide a usable address.
+func explorerImplementation(r *reader.EthReader, address string) string {
+	info, err := r.GetContractInfo(address)
+	if err != nil || !info.IsProxy {
+		return ""
+	}
+	impl := strings.TrimSpace(info.Implementation)
+	if impl == "" {
+		return ""
+	}
+	if !strings.HasPrefix(impl, "0x") && !strings.HasPrefix(impl, "0X") {
+		impl = "0x" + impl
+	}
+	if !common.IsHexAddress(impl) || common.HexToAddress(impl) == (common.Address{}) {
+		return ""
+	}
+	return impl
+}
+
+// followProxyImplementation resolves the underlying implementation ABI for
+// proxy contracts. It follows explorer-reported implementations first (this
+// is what Etherscan already knows for SafeProxy / EIP-1967), then on-chain
+// storage slots (EIP-1967, ZeppelinOS, Polygon, Safe slot 0).
+//
+// followed is true only when an implementation ABI was obtained or a
+// classic upgradeable-proxy lookup failed hard (preserving historical
+// ConfigToABI error behavior). Methodless ABIs that cannot be resolved
+// return followed=false so the caller keeps the original ABI.
+func followProxyImplementation(
+	address string,
+	a *abi.ABI,
+	network networks.Network,
+) (*abi.ABI, bool, error) {
+	classicProxy := IsProxyABI(a)
+	methodless := isMethodlessABI(a)
+	if !classicProxy && !methodless {
+		return nil, false, nil
 	}
 
-	return a, nil
+	r, err := EthReader(network)
+	if err != nil {
+		if classicProxy {
+			return nil, true, err
+		}
+		return nil, false, nil
+	}
+
+	if impl := explorerImplementation(r, address); impl != "" {
+		implABI, err := GetABI(impl, network)
+		if err == nil && !isMethodlessABI(implABI) {
+			return implABI, true, nil
+		}
+	}
+
+	impl, err := r.ImplementationOf(-1, address)
+	if err != nil {
+		if classicProxy {
+			fmt.Printf("getting implementation of %s failed: %s\n", address, err)
+			return nil, true, err
+		}
+		return nil, false, nil
+	}
+	if impl == (common.Address{}) {
+		return nil, false, nil
+	}
+
+	implABI, err := GetABI(impl.Hex(), network)
+	if err != nil || isMethodlessABI(implABI) {
+		if classicProxy {
+			fmt.Printf("getting abi for implementation %s of %s failed: %s\n", impl.Hex(), address, err)
+			return implABI, true, err
+		}
+		return nil, false, nil
+	}
+	return implABI, true, nil
 }
 
 func GetGnosisMsigDeployByteCode(ctorBytes []byte) ([]byte, error) {

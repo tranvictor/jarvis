@@ -512,6 +512,17 @@ func (er *EthReader) ImplementationOf(atBlock int64, caddr string) (common.Addre
 		return common.Address{}, err
 	}
 
+	addr = common.BytesToAddress(addrByte)
+	if addr.Big().Cmp(big.NewInt(0)) != 0 {
+		return addr, nil
+	}
+
+	// Gnosis Safe / SafeProxy stores the singleton at slot 0 so
+	// DELEGATECALL targets stay aligned with the implementation layout.
+	addrByte, err = er.StorageAt(atBlock, caddr, common.BigToHash(big.NewInt(0)).Hex())
+	if err != nil {
+		return common.Address{}, err
+	}
 	return common.BytesToAddress(addrByte), nil
 }
 
