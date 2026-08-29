@@ -912,78 +912,142 @@ with --json-output, the same data is also written as JSON.`,
 }
 
 var newMsigCmd = &cobra.Command{
-	Use:              "new",
-	Short:            "deploy a new gnosis classic multisig",
-	Long:             ` `,
+	Use:   "new",
+	Short: "Deploy a new Gnosis Safe or Gnosis Classic multisig",
+	Long: `Deploys a brand-new multisig wallet from --from.
+
+Pass --type safe or --type classic to skip the flavor prompt. Safe is
+the modern Gnosis wallet (proxy via SafeProxyFactory, CREATE2 address).
+Classic is the original on-chain MultiSigWallet.
+
+When --type is omitted:
+  - interactive runs prompt for Safe vs Classic
+  - --prefills / -I runs stay Classic, so existing scripts keep working
+
+Safe deploy prompts for owners, threshold and a CREATE2 salt nonce.
+Factory / singleton / fallback-handler are probed on-chain from the
+canonical Safe deployments (1.4.1, then 1.3.0). Override them with
+--factory, --singleton and --fallback-handler on chains that use a
+custom set.`,
 	TraverseChildren: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return cmdutil.CommonTxPreprocess(appUI, cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		tc, _ := cmdutil.TxContextFrom(cmd)
-
-		reader := tc.Reader
-		if reader == nil {
-			appUI.Error("Couldn't connect to blockchain.")
-			return
-		}
-
-		msigABI := util.GetGnosisMsigABI()
-
-		cAddr := crypto.CreateAddress(jarviscommon.HexToAddress(tc.From), tc.Nonce).Hex()
-
-		data, err := cmdutil.PromptTxData(
-			appUI,
-			tc.Analyzer,
-			cAddr,
-			cmdutil.CONSTRUCTOR_METHOD_INDEX,
-			tc.PrefillParams,
-			tc.PrefillMode,
-			msigABI,
-			nil,
-			config.Network(),
-		)
+		typ, err := resolveNewMsigType()
 		if err != nil {
-			appUI.Error("Couldn't pack constructor data: %s", err)
+			appUI.Error("%s", err)
 			return
 		}
-
-		bytecode, err := util.GetGnosisMsigDeployByteCode(data)
-		if err != nil {
-			appUI.Error("Couldn't pack deployment data: %s", err)
+		if typ == cmdutil.MultisigSafe {
+			runNewSafe(cmd, args)
 			return
 		}
-
-		customABIs := map[string]*abi.ABI{
-			strings.ToLower(cAddr): msigABI,
-		}
-
-		gasLimit := config.GasLimit
-		if gasLimit == 0 {
-			gasLimit, err = reader.EstimateExactGas(tc.From, "", 0, tc.Value, bytecode)
-			if err != nil {
-				appUI.Error("Couldn't estimate gas limit: %s", err)
-				return
-			}
-		}
-		tx := jarviscommon.BuildContractCreationTx(
-			tc.TxType,
-			tc.Nonce,
-			tc.Value,
-			gasLimit+config.ExtraGasLimit,
-			tc.GasPrice+config.ExtraGasPrice,
-			tc.TipGas+config.ExtraTipGas,
-			bytecode,
-			config.Network().GetChainID(),
-		)
-
-		if broadcasted, err := cmdutil.SignAndBroadcast(
-			appUI, tc.FromAcc, tx, customABIs,
-			reader, tc.Analyzer, nil, tc.Broadcaster,
-		); err != nil && !broadcasted {
-			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
-		}
+		runNewClassic(cmd, args)
 	},
+}
+
+func resolveNewMsigType() (cmdutil.MultisigType, error) {
+	typ, err := parseNewMsigType(msigNewType)
+	if err != nil {
+		return cmdutil.MultisigUnknown, err
+	}
+	if typ != cmdutil.MultisigUnknown {
+		return typ, nil
+	}
+	if config.PrefillStr != "" {
+		return cmdutil.MultisigClassic, nil
+	}
+	appUI.Info("Which multisig to deploy?")
+	appUI.Info("1. Gnosis Safe (recommended)")
+	appUI.Info("2. Gnosis Classic")
+	switch cmdutil.PromptIndex(appUI, "Please choose [1, 2]", 1, 2) {
+	case 1:
+		return cmdutil.MultisigSafe, nil
+	case 2:
+		return cmdutil.MultisigClassic, nil
+	default:
+		return cmdutil.MultisigUnknown, fmt.Errorf("no multisig type selected")
+	}
+}
+
+func parseNewMsigType(raw string) (cmdutil.MultisigType, error) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "safe", "gnosis-safe", "gnosissafe":
+		return cmdutil.MultisigSafe, nil
+	case "classic", "gnosis", "gnosis-classic", "msig":
+		return cmdutil.MultisigClassic, nil
+	case "":
+		return cmdutil.MultisigUnknown, nil
+	default:
+		return cmdutil.MultisigUnknown, fmt.Errorf("--type must be 'safe' or 'classic', got %q", raw)
+	}
+}
+
+func runNewClassic(cmd *cobra.Command, args []string) {
+	tc, _ := cmdutil.TxContextFrom(cmd)
+
+	reader := tc.Reader
+	if reader == nil {
+		appUI.Error("Couldn't connect to blockchain.")
+		return
+	}
+
+	msigABI := util.GetGnosisMsigABI()
+
+	cAddr := crypto.CreateAddress(jarviscommon.HexToAddress(tc.From), tc.Nonce).Hex()
+
+	data, err := cmdutil.PromptTxData(
+		appUI,
+		tc.Analyzer,
+		cAddr,
+		cmdutil.CONSTRUCTOR_METHOD_INDEX,
+		tc.PrefillParams,
+		tc.PrefillMode,
+		msigABI,
+		nil,
+		config.Network(),
+	)
+	if err != nil {
+		appUI.Error("Couldn't pack constructor data: %s", err)
+		return
+	}
+
+	bytecode, err := util.GetGnosisMsigDeployByteCode(data)
+	if err != nil {
+		appUI.Error("Couldn't pack deployment data: %s", err)
+		return
+	}
+
+	customABIs := map[string]*abi.ABI{
+		strings.ToLower(cAddr): msigABI,
+	}
+
+	gasLimit := config.GasLimit
+	if gasLimit == 0 {
+		gasLimit, err = reader.EstimateExactGas(tc.From, "", 0, tc.Value, bytecode)
+		if err != nil {
+			appUI.Error("Couldn't estimate gas limit: %s", err)
+			return
+		}
+	}
+	tx := jarviscommon.BuildContractCreationTx(
+		tc.TxType,
+		tc.Nonce,
+		tc.Value,
+		gasLimit+config.ExtraGasLimit,
+		tc.GasPrice+config.ExtraGasPrice,
+		tc.TipGas+config.ExtraTipGas,
+		bytecode,
+		config.Network().GetChainID(),
+	)
+
+	if broadcasted, err := cmdutil.SignAndBroadcast(
+		appUI, tc.FromAcc, tx, customABIs,
+		reader, tc.Analyzer, nil, tc.Broadcaster,
+	); err != nil && !broadcasted {
+		appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
+	}
 }
 
 var initMsigCmd = &cobra.Command{
@@ -1191,7 +1255,11 @@ func init() {
 	}
 
 	AddCommonFlagsToTransactionalCmds(newMsigCmd)
-	newMsigCmd.PersistentFlags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")
+	newMsigCmd.PersistentFlags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted. Safe: owners|threshold|saltNonce. Classic: owners|required|dailyLimit.")
+	newMsigCmd.Flags().StringVar(&msigNewType, "type", "", "Multisig flavor to deploy: safe or classic. Omitted: prompt (or classic when --prefills is set).")
+	newMsigCmd.Flags().StringVar(&msigNewFactory, "factory", "", "Safe-only: SafeProxyFactory address. Default: probe canonical 1.4.1 / 1.3.0 deployments on this chain.")
+	newMsigCmd.Flags().StringVar(&msigNewSingleton, "singleton", "", "Safe-only: Safe / SafeL2 singleton address. Default: probe canonical deployments (SafeL2 on L2s).")
+	newMsigCmd.Flags().StringVar(&msigNewFallbackHandler, "fallback-handler", "", "Safe-only: CompatibilityFallbackHandler address. Default: probe canonical deployments.")
 	newMsigCmd.MarkFlagRequired("from")
 
 	batchApproveMsigCmd.PersistentFlags().StringVarP(&config.PrefillStr, "prefills", "I", "", "Prefill params string. Each param is separated by | char. If the param is \"?\", user input will be prompted.")

@@ -103,11 +103,38 @@ of multisig you're talking to.
 | `jarvis msig gov`      | yes | yes | Show owners / threshold / version / nonce. |
 | `jarvis msig bapprove` | yes | yes | Batch-approve many pending txs in one shot. Safe refs may be Safe-app URLs, `multisig_<safe>_<hash>` tokens, or `<chain>:<safe>:<hash>` triples. |
 | `jarvis msig revoke`   | yes | **no** | Classic-only; errors with a clear message on Safe addresses. |
-| `jarvis msig new`      | yes | **no** | Classic-only (deploys a new Classic wallet). |
+| `jarvis msig new`      | yes | yes | Deploy a new wallet. `--type safe` uses SafeProxyFactory (CREATE2); `--type classic` deploys the original MultiSigWallet. Omitted `--type` prompts, or stays Classic when `--prefills` is set. |
 
 `jarvis send --from <multisig>` also auto-detects and routes through
 `msig init` automatically for both flavors, so you rarely need to reach
 for `init` directly.
+
+### Deploying a new Safe (`jarvis msig new`)
+
+```bash
+# Prompt for Safe vs Classic, then owners / threshold / salt
+jarvis msig new --from 0xALICE --network eth
+
+# Deploy a Safe without the flavor prompt
+jarvis msig new --from 0xALICE --type safe --network eth
+
+# Non-interactive: owners | threshold | salt nonce
+jarvis msig new --from 0xALICE --type safe -I "0xA,0xB,0xC|2|0" -y --network eth
+
+# Custom factory / singleton on a chain without the canonical set
+jarvis msig new --from 0xALICE --type safe \
+    --factory 0xFACTORY --singleton 0xSAFE --fallback-handler 0xHANDLER
+```
+
+Jarvis probes the canonical Safe 1.4.1 deployments first, then 1.3.0
+(canonical and eip155). L2 chains get SafeL2 so indexers see the extra
+events; Ethereum mainnet and its L1 testnets get the L1 Safe singleton.
+The predicted CREATE2 address is shown before you sign. After the
+deploy confirms:
+
+```bash
+jarvis msig gov 0xNEWSAFE --network eth
+```
 
 ### Identifying a pending Safe transaction
 
