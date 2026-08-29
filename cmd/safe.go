@@ -69,6 +69,18 @@ var txBuilderJSON string
 // jarvis probes the canonical MultiSendCallOnly deployments on-chain.
 var multiSendAddressOverride string
 
+// msigNewType is --type on `jarvis msig new`: "safe", "classic", or empty
+// (prompt interactively; prefill mode defaults to classic for compatibility).
+var msigNewType string
+
+// Safe-deploy contract overrides for `jarvis msig new --type safe`. Empty
+// means "probe the canonical Safe deployments on this chain".
+var (
+	msigNewFactory         string
+	msigNewSingleton       string
+	msigNewFallbackHandler string
+)
+
 // txBuilderBatch holds the parsed batch from --tx-builder-file or
 // --tx-builder-json. It is populated by
 // initMsigCmd's PersistentPreRunE (which has to parse the file before the
@@ -1119,6 +1131,209 @@ var govSafeCmd = &cobra.Command{
 		appUI.Section("Safe governance")
 		showSafeInfo(tc.Safe)
 	},
+}
+
+// safeDeployPromptABI is the interactive shape of `jarvis msig new --type safe`.
+// Factory / singleton / fallback-handler are resolved on-chain (or via
+// overrides); the operator only supplies owners, threshold and CREATE2 salt.
+const safeDeployPromptABI = `[
+  {
+    "name": "create",
+    "type": "function",
+    "stateMutability": "nonpayable",
+    "inputs": [
+      {"name": "_owners", "type": "address[]"},
+      {"name": "_threshold", "type": "uint256"},
+      {"name": "_saltNonce", "type": "uint256"}
+    ]
+  }
+]`
+
+// runNewSafe is the Safe path of `jarvis msig new`. It prompts for owners /
+// threshold / salt, deploys a proxy via SafeProxyFactory.createProxyWithNonce,
+// and prints the predicted CREATE2 address before the user signs.
+func runNewSafe(cmd *cobra.Command, args []string) {
+	tc, _ := cmdutil.TxContextFrom(cmd)
+	if tc.Reader == nil {
+		appUI.Error("Couldn't connect to blockchain.")
+		return
+	}
+
+	dep, err := safe.ResolveSafeDeployment(config.Network(), safe.DeployOverrides{
+		Factory:         msigNewFactory,
+		Singleton:       msigNewSingleton,
+		FallbackHandler: msigNewFallbackHandler,
+	})
+	if err != nil {
+		appUI.Error("%s", err)
+		return
+	}
+
+	promptABI, err := abi.JSON(strings.NewReader(safeDeployPromptABI))
+	if err != nil {
+		appUI.Error("Couldn't parse Safe deploy prompt ABI: %s", err)
+		return
+	}
+
+	appUI.Section("New Gnosis Safe")
+	appUI.Info("Factory          : %s (%s)", dep.Factory.Hex(), dep.FactoryLabel)
+	appUI.Info("Singleton        : %s (%s)", dep.Singleton.Hex(), dep.SingletonLabel)
+	appUI.Info("Fallback handler : %s (%s)", dep.FallbackHandler.Hex(), dep.FallbackLabel)
+	appUI.Info("Salt nonce is any unused uint; the same owners + threshold + salt")
+	appUI.Info("always produce the same Safe address (CREATE2). Use 0 unless you")
+	appUI.Info("need a specific address or are retrying after a collision.")
+
+	method, params, err := cmdutil.PromptFunctionCallData(
+		appUI,
+		tc.Analyzer,
+		dep.Factory.Hex(),
+		1,
+		tc.PrefillParams,
+		tc.PrefillMode,
+		"write",
+		&promptABI,
+		nil,
+		config.Network(),
+	)
+	if err != nil {
+		appUI.Error("Couldn't read Safe deploy params: %s", err)
+		return
+	}
+	_ = method
+
+	owners, threshold, saltNonce, err := parseSafeDeployParams(params)
+	if err != nil {
+		appUI.Error("%s", err)
+		return
+	}
+	if err := safe.ValidateNewSafeParams(owners, threshold); err != nil {
+		appUI.Error("%s", err)
+		return
+	}
+
+	initializer, err := safe.EncodeSetup(owners, threshold, dep.FallbackHandler)
+	if err != nil {
+		appUI.Error("Couldn't pack Safe.setup: %s", err)
+		return
+	}
+	txData, err := safe.EncodeCreateProxyWithNonce(dep.Singleton, initializer, saltNonce)
+	if err != nil {
+		appUI.Error("Couldn't pack createProxyWithNonce: %s", err)
+		return
+	}
+
+	var predicted ethcommon.Address
+	var predictedOK bool
+	if creation, err := safe.FactoryProxyCreationCode(dep.Factory, config.Network()); err != nil {
+		appUI.Warn("Couldn't read factory.proxyCreationCode(); predicted address will be omitted: %s", err)
+	} else if addr, err := safe.PredictProxyAddress(dep.Factory, dep.Singleton, creation, initializer, saltNonce); err != nil {
+		appUI.Warn("Couldn't predict Safe address: %s", err)
+	} else {
+		predicted = addr
+		predictedOK = true
+		if occupied, err := util.IsContract(addr.Hex(), config.Network()); err == nil && occupied {
+			appUI.Error(
+				"Predicted Safe %s already has code. Pick a different salt nonce.",
+				addr.Hex(),
+			)
+			return
+		}
+	}
+
+	appUI.Section("Safe to be created")
+	if predictedOK {
+		appUI.Critical("Predicted address : %s", predicted.Hex())
+	}
+	appUI.Critical("Threshold         : %s / %d", threshold.String(), len(owners))
+	appUI.Critical("Salt nonce        : %s", saltNonce.String())
+	appUI.Info("Owners (%d):", len(owners))
+	for i, o := range owners {
+		jarvisAddr := util.GetJarvisAddress(o.Hex(), config.Network())
+		appUI.Info("  %d. %s", i+1, appUI.Style(util.StyledAddress(jarvisAddr)))
+	}
+
+	gasLimit := config.GasLimit
+	if gasLimit == 0 {
+		gasLimit, err = tc.Reader.EstimateExactGas(tc.From, dep.Factory.Hex(), 0, tc.Value, txData)
+		if err != nil {
+			appUI.Error("Couldn't estimate gas limit for createProxyWithNonce: %s", err)
+			return
+		}
+	}
+
+	tx := jarviscommon.BuildExactTx(
+		tc.TxType,
+		tc.Nonce,
+		dep.Factory.Hex(),
+		tc.Value,
+		gasLimit+config.ExtraGasLimit,
+		tc.GasPrice+config.ExtraGasPrice,
+		tc.TipGas+config.ExtraTipGas,
+		txData,
+		config.Network().GetChainID(),
+	)
+
+	customABIs := map[string]*abi.ABI{
+		strings.ToLower(dep.Factory.Hex()): safe.GetProxyFactoryABI(),
+	}
+
+	if broadcasted, err := cmdutil.SignAndBroadcast(
+		appUI, tc.FromAcc, tx, customABIs,
+		tc.Reader, tc.Analyzer, safe.GetProxyFactoryABI(), tc.Broadcaster,
+	); err != nil && !broadcasted {
+		appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
+		return
+	}
+
+	if predictedOK {
+		appUI.Info("")
+		appUI.Info("Next (after the deploy tx confirms):")
+		appUI.Info("  jarvis msig gov %s%s", predicted.Hex(), networkFlag())
+		appUI.Info("  jarvis msig init %s --msig-to <target>%s", predicted.Hex(), networkFlag())
+	}
+}
+
+func parseSafeDeployParams(params []any) (owners []ethcommon.Address, threshold, saltNonce *big.Int, err error) {
+	if len(params) != 3 {
+		return nil, nil, nil, fmt.Errorf("expected 3 deploy params (owners, threshold, salt nonce), got %d", len(params))
+	}
+	owners, err = asAddressSlice(params[0])
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("owners: %w", err)
+	}
+	threshold, err = asBigInt(params[1])
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("threshold: %w", err)
+	}
+	saltNonce, err = asBigInt(params[2])
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("salt nonce: %w", err)
+	}
+	return owners, threshold, saltNonce, nil
+}
+
+func asAddressSlice(v any) ([]ethcommon.Address, error) {
+	if t, ok := v.([]ethcommon.Address); ok {
+		return t, nil
+	}
+	return nil, fmt.Errorf("got %T, want []address", v)
+}
+
+func asBigInt(v any) (*big.Int, error) {
+	switch t := v.(type) {
+	case *big.Int:
+		return t, nil
+	case big.Int:
+		n := t
+		return &n, nil
+	case uint64:
+		return new(big.Int).SetUint64(t), nil
+	case int64:
+		return big.NewInt(t), nil
+	case int:
+		return big.NewInt(int64(t)), nil
+	}
+	return nil, fmt.Errorf("got %T, want integer", v)
 }
 
 // safeBatchResult is the per-ref outcome of `jarvis msig bapprove`.
