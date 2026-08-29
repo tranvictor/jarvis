@@ -58,6 +58,10 @@ brews:
         url "https://github.com/tranvictor/jarvis.git"
         depends_on "go"
       end
+    caveats: |
+      After a new GitHub release, refresh the tap before upgrading:
+        brew update
+        brew upgrade tranvictor/jarvis/jarvis
     install: |
       system "make", "jarvis" if build.head?
       bin.install "bin/jarvis"

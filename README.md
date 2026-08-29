@@ -16,10 +16,13 @@ Both Ethereum and BSC :)
 brew install tranvictor/jarvis/jarvis
 ```
 
-or to upgrade jarvis to the latest version
+To upgrade to the latest version, refresh the tap first. `brew upgrade jarvis` alone uses the locally cached formula, so after a new GitHub release it can report:
+
+`Warning: tranvictor/jarvis/jarvis 0.1.0 already installed`
 
 ```bash
-brew upgrade jarvis
+brew update
+brew upgrade tranvictor/jarvis/jarvis
 ```
 
 ## Build from source
