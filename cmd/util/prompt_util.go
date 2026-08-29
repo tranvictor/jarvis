@@ -280,6 +280,9 @@ func PromptMethod(u ui.UI, a *abi.ABI, methodIndex uint64, mode string) (*abi.Me
 		}
 	}
 	sort.Sort(orderedMethods(methods))
+	if len(methods) == 0 {
+		return nil, "", fmt.Errorf("the contract has no %s methods", mode)
+	}
 	if methodIndex == 0 {
 		u.Info("%s functions:", mode)
 		for i, m := range methods {
