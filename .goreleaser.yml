@@ -5,28 +5,89 @@ before:
     - go mod tidy
 
 builds:
+  # Every target MUST be built with cgo enabled. The USB / HID layer that talks
+  # to Ledger and Trezor devices (util/account/usb) has two implementations
+  # selected by build tags: the real hidapi/libusb bindings (cgo) and a silent
+  # no-op stub (util/account/usb/usb_disabled.go) used when CGO_ENABLED=0. A
+  # cgo-less binary compiles and runs fine but `usb.Enumerate` always returns
+  # zero devices, so hardware wallets can NEVER be found. Cross-compiling
+  # without setting CC defaults CGO_ENABLED=0, which is exactly how the broken
+  # darwin/amd64 + windows bottles shipped. Each build below pins a real cross
+  # C toolchain (provided by the goreleaser-cross image) and asserts cgo in a
+  # post hook so a stubbed binary can never be published again.
   - <<: &build_defaults
       binary: bin/jarvis
       main: ./
       ldflags:
         - -s -w -X github.com/tranvictor/jarvis/cmd.VERSION={{ .Version }}
-    id: macos
+      hooks:
+        post:
+          - cmd: ./scripts/assert-cgo.sh "{{ .Path }}"
+    id: darwin-amd64
     goos: [darwin]
-    goarch: [amd64, arm64]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=1
+      - CC=o64-clang
+      - CXX=o64-clang++
 
   - <<: *build_defaults
-    id: linux
+    id: darwin-arm64
+    goos: [darwin]
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=1
+      - CC=oa64-clang
+      - CXX=oa64-clang++
+
+  - <<: *build_defaults
+    id: linux-amd64
     goos: [linux]
-    goarch: [386, amd64, arm64]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-linux-gnu-gcc
+      - CXX=x86_64-linux-gnu-g++
 
   - <<: *build_defaults
-    id: windows
+    id: linux-arm64
+    goos: [linux]
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+      - CXX=aarch64-linux-gnu-g++
+
+  - <<: *build_defaults
+    id: linux-386
+    goos: [linux]
+    goarch: [386]
+    env:
+      - CGO_ENABLED=1
+      - CC=i686-linux-gnu-gcc
+      - CXX=i686-linux-gnu-g++
+
+  - <<: *build_defaults
+    id: windows-amd64
     goos: [windows]
-    goarch: [386, amd64]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
+      - CXX=x86_64-w64-mingw32-g++
+
+  - <<: *build_defaults
+    id: windows-386
+    goos: [windows]
+    goarch: [386]
+    env:
+      - CGO_ENABLED=1
+      - CC=i686-w64-mingw32-gcc
+      - CXX=i686-w64-mingw32-g++
 
 archives:
   - id: nix
-    builds: [macos, linux]
+    builds: [darwin-amd64, darwin-arm64, linux-386, linux-amd64, linux-arm64]
     <<: &archive_defaults
       name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
     wrap_in_directory: true
@@ -36,7 +97,7 @@ archives:
     files:
       - LICENSE
   - id: windows
-    builds: [windows]
+    builds: [windows-386, windows-amd64]
     <<: *archive_defaults
     wrap_in_directory: false
     format: zip
