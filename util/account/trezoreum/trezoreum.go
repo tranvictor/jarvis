@@ -157,67 +157,32 @@ func (self *Trezoreum) rememberFeatures(f *trezor.Features) {
 	}
 }
 
-// trezorTransport describes one USB identity a Trezor can present. Trezor
-// Model T / Safe expose a WebUSB interface (vendor 0x1209), while the Trezor
-// One and bridge-fronted devices expose a legacy HID interface (vendor
-// 0x534c). We probe both so detection doesn't depend on the model / firmware /
-// whether Trezor Suite or Bridge has reshaped the device.
-type trezorTransport struct {
-	vendor     uint16
-	productIDs []uint16
-	usageID    uint16
-	endpointID int
-}
-
 func (self *Trezoreum) GetDevice() ([]usb.DeviceInfo, error) {
-	// WebUSB is listed first so that when both identities are present the
-	// WebUSB device is preferred (devices[0]), preserving prior behavior for
-	// Model T / Safe users.
-	transports := []trezorTransport{
-		{
-			vendor:     VendorIDWithWebUSB,
-			productIDs: ProductIDsWithWebUSB,
-			usageID:    UsageIDWIthWebUSB,
-			endpointID: EndPointIDWithWebUSB,
-		},
-		{
-			vendor:     VendorIDWithHID,
-			productIDs: ProductIDsWithHID,
-			usageID:    UsageIDWIthHID,
-			endpointID: EndPointIDWithHID,
-		},
-	}
+	// vendor := VendorIDWithHID
+	// productIDs := ProductIDsWithHID
+	// usageID := UsageIDWIthHID
+	// endpointID := EndPointIDWithHID
+
+	vendor := VendorIDWithWebUSB
+	productIDs := ProductIDsWithWebUSB
+	usageID := UsageIDWIthWebUSB
+	endpointID := EndPointIDWithWebUSB
 
 	devices := []usb.DeviceInfo{}
-	var firstErr error
 
-	for _, t := range transports {
-		infos, err := usb.Enumerate(t.vendor, 0)
-		if err != nil {
-			// Remember the first enumeration error but keep probing the other
-			// transport; one failing must not mask a device on the other.
-			if firstErr == nil {
-				firstErr = err
-			}
-			continue
-		}
-
-		for _, info := range infos {
-			for _, id := range t.productIDs {
-				// Windows and Macos use UsageID matching, Linux uses Interface matching
-				if info.ProductID == id && (info.UsagePage == t.usageID || info.Interface == t.endpointID) {
-					devices = append(devices, info)
-					break
-				}
-			}
-		}
+	infos, err := usb.Enumerate(vendor, 0)
+	if err != nil {
+		return devices, err
 	}
 
-	// Only surface an enumeration error when it actually prevented us from
-	// finding anything; if one transport erred but the other yielded a device
-	// we proceed with what we have.
-	if len(devices) == 0 && firstErr != nil {
-		return devices, firstErr
+	for _, info := range infos {
+		for _, id := range productIDs {
+			// Windows and Macos use UsageID matching, Linux uses Interface matching
+			if info.ProductID == id && (info.UsagePage == usageID || info.Interface == endpointID) {
+				devices = append(devices, info)
+				break
+			}
+		}
 	}
 	return devices, nil
 }
