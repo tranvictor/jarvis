@@ -1,3 +1,5 @@
+version: 2
+
 project_name: jarvis
 
 before:
@@ -89,10 +91,8 @@ archives:
   - id: nix
     builds: [darwin-amd64, darwin-arm64, linux-386, linux-amd64, linux-arm64]
     <<: &archive_defaults
-      name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+      name_template: '{{ .ProjectName }}_{{ .Version }}_{{ if eq .Os "darwin" }}macOS{{ else }}{{ .Os }}{{ end }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
     wrap_in_directory: true
-    replacements:
-      darwin: macOS
     format: tar.gz
     files:
       - LICENSE
@@ -107,13 +107,13 @@ archives:
 brews:
   - name: jarvis
     ids: [nix]
-    tap:
+    repository:
       owner: tranvictor
       name: homebrew-tranvictor
     skip_upload: auto
     description: Onchain (EVM compatible) operation made easy
     homepage: https://github.com/tranvictor/jarvis
-    folder: Formula
+    directory: Formula
     custom_block: |
       head do
         url "https://github.com/tranvictor/jarvis.git"
