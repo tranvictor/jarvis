@@ -573,16 +573,13 @@ over an off-chain signature store. Other owners' off-chain signatures
 		// corner case above we only have the hash, so there's nothing to
 		// cross-check — the Safe itself will reject a wrong hash at
 		// approveHash / execute time.
-		if pending.SafeTx != nil {
-			expected := pending.SafeTx.SafeTxHash(domainSep)
-			if expected != pending.SafeTxHash {
-				appUI.Error(
-					"declared safeTxHash (0x%s) doesn't match locally recomputed hash (0x%s); refusing to sign",
-					ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
-					ethcommon.Bytes2Hex(expected[:]),
-				)
-				return
-			}
+		if expected, err := verifyPendingSafeTxHash(pending, domainSep); errors.Is(err, errPendingHashMismatch) {
+			appUI.Error(
+				"declared safeTxHash (0x%s) doesn't match locally recomputed hash (0x%s); refusing to sign",
+				ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+				ethcommon.Bytes2Hex(expected[:]),
+			)
+			return
 		}
 
 		// Merge on-chain approvals into the in-memory Sigs before the
@@ -601,15 +598,13 @@ over an off-chain signature store. Other owners' off-chain signatures
 		showSafeSigners("Existing signatures", pending.Sigs)
 
 		me := ethcommon.HexToAddress(tc.From)
-		for _, s := range pending.Sigs {
-			if s.Owner == me {
-				if safe.IsOnChainApproval(s.Sig) {
-					appUI.Warn("You (%s) have already approved this transaction on-chain (approveHash).", me.Hex())
-				} else {
-					appUI.Warn("You (%s) have already signed this transaction off-chain.", me.Hex())
-				}
-				return
+		if onChain, found := ownerAlreadySigned(pending, me); found {
+			if onChain {
+				appUI.Warn("You (%s) have already approved this transaction on-chain (approveHash).", me.Hex())
+			} else {
+				appUI.Warn("You (%s) have already signed this transaction off-chain.", me.Hex())
 			}
+			return
 		}
 
 		if safeApproveOnChain {
@@ -628,41 +623,30 @@ over an off-chain signature store. Other owners' off-chain signatures
 		}
 
 		appUI.Info("Unlock your wallet and sign the EIP-712 safeTxHash now...")
-		account, err := accounts.UnlockAccount(tc.FromAcc)
-		if err != nil {
-			appUI.Error("Couldn't unlock wallet: %s", err)
+		sig, err := signPendingSafeTx(tc.FromAcc, pending, domainSep)
+		if errors.Is(err, errSignSafeHash) {
+			appUI.Error("Couldn't sign safeTxHash: %s", signCause(err))
 			return
 		}
-
-		structHash := pending.SafeTx.StructHash()
-		sig, err := account.SignSafeHash(domainSep, structHash)
 		if err != nil {
-			appUI.Error("Couldn't sign safeTxHash: %s", err)
+			appUI.Error("Couldn't unlock wallet: %s", err)
 			return
 		}
 
 		// Persist the new signature. In file mode we append to the file
 		// (the collective source of truth); otherwise we POST to the Safe
 		// Transaction Service.
-		if safeTxFile != "" {
-			updatedSigs := append(append([]safe.OwnerSig{}, pending.Sigs...), safe.OwnerSig{
-				Owner: me, Sig: sig,
-			})
-			if err := safe.WriteTxFile(
-				safeTxFile,
-				safeContract.Address,
-				config.Network().GetChainID(),
-				pending.SafeTx, pending.SafeTxHash, updatedSigs,
-			); err != nil {
+		if err := persistApproval(tc, safeContract.Address, pending, me, sig, safeTxFile, config.Network().GetChainID()); err != nil {
+			if safeTxFile != "" {
 				appUI.Error("Couldn't write updated Safe tx file: %s", err)
-				return
+			} else {
+				appUI.Error("Submitting confirmation to Safe Transaction Service failed: %s", err)
 			}
+			return
+		}
+		if safeTxFile != "" {
 			appUI.Success("Signature appended to %s", safeTxFile)
 		} else {
-			if err := tc.Collector.Confirm(pending.SafeTxHash, me, sig); err != nil {
-				appUI.Error("Submitting confirmation to Safe Transaction Service failed: %s", err)
-				return
-			}
 			appUI.Success("Confirmation submitted.")
 		}
 		totalSigs := len(pending.Sigs) + 1
@@ -703,12 +687,7 @@ over an off-chain signature store. Other owners' off-chain signatures
 			return
 		}
 
-		augmented := *pending
-		augmented.Sigs = append(append([]safe.OwnerSig{}, pending.Sigs...), safe.OwnerSig{
-			Owner: me,
-			Sig:   sig,
-		})
-		runSafeExecute(tc, safeContract, &augmented, domainSep)
+		runSafeExecute(tc, safeContract, pendingWithNewSig(pending, me, sig), domainSep)
 	},
 }
 
@@ -1456,7 +1435,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		appUI.Error("%s", res.reason)
 		return res
 	}
-	if expected := pending.SafeTx.SafeTxHash(domainSep); expected != pending.SafeTxHash {
+	if _, err := verifyPendingSafeTxHash(pending, domainSep); errors.Is(err, errPendingHashMismatch) {
 		res.status = "failed"
 		res.reason = "service safeTxHash doesn't match locally recomputed hash"
 		appUI.Error("%s", res.reason)
@@ -1473,17 +1452,15 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 	}
 
 	me := ethcommon.HexToAddress(fromAcc.Address)
-	for _, s := range pending.Sigs {
-		if s.Owner == me {
-			res.status = "skipped"
-			if safe.IsOnChainApproval(s.Sig) {
-				res.reason = fmt.Sprintf("%s already approved on-chain", me.Hex())
-			} else {
-				res.reason = fmt.Sprintf("%s already signed off-chain", me.Hex())
-			}
-			appUI.Warn("%s", res.reason)
-			return res
+	if onChain, found := ownerAlreadySigned(pending, me); found {
+		res.status = "skipped"
+		if onChain {
+			res.reason = fmt.Sprintf("%s already approved on-chain", me.Hex())
+		} else {
+			res.reason = fmt.Sprintf("%s already signed off-chain", me.Hex())
 		}
+		appUI.Warn("%s", res.reason)
+		return res
 	}
 
 	// Build a TxContext rich enough for showSafeTxToConfirm and (for the
@@ -1526,7 +1503,13 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 	}
 
 	appUI.Info("Unlock %s and sign the EIP-712 safeTxHash now...", fromAcc.Address)
-	account, err := accounts.UnlockAccount(fromAcc)
+	sig, err := signPendingSafeTx(fromAcc, pending, domainSep)
+	if errors.Is(err, errSignSafeHash) {
+		res.status = "failed"
+		res.reason = fmt.Sprintf("sign safeTxHash: %s", signCause(err))
+		appUI.Error("%s", res.reason)
+		return res
+	}
 	if err != nil {
 		res.status = "failed"
 		res.reason = fmt.Sprintf("unlock wallet: %s", err)
@@ -1534,16 +1517,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		return res
 	}
 
-	structHash := pending.SafeTx.StructHash()
-	sig, err := account.SignSafeHash(domainSep, structHash)
-	if err != nil {
-		res.status = "failed"
-		res.reason = fmt.Sprintf("sign safeTxHash: %s", err)
-		appUI.Error("%s", res.reason)
-		return res
-	}
-
-	if err := collector.Confirm(pending.SafeTxHash, me, sig); err != nil {
+	if err := persistApproval(tc, safeContract.Address, pending, me, sig, "", network.GetChainID()); err != nil {
 		res.status = "failed"
 		res.reason = fmt.Sprintf("submit confirmation: %s", err)
 		appUI.Error("%s", res.reason)
@@ -1568,11 +1542,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		return res
 	}
 
-	augmented := *pending
-	augmented.Sigs = append(append([]safe.OwnerSig{}, pending.Sigs...), safe.OwnerSig{
-		Owner: me, Sig: sig,
-	})
-	runSafeExecute(tc, safeContract, &augmented, domainSep)
+	runSafeExecute(tc, safeContract, pendingWithNewSig(pending, me, sig), domainSep)
 	res.confirmType = "approve+execute"
 	res.status = "executed"
 	return res
@@ -1994,9 +1964,79 @@ func nextSafeNonce(s *safe.SafeContract, c safe.SignatureCollector) (uint64, err
 }
 
 var (
-	errPendingNoCollector = errors.New("safe transaction service is not available")
-	errPendingNeedHash    = errors.New("on-chain approve without a service requires an explicit safeTxHash")
+	errPendingNoCollector  = errors.New("safe transaction service is not available")
+	errPendingNeedHash     = errors.New("on-chain approve without a service requires an explicit safeTxHash")
+	errPendingHashMismatch = errors.New("safeTxHash mismatch")
+	errSignSafeHash        = errors.New("sign safeTxHash")
 )
+
+// verifyPendingSafeTxHash recomputes the EIP-712 hash when a SafeTx body
+// is present. Hash-only --approve-onchain stubs skip the check (nil error).
+func verifyPendingSafeTxHash(pending *safe.PendingTx, domainSep [32]byte) ([32]byte, error) {
+	var expected [32]byte
+	if pending == nil || pending.SafeTx == nil {
+		return expected, nil
+	}
+	expected = pending.SafeTx.SafeTxHash(domainSep)
+	if expected != pending.SafeTxHash {
+		return expected, errPendingHashMismatch
+	}
+	return expected, nil
+}
+
+func ownerAlreadySigned(pending *safe.PendingTx, me ethcommon.Address) (onChain bool, found bool) {
+	if pending == nil {
+		return false, false
+	}
+	for _, s := range pending.Sigs {
+		if s.Owner == me {
+			return safe.IsOnChainApproval(s.Sig), true
+		}
+	}
+	return false, false
+}
+
+func signPendingSafeTx(fromAcc jtypes.AccDesc, pending *safe.PendingTx, domainSep [32]byte) ([]byte, error) {
+	account, err := accounts.UnlockAccount(fromAcc)
+	if err != nil {
+		return nil, err
+	}
+	sig, err := account.SignSafeHash(domainSep, pending.SafeTx.StructHash())
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", errSignSafeHash, err)
+	}
+	return sig, nil
+}
+
+func signCause(err error) string {
+	prefix := errSignSafeHash.Error() + ": "
+	if strings.HasPrefix(err.Error(), prefix) {
+		return strings.TrimPrefix(err.Error(), prefix)
+	}
+	return err.Error()
+}
+
+func persistApproval(
+	tc cmdutil.TxContext,
+	safeAddr string,
+	pending *safe.PendingTx,
+	me ethcommon.Address,
+	sig []byte,
+	file string,
+	chainID uint64,
+) error {
+	if file != "" {
+		updated := append(append([]safe.OwnerSig{}, pending.Sigs...), safe.OwnerSig{Owner: me, Sig: sig})
+		return safe.WriteTxFile(file, safeAddr, chainID, pending.SafeTx, pending.SafeTxHash, updated)
+	}
+	return tc.Collector.Confirm(pending.SafeTxHash, me, sig)
+}
+
+func pendingWithNewSig(pending *safe.PendingTx, me ethcommon.Address, sig []byte) *safe.PendingTx {
+	augmented := *pending
+	augmented.Sigs = append(append([]safe.OwnerSig{}, pending.Sigs...), safe.OwnerSig{Owner: me, Sig: sig})
+	return &augmented
+}
 
 // loadPendingTx is the shared pending-tx source selector for approve /
 // execute / info: local file, Safe Transaction Service, or (approve only)
