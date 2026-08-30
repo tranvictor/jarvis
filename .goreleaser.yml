@@ -61,15 +61,6 @@ builds:
       - CXX=aarch64-linux-gnu-g++
 
   - <<: *build_defaults
-    id: linux-386
-    goos: [linux]
-    goarch: [386]
-    env:
-      - CGO_ENABLED=1
-      - CC=i686-linux-gnu-gcc
-      - CXX=i686-linux-gnu-g++
-
-  - <<: *build_defaults
     id: windows-amd64
     goos: [windows]
     goarch: [amd64]
@@ -89,7 +80,7 @@ builds:
 
 archives:
   - id: nix
-    builds: [darwin-amd64, darwin-arm64, linux-386, linux-amd64, linux-arm64]
+    builds: [darwin-amd64, darwin-arm64, linux-amd64, linux-arm64]
     <<: &archive_defaults
       name_template: '{{ .ProjectName }}_{{ .Version }}_{{ if eq .Os "darwin" }}macOS{{ else }}{{ .Os }}{{ end }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
     wrap_in_directory: true
