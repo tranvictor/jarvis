@@ -29,20 +29,20 @@ type TxBroadcaster interface {
 // mutated config.* globals.
 type TxContext struct {
 	FromAcc       jtypes.AccDesc
-	From          string             // resolved hex address of the signer
-	To            string             // resolved hex address; empty for contract creation
-	Value         *big.Int           // parsed from config.RawValue
-	GasPrice      float64            // gwei; auto-fetched when config.GasPrice == 0
-	TipGas        float64            // gwei; auto-fetched for dynamic-fee txs
-	Nonce         uint64             // auto-fetched when config.Nonce == 0
+	From          string   // resolved hex address of the signer
+	To            string   // resolved hex address; empty for contract creation
+	Value         *big.Int // parsed from config.RawValue
+	GasPrice      float64  // gwei; auto-fetched when config.GasPrice == 0
+	TipGas        float64  // gwei; auto-fetched for dynamic-fee txs
+	Nonce         uint64   // auto-fetched when config.Nonce == 0
 	TxType        uint8
 	PrefillMode   bool
 	PrefillParams []string
-	TxInfo      *jarviscommon.TxInfo // non-nil when args[0] was a tx hash
-	Reader      reader.Reader        // injected by preprocess; nil in tests that don't need network I/O
-	Broadcaster TxBroadcaster        // injected by CommonTxPreprocess; nil for read-only commands
-	Analyzer    util.TxAnalyzer      // pre-built from Reader in preprocessing; nil in read-only tests
-	Resolver    ABIResolver          // address/ABI lookup; DefaultABIResolver in production; stub in tests
+	TxInfo        *jarviscommon.TxInfo // non-nil when args[0] was a tx hash
+	Reader        reader.Reader        // injected by preprocess; nil in tests that don't need network I/O
+	Broadcaster   TxBroadcaster        // injected by CommonTxPreprocess; nil for read-only commands
+	Analyzer      util.TxAnalyzer      // pre-built from Reader in preprocessing; nil in read-only tests
+	Resolver      ABIResolver          // address/ABI lookup; DefaultABIResolver in production; stub in tests
 
 	// Safe-specific fields, populated by CommonSafeTxPreprocess. Nil for
 	// non-Safe commands so existing code paths are unaffected.
@@ -57,6 +57,14 @@ type TxContext struct {
 	// dispatch in cmd/msig.go can route to the Safe or Classic handler
 	// without re-probing on chain.
 	MultisigType MultisigType
+}
+
+// EthReaderOf returns the concrete *reader.EthReader when r is that
+// type, or nil otherwise. Safe/Classic constructors treat
+// WithReader(nil) as "open a new EthReader".
+func EthReaderOf(r reader.Reader) *reader.EthReader {
+	er, _ := r.(*reader.EthReader)
+	return er
 }
 
 type txContextKey struct{}

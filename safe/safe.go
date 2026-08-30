@@ -25,13 +25,39 @@ type SafeContract struct {
 	Abi     *abi.ABI
 }
 
+// Option configures NewSafeContract. The no-option form still opens a
+// network reader so existing call sites stay valid.
+type Option func(*contractOptions)
+
+type contractOptions struct {
+	reader *reader.EthReader
+}
+
+// WithReader reuses an already-open EthReader instead of calling
+// util.EthReader again. A nil reader is ignored.
+func WithReader(r *reader.EthReader) Option {
+	return func(o *contractOptions) {
+		if r != nil {
+			o.reader = r
+		}
+	}
+}
+
 // NewSafeContract constructs a SafeContract bound to the given network.
 // It does NOT verify on-chain that the address is actually a Safe; callers
 // should check IsGnosisSafe(abi) on the address's ABI first.
-func NewSafeContract(address string, network networks.Network) (*SafeContract, error) {
-	r, err := util.EthReader(network)
-	if err != nil {
-		return nil, err
+func NewSafeContract(address string, network networks.Network, opts ...Option) (*SafeContract, error) {
+	var o contractOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	r := o.reader
+	if r == nil {
+		var err error
+		r, err = util.EthReader(network)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &SafeContract{
 		Address: address,

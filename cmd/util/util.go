@@ -246,7 +246,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		}
 	}
 
-	multisigContract, err := msig.NewMultisigContract(tc.To, config.Network())
+	multisigContract, err := msig.NewMultisigContract(tc.To, config.Network(), msig.WithReader(EthReaderOf(reader)))
 	if err != nil {
 		u.Error("Couldn't interact with the contract: %s", err)
 		return

@@ -18,6 +18,7 @@ import (
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
+	utilreader "github.com/tranvictor/jarvis/util/reader"
 )
 
 // showNodeErrorGuidance prints a structured diagnostic block when an RPC call
@@ -180,10 +181,10 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 
 	var fromAcc jtypes.AccDesc
 	if config.From == "" {
-		if !classicMultisigOwnerPickEligible(config.Network(), tc.To, a) {
+		if !classicMultisigOwnerPickEligible(config.Network(), tc.To, a, EthReaderOf(tc.Reader)) {
 			return fmt.Errorf("please specify the signing wallet with --from")
 		}
-		multisigContract, err := msig.NewMultisigContract(tc.To, config.Network())
+		multisigContract, err := msig.NewMultisigContract(tc.To, config.Network(), msig.WithReader(EthReaderOf(tc.Reader)))
 		if err != nil {
 			return err
 		}
@@ -250,7 +251,7 @@ func CommonSafeReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error 
 		return fmt.Errorf("please specify the safe address as the first argument")
 	}
 
-	safeContract, err := safe.NewSafeContract(tc.To, config.Network())
+	safeContract, err := safe.NewSafeContract(tc.To, config.Network(), safe.WithReader(EthReaderOf(tc.Reader)))
 	if err != nil {
 		return fmt.Errorf("couldn't init safe reader: %w", err)
 	}
@@ -333,7 +334,7 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 		)
 	}
 
-	safeContract, err := safe.NewSafeContract(tc.To, config.Network())
+	safeContract, err := safe.NewSafeContract(tc.To, config.Network(), safe.WithReader(EthReaderOf(tc.Reader)))
 	if err != nil {
 		return fmt.Errorf("couldn't init safe reader: %w", err)
 	}
@@ -459,13 +460,13 @@ func applyMultisigArgNetworkHint(cmd *cobra.Command, args []string) {
 // multisig so an empty --from can be resolved by picking the sole local owner.
 // Explorer ABIs are often incomplete (proxy/factory shapes), so we fall back
 // to the same on-chain NOTransactions probe used by DetectMultisigType.
-func classicMultisigOwnerPickEligible(network networks.Network, to string, contractABI *abi.ABI) bool {
+func classicMultisigOwnerPickEligible(network networks.Network, to string, contractABI *abi.ABI, r *utilreader.EthReader) bool {
 	if contractABI != nil {
 		if ok, err := util.IsGnosisMultisig(contractABI); err == nil && ok {
 			return true
 		}
 	}
-	mc, err := msig.NewMultisigContract(to, network)
+	mc, err := msig.NewMultisigContract(to, network, msig.WithReader(r))
 	if err != nil {
 		return false
 	}
