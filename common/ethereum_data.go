@@ -1,9 +1,7 @@
 package common
 
 import (
-	"encoding/json"
 	"math/big"
-	"os"
 )
 
 type Address struct {
@@ -112,13 +110,6 @@ type LogResult struct {
 	Name   string
 	Topics []TopicResult
 	Data   []ParamResult
-}
-
-type TxResults map[string]*TxResult
-
-func (tr *TxResults) Write(filepath string) error {
-	data, _ := json.MarshalIndent(tr, "", "  ")
-	return os.WriteFile(filepath, data, 0644)
 }
 
 type TxResult struct {

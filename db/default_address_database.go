@@ -19,15 +19,6 @@ func (self *DefaultAddressDatabase) Register(addr string, name string) {
 	self.Data[common.HexToAddress(addr)] = name
 }
 
-func (self *DefaultAddressDatabase) GetName(addr string) string {
-	name, found := self.Data[common.HexToAddress(addr)]
-	if found {
-		return name
-	} else {
-		return "unknown"
-	}
-}
-
 type tokens []struct {
 	Address string `json:"address"`
 	Symbol  string `json:"symbol"`

@@ -59,44 +59,6 @@ func BuildExactTx(
 	}
 }
 
-func BuildTx(
-	txType uint8,
-	nonce uint64,
-	to string,
-	ethAmount float64,
-	gasLimit uint64,
-	priceGwei float64,
-	tipCapGwei float64,
-	data []byte,
-	chainID uint64,
-) (tx *types.Transaction) {
-	amount := FloatToBigInt(ethAmount, 18)
-	return BuildExactTx(txType, nonce, to, amount, gasLimit, priceGwei, tipCapGwei, data, chainID)
-}
-
-func BuildExactSendETHTx(
-	txType uint8,
-	nonce uint64,
-	to string,
-	ethAmount *big.Int,
-	gasLimit uint64,
-	priceGwei float64,
-	tipCapGwei float64,
-	chainID uint64,
-) (tx *types.Transaction) {
-	return BuildExactTx(
-		txType,
-		nonce,
-		to,
-		ethAmount,
-		gasLimit,
-		priceGwei,
-		tipCapGwei,
-		[]byte{},
-		chainID,
-	)
-}
-
 func BuildContractCreationTx(
 	txType uint8,
 	nonce uint64,

@@ -14,11 +14,11 @@ import (
 // when the descriptor doesn't specify a format.
 type ResolvedValue struct {
 	Kind  ResolvedKind
-	Int   *big.Int // ResolvedInt
-	Bytes []byte   // ResolvedBytes (also used for slices of strings)
-	Str   string   // ResolvedString
-	Bool  bool     // ResolvedBool
-	Addr  string   // ResolvedAddress, normalised lower-case hex
+	Int   *big.Int        // ResolvedInt
+	Bytes []byte          // ResolvedBytes (also used for slices of strings)
+	Str   string          // ResolvedString
+	Bool  bool            // ResolvedBool
+	Addr  string          // ResolvedAddress, normalised lower-case hex
 	Tuple []ResolvedField // ResolvedTuple kind
 	Array []ResolvedValue // ResolvedArray kind
 	// Raw holds the *original* go value (from the ABI decode), used
@@ -250,13 +250,6 @@ func normalizeIndex(idx, length int) int {
 		return length + idx
 	}
 	return idx
-}
-
-// IsArrayElementPath returns true when path ends in `.[]` (the
-// "iterate over all elements" suffix used by fields[].fields and by
-// parameter-array references).
-func IsArrayElementPath(s string) bool {
-	return strings.HasSuffix(s, "[]") || strings.HasSuffix(s, "[].")
 }
 
 // ── value constructors used by the structured-data builder ──────────────────

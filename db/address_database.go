@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/sahilm/fuzzy"
@@ -44,23 +43,6 @@ func getAddressMatches(input string, source FuzzySource, exact func(string) (Add
 func GetAddresses(input string) ([]AddressDesc, []int) {
 	source := NewFuzzySource()
 	return getAddressMatches(input, source, lookupExact)
-}
-
-func GetAddress(input string) (AddressDesc, error) {
-	matches, _ := GetAddresses(input)
-	if len(matches) == 0 {
-		return AddressDesc{}, fmt.Errorf("No address is found with '%s'", input)
-	}
-	return matches[0], nil
-}
-
-func GetTokenAddress(input string) (AddressDesc, error) {
-	source := NewTokenFuzzySource()
-	matches, _ := getAddressMatches(input, source, lookupTokenExact)
-	if len(matches) == 0 {
-		return AddressDesc{}, fmt.Errorf("No address is found with '%s'", input)
-	}
-	return matches[0], nil
 }
 
 func AllTokenAddresses() map[string]string {

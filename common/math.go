@@ -33,7 +33,7 @@ func FloatToInt(amount float64) int64 {
 // - FloatToBigInt(1.234, 4) = 12340
 func FloatToBigInt(amount float64, decimal uint64) *big.Int {
 	// 9 is our smallest precision, if amount is < 0.000000001 there will be
-  // precision loss, the return value will be less than amount * 10^decimal
+	// precision loss, the return value will be less than amount * 10^decimal
 	if decimal < 9 {
 		return big.NewInt(FloatToInt(amount * math.Pow10(int(decimal))))
 	}
@@ -64,30 +64,9 @@ func StringToBig(input string) *big.Int {
 	return resultBig
 }
 
-func StringToFloat(input string, decimal uint64) float64 {
-	resultBig, ok := big.NewInt(0).SetString(input, 10)
-	if !ok {
-		return 0.0
-	}
-	return BigToFloat(resultBig, decimal)
-}
-
 // GweiToWei converts Gwei as a float to Wei as a big int
 func GweiToWei(n float64) *big.Int {
 	return FloatToBigInt(n, 9)
-}
-
-// EthToWei converts Gwei as a float to Wei as a big int
-func EthToWei(n float64) *big.Int {
-	return FloatToBigInt(n, 18)
-}
-
-func StringToBigInt(str string) (*big.Int, error) {
-	result, success := big.NewInt(0).SetString(str, 10)
-	if !success {
-		return nil, fmt.Errorf("parsed %s to big int failed", str)
-	}
-	return result, nil
 }
 
 func FloatStringToBig(value string, decimal uint64) (*big.Int, error) {

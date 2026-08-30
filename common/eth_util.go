@@ -10,11 +10,6 @@ import (
 
 var Start time.Time
 
-func GetMultiCallABI() *abi.ABI {
-	result, _ := abi.JSON(strings.NewReader(multicallabi))
-	return &result
-}
-
 func GetERC20ABI() *abi.ABI {
 	result, _ := abi.JSON(strings.NewReader(erc20abi))
 	return &result

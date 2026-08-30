@@ -625,10 +625,6 @@ func writeJSONSummary(path string, v any) {
 	appUI.Success("Summary written to %s", path)
 }
 
-func writeBatchSummaryJSON(path string, results []batchResult) {
-	writeJSONSummary(path, buildClassicBatchSummary(results))
-}
-
 // jsonMixedBatchSummary is written when bapprove processes both Safe and
 // Classic refs. Safe-only and Classic-only runs keep their existing
 // single-flavor shapes (a top-level results array). Mixed runs use
@@ -662,6 +658,9 @@ func buildMixedBatchSummary(safe []safeBatchResult, classic []batchResult) jsonM
 	}
 }
 
+// batchApproveJSONPayload picks the JSON shape for a bapprove run:
+// mixed runs get separate safe/classic arrays, single-flavor runs keep
+// their original top-level results array.
 func batchApproveJSONPayload(safe []safeBatchResult, classic []batchResult) any {
 	switch {
 	case len(safe) > 0 && len(classic) > 0:
@@ -676,13 +675,8 @@ func batchApproveJSONPayload(safe []safeBatchResult, classic []batchResult) any 
 }
 
 func writeBatchApproveJSON(path string, safe []safeBatchResult, classic []batchResult) {
-	switch {
-	case len(safe) > 0 && len(classic) > 0:
-		writeJSONSummary(path, buildMixedBatchSummary(safe, classic))
-	case len(safe) > 0:
-		writeSafeBatchSummaryJSON(path, safe)
-	case len(classic) > 0:
-		writeBatchSummaryJSON(path, classic)
+	if payload := batchApproveJSONPayload(safe, classic); payload != nil {
+		writeJSONSummary(path, payload)
 	}
 }
 

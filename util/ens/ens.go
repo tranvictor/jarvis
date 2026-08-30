@@ -18,7 +18,6 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -125,10 +124,10 @@ type Resolver interface {
 // the same address on other chains.
 func NewMainnetResolver(r *reader.EthReader) Resolver {
 	return &ethReaderResolver{
-		r:         r,
-		registry:  common.HexToAddress(MainnetRegistryAddress),
-		regABI:    registryABI,
-		resABI:    resolverABI,
+		r:        r,
+		registry: common.HexToAddress(MainnetRegistryAddress),
+		regABI:   registryABI,
+		resABI:   resolverABI,
 	}
 }
 
@@ -218,48 +217,4 @@ func mustParseABI(s string) *abi.ABI {
 		panic(fmt.Sprintf("ens: bad ABI fragment: %s", err))
 	}
 	return &a
-}
-
-// CachedLookup returns a previously-resolved address for name, if any.
-// Useful when a caller wants to display provenance ("ens: alice.eth ->
-// 0xABC") without triggering a network call or a fallback warning.
-func CachedLookup(name string) (common.Address, bool) {
-	if !IsLikelyENSName(name) {
-		return common.Address{}, false
-	}
-	name = strings.ToLower(strings.TrimSpace(name))
-	if v, ok := cache.GetCache("ens:v1:" + name); ok && v != "" {
-		return common.HexToAddress(v), true
-	}
-	return common.Address{}, false
-}
-
-// Process-wide memoised resolver. The wiring in util/util.go constructs
-// one via NewMainnetResolver on first use and shares it across calls.
-// Lives here so tests can substitute a stub resolver without touching
-// util's internal state.
-var (
-	defaultMu  sync.RWMutex
-	defaultRes Resolver
-)
-
-// SetDefault installs the resolver subsequent Default() calls will
-// return. Intended for integration points that own the mainnet reader
-// (util.go's lazy init) and for tests that want to inject a fake.
-// Re-calling replaces the previous resolver; tests that swap and
-// restore should capture the previous value via Default() first.
-func SetDefault(r Resolver) {
-	defaultMu.Lock()
-	defer defaultMu.Unlock()
-	defaultRes = r
-}
-
-// Default returns the globally-installed resolver, or nil if none has
-// been installed yet. Call sites that can't live without ENS should
-// handle nil gracefully by treating it as "resolution unavailable,
-// fall through to address book".
-func Default() Resolver {
-	defaultMu.RLock()
-	defer defaultMu.RUnlock()
-	return defaultRes
 }

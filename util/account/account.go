@@ -17,6 +17,9 @@ type Account struct {
 	address common.Address
 }
 
+// NewPrivateKeyAccount is used by external consumers of jarvis as a library
+// (e.g. github.com/tranvictor/walletarmy); it has no callers inside this
+// repo, so keep it even though dead-code analysis flags it.
 func NewPrivateKeyAccount(privateKey string) (*Account, error) {
 	key, err := crypto.HexToECDSA(privateKey)
 	if err != nil {

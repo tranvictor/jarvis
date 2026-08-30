@@ -27,10 +27,7 @@ const (
 	CONSTRUCTOR_METHOD_INDEX uint64 = 1000000 // assuming there is no contract with more than 1m methods
 )
 
-type (
-	NumberValidator func(number *big.Int) error
-	StringValidator func(st string) error
-)
+type StringValidator func(st string) error
 
 // PromptInputWithValidation shows a label, then loops until the validator passes.
 func PromptInputWithValidation(u ui.UI, label string, validator StringValidator) string {
@@ -39,53 +36,6 @@ func PromptInputWithValidation(u ui.UI, label string, validator StringValidator)
 	}
 	return u.Ask(func(s string) error {
 		return validator(s)
-	})
-}
-
-// PromptPercentageBps prompts for a basis-points value in [0, upbound].
-func PromptPercentageBps(u ui.UI, label string, upbound int64, network jarvisnetworks.Network) *big.Int {
-	return PromptNumber(u, label, func(number *big.Int) error {
-		n := number.Int64()
-		if n < 0 || n > upbound {
-			return fmt.Errorf("this percentage bps must be in [0, %d]", upbound)
-		}
-		return nil
-	}, network)
-}
-
-// PromptNumber shows a label and loops until a valid number satisfying validator is entered.
-func PromptNumber(u ui.UI, label string, validator NumberValidator, network jarvisnetworks.Network) *big.Int {
-	if label != "" {
-		u.Info(label)
-	}
-	var result *big.Int
-	u.Ask(func(s string) error {
-		num, err := util.ConvertToBig(strings.TrimSpace(s), network)
-		if err != nil {
-			return fmt.Errorf("couldn't interpret as a number: %s", err)
-		}
-		if err := validator(num); err != nil {
-			return err
-		}
-		result = num
-		return nil
-	})
-	return result
-}
-
-// PromptItemInList shows a label and loops until the user enters one of options.
-func PromptItemInList(u ui.UI, label string, options []string) string {
-	if label != "" {
-		u.Info(label)
-	}
-	return u.Ask(func(s string) error {
-		s = strings.TrimSpace(s)
-		for _, op := range options {
-			if s == strings.TrimSpace(op) {
-				return nil
-			}
-		}
-		return fmt.Errorf("your input is not in the list")
 	})
 }
 

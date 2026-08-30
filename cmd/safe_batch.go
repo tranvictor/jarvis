@@ -453,7 +453,3 @@ func buildSafeBatchSummary(results []safeBatchResult) jsonSafeBatchSummary {
 	}
 	return out
 }
-
-func writeSafeBatchSummaryJSON(path string, results []safeBatchResult) {
-	writeJSONSummary(path, buildSafeBatchSummary(results))
-}

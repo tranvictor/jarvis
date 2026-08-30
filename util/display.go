@@ -390,26 +390,6 @@ func printAllLogs(u ui.UI, logs []LogDisplay) {
 	})
 }
 
-// printLogDisplay renders a single log entry. Used by the standalone DisplayLog
-// public API when a caller needs to print one log outside of a full tx context.
-func printLogDisplay(u ui.UI, idx int, d LogDisplay) {
-	u.Section(fmt.Sprintf("Log %d: %s", idx+1, d.Name))
-
-	var rows [][]ui.TableCell
-	for _, topic := range d.Topics {
-		rows = append(rows, []ui.TableCell{ui.TC(topic.Name + " (indexed)"), tableCell(topic.Verbose)})
-	}
-	for _, param := range d.Data {
-		rows = append(rows, flattenParamRows(param, "")...)
-	}
-	if len(rows) > 0 {
-		u.PrintTable(&ui.Table{
-			Headers: []string{"Parameter", "Value"},
-			Rows:    rows,
-		})
-	}
-}
-
 func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network) {
 	// Transaction summary card.
 	statusVal := d.Status
@@ -481,14 +461,6 @@ func DisplayParams(u ui.UI, params []jarviscommon.ParamResult) []ParamDisplay {
 func DisplayFunctionCall(u ui.UI, fc *jarviscommon.FunctionCall) *FunctionCallDisplay {
 	d := buildFunctionCallDisplay(fc, false)
 	printFunctionCallDisplay(u, d, false)
-	return d
-}
-
-// DisplayLog builds the human-readable view-model for a single event log entry
-// and writes it to u.
-func DisplayLog(u ui.UI, idx int, log jarviscommon.LogResult) LogDisplay {
-	d := buildLogDisplay(log)
-	printLogDisplay(u, idx, d)
 	return d
 }
 

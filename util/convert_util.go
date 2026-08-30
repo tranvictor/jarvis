@@ -104,24 +104,6 @@ func ConvertToUintOrBig(str string, size int, network jarvisnetworks.Network) (i
 	}
 }
 
-// ConvertParamStrToFixedByteType converts a slice of hex strings into a typed
-// slice of [N]byte arrays. The exact array type (e.g. [32]byte) is derived
-// from t.GetType() so no 32-case switch is needed.
-func ConvertParamStrToFixedByteType(t abi.Type, strs []string) (interface{}, error) {
-	arrType := t.GetType() // reflect.Type for [N]byte
-	res := reflect.MakeSlice(reflect.SliceOf(arrType), 0, len(strs))
-	for _, str := range strs {
-		raw, err := ConvertToBytes(str)
-		if err != nil {
-			return nil, err
-		}
-		arr := reflect.New(arrType).Elem()
-		reflect.Copy(arr, reflect.ValueOf(raw))
-		res = reflect.Append(res, arr)
-	}
-	return res.Interface(), nil
-}
-
 func ConvertEthereumTypeToInputString(t abi.Type, value interface{}) (string, error) {
 	return "", fmt.Errorf("not implemented")
 }

@@ -6,8 +6,6 @@ import (
 	"math/big"
 	"strings"
 
-	ethcommon "github.com/ethereum/go-ethereum/common"
-
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	jarvisutil "github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/walletconnect"
@@ -76,12 +74,6 @@ func bigOrZero(v *big.Int) *big.Int {
 // hex0x returns hex-prefixed lower-case encoding of b, suitable for
 // returning to a dApp as a signature / tx hash.
 func hex0x(b []byte) string { return "0x" + hex.EncodeToString(b) }
-
-// bytesToAddr converts an already-normalised lowercase hex string
-// into a common.Address for go-ethereum APIs.
-func bytesToAddr(hexStr string) ethcommon.Address {
-	return ethcommon.HexToAddress(hexStr)
-}
 
 func errMethodUnsupported(detail string) error {
 	return fmt.Errorf("%w: %s", walletconnect.ErrMethodNotSupported, detail)
