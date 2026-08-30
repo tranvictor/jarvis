@@ -3,10 +3,8 @@ package cmd
 // Safe half of `jarvis msig bapprove`: ref scan, per-ref approve, summaries.
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -425,7 +423,7 @@ type jsonSafeBatchSummary struct {
 	Results   []jsonSafeBatchResult `json:"results"`
 }
 
-func writeSafeBatchSummaryJSON(path string, results []safeBatchResult) {
+func buildSafeBatchSummary(results []safeBatchResult) jsonSafeBatchSummary {
 	out := jsonSafeBatchSummary{
 		Total:     len(results),
 		Generated: time.Now().UTC().Format(time.RFC3339),
@@ -453,14 +451,9 @@ func writeSafeBatchSummaryJSON(path string, results []safeBatchResult) {
 			out.Failed++
 		}
 	}
-	data, err := json.MarshalIndent(out, "", "  ")
-	if err != nil {
-		appUI.Error("Couldn't marshal JSON: %s", err)
-		return
-	}
-	if err := os.WriteFile(path, data, 0o644); err != nil {
-		appUI.Error("Couldn't write JSON file: %s", err)
-		return
-	}
-	appUI.Success("Summary written to %s", path)
+	return out
+}
+
+func writeSafeBatchSummaryJSON(path string, results []safeBatchResult) {
+	writeJSONSummary(path, buildSafeBatchSummary(results))
 }

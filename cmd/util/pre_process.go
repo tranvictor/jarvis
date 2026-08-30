@@ -107,6 +107,17 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 // contract address, making it suitable for commands that operate on arbitrary
 // tx hashes or other non-address arguments (e.g. the "info" command).
 func CommonNetworkPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+	// Peek at args for a network-prefixed tx hash (e.g. "mainnet:0x...").
+	// The network must be resolved BEFORE the reader/analyzer are built,
+	// otherwise we bind to the default network and fetch the wrong chain.
+	// An explicit -N/--network flag still wins if the user passed it.
+	if len(args) > 0 && !cmd.Flags().Changed("network") {
+		para := strings.Join(args, " ")
+		if nwks, txs := ScanForTxs(para); len(txs) > 0 && nwks[0] != "" {
+			config.NetworkString = nwks[0]
+		}
+	}
+
 	if err := config.SetNetwork(config.NetworkString); err != nil {
 		return err
 	}

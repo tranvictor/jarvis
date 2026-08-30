@@ -570,7 +570,7 @@ type jsonBatchSummary struct {
 	Results     []jsonBatchResult `json:"results"`
 }
 
-func writeBatchSummaryJSON(path string, results []batchResult) {
+func buildClassicBatchSummary(results []batchResult) jsonBatchSummary {
 	summary := jsonBatchSummary{
 		Total:   len(results),
 		Results: make([]jsonBatchResult, 0, len(results)),
@@ -609,8 +609,11 @@ func writeBatchSummaryJSON(path string, results []batchResult) {
 			summary.Failed++
 		}
 	}
+	return summary
+}
 
-	data, err := json.MarshalIndent(summary, "", "  ")
+func writeJSONSummary(path string, v any) {
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		appUI.Error("Couldn't marshal JSON: %s", err)
 		return
@@ -620,6 +623,74 @@ func writeBatchSummaryJSON(path string, results []batchResult) {
 		return
 	}
 	appUI.Success("Summary written to %s", path)
+}
+
+func writeBatchSummaryJSON(path string, results []batchResult) {
+	writeJSONSummary(path, buildClassicBatchSummary(results))
+}
+
+// jsonMixedBatchSummary is written when bapprove processes both Safe and
+// Classic refs. Safe-only and Classic-only runs keep their existing
+// single-flavor shapes (a top-level results array). Mixed runs use
+// separate safe and classic arrays so the second write cannot clobber
+// the first.
+type jsonMixedBatchSummary struct {
+	Total       int                   `json:"total"`
+	Approved    int                   `json:"approved"`
+	Broadcasted int                   `json:"broadcasted"`
+	Executed    int                   `json:"executed"`
+	Skipped     int                   `json:"skipped"`
+	Failed      int                   `json:"failed"`
+	Generated   string                `json:"generated_at"`
+	Safe        []jsonSafeBatchResult `json:"safe"`
+	Classic     []jsonBatchResult     `json:"classic"`
+}
+
+func buildMixedBatchSummary(safe []safeBatchResult, classic []batchResult) jsonMixedBatchSummary {
+	s := buildSafeBatchSummary(safe)
+	c := buildClassicBatchSummary(classic)
+	return jsonMixedBatchSummary{
+		Total:       s.Total + c.Total,
+		Approved:    s.Approved + c.Approved,
+		Broadcasted: c.Broadcasted,
+		Executed:    s.Executed,
+		Skipped:     s.Skipped + c.Skipped,
+		Failed:      s.Failed + c.Failed,
+		Generated:   s.Generated,
+		Safe:        s.Results,
+		Classic:     c.Results,
+	}
+}
+
+func batchApproveJSONPayload(safe []safeBatchResult, classic []batchResult) any {
+	switch {
+	case len(safe) > 0 && len(classic) > 0:
+		return buildMixedBatchSummary(safe, classic)
+	case len(safe) > 0:
+		return buildSafeBatchSummary(safe)
+	case len(classic) > 0:
+		return buildClassicBatchSummary(classic)
+	default:
+		return nil
+	}
+}
+
+func writeBatchApproveJSON(path string, safe []safeBatchResult, classic []batchResult) {
+	switch {
+	case len(safe) > 0 && len(classic) > 0:
+		writeJSONSummary(path, buildMixedBatchSummary(safe, classic))
+	case len(safe) > 0:
+		writeSafeBatchSummaryJSON(path, safe)
+	case len(classic) > 0:
+		writeBatchSummaryJSON(path, classic)
+	}
+}
+
+func writeBatchApproveJSONIfRequested(safe []safeBatchResult, classic []batchResult) {
+	if config.JSONOutputFile == "" {
+		return
+	}
+	writeBatchApproveJSON(config.JSONOutputFile, safe, classic)
 }
 
 var batchApproveMsigCmd = &cobra.Command{
@@ -640,7 +711,8 @@ Each whitespace- or comma-separated token may be:
 
 Safe references are extracted first; remaining tokens are treated as
 Gnosis Classic init tx hashes. A summary table is printed at the end;
-with --json-output, the same data is also written as JSON.`,
+with --json-output, the same data is also written as JSON. Mixed
+Safe+Classic runs write both arrays into one file.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if len(args) == 0 {
 			appUI.Error("Please provide one or more multisig tx references.")
@@ -657,9 +729,10 @@ with --json-output, the same data is also written as JSON.`,
 		// Process the Safe portion of the input first so any auto-execute
 		// flow runs before we start touching Classic broadcasters that may
 		// share a wallet.
+		var safeResults []safeBatchResult
 		if len(safeRefs) > 0 {
 			total := len(safeRefs)
-			results := make([]safeBatchResult, 0, total)
+			safeResults = make([]safeBatchResult, 0, total)
 			appUI.Section(fmt.Sprintf("Batch Approve (Safe): %d transactions", total))
 			for i, ref := range safeRefs {
 				r := safeBatchResult{ref: ref.original}
@@ -674,18 +747,17 @@ with --json-output, the same data is also written as JSON.`,
 				r.execTxHash = res.execTxHash
 				r.status = res.status
 				r.reason = res.reason
-				results = append(results, r)
+				safeResults = append(safeResults, r)
 			}
-			printSafeBatchSummary(results)
-			if config.JSONOutputFile != "" {
-				writeSafeBatchSummaryJSON(config.JSONOutputFile, results)
-			}
+			printSafeBatchSummary(safeResults)
 		}
 
 		networkNames, txs := cmdutil.ScanForTxs(residual)
 		if len(networkNames) == 0 || len(txs) == 0 {
 			if len(safeRefs) == 0 {
 				appUI.Error("No txs passed to the first param. Did nothing.")
+			} else {
+				writeBatchApproveJSONIfRequested(safeResults, nil)
 			}
 			return
 		}
@@ -729,15 +801,8 @@ with --json-output, the same data is also written as JSON.`,
 				results = append(results, r)
 				continue
 			}
-			var txid *big.Int
 			msigHex := txinfo.Tx.To().Hex()
-			for _, l := range txinfo.Receipt.Logs {
-				if strings.EqualFold(l.Address.Hex(), msigHex) &&
-					strings.EqualFold(l.Topics[0].Hex(), "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51") {
-					txid = l.Topics[1].Big()
-					break
-				}
-			}
+			txid := util.GnosisMsigTxIDFromLogs(txinfo.Receipt.Logs, msigHex)
 			if txid == nil {
 				appUI.Warn("This tx is not a gnosis classic multisig init tx. Skip.")
 				r.status = "skipped"
@@ -805,9 +870,7 @@ with --json-output, the same data is also written as JSON.`,
 				r.reason = fmt.Sprintf("tx type: %s", err)
 				results = append(results, r)
 				printBatchSummary(results)
-				if config.JSONOutputFile != "" {
-					writeBatchSummaryJSON(config.JSONOutputFile, results)
-				}
+				writeBatchApproveJSONIfRequested(safeResults, results)
 				return
 			}
 
@@ -899,9 +962,7 @@ with --json-output, the same data is also written as JSON.`,
 		}
 
 		printBatchSummary(results)
-		if config.JSONOutputFile != "" {
-			writeBatchSummaryJSON(config.JSONOutputFile, results)
-		}
+		writeBatchApproveJSONIfRequested(safeResults, results)
 	},
 }
 
