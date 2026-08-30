@@ -12,7 +12,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/spf13/cobra"
 
-	"github.com/tranvictor/jarvis/accounts"
 	types2 "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
@@ -701,24 +700,24 @@ func sendFromSafe(
 	}
 
 	appUI.Info("Unlock %s and sign the EIP-712 safeTxHash now...", fromAddr)
-	account, err := accounts.UnlockAccount(fromAcc)
-	if err != nil {
+	sig, err := signSafeTx(fromAcc, stx, domainSep)
+	if err != nil && !errors.Is(err, errSignSafeHash) {
 		appUI.Error("Couldn't unlock wallet: %s", err)
 		if errors.Is(err, cmdutil.ErrWalletUnlock) {
 			os.Exit(126)
 		}
 		return
 	}
-
-	structHash := stx.StructHash()
-	sig, err := account.SignSafeHash(domainSep, structHash)
-	if err != nil {
-		appUI.Error("Couldn't sign safeTxHash: %s", err)
+	if errors.Is(err, errSignSafeHash) {
+		appUI.Error("Couldn't sign safeTxHash: %s", signCause(err))
 		return
 	}
 
-	if err := collector.Propose(
+	if err := safe.SubmitProposal(
+		collector,
+		"",
 		ethcommon.HexToAddress(safeContract.Address),
+		config.Network().GetChainID(),
 		stx, hash,
 		ethcommon.HexToAddress(fromAddr),
 		sig,

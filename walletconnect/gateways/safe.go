@@ -192,14 +192,17 @@ func (g *SafeGateway) SendTransaction(
 	if err != nil {
 		return "", err
 	}
-	structHash := stx.StructHash()
-	sig, err := ac.SignSafeHash(domainSep, structHash)
+	sig, err := ac.SignSafeHash(domainSep, stx.StructHash())
 	if err != nil {
 		return "", fmt.Errorf("sign safeTxHash: %w", err)
 	}
 
-	if err := g.collector.Propose(
-		g.addr, stx, hash,
+	if err := safe.SubmitProposal(
+		g.collector,
+		"",
+		g.addr,
+		g.network.GetChainID(),
+		stx, hash,
 		ethcommon.HexToAddress(g.owner.Address),
 		sig,
 	); err != nil {
