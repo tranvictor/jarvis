@@ -225,7 +225,7 @@ func sendFromMsig(reader utilreader.Reader, analyzer util.TxAnalyzer, resolver c
 		return
 	}
 
-	multisigContract, err := msig.NewMultisigContract(msigContractAddr, config.Network())
+	multisigContract, err := msig.NewMultisigContract(msigContractAddr, config.Network(), msig.WithReader(cmdutil.EthReaderOf(reader)))
 	if err != nil {
 		appUI.Error("Couldn't read the multisig: %s", err)
 		return
@@ -565,7 +565,7 @@ func detectSafeForSend(
 	if err != nil || typ != cmdutil.MultisigSafe {
 		return nil, false
 	}
-	sc, err := safe.NewSafeContract(addr, config.Network())
+	sc, err := safe.NewSafeContract(addr, config.Network(), safe.WithReader(cmdutil.EthReaderOf(reader)))
 	if err != nil {
 		return nil, false
 	}

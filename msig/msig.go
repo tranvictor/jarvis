@@ -130,16 +130,42 @@ func (self *MultisigContract) TransactionInfo(txid *big.Int) (address string, va
 	return ret.Destination.Hex(), ret.Value, *ret.Data, *ret.Executed, confirmations, nil
 }
 
-func NewMultisigContract(address string, network Network) (*MultisigContract, error) {
-	reader, err := util.EthReader(network)
-	if err != nil {
-		return nil, err
+// Option configures NewMultisigContract. The no-option form still opens a
+// network reader so existing call sites stay valid.
+type Option func(*contractOptions)
+
+type contractOptions struct {
+	reader *reader.EthReader
+}
+
+// WithReader reuses an already-open EthReader instead of calling
+// util.EthReader again. A nil reader is ignored.
+func WithReader(r *reader.EthReader) Option {
+	return func(o *contractOptions) {
+		if r != nil {
+			o.reader = r
+		}
+	}
+}
+
+func NewMultisigContract(address string, network Network, opts ...Option) (*MultisigContract, error) {
+	var o contractOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
+	rd := o.reader
+	if rd == nil {
+		var err error
+		rd, err = util.EthReader(network)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return &MultisigContract{
 		address,
 		network,
-		reader,
+		rd,
 		util.GetGnosisMsigABI(),
 	}, nil
 }

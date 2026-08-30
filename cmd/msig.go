@@ -54,6 +54,7 @@ automatically based on an on-chain probe of the address.`,
 		multisigContract, err := msig.NewMultisigContract(
 			msigAddress,
 			config.Network(),
+			msig.WithReader(cmdutil.EthReaderOf(tc.Reader)),
 		)
 		if err != nil {
 			appUI.Error("Couldn't interact with the contract: %s", err)
@@ -132,6 +133,7 @@ or msig tx id / init tx hash for Classic targets.`,
 		multisigContract, err := msig.NewMultisigContract(
 			msigAddress,
 			config.Network(),
+			msig.WithReader(cmdutil.EthReaderOf(tc.Reader)),
 		)
 		if err != nil {
 			appUI.Error("Couldn't interact with the contract: %s", err)
@@ -179,6 +181,7 @@ the on-chain transaction count.`,
 		multisigContract, err := msig.NewMultisigContract(
 			msigAddress,
 			config.Network(),
+			msig.WithReader(cmdutil.EthReaderOf(tc.Reader)),
 		)
 		if err != nil {
 			appUI.Error("Couldn't interact with the contract: %s", err)
@@ -1200,7 +1203,7 @@ the Safe, so the positional Safe address and --network become optional.`,
 		}
 
 		if config.Simulate {
-			multisigContract, err := msig.NewMultisigContract(tc.To, config.Network())
+			multisigContract, err := msig.NewMultisigContract(tc.To, config.Network(), msig.WithReader(cmdutil.EthReaderOf(tc.Reader)))
 			if err != nil {
 				appUI.Error("Couldn't interact with the contract: %s", err)
 				return
