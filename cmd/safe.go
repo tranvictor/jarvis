@@ -425,39 +425,34 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 		}
 
 		appUI.Info("Unlock your wallet and sign the EIP-712 safeTxHash now...")
-		account, err := accounts.UnlockAccount(tc.FromAcc)
+		sig, err := signSafeTx(tc.FromAcc, stx, domainSep)
+		if errors.Is(err, errSignSafeHash) {
+			appUI.Error("Couldn't sign safeTxHash: %s", signCause(err))
+			return
+		}
 		if err != nil {
 			appUI.Error("Couldn't unlock wallet: %s", err)
 			return
 		}
 
-		structHash := stx.StructHash()
-		sig, err := account.SignSafeHash(domainSep, structHash)
-		if err != nil {
-			appUI.Error("Couldn't sign safeTxHash: %s", err)
+		if err := safe.SubmitProposal(
+			tc.Collector,
+			safeTxFile,
+			ethcommon.HexToAddress(safeContract.Address),
+			config.Network().GetChainID(),
+			stx, hash,
+			ethcommon.HexToAddress(tc.From),
+			sig,
+		); err != nil {
+			if safeTxFile != "" {
+				appUI.Error("Couldn't write Safe tx file: %s", err)
+			} else {
+				appUI.Error("Submitting proposal to Safe Transaction Service failed: %s", err)
+			}
 			return
 		}
 
-		firstSig := []safe.OwnerSig{{
-			Owner: ethcommon.HexToAddress(tc.From),
-			Sig:   sig,
-		}}
-
 		if safeTxFile != "" {
-			// File mode: persist the proposal locally and tell the user how
-			// to hand the file off to the next signer. We deliberately do
-			// NOT also POST to the Safe Transaction Service in this mode,
-			// since the file becomes the source of truth going forward and
-			// mixing the two would create split-brain state.
-			if err := safe.WriteTxFile(
-				safeTxFile,
-				safeContract.Address,
-				config.Network().GetChainID(),
-				stx, hash, firstSig,
-			); err != nil {
-				appUI.Error("Couldn't write Safe tx file: %s", err)
-				return
-			}
 			appUI.Success("Proposal written to %s", safeTxFile)
 			appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
 			appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
@@ -467,17 +462,6 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 			appUI.Info("  jarvis msig execute %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
 			return
 		}
-
-		if err := tc.Collector.Propose(
-			ethcommon.HexToAddress(safeContract.Address),
-			stx, hash,
-			ethcommon.HexToAddress(tc.From),
-			sig,
-		); err != nil {
-			appUI.Error("Submitting proposal to Safe Transaction Service failed: %s", err)
-			return
-		}
-
 		appUI.Success("Proposal submitted.")
 		appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
 		appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
@@ -1989,16 +1973,20 @@ func ownerAlreadySigned(pending *safe.PendingTx, me ethcommon.Address) (onChain 
 	return false, false
 }
 
-func signPendingSafeTx(fromAcc jtypes.AccDesc, pending *safe.PendingTx, domainSep [32]byte) ([]byte, error) {
+func signSafeTx(fromAcc jtypes.AccDesc, stx *safe.SafeTx, domainSep [32]byte) ([]byte, error) {
 	account, err := accounts.UnlockAccount(fromAcc)
 	if err != nil {
 		return nil, err
 	}
-	sig, err := account.SignSafeHash(domainSep, pending.SafeTx.StructHash())
+	sig, err := account.SignSafeHash(domainSep, stx.StructHash())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", errSignSafeHash, err)
 	}
 	return sig, nil
+}
+
+func signPendingSafeTx(fromAcc jtypes.AccDesc, pending *safe.PendingTx, domainSep [32]byte) ([]byte, error) {
+	return signSafeTx(fromAcc, pending.SafeTx, domainSep)
 }
 
 func signCause(err error) string {
