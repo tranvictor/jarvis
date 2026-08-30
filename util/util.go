@@ -219,13 +219,31 @@ func ValueToAmountAndCurrency(value string) (string, string, error) {
 	return amountStr, currency, nil
 }
 
-func ScanForTxs(para string) []string {
-	re := regexp.MustCompile("(0x)?[0-9a-fA-F]{64}")
-	result := re.FindAllString(para, -1)
-	if result == nil {
+// ScanForTxs finds network-prefixed or bare 32-byte transaction hashes.
+// nwks[i] is the lowercase network name when a prefix was present, else "".
+func ScanForTxs(para string) (nwks []string, hashes []string) {
+	networkNames := networks.GetSupportedNetworkNames()
+	regexStr := strings.Join(networkNames, "|")
+	regexStr = fmt.Sprintf(
+		"(?i)(?:(?P<network>%s)(?:.{0,}?))?(?P<address>(?:0x)?(?:[0-9a-fA-F]{64}))",
+		regexStr,
+	)
+
+	re := regexp.MustCompile(regexStr)
+	for _, match := range re.FindAllStringSubmatch(para, -1) {
+		nwks = append(nwks, strings.ToLower(match[1]))
+		hashes = append(hashes, match[2])
+	}
+	return
+}
+
+// ScanForTxHashes is ScanForTxs dropping the optional network prefixes.
+func ScanForTxHashes(para string) []string {
+	_, hashes := ScanForTxs(para)
+	if hashes == nil {
 		return []string{}
 	}
-	return result
+	return hashes
 }
 
 func ScanForAddresses(para string) []string {
@@ -864,6 +882,31 @@ func GetGnosisMsigABI() *abi.ABI {
 		panic(err)
 	}
 	return &result
+}
+
+// GnosisMsigSubmissionTopic is the Classic Gnosis multisig Submission event topic
+// (keccak of Submission(uint256)), taken from the built-in ABI.
+func GnosisMsigSubmissionTopic() common.Hash {
+	ev, ok := GetGnosisMsigABI().Events["Submission"]
+	if !ok {
+		panic("gnosis msig ABI missing Submission event")
+	}
+	return ev.ID
+}
+
+// GnosisMsigTxIDFromLogs returns the transactionId from the first Submission
+// log emitted by msigAddr, or nil if none is present.
+func GnosisMsigTxIDFromLogs(logs []*types.Log, msigAddr string) *big.Int {
+	topic := GnosisMsigSubmissionTopic()
+	for _, l := range logs {
+		if len(l.Topics) < 2 {
+			continue
+		}
+		if strings.EqualFold(l.Address.Hex(), msigAddr) && l.Topics[0] == topic {
+			return l.Topics[1].Big()
+		}
+	}
+	return nil
 }
 
 func GetABI(addr string, network networks.Network) (*abi.ABI, error) {
