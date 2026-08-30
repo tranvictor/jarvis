@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"strings"
@@ -34,7 +35,7 @@ var (
 type sendTxParams struct {
 	txType   uint8
 	nonce    uint64
-	gasLimit uint64 // already includes ExtraGasLimit
+	gasLimit uint64  // already includes ExtraGasLimit
 	gasPrice float64 // already includes ExtraGasPrice
 	tipGas   float64 // already includes ExtraTipGas
 }
@@ -130,6 +131,29 @@ func handleSend(
 	}
 }
 
+func sendTransferUserError(err error, to string) string {
+	switch {
+	case errors.Is(err, cmdutil.ErrSendValueFormat):
+		return "Wrong format of the --value/-v param"
+	case errors.Is(err, cmdutil.ErrSendTokenNotFound):
+		return "Couldn't find the token by name or address"
+	case errors.Is(err, cmdutil.ErrSendDestNotFound):
+		return fmt.Sprintf("Couldn't get destination address with keyword: %s", to)
+	default:
+		return err.Error()
+	}
+}
+
+func sendTransferUserErrorEOA(err error, to string) string {
+	if errors.Is(err, cmdutil.ErrSendDestNotFound) {
+		return fmt.Sprintf("Couldn't find destination address by keyword nor address: %s", to)
+	}
+	if errors.Is(err, cmdutil.ErrSendValueFormat) {
+		return "Wrong format of --value/-v param"
+	}
+	return sendTransferUserError(err, to)
+}
+
 func sendFromMsig(reader utilreader.Reader, analyzer util.TxAnalyzer, resolver cmdutil.ABIResolver, bc cmdutil.TxBroadcaster) {
 	msigAddress, err := getMsigContractFromParams([]string{config.From}, resolver)
 	if err != nil {
@@ -155,48 +179,25 @@ func sendFromMsig(reader utilreader.Reader, analyzer util.TxAnalyzer, resolver c
 		return
 	}
 
-	var fromAcc types2.AccDesc
-	for _, owner := range owners {
-		a, err := accounts.GetAccount(owner)
-		if err == nil {
-			fromAcc = a
-			break
-		}
-	}
-	if fromAcc.Address == "" {
+	fromAcc, _, err := cmdutil.PickLocalOwner(owners, "", cmdutil.OwnerFirstMatch)
+	if errors.Is(err, cmdutil.ErrNoLocalOwner) {
 		appUI.Error("You don't have any wallet which is this multisig signer. Please jarvis wallet add to add the wallet.")
+		return
+	}
+	if err != nil {
+		appUI.Error("%s", err)
 		return
 	}
 	fromAddr := fromAcc.Address
 
-	amountStr, currency, err := util.ValueToAmountAndCurrency(value)
+	xfer, err := cmdutil.ResolveSendTransfer(resolver, value, to)
 	if err != nil {
-		appUI.Error("Wrong format of the --value/-v param")
+		appUI.Error("%s", sendTransferUserError(err, to))
 		return
 	}
-
-	var tokenAddrLocal string
-	if currency == util.ETH_ADDR || strings.EqualFold(currency, config.Network().GetNativeTokenSymbol()) {
-		tokenAddrLocal = util.ETH_ADDR
-	} else {
-		addr, _, err := resolver.GetMatchingAddress(currency + " token")
-		if err != nil {
-			if util.IsAddress(currency) {
-				tokenAddrLocal = currency
-			} else {
-				appUI.Error("Couldn't find the token by name or address")
-				return
-			}
-		} else {
-			tokenAddrLocal = addr
-		}
-	}
-
-	toAddr, _, err := resolver.GetMatchingAddress(to)
-	if err != nil {
-		appUI.Error("Couldn't get destination address with keyword: %s", to)
-		return
-	}
+	amountStr := xfer.AmountStr
+	tokenAddrLocal := xfer.TokenAddr
+	toAddr := xfer.DestAddr
 
 	gasPrice := config.GasPrice
 	if gasPrice == 0 {
@@ -373,34 +374,14 @@ exact addresses start with 0x.`,
 		fromAcc := acc
 		fromAddr := fromAcc.Address
 
-		amountStr, currency, err := util.ValueToAmountAndCurrency(value)
+		xfer, err := cmdutil.ResolveSendTransfer(resolver, value, to)
 		if err != nil {
-			appUI.Error("Wrong format of --value/-v param")
+			appUI.Error("%s", sendTransferUserErrorEOA(err, to))
 			return
 		}
-
-		var tokenAddrLocal string
-		if currency == util.ETH_ADDR || strings.EqualFold(currency, config.Network().GetNativeTokenSymbol()) {
-			tokenAddrLocal = util.ETH_ADDR
-		} else {
-			addr, _, err := resolver.GetMatchingAddress(currency + " token")
-			if err != nil {
-				if util.IsAddress(currency) {
-					tokenAddrLocal = currency
-				} else {
-					appUI.Error("Couldn't find the token by name or address")
-					return
-				}
-			} else {
-				tokenAddrLocal = addr
-			}
-		}
-
-		toAddr, _, err := resolver.GetMatchingAddress(to)
-		if err != nil {
-			appUI.Error("Couldn't find destination address by keyword nor address: %s", to)
-			return
-		}
+		amountStr := xfer.AmountStr
+		tokenAddrLocal := xfer.TokenAddr
+		toAddr := xfer.DestAddr
 
 		gasPrice := config.GasPrice
 		if gasPrice == 0 {
@@ -417,17 +398,17 @@ exact addresses start with 0x.`,
 			return
 		}
 
+		tipGas := 0.0
 		if txType == types.LegacyTxType && config.TipGas > 0 {
 			appUI.Warn("We are doing legacy tx hence we ignore tip gas parameter.")
-			return
-		}
-
-		tipGas := config.TipGas
-		if txType == types.DynamicFeeTxType && tipGas == 0 {
-			tipGas, err = reader.GetSuggestedGasTipCap()
-			if err != nil {
-				appUI.Error("Couldn't estimate recommended gas price: %s", err)
-				return
+		} else if txType == types.DynamicFeeTxType {
+			tipGas = config.TipGas
+			if tipGas == 0 {
+				tipGas, err = reader.GetSuggestedGasTipCap()
+				if err != nil {
+					appUI.Error("Couldn't estimate recommended gas price: %s", err)
+					return
+				}
 			}
 		}
 
@@ -595,53 +576,29 @@ func sendFromSafe(
 		return
 	}
 
-	var fromAcc types2.AccDesc
-	var matchingOwners int
-	for _, owner := range owners {
-		acc, err := accounts.GetAccount(owner)
-		if err == nil {
-			fromAcc = acc
-			matchingOwners++
-		}
-	}
-	if matchingOwners == 0 {
+	fromAcc, _, err := cmdutil.PickLocalOwner(owners, "", cmdutil.OwnerRequireUnique)
+	if errors.Is(err, cmdutil.ErrNoLocalOwner) {
 		appUI.Error("You don't have any wallet that is an owner of this Safe. Please run `jarvis wallet add` first.")
 		return
 	}
-	if matchingOwners > 1 {
+	if errors.Is(err, cmdutil.ErrMultipleLocalOwners) {
 		appUI.Error("You have multiple wallets that are owners of this Safe; please pass --from explicitly.")
+		return
+	}
+	if err != nil {
+		appUI.Error("%s", err)
 		return
 	}
 	fromAddr := fromAcc.Address
 
-	amountStr, currency, err := util.ValueToAmountAndCurrency(value)
+	xfer, err := cmdutil.ResolveSendTransfer(resolver, value, to)
 	if err != nil {
-		appUI.Error("Wrong format of the --value/-v param")
+		appUI.Error("%s", sendTransferUserError(err, to))
 		return
 	}
-
-	var tokenAddrLocal string
-	if currency == util.ETH_ADDR || strings.EqualFold(currency, config.Network().GetNativeTokenSymbol()) {
-		tokenAddrLocal = util.ETH_ADDR
-	} else {
-		addr, _, err := resolver.GetMatchingAddress(currency + " token")
-		if err != nil {
-			if util.IsAddress(currency) {
-				tokenAddrLocal = currency
-			} else {
-				appUI.Error("Couldn't find the token by name or address")
-				return
-			}
-		} else {
-			tokenAddrLocal = addr
-		}
-	}
-
-	toAddr, _, err := resolver.GetMatchingAddress(to)
-	if err != nil {
-		appUI.Error("Couldn't get destination address with keyword: %s", to)
-		return
-	}
+	amountStr := xfer.AmountStr
+	tokenAddrLocal := xfer.TokenAddr
+	toAddr := xfer.DestAddr
 
 	// Compute the wei amount the Safe should move. ALL refers to the
 	// Safe's balance, NOT the EOA's, mirroring sendFromMsig semantics.

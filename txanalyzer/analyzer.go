@@ -20,14 +20,6 @@ import (
 	reader "github.com/tranvictor/jarvis/util/reader"
 )
 
-func EthAnalyzer(network Network) (*TxAnalyzer, error) {
-	r, err := util.EthReader(network)
-	if err != nil {
-		return nil, err
-	}
-	return NewGenericAnalyzer(r, network), nil
-}
-
 type TxAnalyzer struct {
 	ctx *AnalysisContext
 }
