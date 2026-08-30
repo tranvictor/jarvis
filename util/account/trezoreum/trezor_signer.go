@@ -10,8 +10,9 @@ import (
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+
+	jarviscommon "github.com/tranvictor/jarvis/common"
 )
 
 // deviceWaitTimeout is how long we block Unlock() waiting for a
@@ -178,7 +179,7 @@ func (self *TrezorSigner) SignTypedDataHash(
 		err,
 	)
 
-	digest := safeEIP712Digest(domainSeparator, structHash)
+	digest := jarviscommon.EIP712Digest(domainSeparator, structHash)
 	sig, err = self.trezor.SignPersonalMessage(self.path, digest[:])
 	if err != nil {
 		return nil, err
@@ -234,18 +235,6 @@ func shouldFallBackToPersonalSign(err error) bool {
 		}
 	}
 	return false
-}
-
-// safeEIP712Digest mirrors account.safeEIP712Digest; duplicated here to avoid
-// an import cycle (this package is imported by util/account).
-func safeEIP712Digest(domainSeparator, structHash [32]byte) [32]byte {
-	buf := make([]byte, 0, 2+32+32)
-	buf = append(buf, 0x19, 0x01)
-	buf = append(buf, domainSeparator[:]...)
-	buf = append(buf, structHash[:]...)
-	var out [32]byte
-	copy(out[:], crypto.Keccak256(buf))
-	return out
 }
 
 func NewTrezorSigner(path string, address string) (*TrezorSigner, error) {

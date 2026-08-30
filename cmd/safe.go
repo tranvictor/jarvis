@@ -2137,41 +2137,12 @@ func operationLabel(op safe.Operation) string {
 }
 
 // nextSafeNonce returns the SafeTx nonce to use for a brand-new proposal.
-// Honors --safe-nonce when set, else combines the on-chain nonce with the
-// service's pending queue so multiple in-flight proposals don't collide.
+// Honors --safe-nonce when set, else delegates to safe.NextNonce.
 func nextSafeNonce(s *safe.SafeContract, c safe.SignatureCollector) (uint64, error) {
 	if safeNonceOverride != 0 {
 		return safeNonceOverride, nil
 	}
-	onchain, err := s.Nonce()
-	if err != nil {
-		return 0, fmt.Errorf("reading on-chain nonce: %w", err)
-	}
-	// Without a Safe Transaction Service we have no source of truth for
-	// the pending queue. Fall back to the on-chain nonce and let the user
-	// override with --safe-nonce if they need to stack proposals.
-	if c == nil {
-		return onchain, nil
-	}
-	next := onchain
-	// Walk forward until we find a free slot. The service is authoritative
-	// for "is there an in-flight proposal at nonce N?" so we just probe.
-	for i := uint64(0); i < 64; i++ {
-		pending, err := c.FindByNonce(ethcommon.HexToAddress(s.Address), next)
-		if err != nil {
-			// On the first iteration treat lookup errors as fatal; otherwise
-			// assume we've walked past the queue.
-			if i == 0 {
-				return 0, fmt.Errorf("checking pending queue at nonce %d: %w", next, err)
-			}
-			break
-		}
-		if pending == nil {
-			return next, nil
-		}
-		next++
-	}
-	return next, nil
+	return safe.NextNonce(s, c)
 }
 
 // loadPendingFromTxFile reads safeTxFile, cross-checks that it matches

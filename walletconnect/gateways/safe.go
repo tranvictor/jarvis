@@ -103,7 +103,7 @@ func NewSafeGateway(
 	}, nil
 }
 
-func (g *SafeGateway) Kind() string    { return "safe" }
+func (g *SafeGateway) Kind() string { return "safe" }
 func (g *SafeGateway) Account() string {
 	return walletconnect.AccountString(g.network.GetChainID(), g.addr.Hex())
 }
@@ -163,7 +163,7 @@ func (g *SafeGateway) SendTransaction(
 	data := tx.Data
 	to := ethcommon.HexToAddress(tx.To)
 
-	nonce, err := nextSafeNonce(g.safe, g.collector)
+	nonce, err := safe.NextNonce(g.safe, g.collector)
 	if err != nil {
 		return "", fmt.Errorf("compute next Safe nonce: %w", err)
 	}
@@ -223,34 +223,6 @@ func (g *SafeGateway) SendTransaction(
 	// explorer link; that link won't resolve until the Safe executes,
 	// but giving the dApp something well-formed keeps its UI happy.
 	return "0x" + hex.EncodeToString(hash[:]), nil
-}
-
-// nextSafeNonce mirrors cmd/safe.go's private helper. Duplicated here
-// (rather than exported from cmd) because cmd → walletconnect is
-// the natural dependency direction and we don't want to invert it.
-func nextSafeNonce(sc *safe.SafeContract, c safe.SignatureCollector) (uint64, error) {
-	onchain, err := sc.Nonce()
-	if err != nil {
-		return 0, fmt.Errorf("reading on-chain nonce: %w", err)
-	}
-	if c == nil {
-		return onchain, nil
-	}
-	next := onchain
-	for i := uint64(0); i < 64; i++ {
-		pending, err := c.FindByNonce(ethcommon.HexToAddress(sc.Address), next)
-		if err != nil {
-			if i == 0 {
-				return 0, fmt.Errorf("checking pending queue at nonce %d: %w", next, err)
-			}
-			break
-		}
-		if pending == nil {
-			return next, nil
-		}
-		next++
-	}
-	return next, nil
 }
 
 func (g *SafeGateway) unlock() (*account.Account, error) {

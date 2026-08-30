@@ -10,6 +10,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+
+	jarviscommon "github.com/tranvictor/jarvis/common"
 )
 
 // Operation is the call type executed by the Safe.
@@ -94,14 +96,7 @@ func (t *SafeTx) StructHash() [32]byte {
 //
 //	keccak256(0x19 || 0x01 || domainSeparator || structHash)
 func (t *SafeTx) SafeTxHash(domainSeparator [32]byte) [32]byte {
-	mh := t.StructHash()
-	enc := make([]byte, 0, 2+32+32)
-	enc = append(enc, 0x19, 0x01)
-	enc = append(enc, domainSeparator[:]...)
-	enc = append(enc, mh[:]...)
-	var out [32]byte
-	copy(out[:], crypto.Keccak256(enc))
-	return out
+	return jarviscommon.EIP712Digest(domainSeparator, t.StructHash())
 }
 
 // OwnerSig pairs a 65-byte Safe-compatible signature with the address of the

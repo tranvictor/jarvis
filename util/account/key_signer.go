@@ -10,6 +10,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
+
+	jarviscommon "github.com/tranvictor/jarvis/common"
 )
 
 type KeySigner struct {
@@ -33,7 +35,7 @@ func (self *KeySigner) SignTx(
 // directly with the wrapped private key and returns r||s||v with v in {27, 28}
 // — the canonical EIP-712 form expected by GnosisSafe.checkSignatures.
 func (self *KeySigner) SignTypedDataHash(domainSeparator, structHash [32]byte) ([]byte, error) {
-	digest := safeEIP712Digest(domainSeparator, structHash)
+	digest := jarviscommon.EIP712Digest(domainSeparator, structHash)
 	sig, err := crypto.Sign(digest[:], self.key)
 	if err != nil {
 		return nil, fmt.Errorf("crypto.Sign: %w", err)
@@ -83,19 +85,6 @@ func personalMessageDigest(message []byte) [32]byte {
 	buf := make([]byte, 0, len(prefix)+len(message))
 	buf = append(buf, prefix...)
 	buf = append(buf, message...)
-	var out [32]byte
-	copy(out[:], crypto.Keccak256(buf))
-	return out
-}
-
-// safeEIP712Digest computes keccak256(0x19 0x01 || domainSeparator || structHash).
-// Exposed inside the package so each Signer impl can build the same digest
-// when its underlying device only supports raw-hash signing.
-func safeEIP712Digest(domainSeparator, structHash [32]byte) [32]byte {
-	buf := make([]byte, 0, 2+32+32)
-	buf = append(buf, 0x19, 0x01)
-	buf = append(buf, domainSeparator[:]...)
-	buf = append(buf, structHash[:]...)
 	var out [32]byte
 	copy(out[:], crypto.Keccak256(buf))
 	return out
