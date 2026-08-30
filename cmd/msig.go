@@ -16,8 +16,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/tranvictor/walletarmy"
 
-	"github.com/tranvictor/jarvis/accounts"
-	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
@@ -335,19 +333,12 @@ func GetApproverAccountFromMsig(multisigContract *msig.MultisigContract) (string
 		return "", fmt.Errorf("getting msig owners failed: %w", err)
 	}
 
-	var acc jtypes.AccDesc
-	count := 0
-	for _, owner := range owners {
-		a, err := accounts.GetAccount(owner)
-		if err == nil {
-			if count == 0 {
-				acc = a // capture only the first matching wallet
-			}
-			count++
-		}
-	}
-	if count == 0 {
+	acc, count, err := cmdutil.PickLocalOwner(owners, "", cmdutil.OwnerFirstMatch)
+	if errors.Is(err, cmdutil.ErrNoLocalOwner) {
 		return "", fmt.Errorf("you don't have any wallet which is this multisig signer. please jarvis wallet add to add the wallet")
+	}
+	if err != nil {
+		return "", err
 	}
 	if count > 1 {
 		appUI.Warn("You have %d wallets that are signers of this multisig. Using the first one found: %s", count, acc.Address)

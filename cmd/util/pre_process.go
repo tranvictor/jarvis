@@ -1,15 +1,14 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/spf13/cobra"
 
-	"github.com/tranvictor/jarvis/accounts"
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
@@ -193,23 +192,19 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 			return fmt.Errorf("getting msig owners failed: %w", err)
 		}
 
-		count := 0
-		for _, owner := range owners {
-			acc, err := accounts.GetAccount(owner)
-			if err == nil {
-				fromAcc = acc
-				count++
-			}
-		}
-		if count == 0 {
+		fromAcc, _, err = PickLocalOwner(owners, config.From, OwnerRequireUnique)
+		if errors.Is(err, ErrNoLocalOwner) {
 			return fmt.Errorf(
 				"you don't have any wallet which is this multisig signer. please jarvis wallet add to add the wallet",
 			)
 		}
-		if count != 1 {
+		if errors.Is(err, ErrMultipleLocalOwners) {
 			return fmt.Errorf(
 				"you have many wallets that are this multisig signers. please specify only 1",
 			)
+		}
+		if err != nil {
+			return err
 		}
 	} else {
 		fromAcc, _, err = ResolveAccount(tc.Resolver, config.From)
@@ -221,57 +216,9 @@ func CommonTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) (err error) 
 	tc.FromAcc = fromAcc
 	tc.From = fromAcc.Address
 
-	// tc.Reader is set by CommonFunctionCallPreprocess; use it directly.
-	reader := tc.Reader
-
-	if config.GasPrice == 0 {
-		tc.GasPrice, err = reader.RecommendedGasPrice()
-		if err != nil {
-			showNodeErrorGuidance(u, config.Network())
-			return fmt.Errorf("getting recommended gas price failed: %w", err)
-		}
-	} else {
-		tc.GasPrice = config.GasPrice
+	if err := FillSigningTxParams(u, &tc, config.Network()); err != nil {
+		return err
 	}
-
-	if config.Nonce == 0 {
-		tc.Nonce, err = reader.GetMinedNonce(tc.From)
-		if err != nil {
-			showNodeErrorGuidance(u, config.Network())
-			return fmt.Errorf("getting nonce failed: %w", err)
-		}
-	} else {
-		tc.Nonce = config.Nonce
-	}
-
-	tc.TxType, err = ValidTxType(reader, config.Network())
-	if err != nil {
-		showNodeErrorGuidance(u, config.Network())
-		return fmt.Errorf("couldn't determine proper tx type: %w", err)
-	}
-
-	if tc.TxType == types.LegacyTxType && config.TipGas > 0 {
-		return fmt.Errorf("we are doing legacy tx hence we ignore tip gas parameter")
-	}
-
-	if tc.TxType == types.DynamicFeeTxType {
-		if config.TipGas == 0 {
-			tc.TipGas, err = reader.GetSuggestedGasTipCap()
-			if err != nil {
-				showNodeErrorGuidance(u, config.Network())
-				return fmt.Errorf("couldn't estimate recommended gas price: %w", err)
-			}
-		} else {
-			tc.TipGas = config.TipGas
-		}
-	}
-
-	bc, err := util.EthBroadcaster(config.Network())
-	if err != nil {
-		showNodeErrorGuidance(u, config.Network())
-		return fmt.Errorf("couldn't connect to broadcaster: %w", err)
-	}
-	tc.Broadcaster = bc
 
 	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil
@@ -288,15 +235,9 @@ func CommonSafeReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error 
 	if len(args) < 1 {
 		return fmt.Errorf("please specify the safe address (or URL) as the first argument")
 	}
-	var ref *safe.SafeAppRef
-	if r, ok := safe.ParseSafeAppURL(args[0]); ok {
-		ref = r
-		args[0] = r.SafeAddress.Hex()
-		if r.ChainID != 0 && !cmd.Flags().Changed("network") {
-			if n, err := networks.GetNetworkByID(r.ChainID); err == nil {
-				config.NetworkString = n.GetName()
-			}
-		}
+	ref, err := preResolveMultisigArg(u, cmd, args)
+	if err != nil {
+		return err
 	}
 
 	if err := CommonFunctionCallPreprocess(u, cmd, args); err != nil {
@@ -321,28 +262,7 @@ func CommonSafeReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error 
 	}
 	tc.Safe = safeContract
 
-	// The Safe Transaction Service is optional: chains without a URL in
-	// safe/txservice.defaultURLs (and without an env var override) can
-	// still run inspection commands that accept a --safe-tx-file, and
-	// every transactional command that uses --approve-onchain +
-	// --safe-tx-file. We therefore warn and continue with a nil Collector
-	// rather than aborting preprocess. Commands that actually need the
-	// service will surface a more actionable error to the user.
-	if collector, err := safe.NewTxServiceCollector(config.Network().GetChainID()); err == nil {
-		tc.Collector = collector
-	} else {
-		u.Warn(
-			"Safe Transaction Service is not configured for chain %d: %s",
-			config.Network().GetChainID(), err,
-		)
-		u.Warn(
-			"Set SAFE_TX_SERVICE_URL_%d (or a global SAFE_TX_SERVICE_URL) to use a self-hosted deployment,",
-			config.Network().GetChainID(),
-		)
-		u.Warn(
-			"or pass --safe-tx-file / --approve-onchain to operate without the service.",
-		)
-	}
+	wireOptionalCollector(u, &tc)
 
 	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil
@@ -374,25 +294,13 @@ func CommonSafeReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error 
 //     for off-chain signature exchange.
 func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 	// Step 0: try to recognise a Safe-app URL / EIP-3770 reference in
-	// args[0] BEFORE the inner preprocess looks at it. We rewrite args[0]
-	// in place to a bare address so all downstream resolution paths work
-	// unchanged, and we set config.NetworkString from the chain prefix
-	// when the user didn't pass --network explicitly.
+	// args[0] BEFORE the inner preprocess looks at it.
 	var ref *safe.SafeAppRef
 	if len(args) > 0 {
-		if r, ok := safe.ParseSafeAppURL(args[0]); ok {
-			ref = r
-			args[0] = r.SafeAddress.Hex()
-			if r.ChainID != 0 && !cmd.Flags().Changed("network") {
-				if n, err := networks.GetNetworkByID(r.ChainID); err == nil {
-					config.NetworkString = n.GetName()
-				} else {
-					u.Warn(
-						"Safe URL refers to chain id %d (%s) which jarvis doesn't have a built-in network for; falling back to --network=%s. Add a custom network or pass -k explicitly to override.",
-						r.ChainID, r.ChainShortName, config.NetworkString,
-					)
-				}
-			}
+		var err error
+		ref, err = preResolveMultisigArg(u, cmd, args)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -440,37 +348,26 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 
 	var fromAcc jtypes.AccDesc
 	if config.From == "" {
-		count := 0
-		for _, owner := range owners {
-			acc, err := accounts.GetAccount(owner)
-			if err == nil {
-				fromAcc = acc
-				count++
-			}
-		}
-		if count == 0 {
+		fromAcc, _, err = PickLocalOwner(owners, config.From, OwnerRequireUnique)
+		if errors.Is(err, ErrNoLocalOwner) {
 			return fmt.Errorf(
 				"you don't have any wallet which is an owner of this Safe; please run `jarvis wallet add` first",
 			)
 		}
-		if count > 1 {
+		if errors.Is(err, ErrMultipleLocalOwners) {
 			return fmt.Errorf(
 				"you have multiple wallets that are owners of this Safe; please specify exactly one with --from",
 			)
+		}
+		if err != nil {
+			return err
 		}
 	} else {
 		fromAcc, _, err = ResolveAccount(tc.Resolver, config.From)
 		if err != nil {
 			return err
 		}
-		isOwner := false
-		for _, owner := range owners {
-			if strings.EqualFold(owner, fromAcc.Address) {
-				isOwner = true
-				break
-			}
-		}
-		if !isOwner {
+		if !IsAmongOwners(owners, fromAcc.Address) {
 			return fmt.Errorf(
 				"%s is not an owner of Safe %s",
 				fromAcc.Address, tc.To,
@@ -480,73 +377,37 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 	tc.FromAcc = fromAcc
 	tc.From = fromAcc.Address
 
-	r := tc.Reader
-	if config.GasPrice == 0 {
-		tc.GasPrice, err = r.RecommendedGasPrice()
-		if err != nil {
-			showNodeErrorGuidance(u, config.Network())
-			return fmt.Errorf("getting recommended gas price failed: %w", err)
-		}
-	} else {
-		tc.GasPrice = config.GasPrice
+	if err := FillSigningTxParams(u, &tc, config.Network()); err != nil {
+		return err
 	}
 
-	if config.Nonce == 0 {
-		tc.Nonce, err = r.GetMinedNonce(tc.From)
-		if err != nil {
-			showNodeErrorGuidance(u, config.Network())
-			return fmt.Errorf("getting nonce failed: %w", err)
-		}
-	} else {
-		tc.Nonce = config.Nonce
-	}
-
-	tc.TxType, err = ValidTxType(r, config.Network())
-	if err != nil {
-		showNodeErrorGuidance(u, config.Network())
-		return fmt.Errorf("couldn't determine proper tx type: %w", err)
-	}
-	if tc.TxType == types.LegacyTxType && config.TipGas > 0 {
-		return fmt.Errorf("we are doing legacy tx hence we ignore tip gas parameter")
-	}
-	if tc.TxType == types.DynamicFeeTxType {
-		if config.TipGas == 0 {
-			tc.TipGas, err = r.GetSuggestedGasTipCap()
-			if err != nil {
-				showNodeErrorGuidance(u, config.Network())
-				return fmt.Errorf("couldn't estimate recommended gas price: %w", err)
-			}
-		} else {
-			tc.TipGas = config.TipGas
-		}
-	}
-
-	bc, err := util.EthBroadcaster(config.Network())
-	if err != nil {
-		showNodeErrorGuidance(u, config.Network())
-		return fmt.Errorf("couldn't connect to broadcaster: %w", err)
-	}
-	tc.Broadcaster = bc
-
-	// Optional: see the same handling in CommonSafeReadPreprocess.
-	if collector, err := safe.NewTxServiceCollector(config.Network().GetChainID()); err == nil {
-		tc.Collector = collector
-	} else {
-		u.Warn(
-			"Safe Transaction Service is not configured for chain %d: %s",
-			config.Network().GetChainID(), err,
-		)
-		u.Warn(
-			"Set SAFE_TX_SERVICE_URL_%d (or a global SAFE_TX_SERVICE_URL) to use a self-hosted deployment,",
-			config.Network().GetChainID(),
-		)
-		u.Warn(
-			"or pass --safe-tx-file / --approve-onchain to operate without the service.",
-		)
-	}
+	wireOptionalCollector(u, &tc)
 
 	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil
+}
+
+// wireOptionalCollector attaches a Safe Transaction Service collector when
+// the chain has a configured URL. Missing service is a warning, not a
+// preprocess failure: inspection and --safe-tx-file / --approve-onchain
+// paths still work without it.
+func wireOptionalCollector(u ui.UI, tc *TxContext) {
+	collector, err := safe.NewTxServiceCollector(config.Network().GetChainID())
+	if err == nil {
+		tc.Collector = collector
+		return
+	}
+	u.Warn(
+		"Safe Transaction Service is not configured for chain %d: %s",
+		config.Network().GetChainID(), err,
+	)
+	u.Warn(
+		"Set SAFE_TX_SERVICE_URL_%d (or a global SAFE_TX_SERVICE_URL) to use a self-hosted deployment,",
+		config.Network().GetChainID(),
+	)
+	u.Warn(
+		"or pass --safe-tx-file / --approve-onchain to operate without the service.",
+	)
 }
 
 // preResolveMultisigArg normalises args[0] for the unified multisig

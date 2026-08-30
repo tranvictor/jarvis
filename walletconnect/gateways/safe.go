@@ -4,11 +4,9 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
-	"strings"
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 
-	"github.com/tranvictor/jarvis/accounts"
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
@@ -46,7 +44,7 @@ type SafeGateway struct {
 	collector safe.SignatureCollector
 	resolver  cmdutil.ABIResolver
 
-	unlocked *account.Account
+	unlocker unlockCache
 }
 
 // NewSafeGateway prepares the gateway for a Safe at safeAddr on net,
@@ -68,16 +66,8 @@ func NewSafeGateway(
 	if err != nil {
 		return nil, fmt.Errorf("read Safe owners: %w", err)
 	}
-	isOwner := false
-	for _, o := range owners {
-		if strings.EqualFold(o, ownerAcc.Address) {
-			isOwner = true
-			break
-		}
-	}
-	if !isOwner {
-		return nil, fmt.Errorf(
-			"wallet %s is not an owner of Safe %s", ownerAcc.Address, safeAddr)
+	if err := verifyOwner(ownerAcc.Address, owners, "Safe", safeAddr); err != nil {
+		return nil, err
 	}
 
 	// We prefer a Safe Transaction Service collector; if the chain
@@ -100,6 +90,11 @@ func NewSafeGateway(
 		network:   net,
 		collector: coll,
 		resolver:  resolver,
+		unlocker: unlockCache{
+			acc:    ownerAcc,
+			ui:     ui,
+			prompt: fmt.Sprintf("Unlocking owner wallet %s for Safe signing…", ownerAcc.Address),
+		},
 	}, nil
 }
 
@@ -124,19 +119,15 @@ func (g *SafeGateway) Methods() []string {
 }
 
 func (g *SafeGateway) SwitchChain(ctx context.Context, chain string) error {
-	return fmt.Errorf(
-		"%w: Safe sessions are pinned to the chain they opened on",
-		walletconnect.ErrChainNotSupported)
+	return errSwitchChainPinned("Safe sessions are pinned to the chain they opened on")
 }
 
 func (g *SafeGateway) PersonalSign(ctx context.Context, chain string, message []byte) (string, error) {
-	return "", fmt.Errorf("%w: a Safe cannot produce an EOA personal_sign signature",
-		walletconnect.ErrMethodNotSupported)
+	return "", errMethodUnsupported("a Safe cannot produce an EOA personal_sign signature")
 }
 
 func (g *SafeGateway) SignTypedData(ctx context.Context, chain string, typedDataJSON []byte) (string, error) {
-	return "", fmt.Errorf("%w: a Safe cannot produce an EOA typed-data signature",
-		walletconnect.ErrMethodNotSupported)
+	return "", errMethodUnsupported("a Safe cannot produce an EOA typed-data signature")
 }
 
 // SendTransaction turns the dApp's eth_sendTransaction payload into a
@@ -226,14 +217,5 @@ func (g *SafeGateway) SendTransaction(
 }
 
 func (g *SafeGateway) unlock() (*account.Account, error) {
-	if g.unlocked != nil {
-		return g.unlocked, nil
-	}
-	g.ui.Info("Unlocking owner wallet %s for Safe signing…", g.owner.Address)
-	ac, err := accounts.UnlockAccount(g.owner)
-	if err != nil {
-		return nil, fmt.Errorf("unlock wallet: %w", err)
-	}
-	g.unlocked = ac
-	return ac, nil
+	return g.unlocker.unlock()
 }

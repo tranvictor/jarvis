@@ -9,7 +9,6 @@ import (
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	"github.com/tranvictor/jarvis/accounts"
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
@@ -43,7 +42,7 @@ type ClassicGateway struct {
 	bc       *broadcaster.Broadcaster
 	resolver cmdutil.ABIResolver
 
-	unlocked *account.Account
+	unlocker unlockCache
 }
 
 // NewClassicGateway prepares a gateway for the classic multisig at
@@ -64,16 +63,8 @@ func NewClassicGateway(
 	if err != nil {
 		return nil, fmt.Errorf("read multisig owners: %w", err)
 	}
-	isOwner := false
-	for _, o := range owners {
-		if strings.EqualFold(o, ownerAcc.Address) {
-			isOwner = true
-			break
-		}
-	}
-	if !isOwner {
-		return nil, fmt.Errorf(
-			"wallet %s is not an owner of multisig %s", ownerAcc.Address, msigAddr)
+	if err := verifyOwner(ownerAcc.Address, owners, "multisig", msigAddr); err != nil {
+		return nil, err
 	}
 
 	rd, err := jarvisNetReader(net)
@@ -94,10 +85,15 @@ func NewClassicGateway(
 		reader:   rd,
 		bc:       bc,
 		resolver: resolver,
+		unlocker: unlockCache{
+			acc:    ownerAcc,
+			ui:     ui,
+			prompt: fmt.Sprintf("Unlocking owner wallet %s for signing…", ownerAcc.Address),
+		},
 	}, nil
 }
 
-func (g *ClassicGateway) Kind() string    { return "classic" }
+func (g *ClassicGateway) Kind() string { return "classic" }
 func (g *ClassicGateway) Account() string {
 	return walletconnect.AccountString(g.network.GetChainID(), g.addr.Hex())
 }
@@ -120,19 +116,15 @@ func (g *ClassicGateway) Methods() []string {
 // re-bind the owner set. Since that's strictly more work than the
 // user can accomplish by opening a new session, we refuse here too.
 func (g *ClassicGateway) SwitchChain(ctx context.Context, chain string) error {
-	return fmt.Errorf(
-		"%w: classic-multisig sessions are pinned to the chain they opened on",
-		walletconnect.ErrChainNotSupported)
+	return errSwitchChainPinned("classic-multisig sessions are pinned to the chain they opened on")
 }
 
 func (g *ClassicGateway) PersonalSign(ctx context.Context, chain string, message []byte) (string, error) {
-	return "", fmt.Errorf("%w: a classic multisig can't produce personal_sign signatures",
-		walletconnect.ErrMethodNotSupported)
+	return "", errMethodUnsupported("a classic multisig can't produce personal_sign signatures")
 }
 
 func (g *ClassicGateway) SignTypedData(ctx context.Context, chain string, typedDataJSON []byte) (string, error) {
-	return "", fmt.Errorf("%w: a classic multisig can't produce typed-data signatures",
-		walletconnect.ErrMethodNotSupported)
+	return "", errMethodUnsupported("a classic multisig can't produce typed-data signatures")
 }
 
 // SendTransaction wraps the inner call in submitTransaction,
@@ -267,14 +259,5 @@ func (g *ClassicGateway) waitAndAnalyze(
 }
 
 func (g *ClassicGateway) unlock() (*account.Account, error) {
-	if g.unlocked != nil {
-		return g.unlocked, nil
-	}
-	g.ui.Info("Unlocking owner wallet %s for signing…", g.owner.Address)
-	ac, err := accounts.UnlockAccount(g.owner)
-	if err != nil {
-		return nil, fmt.Errorf("unlock wallet: %w", err)
-	}
-	g.unlocked = ac
-	return ac, nil
+	return g.unlocker.unlock()
 }

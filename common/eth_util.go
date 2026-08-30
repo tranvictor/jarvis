@@ -1,10 +1,6 @@
 package common
 
 import (
-	"fmt"
-	"io/ioutil"
-	"path"
-	"runtime"
 	"strings"
 	"time"
 
@@ -13,23 +9,6 @@ import (
 )
 
 var Start time.Time
-
-func getABIFromFile(filename string) (*abi.ABI, error) {
-	_, current, _, ok := runtime.Caller(0)
-	if !ok {
-		return nil, fmt.Errorf("couldn't get filepath of the caller")
-	}
-	content, err := ioutil.ReadFile(path.Join(path.Dir(current), filename))
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := abi.JSON(strings.NewReader(string(content)))
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
 
 func GetMultiCallABI() *abi.ABI {
 	result, _ := abi.JSON(strings.NewReader(multicallabi))

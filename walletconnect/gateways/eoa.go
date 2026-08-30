@@ -11,7 +11,6 @@ import (
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
-	"github.com/tranvictor/jarvis/accounts"
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	jarviscommon "github.com/tranvictor/jarvis/common"
@@ -39,12 +38,11 @@ type EOAGateway struct {
 	acc  jtypes.AccDesc
 	addr ethcommon.Address
 
-	// unlocked is a cached Account from accounts.UnlockAccount —
+	// unlocker caches the Account from accounts.UnlockAccount —
 	// constructed lazily on first sign to avoid prompting for a
 	// passphrase during the pair-time proposal step (where the user
 	// might still reject).
-	unlockMu sync.Mutex
-	unlocked *account.Account
+	unlocker unlockCache
 
 	// chainMu guards cur* fields across SwitchChain.
 	chainMu sync.RWMutex
@@ -67,11 +65,18 @@ func NewEOAGateway(
 	defaultNetwork jarvisnetworks.Network,
 	resolver cmdutil.ABIResolver,
 ) (*EOAGateway, error) {
+	addr := ethcommon.HexToAddress(acc.Address)
 	g := &EOAGateway{
 		ui:       ui,
 		acc:      acc,
-		addr:     ethcommon.HexToAddress(acc.Address),
+		addr:     addr,
 		resolver: resolver,
+		unlocker: unlockCache{
+			locked: true,
+			acc:    acc,
+			ui:     ui,
+			prompt: fmt.Sprintf("Unlocking wallet %s for signing…", addr.Hex()),
+		},
 	}
 	if err := g.bindChain(defaultNetwork); err != nil {
 		return nil, err
@@ -79,7 +84,7 @@ func NewEOAGateway(
 	return g, nil
 }
 
-func (g *EOAGateway) Kind() string    { return "eoa" }
+func (g *EOAGateway) Kind() string { return "eoa" }
 func (g *EOAGateway) Account() string {
 	// CAIP-10 for the current chain; the session layer asks for this
 	// at settle-time so the chain here matters.
@@ -383,18 +388,7 @@ func (g *EOAGateway) bindChainLocked(net jarvisnetworks.Network) error {
 // first call. HW wallets reuse the same Account across operations;
 // device-level confirmation still happens per-sign.
 func (g *EOAGateway) unlock() (*account.Account, error) {
-	g.unlockMu.Lock()
-	defer g.unlockMu.Unlock()
-	if g.unlocked != nil {
-		return g.unlocked, nil
-	}
-	g.ui.Info("Unlocking wallet %s for signing…", g.addr.Hex())
-	ac, err := accounts.UnlockAccount(g.acc)
-	if err != nil {
-		return nil, fmt.Errorf("unlock wallet: %w", err)
-	}
-	g.unlocked = ac
-	return ac, nil
+	return g.unlocker.unlock()
 }
 
 // promptSignConfirm shows the transaction to the operator using the

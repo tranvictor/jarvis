@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"os"
@@ -1349,64 +1350,6 @@ type safeBatchResult struct {
 	reason      string
 }
 
-// bapproveSafeCmd takes a free-form list of Safe references (URLs, raw
-// `multisig_<safe>_<hash>` tokens, or `<chain>:<safe>:<hash>` triples) and
-// approves each one in turn, mirroring `jarvis msig bapprove`. Anything we
-// can't parse, find, or sign for is recorded in the final summary so the
-// operator can see at a glance which approvals went through.
-var bapproveSafeCmd = &cobra.Command{
-	Use:   "bapprove",
-	Short: "Approve multiple pending Safe transactions in one shot",
-	Long: `Process a list of Safe transaction references and approve each.
-Each whitespace- or comma-separated token may be:
-
-  - a Safe-app URL: https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=<chain>:<safe>
-  - a bare multisig token: multisig_<safe>_<hash>
-  - an EIP-3770 chain prefix + hash: <chain>:<safe>:<hash>
-
-A summary table is printed at the end. With --json-output-file, the same
-data is also written as JSON.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) == 0 {
-			appUI.Error("Please provide one or more Safe tx references.")
-			return
-		}
-		raw := strings.Join(args, " ")
-		refs := scanForSafeRefs(raw)
-		if len(refs) == 0 {
-			appUI.Error("No Safe tx references parsed from input.")
-			return
-		}
-
-		total := len(refs)
-		results := make([]safeBatchResult, 0, total)
-
-		appUI.Section(fmt.Sprintf("Batch Approve: %d Safe transactions", total))
-
-		for i, ref := range refs {
-			r := safeBatchResult{ref: ref.original}
-			appUI.Info("")
-			appUI.Critical("━━━ [%d/%d] %s ━━━", i+1, total, ref.original)
-
-			res := approveSafeRef(ref)
-			r.network = res.network
-			r.networkObj = res.networkObj
-			r.safeAddress = res.safeAddress
-			r.safeTxHash = res.safeTxHash
-			r.confirmType = res.confirmType
-			r.execTxHash = res.execTxHash
-			r.status = res.status
-			r.reason = res.reason
-			results = append(results, r)
-		}
-
-		printSafeBatchSummary(results)
-		if config.JSONOutputFile != "" {
-			writeSafeBatchSummaryJSON(config.JSONOutputFile, results)
-		}
-	},
-}
-
 // safeRefInput pairs the canonical SafeAppRef with the original token
 // the user wrote so error messages can quote what they typed.
 type safeRefInput struct {
@@ -1513,27 +1456,28 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 	}
 
 	var fromAcc jtypes.AccDesc
-	matchingOwners := 0
-	for _, o := range owners {
-		acc, err := accounts.GetAccount(o)
-		if err == nil {
-			fromAcc = acc
-			matchingOwners++
+	if config.From == "" {
+		acc, _, err := cmdutil.PickLocalOwner(owners, config.From, cmdutil.OwnerRequireUnique)
+		if errors.Is(err, cmdutil.ErrNoLocalOwner) {
+			res.status = "skipped"
+			res.reason = "no local wallet is an owner of this safe"
+			appUI.Warn("%s", res.reason)
+			return res
 		}
-	}
-	if matchingOwners == 0 {
-		res.status = "skipped"
-		res.reason = "no local wallet is an owner of this safe"
-		appUI.Warn("%s", res.reason)
-		return res
-	}
-	if matchingOwners > 1 && config.From == "" {
-		res.status = "skipped"
-		res.reason = "multiple local owner wallets; pass --from to disambiguate"
-		appUI.Warn("%s", res.reason)
-		return res
-	}
-	if config.From != "" {
+		if errors.Is(err, cmdutil.ErrMultipleLocalOwners) {
+			res.status = "skipped"
+			res.reason = "multiple local owner wallets; pass --from to disambiguate"
+			appUI.Warn("%s", res.reason)
+			return res
+		}
+		if err != nil {
+			res.status = "failed"
+			res.reason = err.Error()
+			appUI.Error("%s", res.reason)
+			return res
+		}
+		fromAcc = acc
+	} else {
 		acc, _, err := cmdutil.ResolveAccount(cmdutil.DefaultABIResolver{}, config.From)
 		if err != nil {
 			res.status = "failed"
@@ -1541,14 +1485,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 			appUI.Error("%s", res.reason)
 			return res
 		}
-		isOwner := false
-		for _, o := range owners {
-			if strings.EqualFold(o, acc.Address) {
-				isOwner = true
-				break
-			}
-		}
-		if !isOwner {
+		if !cmdutil.IsAmongOwners(owners, acc.Address) {
 			res.status = "skipped"
 			res.reason = fmt.Sprintf("--from %s is not an owner of this safe", acc.Address)
 			appUI.Warn("%s", res.reason)
@@ -1734,31 +1671,8 @@ func buildTxContextForBatch(
 		FromAcc:     fromAcc,
 		From:        fromAcc.Address,
 	}
-
-	if config.GasPrice == 0 {
-		tc.GasPrice, err = r.RecommendedGasPrice()
-		if err != nil {
-			return cmdutil.TxContext{}, fmt.Errorf("recommended gas price: %w", err)
-		}
-	} else {
-		tc.GasPrice = config.GasPrice
-	}
-	if config.Nonce == 0 {
-		tc.Nonce, err = r.GetMinedNonce(tc.From)
-		if err != nil {
-			return cmdutil.TxContext{}, fmt.Errorf("get nonce: %w", err)
-		}
-	} else {
-		tc.Nonce = config.Nonce
-	}
-	tc.TxType, err = cmdutil.ValidTxType(r, network)
-	if err != nil {
-		return cmdutil.TxContext{}, fmt.Errorf("tx type: %w", err)
-	}
-	if tc.TxType == 2 && config.TipGas == 0 {
-		tc.TipGas, _ = r.GetSuggestedGasTipCap()
-	} else {
-		tc.TipGas = config.TipGas
+	if err := cmdutil.FillSigningTxParams(appUI, &tc, network); err != nil {
+		return cmdutil.TxContext{}, err
 	}
 	return tc, nil
 }
