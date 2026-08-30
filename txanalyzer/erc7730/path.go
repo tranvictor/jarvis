@@ -159,15 +159,6 @@ func (p Path) IsLeafSlice() bool {
 	return p.Segments[len(p.Segments)-1].Kind == SegSlice
 }
 
-// Append returns a new path with seg appended; the receiver is not
-// mutated. Used for resolving relative paths inside groups.
-func (p Path) Append(seg PathSeg) Path {
-	np := p
-	np.Segments = append([]PathSeg{}, p.Segments...)
-	np.Segments = append(np.Segments, seg)
-	return np
-}
-
 // Join returns p with other's segments appended. The root of `other`
 // is ignored — Join is used to make a child group's relative path
 // absolute under its parent.

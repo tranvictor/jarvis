@@ -2,11 +2,9 @@ package safe
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"math/big"
 	"sort"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -164,14 +162,4 @@ func EncodeSignatures(sigs []OwnerSig) ([]byte, error) {
 		out = append(out, s.Sig...)
 	}
 	return out, nil
-}
-
-// EncodeSignaturesHex is a convenience wrapper returning a 0x-prefixed
-// lowercase hex string for use in JSON payloads.
-func EncodeSignaturesHex(sigs []OwnerSig) (string, error) {
-	raw, err := EncodeSignatures(sigs)
-	if err != nil {
-		return "", err
-	}
-	return "0x" + strings.ToLower(hex.EncodeToString(raw)), nil
 }

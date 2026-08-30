@@ -83,12 +83,6 @@ type TxBuilderValue struct {
 	raw  []byte
 }
 
-// NewTxBuilderValue builds a value from its textual form, for tests and for
-// callers assembling a batch in Go instead of reading a file.
-func NewTxBuilderValue(text string) TxBuilderValue {
-	return TxBuilderValue{text: text}
-}
-
 // String returns the value as text, in the form the Safe UI would have typed
 // it — which is what the input normaliser consumes.
 func (v TxBuilderValue) String() string {

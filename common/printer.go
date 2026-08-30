@@ -2,9 +2,7 @@ package common
 
 import (
 	"fmt"
-	"reflect"
 	"strings"
-	"time"
 
 	"github.com/tranvictor/jarvis/config"
 )
@@ -54,39 +52,6 @@ func ReadableNumber(value string) string {
 		}
 	}
 	return fmt.Sprintf("%s (%s)", value, strings.Join(digits, ""))
-}
-
-// VerboseValue returns a human-readable string for a single decoded ABI value.
-func VerboseValue(value Value) string {
-	switch value.Kind {
-	case DisplayAddress:
-		return VerboseAddress(*value.Address)
-	case DisplayToken:
-		if label, ok := MaxUintLabel(value.Raw); ok {
-			if value.Token.Symbol != "" {
-				return fmt.Sprintf("%s (%s, all %s)", value.Raw, label, value.Token.Symbol)
-			}
-			return fmt.Sprintf("%s (%s)", value.Raw, label)
-		}
-		human := BigToFloatString(StringToBig(value.Raw), value.Token.Decimal)
-		if value.Token.Symbol != "" {
-			return fmt.Sprintf("%s (%s %s)", value.Raw, human, value.Token.Symbol)
-		}
-		return fmt.Sprintf("%s (%s)", value.Raw, human)
-	case DisplayInteger:
-		return ReadableNumber(value.Raw)
-	default: // DisplayRaw — string, bool, hash, hex bytes
-		return value.Raw
-	}
-}
-
-// VerboseValues returns VerboseValue for each element in a slice.
-func VerboseValues(values []Value) []string {
-	out := make([]string, len(values))
-	for i, v := range values {
-		out[i] = VerboseValue(v)
-	}
-	return out
 }
 
 // PlainAddress formats an Address as a plain string with no ANSI color codes.
@@ -147,51 +112,10 @@ func PlainValue(value Value) string {
 	}
 }
 
-func PrintElapseTime(start time.Time, str string) {
-	DebugPrintf(
-		"-------------------------------------profiling-elapsed: %s -- %s\n",
-		time.Since(start),
-		str,
-	)
-}
-
 func DebugPrintf(format string, a ...any) (n int, err error) {
 	if config.Debug {
 		return fmt.Printf(format, a...)
 	}
 
 	return 0, nil
-}
-
-func DebugObjPrint(obj interface{}) {
-	if !config.Debug {
-		return
-	}
-	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-
-	switch v.Kind() {
-	case reflect.Struct:
-		t := v.Type()
-		fmt.Println("Struct fields and tags:")
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
-			value := v.Field(i)
-			fmt.Printf("Field: %-10s Value: %-10v Tag: '%s'\n", field.Name, value, field.Tag)
-		}
-	case reflect.Slice, reflect.Array:
-		fmt.Printf("Slice or Array of %s:\n", v.Type().Elem())
-		maxElements := v.Len()
-		if maxElements > 10 {
-			maxElements = 10
-		}
-		for i := 0; i < maxElements; i++ {
-			fmt.Printf("Element %d: ", i)
-			DebugObjPrint(v.Index(i).Interface())
-		}
-	default:
-		fmt.Printf("Type: %s, Value: %v\n", v.Type(), v.Interface())
-	}
 }

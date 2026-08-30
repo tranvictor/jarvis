@@ -1,8 +1,6 @@
 package util
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math/big"
@@ -13,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -46,13 +43,6 @@ const (
 	ETHERSCAN_API_KEY_VAR     string = "ETHERSCAN_API_KEY"
 	BSCSCAN_API_KEY_VAR       string = "BSCSCAN_API_KEY"
 )
-
-func CalculateTimeDurationFromBlock(network networks.Network, from, to uint64) time.Duration {
-	if from >= to {
-		return time.Duration(0)
-	}
-	return time.Duration(uint64(time.Second) * (to - from) * uint64(network.GetBlockTime()))
-}
 
 // GetExactAddressFromDatabases resolves str against the local address
 // database. Kept as a separate name for callers (e.g. `jarvis whois`) that
@@ -435,27 +425,6 @@ func isRealAddress(value string) bool {
 	return true
 }
 
-func GetJarvisValue(value string, network networks.Network) jarviscommon.Value {
-	valueBig, ok := big.NewInt(0).SetString(value, 0)
-	if !ok {
-		// Not a valid integer — treat as a raw string literal.
-		return jarviscommon.Value{Raw: value, Kind: jarviscommon.DisplayRaw}
-	}
-
-	if !isRealAddress(value) {
-		// It's a number but outside the address range.
-		// 0x-prefixed literals (hex) display raw; plain decimal numbers
-		// get the readable-number separator treatment.
-		if strings.HasPrefix(value, "0x") || strings.HasPrefix(value, "0X") {
-			return jarviscommon.Value{Raw: value, Kind: jarviscommon.DisplayRaw}
-		}
-		return jarviscommon.Value{Raw: value, Kind: jarviscommon.DisplayInteger}
-	}
-
-	addr := GetJarvisAddress(common.BigToAddress(valueBig).Hex(), network)
-	return jarviscommon.Value{Raw: addr.Address, Kind: jarviscommon.DisplayAddress, Address: &addr}
-}
-
 // GetJarvisAddress resolves addr using the default (production) address
 // resolver. Call sites that already have a resolver (e.g. txanalyzer via
 // AnalysisContext) should use that resolver directly so the implementation
@@ -612,54 +581,6 @@ func ReadCustomABIString(
 	return str, err
 }
 
-type coingeckopriceresponse map[string]map[string]float64
-
-func GetETHPriceInUSD() (float64, error) {
-	resp, err := http.Get(
-		"https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false",
-	)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-	priceres := coingeckopriceresponse{}
-	err = json.Unmarshal(body, &priceres)
-	if err != nil {
-		return 0, err
-	}
-	return priceres["ethereum"]["usd"], nil
-}
-
-func GetCoinGeckoRateInUSD(token string) (float64, error) {
-	if strings.ToLower(token) == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
-		return GetETHPriceInUSD()
-	}
-	resp, err := http.Get(
-		fmt.Sprintf(
-			"https://api.coingecko.com/api/v3/simple/token_price/ethereum?contract_addresses=%s&vs_currencies=USD&include_market_cap=false&include_24hr_vol=false&include_24hr_change=false&include_last_updated_at=false",
-			token,
-		),
-	)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-	priceres := coingeckopriceresponse{}
-	err = json.Unmarshal(body, &priceres)
-	if err != nil {
-		return 0, err
-	}
-	return priceres[strings.ToLower(token)]["usd"], nil
-}
-
 func ReadCustomABI(addr string, pathOrAddress string, network networks.Network) (a *abi.ABI, err error) {
 	str, err := ReadCustomABIString(addr, pathOrAddress, network)
 	if err != nil {
@@ -689,11 +610,6 @@ func GetABIStringFromURL(url string) (string, error) {
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	return string(body), err
-}
-
-func GetABIFromBytes(abiBytes []byte) (*abi.ABI, error) {
-	result, err := abi.JSON(bytes.NewReader(abiBytes))
-	return &result, err
 }
 
 func GetABIFromString(abiStr string) (*abi.ABI, error) {
@@ -948,16 +864,6 @@ func IsProxyABI(a *abi.ABI) bool {
 	return true
 }
 
-func IsERC20ABI(a *abi.ABI) bool {
-	for _, m := range ERC20_METHODS {
-		_, found := a.Methods[m]
-		if !found {
-			return false
-		}
-	}
-	return true
-}
-
 func IsGnosisMultisig(a *abi.ABI) (bool, error) {
 	methods := []string{
 		"confirmations",
@@ -977,75 +883,4 @@ func IsGnosisMultisig(a *abi.ABI) (bool, error) {
 		}
 	}
 	return true, nil
-}
-
-func GetBalances(
-	wallets []string,
-	tokens []string,
-	network networks.Network,
-) (balances map[common.Address][]*big.Int, block int64, err error) {
-	return GetHistoryBalances(-1, wallets, tokens, network)
-}
-
-func GetHistoryBalances(
-	atBlock int64,
-	wallets []string,
-	tokens []string,
-	network networks.Network,
-) (balances map[common.Address][]*big.Int, block int64, err error) {
-	helperABI := jarviscommon.GetMultiCallABI()
-	erc20ABI := jarviscommon.GetERC20ABI()
-
-	mc, err := NewMultiCall(network)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	balances = map[common.Address][]*big.Int{}
-
-	for _, wallet := range wallets {
-		wAddr := jarviscommon.HexToAddress(wallet)
-		for i, token := range tokens {
-			index := i
-			oneResult := big.NewInt(0)
-			balances[wAddr] = append(balances[wAddr], oneResult)
-			if strings.ToLower(token) == "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" {
-				mc.RegisterWithHook(
-					&oneResult,
-					func(r interface{}) error {
-						balances[wAddr][index] = *r.(**big.Int)
-						return nil
-					},
-					network.MultiCallContract(),
-					helperABI,
-					"getEthBalance",
-					jarviscommon.HexToAddress(wallet),
-				)
-			} else {
-				mc.RegisterWithHook(
-					&oneResult,
-					func(r interface{}) error {
-						balances[wAddr][index] = *r.(**big.Int)
-						return nil
-					},
-					token,
-					erc20ABI,
-					"balanceOf",
-					jarviscommon.HexToAddress(wallet),
-				)
-			}
-		}
-	}
-
-	block, err = mc.Do(atBlock)
-
-	return balances, block, err
-}
-
-func NewMultiCall(network networks.Network) (*reader.MultipleCall, error) {
-	r, err := EthReader(network)
-	if err != nil {
-		return nil, err
-	}
-	return reader.NewMultiCall(r, network.MultiCallContract()), nil
 }

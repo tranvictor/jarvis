@@ -25,13 +25,13 @@ import (
 type LocalRegistry struct {
 	BaseDir string
 
-	mu              sync.RWMutex
-	loaded          bool
-	all             []*Descriptor
-	byContract      map[string][]*Descriptor // key: "<chainID>:<lower-addr>"
-	byEIP712Verify  map[string][]*Descriptor // key: "<chainID>:<lower-verifyingContract>"
-	byEIP712Name    map[string][]*Descriptor // key: lower-case domain.name
-	bySeparator     map[string][]*Descriptor // key: lower-case domain separator hex (no 0x)
+	mu             sync.RWMutex
+	loaded         bool
+	all            []*Descriptor
+	byContract     map[string][]*Descriptor // key: "<chainID>:<lower-addr>"
+	byEIP712Verify map[string][]*Descriptor // key: "<chainID>:<lower-verifyingContract>"
+	byEIP712Name   map[string][]*Descriptor // key: lower-case domain.name
+	bySeparator    map[string][]*Descriptor // key: lower-case domain separator hex (no 0x)
 	// negativeCache records (chainId, addr) lookups that came up
 	// empty against the most recent sync. Surface so callers can
 	// query "have we already checked the registry for this?".
@@ -236,10 +236,6 @@ func (r *LocalRegistry) AddLocalFromBytes(name string, raw []byte) (string, erro
 	r.Reload()
 	return full, nil
 }
-
-// LoadFile parses a single descriptor file. Exported for the
-// `clearsign show <file>` flow and for tests.
-func LoadFile(path string) (*Descriptor, error) { return loadFile(path) }
 
 func loadFile(path string) (*Descriptor, error) {
 	raw, err := os.ReadFile(path)

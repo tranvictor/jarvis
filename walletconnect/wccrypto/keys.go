@@ -6,9 +6,10 @@ import (
 	"encoding/hex"
 	"fmt"
 
+	"io"
+
 	"golang.org/x/crypto/curve25519"
 	"golang.org/x/crypto/hkdf"
-	"io"
 )
 
 // KeyPair is an x25519 keypair as used by WC v2 for its session
@@ -62,13 +63,4 @@ func DeriveSessionSymKey(ourPriv [32]byte, peerPub [32]byte) (symKey [32]byte, t
 	}
 	h := sha256.Sum256(symKey[:])
 	return symKey, hex.EncodeToString(h[:]), nil
-}
-
-// TopicForSymKey computes the WC v2 topic associated with a symmetric
-// key, i.e. sha256(symKey) as a hex string. Used for both pairing
-// topics (whose symKey came from the wc: URI) and session topics
-// (whose symKey came from DeriveSessionSymKey).
-func TopicForSymKey(symKey [32]byte) string {
-	h := sha256.Sum256(symKey[:])
-	return hex.EncodeToString(h[:])
 }

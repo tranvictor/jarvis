@@ -91,15 +91,6 @@ func StoreAccountRecord(accDesc types.AccDesc) error {
 	return os.WriteFile(path, content, 0644)
 }
 
-func UnlockKeystoreAccountWithPassword(ad types.AccDesc, pwd string) (*account.Account, error) {
-	fromAcc, err := account.NewKeystoreAccount(ad.Keypath, pwd)
-	if err != nil {
-		fmt.Printf("Unlocking keystore '%s' failed: %s. Abort!\n", ad.Keypath, err)
-		return nil, err
-	}
-	return fromAcc, nil
-}
-
 func UnlockAccount(ad types.AccDesc) (*account.Account, error) {
 	var fromAcc *account.Account
 	var err error
