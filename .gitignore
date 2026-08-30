@@ -24,3 +24,6 @@ scan_multisig_for_signers.sh
 test.json
 portfolio/
 RELEASE.md
+.release-notes.md
+.DS_Store
+/tags
