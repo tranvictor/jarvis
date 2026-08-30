@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 
@@ -160,19 +159,7 @@ type PostProcessFunc func(fc *jarviscommon.FunctionCall) error
 
 // ScanForTxs scans para for network-prefixed or bare transaction hashes.
 func ScanForTxs(para string) (nwks []string, addresses []string) {
-	networkNames := jarvisnetworks.GetSupportedNetworkNames()
-	regexStr := strings.Join(networkNames, "|")
-	regexStr = fmt.Sprintf(
-		"(?i)(?:(?P<network>%s)(?:.{0,}?))?(?P<address>(?:0x)?(?:[0-9a-fA-F]{64}))",
-		regexStr,
-	)
-
-	re := regexp.MustCompile(regexStr)
-	for _, match := range re.FindAllStringSubmatch(para, -1) {
-		nwks = append(nwks, strings.ToLower(match[1]))
-		addresses = append(addresses, match[2])
-	}
-	return
+	return util.ScanForTxs(para)
 }
 
 // HandleApproveOrRevokeOrExecuteMsig handles the confirm / revoke / execute
@@ -233,13 +220,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 			u.Error("Can't get receipt of the init tx. That tx might still be pending.")
 			return
 		}
-		for _, l := range txInfo.Receipt.Logs {
-			if strings.EqualFold(l.Address.Hex(), tc.To) &&
-				l.Topics[0].Hex() == "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51" {
-				txid = l.Topics[1].Big()
-				break
-			}
-		}
+		txid = util.GnosisMsigTxIDFromLogs(txInfo.Receipt.Logs, tc.To)
 		if txid == nil {
 			u.Error("The provided tx hash is not a gnosis multisig init tx or with a different multisig.")
 			return

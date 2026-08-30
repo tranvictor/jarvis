@@ -153,6 +153,65 @@ func sendTransferUserErrorEOA(err error, to string) string {
 	return sendTransferUserError(err, to)
 }
 
+func sendAmountUserErrorClassic(err error, tokenAddr string) string {
+	cause := cmdutil.AmountWeiCause(err)
+	switch {
+	case errors.Is(err, cmdutil.ErrSendNativeBalance):
+		return fmt.Sprintf("Couldn't get balance of the multisig: %s", cause)
+	case errors.Is(err, cmdutil.ErrSendTokenBalance):
+		return fmt.Sprintf("Couldn't read balance of the multisig: %s", cause)
+	case errors.Is(err, cmdutil.ErrSendTokenDecimal):
+		return fmt.Sprintf("Couldn't get token decimal: %s", cause)
+	case errors.Is(err, cmdutil.ErrSendAmountParse):
+		if tokenAddr == util.ETH_ADDR {
+			return fmt.Sprintf("Couldn't calculate the amount: %s", cause)
+		}
+		return fmt.Sprintf("Couldn't calculate amount in wei: %s", cause)
+	default:
+		return err.Error()
+	}
+}
+
+func sendAmountUserErrorSafe(err error, tokenAddr string) string {
+	cause := cmdutil.AmountWeiCause(err)
+	switch {
+	case errors.Is(err, cmdutil.ErrSendNativeBalance):
+		return fmt.Sprintf("Couldn't get balance of the safe: %s", cause)
+	case errors.Is(err, cmdutil.ErrSendTokenBalance):
+		return fmt.Sprintf("Couldn't read token balance of the safe: %s", cause)
+	case errors.Is(err, cmdutil.ErrSendTokenDecimal):
+		return fmt.Sprintf("Couldn't get token decimal: %s", cause)
+	case errors.Is(err, cmdutil.ErrSendAmountParse):
+		if tokenAddr == util.ETH_ADDR {
+			return fmt.Sprintf("Couldn't calculate the amount: %s", cause)
+		}
+		return fmt.Sprintf("Couldn't calculate amount in wei: %s", cause)
+	default:
+		return err.Error()
+	}
+}
+
+func sendAmountUserErrorEOA(err error, tokenAddr string) string {
+	cause := cmdutil.AmountWeiCause(err)
+	switch {
+	case errors.Is(err, cmdutil.ErrSendInsufficientGas):
+		return "Wallet doesn't have enough token to cover gas. Aborted."
+	case errors.Is(err, cmdutil.ErrSendNativeBalance):
+		return fmt.Sprintf("Couldn't get %s balance: %s", config.Network().GetNativeTokenSymbol(), cause)
+	case errors.Is(err, cmdutil.ErrSendTokenBalance):
+		return fmt.Sprintf("Couldn't get token balance: %s", cause)
+	case errors.Is(err, cmdutil.ErrSendTokenDecimal):
+		return fmt.Sprintf("Couldn't get token decimal: %s", cause)
+	case errors.Is(err, cmdutil.ErrSendAmountParse):
+		if tokenAddr == util.ETH_ADDR {
+			return fmt.Sprintf("Couldn't calculate send amount: %s", cause)
+		}
+		return fmt.Sprintf("Couldn't calculate token amount in wei: %s", cause)
+	default:
+		return err.Error()
+	}
+}
+
 func sendFromMsig(reader utilreader.Reader, analyzer util.TxAnalyzer, resolver cmdutil.ABIResolver, bc cmdutil.TxBroadcaster) {
 	msigAddress, err := getMsigContractFromParams([]string{config.From}, resolver)
 	if err != nil {
@@ -208,41 +267,15 @@ func sendFromMsig(reader utilreader.Reader, analyzer util.TxAnalyzer, resolver c
 	}
 
 	// Resolve amountWei — must happen regardless of whether the user supplied a gas limit.
-	var amountWei *big.Int
-	if tokenAddrLocal == util.ETH_ADDR {
-		if amountStr == "ALL" {
-			ethBalance, err := reader.GetBalance(msigContractAddr)
-			if err != nil {
-				appUI.Error("Couldn't get balance of the multisig: %s", err)
-				return
-			}
-			amountWei = ethBalance
-		} else {
-			amountWei, err = jarviscommon.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
-			if err != nil {
-				appUI.Error("Couldn't calculate the amount: %s", err)
-				return
-			}
-		}
-	} else {
-		if amountStr == "ALL" {
-			amountWei, err = reader.ERC20Balance(tokenAddrLocal, msigContractAddr)
-			if err != nil {
-				appUI.Error("Couldn't read balance of the multisig: %s", err)
-				return
-			}
-		} else {
-			decimals, err := reader.ERC20Decimal(tokenAddrLocal)
-			if err != nil {
-				appUI.Error("Couldn't get token decimal: %s", err)
-				return
-			}
-			amountWei, err = jarviscommon.FloatStringToBig(amountStr, decimals)
-			if err != nil {
-				appUI.Error("Couldn't calculate amount in wei: %s", err)
-				return
-			}
-		}
+	amountWei, err := cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
+		TokenAddr:      tokenAddrLocal,
+		AmountStr:      amountStr,
+		Holder:         msigContractAddr,
+		NativeDecimals: config.Network().GetNativeTokenDecimal(),
+	})
+	if err != nil {
+		appUI.Error("%s", sendAmountUserErrorClassic(err, tokenAddrLocal))
+		return
 	}
 
 	// Pack txdata — also must happen regardless of gas limit.
@@ -423,24 +456,30 @@ exact addresses start with 0x.`,
 					}
 					extraGasLimit = 0 // exact gas for ALL; no extra needed
 
-					ethBalance, err := reader.GetBalance(fromAddr)
-					if err != nil {
-						appUI.Error("Couldn't get %s balance: %s", config.Network().GetNativeTokenSymbol(), err)
-						return
-					}
 					gasCost := big.NewInt(0).Mul(
 						big.NewInt(int64(gasLimit)),
 						jarviscommon.FloatToBigInt(gasPrice+config.ExtraGasPrice, 9),
 					)
-					if ethBalance.Cmp(gasCost) == -1 {
-						appUI.Error("Wallet doesn't have enough token to cover gas. Aborted.")
+					amountWei, err = cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
+						TokenAddr:      tokenAddrLocal,
+						AmountStr:      amountStr,
+						Holder:         fromAddr,
+						NativeDecimals: config.Network().GetNativeTokenDecimal(),
+						SubtractGas:    gasCost,
+					})
+					if err != nil {
+						appUI.Error("%s", sendAmountUserErrorEOA(err, tokenAddrLocal))
 						return
 					}
-					amountWei = big.NewInt(0).Sub(ethBalance, gasCost)
 				} else {
-					amountWei, err = jarviscommon.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
+					amountWei, err = cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
+						TokenAddr:      tokenAddrLocal,
+						AmountStr:      amountStr,
+						Holder:         fromAddr,
+						NativeDecimals: config.Network().GetNativeTokenDecimal(),
+					})
 					if err != nil {
-						appUI.Error("Couldn't calculate send amount: %s", err)
+						appUI.Error("%s", sendAmountUserErrorEOA(err, tokenAddrLocal))
 						return
 					}
 					gasLimit, err = reader.EstimateExactGas(fromAddr, toAddr, 0, amountWei, cmdutil.StringParamToBytes(data))
@@ -450,34 +489,20 @@ exact addresses start with 0x.`,
 					}
 				}
 			} else {
-				var innerData []byte
-				if amountStr == "ALL" {
-					amountWei, err = reader.ERC20Balance(tokenAddrLocal, fromAddr)
-					if err != nil {
-						appUI.Error("Couldn't get token balance: %s", err)
-						return
-					}
-					innerData, err = jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
-					if err != nil {
-						appUI.Error("Couldn't pack data: %s", err)
-						return
-					}
-				} else {
-					decimals, err := reader.ERC20Decimal(tokenAddrLocal)
-					if err != nil {
-						appUI.Error("Couldn't get token decimal: %s", err)
-						return
-					}
-					amountWei, err = jarviscommon.FloatStringToBig(amountStr, decimals)
-					if err != nil {
-						appUI.Error("Couldn't calculate token amount in wei: %s", err)
-						return
-					}
-					innerData, err = jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
-					if err != nil {
-						appUI.Error("Couldn't pack data: %s", err)
-						return
-					}
+				amountWei, err = cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
+					TokenAddr:      tokenAddrLocal,
+					AmountStr:      amountStr,
+					Holder:         fromAddr,
+					NativeDecimals: config.Network().GetNativeTokenDecimal(),
+				})
+				if err != nil {
+					appUI.Error("%s", sendAmountUserErrorEOA(err, tokenAddrLocal))
+					return
+				}
+				innerData, err := jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
+				if err != nil {
+					appUI.Error("Couldn't pack data: %s", err)
+					return
 				}
 				gasLimit, err = reader.EstimateGas(fromAddr, tokenAddrLocal, gasPrice+config.ExtraGasPrice, 0, innerData)
 				if err != nil {
@@ -601,41 +626,15 @@ func sendFromSafe(
 
 	// Compute the wei amount the Safe should move. ALL refers to the
 	// Safe's balance, NOT the EOA's, mirroring sendFromMsig semantics.
-	var amountWei *big.Int
-	if tokenAddrLocal == util.ETH_ADDR {
-		if amountStr == "ALL" {
-			ethBalance, err := reader.GetBalance(safeContract.Address)
-			if err != nil {
-				appUI.Error("Couldn't get balance of the safe: %s", err)
-				return
-			}
-			amountWei = ethBalance
-		} else {
-			amountWei, err = jarviscommon.FloatStringToBig(amountStr, config.Network().GetNativeTokenDecimal())
-			if err != nil {
-				appUI.Error("Couldn't calculate the amount: %s", err)
-				return
-			}
-		}
-	} else {
-		if amountStr == "ALL" {
-			amountWei, err = reader.ERC20Balance(tokenAddrLocal, safeContract.Address)
-			if err != nil {
-				appUI.Error("Couldn't read token balance of the safe: %s", err)
-				return
-			}
-		} else {
-			decimals, err := reader.ERC20Decimal(tokenAddrLocal)
-			if err != nil {
-				appUI.Error("Couldn't get token decimal: %s", err)
-				return
-			}
-			amountWei, err = jarviscommon.FloatStringToBig(amountStr, decimals)
-			if err != nil {
-				appUI.Error("Couldn't calculate amount in wei: %s", err)
-				return
-			}
-		}
+	amountWei, err := cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
+		TokenAddr:      tokenAddrLocal,
+		AmountStr:      amountStr,
+		Holder:         safeContract.Address,
+		NativeDecimals: config.Network().GetNativeTokenDecimal(),
+	})
+	if err != nil {
+		appUI.Error("%s", sendAmountUserErrorSafe(err, tokenAddrLocal))
+		return
 	}
 
 	// Inner SafeTx call: native send carries (to, value, --data); ERC20
