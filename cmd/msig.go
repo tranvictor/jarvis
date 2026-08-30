@@ -726,15 +726,8 @@ with --json-output, the same data is also written as JSON.`,
 				results = append(results, r)
 				continue
 			}
-			var txid *big.Int
 			msigHex := txinfo.Tx.To().Hex()
-			for _, l := range txinfo.Receipt.Logs {
-				if strings.EqualFold(l.Address.Hex(), msigHex) &&
-					strings.EqualFold(l.Topics[0].Hex(), "0xc0ba8fe4b176c1714197d43b9cc6bcf797a4a7461c5fe8d0ef6e184ae7601e51") {
-					txid = l.Topics[1].Big()
-					break
-				}
-			}
+			txid := util.GnosisMsigTxIDFromLogs(txinfo.Receipt.Logs, msigHex)
 			if txid == nil {
 				appUI.Warn("This tx is not a gnosis classic multisig init tx. Skip.")
 				r.status = "skipped"

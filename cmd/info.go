@@ -24,7 +24,7 @@ var txCmd = &cobra.Command{
 		tc, _ := cmdutil.TxContextFrom(cmd)
 
 		para := strings.Join(args, " ")
-		txs := util.ScanForTxs(para)
+		txs := util.ScanForTxHashes(para)
 		if len(txs) == 0 {
 			appUI.Error("Couldn't find any tx hash in the params")
 			return
