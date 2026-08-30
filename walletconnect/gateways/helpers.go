@@ -83,9 +83,6 @@ func bytesToAddr(hexStr string) ethcommon.Address {
 	return ethcommon.HexToAddress(hexStr)
 }
 
-// shortLabel renders an address's address-book label (if any) in the
-// form "0xabcd...1234 (Alice)" so confirm prompts don't just show
-// opaque hex.
 func errMethodUnsupported(detail string) error {
 	return fmt.Errorf("%w: %s", walletconnect.ErrMethodNotSupported, detail)
 }
@@ -103,6 +100,9 @@ func verifyOwner(addr string, owners []string, kind, target string) error {
 	return fmt.Errorf("wallet %s is not an owner of %s %s", addr, kind, target)
 }
 
+// shortLabel renders an address's address-book label (if any) in the
+// form "0xabcd...1234 (Alice)" so confirm prompts don't just show
+// opaque hex.
 func shortLabel(addr string, network jarvisnetworks.Network) string {
 	if addr == "" {
 		return "(contract creation)"

@@ -55,6 +55,30 @@ func TestPickLocalOwnerFirstMatch(t *testing.T) {
 	}
 }
 
+func TestPickLocalOwnerEmptyOwners(t *testing.T) {
+	lookup := testLookup(map[string]jtypes.AccDesc{
+		"0xaaa": {Address: "0xAAA"},
+	})
+	_, n, err := pickLocalOwner(nil, "", OwnerFirstMatch, lookup)
+	if !errors.Is(err, ErrNoLocalOwner) || n != 0 {
+		t.Fatalf("nil owners: n=%d err=%v", n, err)
+	}
+	_, n, err = pickLocalOwner([]string{}, "", OwnerRequireUnique, lookup)
+	if !errors.Is(err, ErrNoLocalOwner) || n != 0 {
+		t.Fatalf("empty owners: n=%d err=%v", n, err)
+	}
+}
+
+func TestPickLocalOwnerSkipsFailedLookups(t *testing.T) {
+	lookup := testLookup(map[string]jtypes.AccDesc{
+		"0xbbb": {Address: "0xBBB"},
+	})
+	got, n, err := pickLocalOwner([]string{"0xaaa", "0xbbb", "0xccc"}, "", OwnerRequireUnique, lookup)
+	if err != nil || n != 1 || got.Address != "0xBBB" {
+		t.Fatalf("acc=%+v n=%d err=%v", got, n, err)
+	}
+}
+
 func TestIsAmongOwners(t *testing.T) {
 	owners := []string{"0xAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa"}
 	if !IsAmongOwners(owners, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
@@ -62,5 +86,8 @@ func TestIsAmongOwners(t *testing.T) {
 	}
 	if IsAmongOwners(owners, "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb") {
 		t.Fatal("unexpected match")
+	}
+	if IsAmongOwners(nil, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa") {
+		t.Fatal("empty owner list must not match")
 	}
 }

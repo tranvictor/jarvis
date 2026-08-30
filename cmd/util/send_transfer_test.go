@@ -80,6 +80,27 @@ func TestResolveSendTransferTokenName(t *testing.T) {
 	}
 }
 
+func TestResolveSendTransferNativeSymbolNotToken(t *testing.T) {
+	if err := config.SetNetwork("mainnet"); err != nil {
+		t.Fatal(err)
+	}
+	// If "ETH" were treated as a token name we would look up "ETH token"
+	// and could send an ERC-20 transfer instead of native ETH.
+	r := stubResolver{addrs: map[string]string{
+		"ETH token": "0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddead",
+		"alice":     "0x1111111111111111111111111111111111111111",
+	}}
+	for _, value := range []string{"1 ETH", "1 eth", "ALL ETH"} {
+		got, err := ResolveSendTransfer(r, value, "alice")
+		if err != nil {
+			t.Fatalf("%q: %v", value, err)
+		}
+		if got.TokenAddr != jarvisutil.ETH_ADDR {
+			t.Fatalf("%q: token %s, want native ETH sentinel", value, got.TokenAddr)
+		}
+	}
+}
+
 func TestResolveSendTransferErrors(t *testing.T) {
 	if err := config.SetNetwork("mainnet"); err != nil {
 		t.Fatal(err)
