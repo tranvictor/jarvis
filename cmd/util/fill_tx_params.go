@@ -54,11 +54,11 @@ func FillSigningTxParams(u ui.UI, tc *TxContext, network jarvisnetworks.Network)
 		return fmt.Errorf("couldn't determine proper tx type: %w", err)
 	}
 
-	if tc.TxType == types.LegacyTxType && config.TipGas > 0 {
-		return fmt.Errorf("we are doing legacy tx hence we ignore tip gas parameter")
-	}
-
-	if tc.TxType == types.DynamicFeeTxType {
+	if tc.TxType == types.LegacyTxType {
+		if config.TipGas > 0 && u != nil {
+			u.Warn("We are doing legacy tx hence we ignore tip gas parameter.")
+		}
+	} else if tc.TxType == types.DynamicFeeTxType {
 		if config.TipGas == 0 {
 			tc.TipGas, err = reader.GetSuggestedGasTipCap()
 			if err != nil {

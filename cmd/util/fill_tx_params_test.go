@@ -107,18 +107,24 @@ func TestFillSigningTxParamsHonorsFlags(t *testing.T) {
 	}
 }
 
-func TestFillSigningTxParamsLegacyRejectsTip(t *testing.T) {
+func TestFillSigningTxParamsLegacyIgnoresTip(t *testing.T) {
 	resetSigningConfig(t)
 	config.ForceLegacy = true
 	config.TipGas = 1
+	rec := ui.NewRecordingUI()
 	tc := TxContext{
 		From:        "0xabc",
 		Reader:      &stubReader{},
 		Broadcaster: nopBroadcaster{},
 	}
-	err := FillSigningTxParams(ui.NewRecordingUI(), &tc, networks.EthereumMainnet)
-	if err == nil {
-		t.Fatal("expected legacy+tip error")
+	if err := FillSigningTxParams(rec, &tc, networks.EthereumMainnet); err != nil {
+		t.Fatal(err)
+	}
+	if tc.TxType != types.LegacyTxType || tc.TipGas != 0 {
+		t.Fatalf("type=%d tip=%v, want legacy with tip ignored", tc.TxType, tc.TipGas)
+	}
+	if !rec.HasMessage("ignore tip gas") {
+		t.Fatal("expected a warning that tip gas is ignored")
 	}
 }
 

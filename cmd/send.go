@@ -398,17 +398,17 @@ exact addresses start with 0x.`,
 			return
 		}
 
+		tipGas := 0.0
 		if txType == types.LegacyTxType && config.TipGas > 0 {
 			appUI.Warn("We are doing legacy tx hence we ignore tip gas parameter.")
-			return
-		}
-
-		tipGas := config.TipGas
-		if txType == types.DynamicFeeTxType && tipGas == 0 {
-			tipGas, err = reader.GetSuggestedGasTipCap()
-			if err != nil {
-				appUI.Error("Couldn't estimate recommended gas price: %s", err)
-				return
+		} else if txType == types.DynamicFeeTxType {
+			tipGas = config.TipGas
+			if tipGas == 0 {
+				tipGas, err = reader.GetSuggestedGasTipCap()
+				if err != nil {
+					appUI.Error("Couldn't estimate recommended gas price: %s", err)
+					return
+				}
 			}
 		}
 
