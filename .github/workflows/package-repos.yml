@@ -1,0 +1,114 @@
+# Rebuild the signed apt/yum repos on GitHub Pages after each GitHub release.
+# Requires repository secret APT_GPG_PRIVATE_KEY (see scripts/gen-apt-key.sh)
+# and Pages source = GitHub Actions.
+name: Package repositories
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to include (empty = all recent non-prerelease tags)
+        required: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: package-repos
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.gpg.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Import packaging key
+        id: gpg
+        env:
+          APT_GPG_PRIVATE_KEY: ${{ secrets.APT_GPG_PRIVATE_KEY }}
+        run: |
+          if [ -z "${APT_GPG_PRIVATE_KEY:-}" ]; then
+            echo "APT_GPG_PRIVATE_KEY is not set."
+            echo "Generate one with scripts/gen-apt-key.sh and add it as a repository secret."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          mkdir -p ~/.gnupg
+          chmod 700 ~/.gnupg
+          printf '%s\n' "$APT_GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --list-secret-keys --keyid-format long
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Warn if signing key is missing
+        if: steps.gpg.outputs.skip == 'true'
+        run: |
+          echo "::warning::APT_GPG_PRIVATE_KEY is not set; apt/yum repo was not published. Run scripts/gen-apt-key.sh and add the private key as a repository secret, then enable GitHub Pages (source: GitHub Actions)."
+
+      - name: Install repo tools
+        if: steps.gpg.outputs.skip != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev apt-utils createrepo-c rpm gnupg
+
+      - name: Collect .deb and .rpm from GitHub Releases
+        if: steps.gpg.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          mkdir -p incoming
+          download() {
+            local tag="$1"
+            gh release download "$tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern '*.deb' \
+              --pattern '*.rpm' \
+              --dir incoming \
+              --clobber 2>/dev/null || true
+          }
+          if [ -n "${INPUT_TAG:-}" ]; then
+            download "$INPUT_TAG"
+          fi
+          # Keep recent versions so apt/dnf can still see older packages.
+          while IFS= read -r tag; do
+            [ -n "$tag" ] || continue
+            download "$tag"
+          done < <(gh release list --repo "$GITHUB_REPOSITORY" --limit 30 \
+            --json tagName,isPrerelease,isDraft \
+            --jq '.[] | select((.isPrerelease|not) and (.isDraft|not)) | .tagName')
+          echo "Collected packages:"
+          ls -l incoming || true
+          if ! compgen -G 'incoming/*.deb' >/dev/null && ! compgen -G 'incoming/*.rpm' >/dev/null; then
+            echo "No .deb/.rpm assets on recent releases yet. Ship a release with nfpms first."
+            exit 1
+          fi
+
+      - name: Build signed apt and yum trees
+        if: steps.gpg.outputs.skip != 'true'
+        env:
+          APT_GPG_PASSPHRASE: ${{ secrets.APT_GPG_PASSPHRASE }}
+        run: bash scripts/build-package-repos.sh incoming site
+
+      - name: Upload Pages artifact
+        if: steps.gpg.outputs.skip != 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: needs.build.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4

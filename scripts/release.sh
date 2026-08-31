@@ -71,7 +71,7 @@ need_cmd python3
 [ -n "${GITHUB_TOKEN:-}" ] || die "GITHUB_TOKEN is not set.
 
 Create a GitHub token with repo access (classic) or Contents read/write on
-jarvis + the homebrew-tranvictor tap (fine-grained), then:
+jarvis + the homebrew-tranvictor tap (Homebrew formula and Scoop bucket), then:
 
   export GITHUB_TOKEN=ghp_..."
 
@@ -195,7 +195,7 @@ git push origin "$version"
 need_cmd docker
 docker info >/dev/null 2>&1 || die "docker is not running"
 
-say "Running goreleaser-cross (cgo + GitHub + Homebrew tap)..."
+say "Running goreleaser-cross (cgo + GitHub + Homebrew tap + Scoop)..."
 if ! docker run --rm --privileged \
 	-e CGO_ENABLED=1 \
 	-e GITHUB_TOKEN \

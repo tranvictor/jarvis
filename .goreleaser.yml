@@ -86,6 +86,38 @@ archives:
     files:
       - LICENSE
 
+# Linux packages attached to the GitHub release. A Pages workflow then turns
+# them into signed apt/yum repos so users can apt/dnf upgrade.
+nfpms:
+  - id: linux-packages
+    builds: [linux-amd64, linux-arm64]
+    vendor: tranvictor
+    homepage: https://github.com/tranvictor/jarvis
+    maintainer: Victor Tran <vu.tran54@gmail.com>
+    description: Onchain (EVM compatible) operation made easy
+    license: MIT
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/jarvis/LICENSE
+        file_info:
+          mode: 0644
+
+scoops:
+  - name: jarvis
+    ids: [windows]
+    repository:
+      owner: tranvictor
+      name: homebrew-tranvictor
+    skip_upload: auto
+    homepage: https://github.com/tranvictor/jarvis
+    description: Onchain (EVM compatible) operation made easy
+    license: MIT
+    commit_msg_template: "Scoop update for {{ .ProjectName }} version {{ .Tag }}"
+
 brews:
   - name: jarvis
     ids: [nix]
