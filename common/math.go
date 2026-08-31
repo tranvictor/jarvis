@@ -20,8 +20,8 @@ func HexToBig(hex string) *big.Int {
 
 func FloatToInt(amount float64) int64 {
 	s := fmt.Sprintf("%.0f", amount)
-	if i, err := strconv.Atoi(s); err == nil {
-		return int64(i)
+	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return i
 	} else {
 		panic(err)
 	}
