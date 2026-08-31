@@ -271,6 +271,9 @@ var listNetworkCmd = &cobra.Command{
 				continue
 			}
 			appUI.Info("%d. Name: %s, Chain ID: %d", i+1, n.GetName(), n.GetChainID())
+			if src := networks.CustomNetworkFile(n.GetName()); src != "" {
+				appUI.Info("    Override: %s", src)
+			}
 			appUI.Info("    RPC nodes:")
 			for key, node := range nodes {
 				appUI.Info("    - %s: %s", key, node)

@@ -40,6 +40,10 @@ var ErrNetworkNotFound = fmt.Errorf("network not found")
 type networks struct {
 	networks     map[string]Network
 	networksByID map[uint64]Network
+	// customFiles maps a network name to the ~/.jarvis/networks/*.json that
+	// loaded it. Used by `jarvis network list` so overrides are visible
+	// without printing on every command.
+	customFiles map[string]string
 }
 
 func (n *networks) getSupportedNetworkNames() []string {
@@ -76,8 +80,9 @@ func (n *networks) getNetwork(name string) (Network, error) {
 
 func newSupportedNetworks() *networks {
 	result := networks{
-		map[string]Network{},
-		map[uint64]Network{},
+		networks:     map[string]Network{},
+		networksByID: map[uint64]Network{},
+		customFiles:  map[string]string{},
 	}
 	for _, n := range supportedNetworks {
 		if _, found := result.networks[n.GetName()]; found {
@@ -109,21 +114,9 @@ func newSupportedNetworks() *networks {
 
 	for _, entry := range customNetworks {
 		n := entry.network
-		_, nameFound := result.networks[n.GetName()]
-		_, idFound := result.networksByID[n.GetChainID()]
-		if nameFound || idFound {
-			var reasons []string
-			if nameFound {
-				reasons = append(reasons, fmt.Sprintf("name %q", n.GetName()))
-			}
-			if idFound {
-				reasons = append(reasons, fmt.Sprintf("chain id %d", n.GetChainID()))
-			}
-			fmt.Printf("Note: Custom network file %q overlaps a bundled network (%s).\n", entry.path, strings.Join(reasons, " and "))
-			fmt.Printf("      Jarvis uses the RPC and explorer settings from that file. Remove or rename the file to use bundled defaults; you can ignore this if the override is intentional.\n")
-		}
 		result.networks[n.GetName()] = n
 		result.networksByID[n.GetChainID()] = n
+		result.customFiles[n.GetName()] = entry.path
 	}
 	return &result
 }
@@ -201,6 +194,15 @@ func GetSupportedNetworkNames() []string {
 	return globalSupportedNetworks.getSupportedNetworkNames()
 }
 
+// CustomNetworkFile returns the path of the ~/.jarvis/networks JSON that
+// overrides the given network name, or "" if the network is bundled-only.
+func CustomNetworkFile(name string) string {
+	if globalSupportedNetworks.customFiles == nil {
+		return ""
+	}
+	return globalSupportedNetworks.customFiles[name]
+}
+
 func AddNetwork(network Network) error {
 	globalSupportedNetworks.networks[network.GetName()] = network
 	globalSupportedNetworks.networksByID[network.GetChainID()] = network
@@ -228,10 +230,14 @@ func AddNetwork(network Network) error {
 		return fmt.Errorf("failed to marshal network: %w", err)
 	}
 
-	err = os.WriteFile(filepath.Join(customNetworksDir, fmt.Sprintf("%s.json", network.GetName())), content, 0644)
+	path := filepath.Join(customNetworksDir, fmt.Sprintf("%s.json", network.GetName()))
+	err = os.WriteFile(path, content, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to write the new network to file: %w", err)
 	}
-
+	if globalSupportedNetworks.customFiles == nil {
+		globalSupportedNetworks.customFiles = map[string]string{}
+	}
+	globalSupportedNetworks.customFiles[network.GetName()] = path
 	return nil
 }
