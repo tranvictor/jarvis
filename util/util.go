@@ -1,6 +1,7 @@
 package util
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"math/big"
@@ -801,17 +802,73 @@ func GnosisMsigSubmissionTopic() common.Hash {
 	return ev.ID
 }
 
-// GnosisMsigTxIDFromLogs returns the transactionId from the first Submission
-// log emitted by msigAddr, or nil if none is present.
+// gnosisMsigTxIDTopicIndex maps Classic event IDs to the topic index that
+// holds transactionId. Submission/Execution use topics[1]; Confirmation
+// and Revocation index the sender first, so the id is topics[2].
+func gnosisMsigTxIDTopicIndex() map[common.Hash]int {
+	a := GetGnosisMsigABI()
+	idx := map[common.Hash]int{}
+	if ev, ok := a.Events["Submission"]; ok {
+		idx[ev.ID] = 1
+	}
+	if ev, ok := a.Events["Execution"]; ok {
+		idx[ev.ID] = 1
+	}
+	if ev, ok := a.Events["ExecutionFailure"]; ok {
+		idx[ev.ID] = 1
+	}
+	if ev, ok := a.Events["Confirmation"]; ok {
+		idx[ev.ID] = 2
+	}
+	if ev, ok := a.Events["Revocation"]; ok {
+		idx[ev.ID] = 2
+	}
+	return idx
+}
+
+// GnosisMsigTxIDFromLogs returns the transactionId from the first Classic
+// Gnosis event on msigAddr that carries one (Submission, Confirmation,
+// Revocation, Execution, ExecutionFailure). confirmTransaction txs only
+// emit Confirmation, not Submission.
 func GnosisMsigTxIDFromLogs(logs []*types.Log, msigAddr string) *big.Int {
-	topic := GnosisMsigSubmissionTopic()
+	idx := gnosisMsigTxIDTopicIndex()
 	for _, l := range logs {
-		if len(l.Topics) < 2 {
+		if len(l.Topics) == 0 {
 			continue
 		}
-		if strings.EqualFold(l.Address.Hex(), msigAddr) && l.Topics[0] == topic {
-			return l.Topics[1].Big()
+		idIdx, ok := idx[l.Topics[0]]
+		if !ok || !strings.EqualFold(l.Address.Hex(), msigAddr) {
+			continue
 		}
+		if len(l.Topics) <= idIdx {
+			continue
+		}
+		return l.Topics[idIdx].Big()
+	}
+	return nil
+}
+
+// GnosisMsigTxIDFromCalldata returns the transactionId encoded in a Classic
+// confirmTransaction / revokeConfirmation / executeTransaction call, or nil.
+func GnosisMsigTxIDFromCalldata(data []byte) *big.Int {
+	if len(data) < 4 {
+		return nil
+	}
+	a := GetGnosisMsigABI()
+	for _, name := range []string{"confirmTransaction", "revokeConfirmation", "executeTransaction"} {
+		method, ok := a.Methods[name]
+		if !ok || !bytes.Equal(data[:4], method.ID) {
+			continue
+		}
+		args, err := method.Inputs.Unpack(data[4:])
+		if err != nil || len(args) == 0 {
+			return nil
+		}
+		id, ok := args[0].(*big.Int)
+		if !ok {
+			return nil
+		}
+		return id
 	}
 	return nil
 }

@@ -797,10 +797,13 @@ Safe+Classic runs write both arrays into one file.`,
 			}
 			msigHex := txinfo.Tx.To().Hex()
 			txid := util.GnosisMsigTxIDFromLogs(txinfo.Receipt.Logs, msigHex)
+			if txid == nil && txinfo.Tx != nil {
+				txid = util.GnosisMsigTxIDFromCalldata(txinfo.Tx.Data())
+			}
 			if txid == nil {
-				appUI.Warn("This tx is not a gnosis classic multisig init tx. Skip.")
+				appUI.Warn("This tx is not a Classic Gnosis submit/confirm/revoke/execute tx. Skip.")
 				r.status = "skipped"
-				r.reason = "not a gnosis init tx"
+				r.reason = "not a gnosis classic msig tx"
 				results = append(results, r)
 				continue
 			}

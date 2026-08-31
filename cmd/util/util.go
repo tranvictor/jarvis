@@ -221,8 +221,11 @@ func HandleApproveOrRevokeOrExecuteMsig(
 			return
 		}
 		txid = util.GnosisMsigTxIDFromLogs(txInfo.Receipt.Logs, tc.To)
+		if txid == nil && txInfo.Tx != nil {
+			txid = util.GnosisMsigTxIDFromCalldata(txInfo.Tx.Data())
+		}
 		if txid == nil {
-			u.Error("The provided tx hash is not a gnosis multisig init tx or with a different multisig.")
+			u.Error("The provided tx hash is not a Classic Gnosis submit/confirm/revoke/execute tx for this multisig.")
 			return
 		}
 	}
