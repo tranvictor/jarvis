@@ -69,15 +69,6 @@ builds:
       - CC=x86_64-w64-mingw32-gcc
       - CXX=x86_64-w64-mingw32-g++
 
-  - <<: *build_defaults
-    id: windows-386
-    goos: [windows]
-    goarch: [386]
-    env:
-      - CGO_ENABLED=1
-      - CC=i686-w64-mingw32-gcc
-      - CXX=i686-w64-mingw32-g++
-
 archives:
   - id: nix
     builds: [darwin-amd64, darwin-arm64, linux-amd64, linux-arm64]
@@ -88,7 +79,7 @@ archives:
     files:
       - LICENSE
   - id: windows
-    builds: [windows-386, windows-amd64]
+    builds: [windows-amd64]
     <<: *archive_defaults
     wrap_in_directory: false
     format: zip

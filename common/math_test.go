@@ -7,8 +7,8 @@ import (
 
 func TestGweiToWeiTypicalGasPrice(t *testing.T) {
 	// 37.500044782 Gwei is a normal Ethereum gas price. Converting to wei
-	// yields 37500044782, which overflows 32-bit int (strconv.Atoi) but fits
-	// in int64. This used to panic on windows/386.
+		// yields 37500044782, which overflows 32-bit int (strconv.Atoi) but fits
+		// in int64.
 	got := GweiToWei(37.500044782)
 	want := big.NewInt(37500044782)
 	if got.Cmp(want) != 0 {
