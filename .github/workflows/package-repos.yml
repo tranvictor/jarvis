@@ -1,6 +1,14 @@
-# Rebuild the signed apt/yum repos on GitHub Pages after each GitHub release.
-# Requires repository secret APT_GPG_PRIVATE_KEY (see scripts/gen-apt-key.sh)
-# and Pages source = GitHub Actions.
+# Publish signed apt/yum repos to GitHub Pages.
+#
+# Pages setup (once): repo Settings → Pages → Source = "GitHub Actions".
+# Do NOT add a Jekyll/static-HTML starter workflow — this file is the one
+# that deploys the site (Actions tab → "Package repositories").
+#
+# When it runs: automatically after `make release` publishes a GitHub Release
+# that includes .deb/.rpm (goreleaser nfpms). You can also click "Run workflow"
+# here after the first such release if Pages/the signing key were set up late.
+#
+# Requires secret APT_GPG_PRIVATE_KEY (scripts/gen-apt-key.sh).
 name: Package repositories
 
 on:

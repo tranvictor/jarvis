@@ -41,6 +41,8 @@ sudo apt install jarvis
 
 Upgrade with `sudo apt update && sudo apt install --only-upgrade jarvis`.
 
+The apt (and dnf) repo is published to GitHub Pages on each GitHub release (`make release`). Until that has happened once after these packages were added, the URLs above will 404.
+
 ### Linux (dnf / yum)
 
 ```bash
