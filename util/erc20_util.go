@@ -8,18 +8,6 @@ import (
 	"github.com/tranvictor/jarvis/util/cache"
 )
 
-var ERC20_METHODS = [...]string{
-	"name",
-	"symbol",
-	"decimals",
-	"totalSupply",
-	"balanceOf",
-	"transfer",
-	"transferFrom",
-	"approve",
-	"allowance",
-}
-
 var PROXY_METHODS = [...]string{
 	"implementation",
 	"upgradeTo",

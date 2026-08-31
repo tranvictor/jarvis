@@ -27,8 +27,6 @@ type EthereumNode interface {
 	GetPendingNonce(address string) (nonce uint64, err error)
 	TransactionReceipt(txHash string) (receipt *types.Receipt, err error)
 	TransactionByHash(txHash string) (tx *common.Transaction, isPending bool, err error)
-	// Call(result interface{}, method string, args ...interface{}) error
-	GetGasPriceSuggestion() (*big.Int, error)
 	SuggestedGasPrice() (*big.Int, error)
 	SuggestedGasTipCap() (*big.Int, error)
 	ReadContractToBytes(

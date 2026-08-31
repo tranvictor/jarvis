@@ -35,12 +35,6 @@ type Reader interface {
 	ReadContractToBytes(atBlock int64, from string, caddr string, abi *abi.ABI, method string, args ...interface{}) ([]byte, error)
 }
 
-const (
-	DEFAULT_ETHERSCAN_APIKEY string = "UBB257TI824FC7HUSPT66KZUMGBPRN3IWV"
-	DEFAULT_BSCSCAN_APIKEY   string = "62TU8Z81F7ESNJT38ZVRBSX7CNN4QZSP5I"
-	DEFAULT_TOMOSCAN_APIKEY  string = ""
-)
-
 type EthReader struct {
 	nodes map[string]EthereumNode
 	be    jarvisnetworks.BlockExplorer
@@ -204,34 +198,6 @@ func (er *EthReader) TxInfoFromHash(tx string) (jarviscommon.TxInfo, error) {
 			Receipt:     receipt,
 		}, nil
 	}
-}
-
-type getGasSuggestionResponse struct {
-	GasPrice *big.Int
-	Error    error
-}
-
-func (er *EthReader) GetGasPriceWeiSuggestion() (*big.Int, error) {
-	resCh := make(chan getGasSuggestionResponse, len(er.nodes))
-	for i := range er.nodes {
-		n := er.nodes[i]
-		go func() {
-			price, err := n.GetGasPriceSuggestion()
-			resCh <- getGasSuggestionResponse{
-				GasPrice: price,
-				Error:    wrapError(err, n.NodeName()),
-			}
-		}()
-	}
-	errs := []error{}
-	for i := 0; i < len(er.nodes); i++ {
-		result := <-resCh
-		if result.Error == nil {
-			return result.GasPrice, result.Error
-		}
-		errs = append(errs, result.Error)
-	}
-	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
 type getBalanceResponse struct {
@@ -549,37 +515,6 @@ func (er *EthReader) StorageAt(atBlock int64, caddr string, slot string) ([]byte
 	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
-func (er *EthReader) ReadHistoryContractWithABI(
-	atBlock int64,
-	result interface{},
-	caddr string,
-	abi *abi.ABI,
-	method string,
-	args ...interface{},
-) error {
-	responseBytes, err := er.ReadContractToBytes(
-		int64(atBlock), DEFAULT_ADDRESS, caddr, abi, method, args...)
-	if err != nil {
-		return err
-	}
-	return abi.UnpackIntoInterface(result, method, responseBytes)
-}
-
-func (er *EthReader) ReadContractWithABIAndFrom(
-	result interface{},
-	from string,
-	caddr string,
-	abi *abi.ABI,
-	method string,
-	args ...interface{},
-) error {
-	responseBytes, err := er.ReadContractToBytes(-1, from, caddr, abi, method, args...)
-	if err != nil {
-		return err
-	}
-	return abi.UnpackIntoInterface(result, method, responseBytes)
-}
-
 func (er *EthReader) ReadContractWithABI(
 	result interface{},
 	caddr string,
@@ -592,20 +527,6 @@ func (er *EthReader) ReadContractWithABI(
 		return err
 	}
 	return abi.UnpackIntoInterface(result, method, responseBytes)
-}
-
-func (er *EthReader) ReadHistoryContract(
-	atBlock int64,
-	result interface{},
-	caddr string,
-	method string,
-	args ...interface{},
-) error {
-	abi, err := er.GetABI(caddr)
-	if err != nil {
-		return err
-	}
-	return er.ReadHistoryContractWithABI(atBlock, result, caddr, abi, method, args...)
 }
 
 func (er *EthReader) ReadContract(
@@ -621,24 +542,6 @@ func (er *EthReader) ReadContract(
 	return er.ReadContractWithABI(result, caddr, abi, method, args...)
 }
 
-func (er *EthReader) HistoryERC20Balance(
-	atBlock int64,
-	caddr string,
-	user string,
-) (*big.Int, error) {
-	abi := jarviscommon.GetERC20ABI()
-	result := big.NewInt(0)
-	err := er.ReadHistoryContractWithABI(
-		atBlock,
-		&result,
-		caddr,
-		abi,
-		"balanceOf",
-		jarviscommon.HexToAddress(user),
-	)
-	return result, err
-}
-
 func (er *EthReader) ERC20Symbol(caddr string) (string, error) {
 	abi := jarviscommon.GetERC20ABI()
 	var result string
@@ -651,13 +554,6 @@ func (er *EthReader) ERC20Balance(caddr string, user string) (*big.Int, error) {
 	result := big.NewInt(0)
 	err := er.ReadContractWithABI(&result, caddr, abi, "balanceOf", jarviscommon.HexToAddress(user))
 	return result, err
-}
-
-func (er *EthReader) HistoryERC20Decimal(atBlock int64, caddr string) (int64, error) {
-	abi := jarviscommon.GetERC20ABI()
-	var result uint8
-	err := er.ReadHistoryContractWithABI(atBlock, &result, caddr, abi, "decimals")
-	return int64(result), err
 }
 
 func (er *EthReader) ERC20Decimal(caddr string) (uint64, error) {
@@ -785,40 +681,6 @@ func (er *EthReader) RecommendedGasPrice() (float64, error) {
 	return 0, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }
 
-func (er *EthReader) HistoryERC20Allowance(
-	atBlock int64,
-	caddr string,
-	owner string,
-	spender string,
-) (*big.Int, error) {
-	abi := jarviscommon.GetERC20ABI()
-	result := big.NewInt(0)
-	err := er.ReadHistoryContractWithABI(
-		atBlock,
-		&result, caddr, abi,
-		"allowance",
-		jarviscommon.HexToAddress(owner),
-		jarviscommon.HexToAddress(spender),
-	)
-	return result, err
-}
-
-func (er *EthReader) ERC20Allowance(
-	caddr string,
-	owner string,
-	spender string,
-) (*big.Int, error) {
-	abi := jarviscommon.GetERC20ABI()
-	result := big.NewInt(0)
-	err := er.ReadContractWithABI(
-		&result, caddr, abi,
-		"allowance",
-		jarviscommon.HexToAddress(owner),
-		jarviscommon.HexToAddress(spender),
-	)
-	return result, err
-}
-
 func (er *EthReader) AddressFromContractWithABI(
 	contract string,
 	abi *abi.ABI,
@@ -826,18 +688,6 @@ func (er *EthReader) AddressFromContractWithABI(
 ) (*common.Address, error) {
 	result := common.Address{}
 	err := er.ReadContractWithABI(&result, contract, abi, method)
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
-}
-
-func (er *EthReader) AddressFromContract(
-	contract string,
-	method string,
-) (*common.Address, error) {
-	result := common.Address{}
-	err := er.ReadContract(&result, contract, method)
 	if err != nil {
 		return nil, err
 	}

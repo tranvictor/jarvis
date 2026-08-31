@@ -2,13 +2,10 @@ package common
 
 import (
 	"strings"
-	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 )
-
-var Start time.Time
 
 func GetERC20ABI() *abi.ABI {
 	result, _ := abi.JSON(strings.NewReader(erc20abi))

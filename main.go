@@ -21,13 +21,9 @@
 package main
 
 import (
-  "time"
-
 	"github.com/tranvictor/jarvis/cmd"
-	"github.com/tranvictor/jarvis/common"
 )
 
 func main() {
-  common.Start = time.Now()
 	cmd.Execute()
 }

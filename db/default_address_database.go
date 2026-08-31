@@ -19,11 +19,6 @@ func (self *DefaultAddressDatabase) Register(addr string, name string) {
 	self.Data[common.HexToAddress(addr)] = name
 }
 
-type tokens []struct {
-	Address string `json:"address"`
-	Symbol  string `json:"symbol"`
-}
-
 func registerTokens(db *DefaultAddressDatabase) error {
 	tokens := AllTokenAddresses()
 	for addr, symbol := range tokens {
