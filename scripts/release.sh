@@ -40,6 +40,38 @@ need_cmd() {
 	command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+# EDITOR/VISUAL may point at a broken Homebrew MacVim (missing libruby).
+# Try those first, then system vim / nano / vi.
+open_editor() {
+	local file="$1" editor
+	local -a editor_cmd tried=() candidates=()
+
+	[ -n "${RELEASE_EDITOR:-}" ] && candidates+=("$RELEASE_EDITOR")
+	[ -n "${VISUAL:-}" ] && candidates+=("$VISUAL")
+	[ -n "${EDITOR:-}" ] && candidates+=("$EDITOR")
+	candidates+=("/usr/bin/vim" "nano" "vi")
+
+	local seen=" "
+	for editor in "${candidates[@]}"; do
+		[ -n "$editor" ] || continue
+		case "$seen" in
+			*" $editor "*) continue ;;
+		esac
+		seen+="$editor "
+
+		# EDITOR may be "code -w"; split so flags work.
+		read -r -a editor_cmd <<<"$editor"
+		command -v "${editor_cmd[0]}" >/dev/null 2>&1 || continue
+		say "Opening $editor on $file — edit the notes, save, and quit."
+		if "${editor_cmd[@]}" "$file" </dev/tty >/dev/tty 2>/dev/tty; then
+			return 0
+		fi
+		say "Editor '$editor' failed. Trying another..."
+		tried+=("$editor")
+	done
+	die "no working editor (tried: ${tried[*]}). Set RELEASE_EDITOR=/usr/bin/vim or nano."
+}
+
 normalize_version() {
 	local v="$1"
 	v="${v#v}"
@@ -122,12 +154,8 @@ fi
 say ""
 
 python3 "$ROOT/scripts/compose-release-notes.py" "$last_tag" "$NOTES_FILE"
-editor="${VISUAL:-${EDITOR:-vi}}"
-say "Opening $editor on $NOTES_FILE — edit the notes, save, and quit."
 say "PR bodies are included when GITHUB_TOKEN can read them; trim anything you don't want published."
-# EDITOR may be "code -w"; split so flags work.
-read -r -a editor_cmd <<<"$editor"
-"${editor_cmd[@]}" "$NOTES_FILE" </dev/tty >/dev/tty 2>/dev/tty
+open_editor "$NOTES_FILE"
 
 python3 - "$NOTES_FILE" <<'PY'
 import re, sys
