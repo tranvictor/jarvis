@@ -90,6 +90,8 @@ archives:
 # them into signed apt/yum repos so users can apt/dnf upgrade.
 nfpms:
   - id: linux-packages
+    # goreleaser-cross v1.23.2 predates nfpms.ids (v2.8); `builds` is still
+    # accepted there and aliased to ids on newer goreleaser.
     builds: [linux-amd64, linux-arm64]
     vendor: tranvictor
     homepage: https://github.com/tranvictor/jarvis
@@ -104,7 +106,7 @@ nfpms:
       - src: LICENSE
         dst: /usr/share/doc/jarvis/LICENSE
         file_info:
-          mode: 0644
+          mode: 0o644
 
 scoops:
   - name: jarvis
