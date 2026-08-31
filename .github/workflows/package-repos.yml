@@ -1,12 +1,17 @@
 # Publish signed apt/yum repos to GitHub Pages.
 #
-# Pages setup (once): repo Settings → Pages → Source = "GitHub Actions".
-# Do NOT add a Jekyll/static-HTML starter workflow — this file is the one
-# that deploys the site (Actions tab → "Package repositories").
+# Pages setup (once):
+# 1. Repo Settings → Pages → Source = "GitHub Actions".
+#    Do NOT add a Jekyll/static-HTML starter — this file deploys the site.
+# 2. Repo Settings → Environments → github-pages → Deployment branches and tags
+#    must allow tags. GitHub defaults this to branch "master" only, which
+#    blocks `make release` (the run's ref is the version tag, e.g. v0.2.2).
+#    Add a tag rule named `v*` (or switch the dropdown to no restriction).
 #
 # When it runs: automatically after `make release` publishes a GitHub Release
-# that includes .deb/.rpm (goreleaser nfpms). You can also click "Run workflow"
-# here after the first such release if Pages/the signing key were set up late.
+# that includes .deb/.rpm. If that run was blocked, fix the environment
+# rule above, then Actions → Package repositories → Run workflow from master
+# (or Re-run the failed job once tags are allowed).
 #
 # Requires secret APT_GPG_PRIVATE_KEY (scripts/gen-apt-key.sh).
 name: Package repositories
