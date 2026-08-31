@@ -40,6 +40,41 @@ need_cmd() {
 	command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
 }
 
+need_docker() {
+	need_cmd docker
+	docker info >/dev/null 2>&1 || die "docker is not running. Start Docker Desktop (or the daemon), then re-run make release."
+}
+
+run_goreleaser() {
+	local version="$1"
+	need_docker
+	say "Running goreleaser-cross (cgo + GitHub + Homebrew tap + Scoop)..."
+	if ! docker run --rm --privileged \
+		-e CGO_ENABLED=1 \
+		-e GITHUB_TOKEN \
+		-v "$ROOT:/go/src/github.com/tranvictor/jarvis" \
+		-w /go/src/github.com/tranvictor/jarvis \
+		"$CROSS_IMAGE" \
+		release --clean --release-notes .release-notes.md
+	then
+		die "goreleaser failed. Tag $version is already on origin — fix the error, then re-run make release."
+	fi
+	say ""
+	say "Released $version"
+	say "https://github.com/tranvictor/jarvis/releases/tag/$version"
+}
+
+write_notes_from_tag() {
+	local version="$1"
+	git tag -l --format='%(contents)' "$version" | python3 -c '
+import sys
+from pathlib import Path
+text = sys.stdin.read().strip() + "\n"
+Path(sys.argv[1]).write_text(text, encoding="utf-8")
+' "$NOTES_FILE"
+	[ -s "$NOTES_FILE" ] || die "tag $version has no annotation; cannot resume"
+}
+
 # EDITOR/VISUAL may point at a broken Homebrew MacVim (missing libruby).
 # Try those first, then system vim / nano / vi.
 open_editor() {
@@ -97,7 +132,7 @@ untracked_files() {
 [ -t 0 ] || [ -r /dev/tty ] || die "make release needs a terminal (it prompts for notes, version, and confirmations)"
 
 need_cmd git
-need_cmd docker
+need_docker
 need_cmd python3
 
 [ -n "${GITHUB_TOKEN:-}" ] || die "GITHUB_TOKEN is not set.
@@ -135,8 +170,25 @@ fi
 last_tag="$(git describe --tags --abbrev=0 2>/dev/null || true)"
 [ -n "$last_tag" ] || die "no existing tag to compare against"
 
-if [ "$(git rev-parse HEAD)" = "$(git rev-parse "$last_tag^{commit}")" ] && ! repo_dirty; then
-	die "nothing to release: HEAD is $last_tag and the working tree is clean"
+if [ "$(git rev-parse HEAD)" = "$(git rev-parse "$last_tag^{commit}")" ]; then
+	say "HEAD is already $last_tag."
+	say "A previous run likely tagged but did not finish publishing (e.g. Docker was down)."
+	if repo_dirty; then
+		say ""
+		say "Working tree is dirty; goreleaser needs a clean tree matching $last_tag:"
+		git status --short
+		confirm "Stash these changes, publish $last_tag, then restore the stash?" y || die "aborted"
+		git stash push -u -m "make-release resume $last_tag"
+		trap 'git stash pop || true' EXIT
+	fi
+	write_notes_from_tag "$last_tag"
+	say ""
+	say "=== Resume $last_tag ==="
+	sed 's/^/  /' "$NOTES_FILE"
+	say ""
+	confirm "Publish $last_tag with goreleaser (tag already on origin)?" y || die "aborted"
+	run_goreleaser "$last_tag"
+	exit 0
 fi
 
 say ""
@@ -222,25 +274,4 @@ say "Pushing $branch and $version..."
 git push origin "HEAD:$branch"
 git push origin "$version"
 
-need_cmd docker
-docker info >/dev/null 2>&1 || die "docker is not running"
-
-say "Running goreleaser-cross (cgo + GitHub + Homebrew tap + Scoop)..."
-if ! docker run --rm --privileged \
-	-e CGO_ENABLED=1 \
-	-e GITHUB_TOKEN \
-	-v "$ROOT:/go/src/github.com/tranvictor/jarvis" \
-	-w /go/src/github.com/tranvictor/jarvis \
-	"$CROSS_IMAGE" \
-	release --clean --release-notes .release-notes.md
-then
-	die "goreleaser failed. Tag $version is already on origin — fix the error, then re-run:
-  docker run --rm --privileged -e CGO_ENABLED=1 -e GITHUB_TOKEN \\
-    -v \"$ROOT:/go/src/github.com/tranvictor/jarvis\" \\
-    -w /go/src/github.com/tranvictor/jarvis \\
-    $CROSS_IMAGE release --clean --release-notes .release-notes.md"
-fi
-
-say ""
-say "Released $version"
-say "https://github.com/tranvictor/jarvis/releases/tag/$version"
+run_goreleaser "$version"
