@@ -206,7 +206,7 @@ fi
 say ""
 
 python3 "$ROOT/scripts/compose-release-notes.py" "$last_tag" "$NOTES_FILE"
-say "PR bodies are included when GITHUB_TOKEN can read them; trim anything you don't want published."
+say "Drafted compact notes from PR/commit titles — edit, save, and quit."
 open_editor "$NOTES_FILE"
 
 python3 - "$NOTES_FILE" <<'PY'

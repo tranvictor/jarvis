@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Draft GitHub release notes from commits since the last tag.
+"""Draft compact GitHub release notes from commits since the last tag.
 
-Pulls PR titles and bodies when GITHUB_TOKEN is set so the draft is verbose
-enough to edit down, rather than a raw subject list.
+One bullet per PR (or unique commit). PR bodies and raw commit dumps are
+omitted so the draft is readable as-is; edit in the editor if you want.
 """
 from __future__ import annotations
 
@@ -17,15 +17,36 @@ from typing import Optional
 
 PR_RE = re.compile(r"\(#(\d+)\)\s*$")
 MERGE_RE = re.compile(r"Merge pull request #(\d+)\b")
-CURSOR_PR_BODY = re.compile(
-    r"<!--\s*CURSOR_AGENT_PR_BODY_BEGIN\s*-->\s*(.*?)\s*<!--\s*CURSOR_AGENT_PR_BODY_END\s*-->",
-    re.S,
-)
-HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
-HTML_FOOTER = re.compile(r"<div\b.*?</div>", re.S)
 REPO_RE = re.compile(
     r"(?:github\.com[:/])(?P<owner>[^/]+)/(?P<repo>[^/.]+)(?:\.git)?$"
 )
+
+# (section heading, keyword regex) — first match wins.
+SECTIONS: list[tuple[str, re.Pattern[str]]] = [
+    (
+        "Fixes",
+        re.compile(
+            r"\b(fix|fixes|fixed|bug|hang|overflow|error)\b",
+            re.I,
+        ),
+    ),
+    (
+        "Packaging",
+        re.compile(
+            r"\b(release|goreleaser|homebrew|brew|scoop|apt|yum|nfpms|"
+            r"linux-386|windows 32|cgo|makefile)\b",
+            re.I,
+        ),
+    ),
+    (
+        "Internal",
+        re.compile(
+            r"(refactor|deduplicat\w*|share[sd]?\b|split\b|delete dead|"
+            r"unused|inject\b|cleanup|tidy|dead code)",
+            re.I,
+        ),
+    ),
+]
 
 
 def run(args: list[str]) -> str:
@@ -59,22 +80,14 @@ def github_get(path: str, token: str) -> Optional[dict]:
         return None
 
 
-def commits_since(tag: str) -> list[tuple[str, str, str]]:
-    raw = run(
-        [
-            "git",
-            "log",
-            f"{tag}..HEAD",
-            "--format=%h%x1f%s%x1f%b%x1e",
-        ]
-    )
-    out: list[tuple[str, str, str]] = []
-    for entry in raw.split("\x1e"):
-        entry = entry.strip("\n")
-        if not entry:
+def commits_since(tag: str) -> list[tuple[str, str]]:
+    raw = run(["git", "log", f"{tag}..HEAD", "--format=%h%x1f%s"])
+    out: list[tuple[str, str]] = []
+    for line in raw.splitlines():
+        if not line.strip():
             continue
-        sha, subject, body = (entry.split("\x1f", 2) + ["", ""])[:3]
-        out.append((sha.strip(), subject.strip(), body.strip()))
+        sha, subject = (line.split("\x1f", 1) + [""])[:2]
+        out.append((sha.strip(), subject.strip()))
     return out
 
 
@@ -88,24 +101,27 @@ def pr_number(subject: str) -> Optional[str]:
     return None
 
 
-def clean_pr_body(body: str) -> str:
-    m = CURSOR_PR_BODY.search(body)
-    if m:
-        body = m.group(1)
-    body = HTML_COMMENT.sub("", body)
-    body = HTML_FOOTER.sub("", body)
-    return re.sub(r"\n{3,}", "\n\n", body).strip()
+def is_noise(subject: str) -> bool:
+    s = subject.strip().lower()
+    if s.startswith("merge "):
+        return True
+    if re.match(r"^(pump|bump) versions?\b", s):
+        return True
+    return False
 
 
-def clean_commit_body(body: str) -> str:
-    lines = []
-    for line in body.splitlines():
-        if line.lower().startswith("co-authored-by:"):
-            continue
-        if set(line.strip()) <= set("-") and len(line.strip()) >= 5:
-            continue
-        lines.append(line)
-    return "\n".join(lines).strip()
+def classify(title: str) -> str:
+    for heading, pat in SECTIONS:
+        if pat.search(title):
+            return heading
+    return "What's new"
+
+
+def format_bullet(title: str, pr: Optional[str]) -> str:
+    title = PR_RE.sub("", title).strip().rstrip(".")
+    if pr:
+        return f"- {title} (#{pr})"
+    return f"- {title}"
 
 
 def main() -> int:
@@ -121,73 +137,51 @@ def main() -> int:
     owner, repo = repo_slug()
     commits = commits_since(last_tag)
 
-    prs: list[tuple[str, str, str]] = []
-    others: list[tuple[str, str, str]] = []
+    items: list[tuple[str, Optional[str]]] = []
     seen_prs: set[str] = set()
+    seen_titles: set[str] = set()
 
-    for sha, subject, body in commits:
+    for _sha, subject in commits:
+        if is_noise(subject):
+            continue
         n = pr_number(subject)
-        if n and token:
+        title = subject
+        if n:
             if n in seen_prs:
                 continue
             seen_prs.add(n)
-            pr = github_get(f"/repos/{owner}/{repo}/pulls/{n}", token)
-            if pr and pr.get("title"):
-                title = pr["title"].strip()
-                pr_body = clean_pr_body(pr.get("body") or "")
-                prs.append((n, title, pr_body))
-                continue
-        others.append((sha, subject, clean_commit_body(body)))
+            if token:
+                pr = github_get(f"/repos/{owner}/{repo}/pulls/{n}", token)
+                if pr and pr.get("title"):
+                    title = pr["title"].strip()
+        key = PR_RE.sub("", title).strip().rstrip(".").lower()
+        if key in seen_titles:
+            continue
+        seen_titles.add(key)
+        items.append((title, n))
+
+    grouped: dict[str, list[str]] = {}
+    order = ["What's new", "Fixes", "Packaging", "Internal"]
+    for title, pr in items:
+        grouped.setdefault(classify(title), []).append(format_bullet(title, pr))
 
     lines = [
-        "<!-- Edit this draft, save, and quit. HTML comments are stripped before publish.",
-        "     Delete ## Commits since ... if you don't want the raw log on GitHub. -->",
-        "",
-        "## What's new",
+        "<!-- Edit this draft, save, and quit. HTML comments are stripped. -->",
         "",
     ]
-    if prs:
-        for n, title, pr_body in prs:
-            lines.append(f"### {title} (#{n})")
-            lines.append("")
-            if pr_body:
-                lines.append(pr_body)
-                lines.append("")
-            else:
-                lines.append("_No PR description._")
-                lines.append("")
-    if others:
-        heading = "### Other changes" if prs else None
-        if heading:
-            lines.append(heading)
-            lines.append("")
-        for sha, subject, body in others:
-            lines.append(f"- {subject} (`{sha}`)")
-            if body:
-                for bline in body.splitlines():
-                    lines.append(f"  {bline}")
-            lines.append("")
-
-    if not prs and not others:
-        lines.append("- ")
+    any_section = False
+    for heading in order:
+        bullets = grouped.get(heading) or []
+        if not bullets:
+            continue
+        any_section = True
+        lines.append(f"## {heading}")
+        lines.append("")
+        lines.extend(bullets)
         lines.append("")
 
-    lines.extend(
-        [
-            f"## Commits since {last_tag}",
-            "",
-        ]
-    )
-    if commits:
-        for sha, subject, body in commits:
-            lines.append(f"* {sha} {subject}")
-            if body:
-                lines.append("")
-                lines.append(body)
-                lines.append("")
-    else:
-        lines.append("_No commits since the last tag._")
-        lines.append("")
+    if not any_section:
+        lines.extend(["## What's new", "", "- ", ""])
 
     text = "\n".join(lines).rstrip() + "\n"
     with open(dest, "w", encoding="utf-8") as f:
