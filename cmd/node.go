@@ -308,19 +308,65 @@ func buildNodeTable(rows []nodeRow, showStatus bool) *ui.Table {
 
 // ── add ──────────────────────────────────────────────────────────────────────
 
+// canonicalNodeNetworkName maps aliases like "ethereum" to the bundled
+// name used for ~/.jarvis/nodes/<name>.json (e.g. "mainnet").
+func canonicalNodeNetworkName(arg string) string {
+	if n, err := networks.GetNetwork(arg); err == nil {
+		return n.GetName()
+	}
+	return arg
+}
+
 var nodeAddCmd = &cobra.Command{
 	Use:   "add <network> <name> <url>",
 	Short: "Add a custom RPC node for a network",
 	Args:  cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
-		networkName, name, nodeURL := args[0], args[1], args[2]
-		if _, err := networks.GetNetwork(networkName); err != nil {
-			appUI.Warn("Network %q is not in the built-in list, but adding the node anyway.", networkName)
+		networkArg, name, nodeURL := args[0], args[1], args[2]
+		networkName := canonicalNodeNetworkName(networkArg)
+		if _, err := networks.GetNetwork(networkArg); err != nil {
+			appUI.Warn("Network %q is not in the built-in list, but adding the node anyway.", networkArg)
+		} else if networkName != networkArg {
+			appUI.Info("%q is an alias for %q. Storing the node under %q.", networkArg, networkName, networkName)
 		}
 		cfg, err := util.LoadNodeConfig(networkName)
 		if err != nil {
 			cfg = util.NodeConfig{Nodes: map[string]string{}, UseDefaults: true}
 		}
+		if cfg.Nodes == nil {
+			cfg.Nodes = map[string]string{}
+		}
+
+		if existing, ok := util.FindNodeNameByURL(cfg.Nodes, nodeURL); ok {
+			if existing == name {
+				appUI.Info("Node %q already exists with this URL for %q. Nothing to change.", name, networkName)
+				return
+			}
+			if oldURL, taken := cfg.Nodes[name]; taken {
+				appUI.Info("Replacing node %q (was %s).", name, oldURL)
+			}
+			delete(cfg.Nodes, existing)
+			cfg.Nodes[name] = nodeURL
+			if err := util.SaveNodeConfig(networkName, cfg); err != nil {
+				appUI.Error("Couldn't save node config: %s", err)
+				return
+			}
+			appUI.Success("Node %q already used this URL. Renamed to %q for network %q.", existing, name, networkName)
+			return
+		}
+
+		if oldURL, exists := cfg.Nodes[name]; exists {
+			cfg.Nodes[name] = nodeURL
+			if err := util.SaveNodeConfig(networkName, cfg); err != nil {
+				appUI.Error("Couldn't save node config: %s", err)
+				return
+			}
+			appUI.Success("Updated node %q for network %q.", name, networkName)
+			appUI.Info("  %s", oldURL)
+			appUI.Info("  → %s", nodeURL)
+			return
+		}
+
 		cfg.Nodes[name] = nodeURL
 		if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 			appUI.Error("Couldn't save node config: %s", err)
@@ -340,7 +386,7 @@ var nodeRemoveCmd = &cobra.Command{
 	Short: "Remove a custom RPC node for a network",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		networkName, name := args[0], args[1]
+		networkName, name := canonicalNodeNetworkName(args[0]), args[1]
 		cfg, err := util.LoadNodeConfig(networkName)
 		if err != nil {
 			appUI.Error("No custom node configuration found for %q.", networkName)
@@ -434,7 +480,7 @@ var nodeExportCmd = &cobra.Command{
 				}
 			}
 		} else {
-			networkName := args[0]
+			networkName := canonicalNodeNetworkName(args[0])
 			cfg, err := util.LoadNodeConfig(networkName)
 			if err != nil {
 				appUI.Error("No custom node configuration found for %q: %s", networkName, err)
@@ -616,7 +662,7 @@ var nodeDefaultsCmd = &cobra.Command{
 	Short: "Toggle whether built-in default nodes are used alongside custom nodes",
 	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		networkName, toggle := args[0], args[1]
+		networkName, toggle := canonicalNodeNetworkName(args[0]), args[1]
 		switch toggle {
 		case "on", "off":
 		default:

@@ -80,6 +80,25 @@ func SaveNodeConfig(networkName string, cfg NodeConfig) error {
 	return os.WriteFile(p, data, 0644)
 }
 
+func normalizeRPCURL(u string) string {
+	return strings.TrimRight(strings.TrimSpace(u), "/")
+}
+
+// FindNodeNameByURL returns the configured name whose RPC URL matches url
+// (trailing slashes and surrounding space ignored).
+func FindNodeNameByURL(nodes map[string]string, url string) (string, bool) {
+	want := normalizeRPCURL(url)
+	if want == "" {
+		return "", false
+	}
+	for name, u := range nodes {
+		if normalizeRPCURL(u) == want {
+			return name, true
+		}
+	}
+	return "", false
+}
+
 var migrateOnce sync.Once
 
 // bootstrapNodeConfig creates an initial node config file for the given network
