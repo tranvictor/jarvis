@@ -10,7 +10,7 @@ Both Ethereum and BSC :)
 
 ## Installation
 
-### MacOS via Homebrew
+### Homebrew (macOS and Linux)
 
 ```bash
 brew install tranvictor/jarvis/jarvis
@@ -24,6 +24,44 @@ To upgrade to the latest version, refresh the tap first. `brew upgrade jarvis` a
 brew update
 brew upgrade tranvictor/jarvis/jarvis
 ```
+
+Linux users who already have [Homebrew](https://docs.brew.sh/Homebrew-on-Linux) can use the same commands; the tap ships Linux amd64 and arm64 bottles.
+
+### Linux (apt)
+
+```bash
+sudo mkdir -p /etc/apt/keyrings
+sudo curl -fsSL https://tranvictor.github.io/jarvis/gpg/jarvis-archive-keyring.gpg \
+  -o /etc/apt/keyrings/jarvis-archive-keyring.gpg
+echo "deb [signed-by=/etc/apt/keyrings/jarvis-archive-keyring.gpg] https://tranvictor.github.io/jarvis/apt stable main" \
+  | sudo tee /etc/apt/sources.list.d/jarvis.list
+sudo apt update
+sudo apt install jarvis
+```
+
+Upgrade with `sudo apt update && sudo apt install --only-upgrade jarvis`.
+
+The apt (and dnf) repo is published to GitHub Pages on each GitHub release (`make release`). Until that has happened once after these packages were added, the URLs above will 404.
+
+### Linux (dnf / yum)
+
+```bash
+sudo rpm --import https://tranvictor.github.io/jarvis/gpg/jarvis-archive-keyring.asc
+sudo curl -fsSL https://tranvictor.github.io/jarvis/jarvis.repo \
+  -o /etc/yum.repos.d/jarvis.repo
+sudo dnf install jarvis
+```
+
+Upgrade with `sudo dnf upgrade jarvis`.
+
+### Windows (Scoop)
+
+```powershell
+scoop bucket add tranvictor https://github.com/tranvictor/homebrew-tranvictor
+scoop install jarvis
+```
+
+Upgrade with `scoop update jarvis`.
 
 ## Build from source
 

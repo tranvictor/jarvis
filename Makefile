@@ -18,7 +18,7 @@ test:
 
 # Interactive release: draft notes from git/PRs, let you edit them, commit
 # leftovers, prompt for the version, then tag + push + goreleaser-cross.
-# Requires a TTY and GITHUB_TOKEN (repo + homebrew-tranvictor tap).
+# Requires a TTY and GITHUB_TOKEN (repo + homebrew-tranvictor tap/Scoop bucket).
 .PHONY: release
 release:
 	@GORELEASER_CROSS_VERSION=$(GORELEASER_CROSS_VERSION) bash scripts/release.sh
