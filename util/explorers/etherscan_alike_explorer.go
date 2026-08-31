@@ -119,10 +119,6 @@ type abiresponse struct {
 	Result  string `json:"result"`
 }
 
-func (ar *abiresponse) IsOK() bool {
-	return ar.Status == "1"
-}
-
 func (ee *EtherscanLikeExplorer) GetABIString(address string) (string, error) {
 	url := ee.GetABIStringAPIURL(address)
 	resp, err := http.Get(url)
@@ -162,11 +158,11 @@ type sourceCodeResponse struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
 	Result  []struct {
-		ContractName        string `json:"ContractName"`
-		ABI                 string `json:"ABI"`
-		Proxy               string `json:"Proxy"`
-		Implementation      string `json:"Implementation"`
-		CompilerVersion     string `json:"CompilerVersion"`
+		ContractName    string `json:"ContractName"`
+		ABI             string `json:"ABI"`
+		Proxy           string `json:"Proxy"`
+		Implementation  string `json:"Implementation"`
+		CompilerVersion string `json:"CompilerVersion"`
 	} `json:"result"`
 }
 

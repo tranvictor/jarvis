@@ -9,9 +9,7 @@ import (
 )
 
 type OptimisticRollupExplorer struct {
-	gpmu              sync.Mutex
-	latestGasPrice    float64
-	gasPriceTimestamp int64
+	gpmu sync.Mutex
 
 	Domain string
 	APIKey string

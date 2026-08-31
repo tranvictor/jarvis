@@ -68,10 +68,6 @@ func (self *Account) Address() common.Address {
 	return self.address
 }
 
-func (self *Account) AddressHex() string {
-	return self.address.Hex()
-}
-
 func (self *Account) SignTx(
 	tx *types.Transaction,
 	chainId *big.Int,

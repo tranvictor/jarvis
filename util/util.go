@@ -30,18 +30,9 @@ import (
 )
 
 const (
-	ETH_ADDR                  string = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
-	MAX_ADDR                  string = "0xffffffffffffffffffffffffffffffffffffffff"
-	MIN_ADDR                  string = "0x00000000000000ffffffffffffffffffffffffff"
-	ETHEREUM_MAINNET_NODE_VAR string = "ETHEREUM_MAINNET_NODE"
-	ETHEREUM_ROPSTEN_NODE_VAR string = "ETHEREUM_ROPSTEN_NODE"
-	TOMO_MAINNET_NODE_VAR     string = "TOMO_MAINNET_NODE"
-	ETHEREUM_KOVAN_NODE_VAR   string = "ETHEREUM_KOVAN_NODE"
-	ETHEREUM_RINKEBY_NODE_VAR string = "ETHEREUM_RINKEBY_NODE"
-	BSC_MAINNET_NODE_VAR      string = "BSC_MAINNET_NODE"
-	BSC_TESTNET_NODE_VAR      string = "BSC_TESTNET_NODE"
-	ETHERSCAN_API_KEY_VAR     string = "ETHERSCAN_API_KEY"
-	BSCSCAN_API_KEY_VAR       string = "BSCSCAN_API_KEY"
+	ETH_ADDR string = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	MAX_ADDR string = "0xffffffffffffffffffffffffffffffffffffffff"
+	MIN_ADDR string = "0x00000000000000ffffffffffffffffffffffffff"
 )
 
 // GetExactAddressFromDatabases resolves str against the local address
