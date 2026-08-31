@@ -86,7 +86,9 @@ if [ "$branch" != master ]; then
 fi
 
 say "Fetching origin..."
-git fetch origin --tags --prune
+# --force: origin tags are source of truth; Git otherwise refuses to update
+# local tags that already exist ("would clobber existing tag") and aborts.
+git fetch origin --tags --prune --force
 
 upstream="$(git rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)"
 if [ -z "$upstream" ]; then
