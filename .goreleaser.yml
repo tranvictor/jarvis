@@ -136,9 +136,40 @@ brews:
         depends_on "go"
       end
     caveats: |
+      If the `jarvis` command is not found, open a new terminal window.
+      Or run this once in the current window:
+        eval "$(#{HOMEBREW_PREFIX}/bin/brew shellenv)"
+
       After a new GitHub release, refresh the tap before upgrading:
         brew update
         brew upgrade tranvictor/jarvis/jarvis
+    post_install: |
+      # Intel Homebrew already links into /usr/local/bin, which macOS puts on
+      # PATH by default. Apple Silicon (/opt/homebrew) and Linuxbrew do not.
+      brew_bin = HOMEBREW_PREFIX/"bin"
+      return if OS.mac? && brew_bin == Pathname.new("/usr/local/bin")
+
+      line = %(eval "$(#{HOMEBREW_PREFIX}/bin/brew shellenv)")
+      home = Pathname.new(Dir.home)
+      files = if OS.mac?
+        # .zprofile: Terminal.app login shells. .zshrc: iTerm/VS Code non-login.
+        [home/".zprofile", home/".zshrc"]
+      else
+        [home/".profile", home/".bashrc"]
+      end
+      files << home/".bash_profile" if ENV.fetch("SHELL", "").end_with?("bash")
+
+      files.uniq.each do |file|
+        text = file.exist? ? file.read : ""
+        next if text.include?("brew shellenv") || text.include?(brew_bin.to_s)
+
+        file.open("a") do |io|
+          io.puts
+          io.puts "# Added by the jarvis formula so the jarvis command is on PATH"
+          io.puts line
+        end
+        ohai "Added Homebrew to PATH in #{file}"
+      end
     install: |
       system "make", "jarvis" if build.head?
       bin.install "bin/jarvis"
