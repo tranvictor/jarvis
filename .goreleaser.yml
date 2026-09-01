@@ -151,13 +151,13 @@ brews:
 
       line = %(eval "$(#{HOMEBREW_PREFIX}/bin/brew shellenv)")
       home = Pathname.new(Dir.home)
-      files = if OS.mac?
-        # .zprofile: Terminal.app login shells. .zshrc: iTerm/VS Code non-login.
-        [home/".zprofile", home/".zshrc"]
-      else
-        [home/".profile", home/".bashrc"]
-      end
-      files << home/".bash_profile" if ENV.fetch("SHELL", "").end_with?("bash")
+      # Write zsh *and* bash files. .zprofile/.zshrc are ignored if the user
+      # is on bash (or vice versa); unused files are harmless.
+      files = [
+        home/".zprofile", home/".zshrc",
+        home/".bash_profile", home/".bashrc",
+      ]
+      files << home/".profile" unless OS.mac?
 
       files.uniq.each do |file|
         text = file.exist? ? file.read : ""

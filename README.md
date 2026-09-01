@@ -26,7 +26,7 @@ If you already use Homebrew:
 brew install tranvictor/jarvis/jarvis
 ```
 
-On Apple Silicon, Homebrew lives in `/opt/homebrew/bin`, which is not on macOS's default PATH. The formula appends `brew shellenv` to `~/.zprofile` and `~/.zshrc` on install so `jarvis` works in new terminals. Already installed? Run `brew reinstall tranvictor/jarvis/jarvis` once, or:
+On Apple Silicon, Homebrew lives in `/opt/homebrew/bin`, which is not on macOS's default PATH. The formula appends `brew shellenv` to zsh (`~/.zprofile`, `~/.zshrc`) and bash (`~/.bash_profile`, `~/.bashrc`) startup files so `jarvis` works in new terminals regardless of which of those shells they use. Already installed? Run `brew reinstall tranvictor/jarvis/jarvis` once, or:
 
 ```bash
 eval "$(/opt/homebrew/bin/brew shellenv)"

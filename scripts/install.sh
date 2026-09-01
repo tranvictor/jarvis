@@ -15,17 +15,11 @@ persist_brew_path() {
 	local brew_bin
 	brew_bin="$(dirname "$brew_exe")"
 	local line="eval \"\$(${brew_exe} shellenv)\""
-	local files=()
-	case "${SHELL:-}" in
-	*/bash) files=("$HOME/.bash_profile" "$HOME/.bashrc") ;;
-	*)
-		if [ "$(uname -s)" = Darwin ]; then
-			files=("$HOME/.zprofile" "$HOME/.zshrc")
-		else
-			files=("$HOME/.profile" "$HOME/.bashrc")
-		fi
-		;;
-	esac
+	local files=(
+		"$HOME/.zprofile" "$HOME/.zshrc"
+		"$HOME/.bash_profile" "$HOME/.bashrc"
+	)
+	[ "$(uname -s)" != Darwin ] && files+=("$HOME/.profile")
 	local f contents
 	for f in "${files[@]}"; do
 		contents=""
