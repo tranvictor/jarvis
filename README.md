@@ -12,8 +12,24 @@ Both Ethereum and BSC :)
 
 ### Homebrew (macOS and Linux)
 
+Easiest on a Mac (installs Homebrew if needed, puts it on PATH, then installs jarvis):
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tranvictor/jarvis/master/scripts/install.sh)"
+```
+
+Then open a **new** Terminal window and run `jarvis`.
+
+If you already use Homebrew:
+
 ```bash
 brew install tranvictor/jarvis/jarvis
+```
+
+On Apple Silicon, Homebrew lives in `/opt/homebrew/bin`, which is not on macOS's default PATH. The formula appends `brew shellenv` to zsh (`~/.zprofile`, `~/.zshrc`) and bash (`~/.bash_profile`, `~/.bashrc`) startup files so `jarvis` works in new terminals regardless of which of those shells they use. Already installed? Run `brew reinstall tranvictor/jarvis/jarvis` once, or:
+
+```bash
+eval "$(/opt/homebrew/bin/brew shellenv)"
 ```
 
 To upgrade to the latest version, refresh the tap first. `brew upgrade jarvis` alone uses the locally cached formula, so after a new GitHub release it can report:
@@ -25,7 +41,7 @@ brew update
 brew upgrade tranvictor/jarvis/jarvis
 ```
 
-Linux users who already have [Homebrew](https://docs.brew.sh/Homebrew-on-Linux) can use the same commands; the tap ships Linux amd64 and arm64 bottles.
+Linux users who already have [Homebrew](https://docs.brew.sh/Homebrew-on-Linux) can use the same `brew install` / `brew upgrade` commands; the tap ships Linux amd64 and arm64 bottles.
 
 ### Linux (apt)
 
