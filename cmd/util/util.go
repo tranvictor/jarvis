@@ -392,7 +392,7 @@ func HandlePostSign(
 		}
 		util.DisplayWaitAnalyze(
 			u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
-			a, nil, config.DegenMode,
+			a, nil, util.InfoLayout(config.DegenMode),
 		)
 		return broadcasted, err
 	}
@@ -426,7 +426,7 @@ func HandlePostSign(
 
 	util.DisplayWaitAnalyze(
 		u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
-		a, nil, config.DegenMode,
+		a, nil, util.InfoLayout(config.DegenMode),
 	)
 	return broadcasted, err
 }
