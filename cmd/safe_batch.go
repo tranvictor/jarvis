@@ -245,8 +245,13 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		return res
 	}
 
-	showSafeTxToConfirm(pending.SafeTx, pending.SafeTxHash, &tc)
-	showSafeSigners("Existing signatures", pending.Sigs)
+	threshold, _ := safeContract.Threshold()
+	cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(pending.SafeTx, pending.SafeTxHash, &tc, safeCardOptions{
+		kind:      "Safe approval",
+		sigs:      pending.Sigs,
+		threshold: threshold,
+		signer:    fromAcc.Address,
+	}))
 
 	if safeApproveOnChain {
 		// On-chain batch approval: broadcast approveHash and let
@@ -266,7 +271,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		return res
 	}
 
-	if !config.YesToAllPrompt && !appUI.Confirm("Sign and submit your approval?", true) {
+	if !config.YesToAllPrompt && !appUI.Confirm("Sign approval (off-chain, no gas)?", true) {
 		res.status = "skipped"
 		res.reason = "user aborted"
 		return res
@@ -297,7 +302,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 	res.confirmType = "approve"
 	appUI.Success("Confirmation submitted.")
 
-	threshold, err := safeContract.Threshold()
+	threshold, err = safeContract.Threshold()
 	if err != nil {
 		appUI.Warn("Couldn't read threshold post-approval: %s", err)
 		return res

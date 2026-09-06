@@ -175,8 +175,13 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 		if batchLabel != "" {
 			appUI.Info("MultiSend   : %s", batchLabel)
 		}
-		showSafeTxToConfirmWithABIs(stx, hash, &tc, batchABIs)
-		if !config.YesToAllPrompt && !appUI.Confirm("Sign and submit this Safe transaction?", true) {
+		card := buildSafeSigningCard(stx, hash, &tc, safeCardOptions{
+			kind:      "Safe proposal",
+			extraABIs: batchABIs,
+			signer:    tc.From,
+			prompt:    "Sign and submit this Safe proposal (off-chain, no gas)?",
+		})
+		if !cmdutil.ConfirmSigningCard(appUI, card) {
 			appUI.Warn("Aborted by user.")
 			return
 		}
@@ -329,12 +334,18 @@ over an off-chain signature store. Other owners' off-chain signatures
 			appUI.Warn("Couldn't merge on-chain approvals: %s", err)
 		}
 
+		threshold, _ := safeContract.Threshold()
 		if pending.SafeTx != nil {
-			showSafeTxToConfirm(pending.SafeTx, pending.SafeTxHash, &tc)
+			cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(pending.SafeTx, pending.SafeTxHash, &tc, safeCardOptions{
+				kind:      "Safe approval",
+				sigs:      pending.Sigs,
+				threshold: threshold,
+				signer:    tc.From,
+			}))
 		} else {
 			appUI.Info("safeTxHash: 0x%s (no SafeTx body available; only approving the hash on-chain)", ethcommon.Bytes2Hex(pending.SafeTxHash[:]))
+			showSafeSigners("Existing signatures", pending.Sigs)
 		}
-		showSafeSigners("Existing signatures", pending.Sigs)
 
 		me := ethcommon.HexToAddress(tc.From)
 		if onChain, found := ownerAlreadySigned(pending, me); found {
@@ -356,7 +367,7 @@ over an off-chain signature store. Other owners' off-chain signatures
 			return
 		}
 
-		if !config.YesToAllPrompt && !appUI.Confirm("Sign and submit your approval?", true) {
+		if !config.YesToAllPrompt && !appUI.Confirm("Sign approval (off-chain, no gas)?", true) {
 			appUI.Warn("Aborted by user.")
 			return
 		}
@@ -391,7 +402,7 @@ over an off-chain signature store. Other owners' off-chain signatures
 		totalSigs := len(pending.Sigs) + 1
 		appUI.Info("Total signatures now: %d", totalSigs)
 
-		threshold, err := safeContract.Threshold()
+		threshold, err = safeContract.Threshold()
 		if err != nil {
 			appUI.Warn("Couldn't read safe threshold post-approval: %s", err)
 			return
@@ -742,12 +753,12 @@ Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
 			appUI.Warn("Couldn't merge on-chain approvals: %s", err)
 		}
 
-		showSafeTxToConfirm(pending.SafeTx, pending.SafeTxHash, &tc)
 		threshold, _ := safeContract.Threshold()
-		showSafeSigners(
-			fmt.Sprintf("Signatures (%d of %d required)", len(pending.Sigs), threshold),
-			pending.Sigs,
-		)
+		cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(pending.SafeTx, pending.SafeTxHash, &tc, safeCardOptions{
+			kind:      "Safe transaction",
+			sigs:      pending.Sigs,
+			threshold: threshold,
+		}))
 		switch {
 		case pending.IsExecuted:
 			appUI.Success("Status: executed.")
@@ -1041,8 +1052,12 @@ func runSafeExecute(
 		return
 	}
 
-	showSafeTxToConfirm(pending.SafeTx, pending.SafeTxHash, &tc)
-	showSafeSigners("Signatures (sorted by owner asc)", pending.Sigs)
+	cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(pending.SafeTx, pending.SafeTxHash, &tc, safeCardOptions{
+		kind:      "Safe execution",
+		sigs:      pending.Sigs,
+		threshold: threshold,
+		signer:    tc.From,
+	}))
 
 	txData, err := safeContract.Abi.Pack(
 		"execTransaction",
@@ -1087,6 +1102,11 @@ func runSafeExecute(
 		strings.ToLower(safeContract.Address): safeContract.Abi,
 	}
 
+	// The EOA card that follows would otherwise re-decode execTransaction in
+	// full; link it to the Safe card just shown instead.
+	cmdutil.SetNextSigningNote(cmdutil.SigningNote{
+		ExecutesSafeTxHash: "0x" + ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+	})
 	if broadcasted, err := cmdutil.SignAndBroadcast(
 		appUI, tc.FromAcc, tx, customABIs,
 		tc.Reader, tc.Analyzer, safeContract.Abi, tc.Broadcaster,
