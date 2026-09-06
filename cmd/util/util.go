@@ -309,7 +309,7 @@ func SignAndBroadcast(
 		return false, err
 	}
 
-	u.Info("Unlock your wallet and sign now...")
+	u.Info("Unlock your wallet and sign now…")
 	account, err := accounts.UnlockAccount(fromAcc)
 	if err != nil {
 		return false, fmt.Errorf("%w: %s", ErrWalletUnlock, err)
@@ -392,7 +392,7 @@ func HandlePostSign(
 		}
 		util.DisplayWaitAnalyze(
 			u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
-			a, nil, util.InfoLayout(config.DegenMode),
+			a, nil, util.PostSignLayout(config.DegenMode),
 		)
 		return broadcasted, err
 	}
@@ -426,7 +426,7 @@ func HandlePostSign(
 
 	util.DisplayWaitAnalyze(
 		u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
-		a, nil, util.InfoLayout(config.DegenMode),
+		a, nil, util.PostSignLayout(config.DegenMode),
 	)
 	return broadcasted, err
 }

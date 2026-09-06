@@ -12,6 +12,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/signer/core/apitypes"
 
+	"github.com/tranvictor/jarvis/ui"
+
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	kusb "github.com/tranvictor/jarvis/util/account/usb"
 )
@@ -22,8 +24,9 @@ import (
 // device in after the dApp already issued the request.
 const deviceWaitTimeout = 90 * time.Second
 
-// deviceWaitPoll is how often we retry enumeration while waiting.
-const deviceWaitPoll = 2 * time.Second
+// deviceWaitPoll is how often we retry enumeration while waiting. A
+// variable so tests can shorten it.
+var deviceWaitPoll = 2 * time.Second
 
 // minLedgerEthAppVersionForEIP712 is the lowest Ethereum app version known to
 // implement opcode 0x0C (SIGN_ETH_EIP_712 with precomputed hashes). For older
@@ -97,34 +100,47 @@ func (self *LedgerSigner) ensureUnlocked() error {
 	return unlockWithWait(self.unlockOnce, deviceWaitTimeout)
 }
 
+// ProgressUI, when set by the application, is used to show a live status
+// line while jarvis waits for a Ledger to be connected. It stays nil in
+// library use, where the wait falls back to plain printed lines.
+var ProgressUI ui.UI
+
 // unlockWithWait repeatedly calls unlock until it succeeds, a
-// non-"device not found" error happens, or timeout elapses. The
-// user sees progress roughly every 10s.
+// non-"device not found" error happens, or timeout elapses. The user sees a
+// single status line counting down the remaining time.
 func unlockWithWait(unlock func() error, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	attempt := 0
+	var progress ui.Progress
+	stop := func(final ui.StyledText) {
+		if progress != nil {
+			progress.Stop(final)
+		}
+	}
 	for {
-		attempt++
 		err := unlock()
 		if err == nil {
+			stop(ui.StyledText{Text: "✓ Ledger connected", Severity: ui.SeveritySuccess})
 			return nil
 		}
 		if !isLedgerNotConnected(err) {
+			stop(ui.StyledText{})
 			return err
 		}
 		if time.Now().After(deadline) {
+			stop(ui.StyledText{Text: "✗ Ledger not detected", Severity: ui.SeverityError})
 			return fmt.Errorf(
 				"ledger not connected after %s (last error: %w). Plug it in, unlock and open the Ethereum app, then try again",
 				timeout, err)
 		}
-		if attempt == 1 {
-			fmt.Printf(
-				"Ledger not detected. Please connect it, unlock and open the Ethereum app within %s...\n",
-				timeout,
-			)
-		} else if attempt%5 == 0 {
-			remaining := time.Until(deadline).Round(time.Second)
-			fmt.Printf("  ...still waiting for Ledger (~%s left)\n", remaining)
+		remaining := time.Until(deadline).Round(time.Second)
+		msg := fmt.Sprintf("Ledger not detected — connect it, unlock and open the Ethereum app (%s left)", remaining)
+		switch {
+		case progress != nil:
+			progress.Update(msg)
+		case ProgressUI != nil:
+			progress = ProgressUI.Spinner(msg)
+		default:
+			fmt.Println(msg)
 		}
 		time.Sleep(deviceWaitPoll)
 	}
@@ -159,7 +175,6 @@ func (self *LedgerSigner) SignTx(
 ) (common.Address, *types.Transaction, error) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
-	fmt.Printf("Going to proceed signing procedure\n")
 	if err := self.ensureUnlocked(); err != nil {
 		return common.Address{}, tx, err
 	}
