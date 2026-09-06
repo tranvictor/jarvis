@@ -202,25 +202,9 @@ func (r *RecordingUI) Table(headers []string, rows [][]string) {
 	}
 }
 
-// TableWithGroups records each group's rows as pipe-separated "Table" entries
-// with a "---" separator entry between groups, mirroring the visual divider
-// that TerminalUI draws.
-func (r *RecordingUI) TableWithGroups(headers []string, groups [][][]string) {
-	if len(headers) > 0 {
-		r.record("Table", strings.Join(headers, " | "))
-	}
-	for gi, group := range groups {
-		if gi > 0 {
-			r.record("Table", "---")
-		}
-		for _, row := range group {
-			r.record("Table", strings.Join(row, " | "))
-		}
-	}
-}
-
 // PrintTable records the header and each row as pipe-separated "Table" entries,
-// consistent with how Table/TableWithGroups record their data.
+// consistent with how Table records its data. Groups are separated by a
+// "---" entry, mirroring the visual divider that TerminalUI draws.
 func (r *RecordingUI) PrintTable(t *Table) {
 	if len(t.Headers) > 0 {
 		r.record("Table", strings.Join(t.Headers, " | "))
