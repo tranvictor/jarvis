@@ -6,6 +6,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Entry records a single UI method call for test assertions.
@@ -101,6 +102,16 @@ func (r *RecordingUI) Section(title string) {
 	r.record("Section", title)
 }
 
+func (r *RecordingUI) Subsection(title string) {
+	r.record("Subsection", title)
+}
+
+// RewriteLastLine records a "Rewrite" entry; the previous entry is kept so
+// tests can see both what was shown and what replaced it.
+func (r *RecordingUI) RewriteLastLine(line string) {
+	r.record("Rewrite", line)
+}
+
 // BoxedSection records a "BoxedSection" entry with the title, then runs
 // body against the same RecordingUI so the inner output remains visible
 // in Entries() exactly as if it had been emitted without the box. Tests
@@ -176,6 +187,12 @@ func (r *RecordingUI) KeyValue(rows [][2]string) {
 	}
 }
 
+func (r *RecordingUI) KeyValueCells(rows [][2]TableCell) {
+	for _, row := range rows {
+		r.record("KeyValue", row[0].Text+": "+row[1].Text)
+	}
+}
+
 // Table records each data row (not the header) as a pipe-separated "Table"
 // entry so tests can assert on cell contents with HasMessage.
 func (r *RecordingUI) Table(headers []string, rows [][]string) {
@@ -229,10 +246,23 @@ func (r *RecordingUI) PrintTable(t *Table) {
 	}
 }
 
-// Spinner is a no-op in RecordingUI — no goroutines, no output.
-// The returned function is also a no-op.
-func (r *RecordingUI) Spinner(_ string) func() {
-	return func() {}
+// Spinner records "Spinner" for the initial message, "SpinnerUpdate" for each
+// Update and "SpinnerStop" for the final line, so tests can assert on the
+// sequence of states a wait went through. No goroutines are started.
+func (r *RecordingUI) Spinner(msg string) Progress {
+	r.record("Spinner", msg)
+	return &recordingProgress{r: r, start: time.Now()}
+}
+
+type recordingProgress struct {
+	r     *RecordingUI
+	start time.Time
+}
+
+func (p *recordingProgress) Update(msg string)      { p.r.record("SpinnerUpdate", msg) }
+func (p *recordingProgress) Elapsed() time.Duration { return time.Since(p.start) }
+func (p *recordingProgress) Stop(final StyledText) {
+	p.r.record("SpinnerStop", final.Text)
 }
 
 // Indent returns a child RecordingUI at one deeper indent level.
