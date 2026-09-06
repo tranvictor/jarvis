@@ -732,31 +732,28 @@ Safe+Classic runs write both arrays into one file.`,
 		// flow runs before we start touching Classic broadcasters that may
 		// share a wallet.
 		var safeResults []safeBatchResult
-		for _, ref := range safeRefs {
-			item++
-			r := safeBatchResult{ref: ref.original}
-			if aborted {
-				r.status, r.reason = "skipped", "aborted by user"
+		if batchConfirmOnce {
+			safeResults, item, aborted = approveSafeRefsConfirmOnce(safeRefs, &tally)
+		} else {
+			for _, ref := range safeRefs {
+				item++
+				r := safeBatchResult{ref: ref.original}
+				if aborted {
+					r.status, r.reason = "skipped", "aborted by user"
+					safeResults = append(safeResults, r)
+					tally.add(r.status)
+					continue
+				}
+				printBatchBanner(item, tally.total, "Safe", ref.original)
+				var res approveSafeRefResult
+				withIndentedUI(func() { res = approveSafeRef(ref) })
+				r.fill(res)
 				safeResults = append(safeResults, r)
 				tally.add(r.status)
-				continue
-			}
-			printBatchBanner(item, tally.total, "Safe", ref.original)
-			var res approveSafeRefResult
-			withIndentedUI(func() { res = approveSafeRef(ref) })
-			r.network = res.network
-			r.networkObj = res.networkObj
-			r.safeAddress = res.safeAddress
-			r.safeTxHash = res.safeTxHash
-			r.confirmType = res.confirmType
-			r.execTxHash = res.execTxHash
-			r.status = res.status
-			r.reason = res.reason
-			safeResults = append(safeResults, r)
-			tally.add(r.status)
-			printBatchItemResult(r.status, safeResultDetail(r), tally)
-			if r.status == "failed" && !continueBatchAfterFailure(tally.total-tally.done()) {
-				aborted = true
+				printBatchItemResult(r.status, safeResultDetail(r), tally)
+				if r.status == "failed" && !continueBatchAfterFailure(tally.total-tally.done()) {
+					aborted = true
+				}
 			}
 		}
 
@@ -1312,6 +1309,8 @@ func init() {
 	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.YesToAllPrompt, "auto-yes", "y", false, "Don't prompt Yes/No before signing.")
 	batchApproveMsigCmd.PersistentFlags().BoolVarP(&config.ForceLegacy, "legacy-tx", "L", false, "Force using legacy transaction")
 	batchApproveMsigCmd.PersistentFlags().StringVarP(&config.JSONOutputFile, "json-output", "o", "", "Write batch summary to a JSON file")
+	batchApproveMsigCmd.Flags().BoolVar(&batchContinueOnError, "continue-on-error", false, "Keep processing the remaining items after one fails instead of asking whether to continue.")
+	batchApproveMsigCmd.Flags().BoolVar(&batchConfirmOnce, "confirm-once", false, "Safe-only: review every Safe signing card first, confirm once, then sign them all. Broadcasts (approveHash, execTransaction) and Classic confirmations still confirm per item.")
 
 	msigCmd.AddCommand(approveMsigCmd)
 	msigCmd.AddCommand(batchApproveMsigCmd)
