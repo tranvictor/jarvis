@@ -43,6 +43,12 @@ func BorderColor(s Severity) lipgloss.Color {
 // indent prefix to every line before writing.
 func renderBoxedSection(severity Severity, title string, body string) string {
 	body = strings.TrimRight(body, "\n")
+	// Size the box to the title, not just the body: otherwise a short
+	// body (jarvis info's clear-signed panel, with no hardware-wallet
+	// hint) truncates "Clear Signed · Uniswap (Router)" on the top border.
+	if title != "" {
+		body = padBlockToWidth(body, runewidth.StringWidth(title)+2)
+	}
 	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(BorderColor(severity)).
@@ -99,6 +105,23 @@ func injectBoxTitle(boxed string, title string, color lipgloss.Color) string {
 		return colored
 	}
 	return colored + "\n" + lines[1]
+}
+
+func padBlockToWidth(body string, minWidth int) string {
+	if minWidth <= 0 {
+		return body
+	}
+	if body == "" {
+		return strings.Repeat(" ", minWidth)
+	}
+	lines := strings.Split(body, "\n")
+	for i, line := range lines {
+		w := runewidth.StringWidth(ansi.Strip(line))
+		if w < minWidth {
+			lines[i] = line + strings.Repeat(" ", minWidth-w)
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func truncateToWidth(s string, maxWidth int) string {

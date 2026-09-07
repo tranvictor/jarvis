@@ -567,6 +567,19 @@ func RenderContractClearSign(
 	params []jarviscommon.ParamResult,
 	customABIs map[string]*abi.ABI,
 ) bool {
+	return renderMatchedContract(u, network, to, value, data, params, customABIs, erc7730.Render)
+}
+
+func renderMatchedContract(
+	u ui.UI,
+	network jarvisnetworks.Network,
+	to string,
+	value *big.Int,
+	data []byte,
+	params []jarviscommon.ParamResult,
+	customABIs map[string]*abi.ABI,
+	paint func(ui.UI, *erc7730.ClearSignedView),
+) bool {
 	if to == "" || len(data) < 4 {
 		return false
 	}
@@ -592,7 +605,7 @@ func RenderContractClearSign(
 	if err != nil || view == nil {
 		return false
 	}
-	erc7730.Render(u, view)
+	paint(u, view)
 	return true
 }
 
@@ -626,7 +639,7 @@ func RenderInfoClearSign(
 		if call.Method == "" {
 			return
 		}
-		RenderContractClearSign(u, network, call.Destination.Address, call.Value, call.Data, call.Params, customABIs)
+		renderMatchedContract(u, network, call.Destination.Address, call.Value, call.Data, call.Params, customABIs, erc7730.RenderInfo)
 	})
 }
 
