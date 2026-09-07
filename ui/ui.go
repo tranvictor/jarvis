@@ -168,15 +168,11 @@ type UI interface {
 	// (e.g. a decoded parameter list).
 	Table(headers []string, rows [][]string)
 
-	// TableWithGroups renders a bordered table where each group of rows is
-	// visually separated from the next by a horizontal divider line. Use when
-	// rows belong to distinct logical groups (e.g. one group per event log).
-	TableWithGroups(headers []string, groups [][][]string)
-
 	// PrintTable renders a bordered Table to the output, applying colour to
 	// each cell according to its Severity. Rows that share the same first-column
-	// value are visually grouped with a horizontal rule between groups.
-	// Use this instead of Table when cells need per-cell colour (e.g. node status).
+	// value are visually grouped with a horizontal rule between groups; set
+	// Table.Groups for explicit grouping. Use this instead of Table when cells
+	// need per-cell colour (e.g. node status) or grouping.
 	PrintTable(t *Table)
 
 	// Spinner starts a live status line with the given message and returns a
@@ -218,6 +214,6 @@ type UI interface {
 
 	// Writer returns an io.Writer that prepends the current indentation
 	// to every line. Use this when calling functions that take io.Writer
-	// directly (e.g. common.PrintVerboseParamResultToWriter).
+	// directly (e.g. capturing output into a buffer for a bordered box).
 	Writer() io.Writer
 }

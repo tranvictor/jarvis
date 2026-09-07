@@ -14,7 +14,7 @@ import (
 // os.Stdout. Useful for capturing colored output into a buffer.
 func NewTerminalUIWithWriter(w io.Writer, colorsEnabled bool) *TerminalUI {
 	return &TerminalUI{
-		out: w,
+		out: &blankTracker{w: w},
 		in:  bufio.NewReader(strings.NewReader("")),
 		au:  aurora.NewAurora(colorsEnabled),
 	}

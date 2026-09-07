@@ -132,6 +132,138 @@ See help with
 ~/go/bin/jarvis -h
 ```
 
+## Reading the output
+
+Jarvis prints the things you have to decide on first and the things you
+might want to look up later further down. Colour is used sparingly: green
+for a confirmed outcome, red for a failure, yellow only for something you
+should read before signing. Addresses show their address-book name first
+and a shortened hex (`0x9642…5D4E`); the full hex is always shown on
+signing screens and with `--degen`. `--json-output` is unaffected by any of
+this and always carries full, untruncated values.
+
+### `jarvis info <hash>`
+
+```
+✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
+         from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567
+
+Transfers
+  1000 USDC     me (0x9642…5D4E)  →  USDC/WETH pair (0x0d4a…1852)
+  0.3121 WETH   USDC/WETH pair (0x0d4a…1852)  →  me (0x9642…5D4E)
+
+Call  swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
+  amountIn      1000000000 (1‸000￺000￺000)  uint256
+  amountOutMin  311200000000000000 (311￺200￺000‸000￺000￺000)  uint256
+  path          [2 items]  address[]
+  ├─ USDC (0xA0b8…eB48)
+  └─ WETH (0xC02a…6Cc2)
+  to            me (0x9642…5D4E)  address
+  deadline      1725600000 (1‸725￺600￺000)  uint256
+
+Events (3)
+  1. Transfer  USDC token (0xA0b8…eB48)   from me (0x9642…5D4E)  to USDC/WETH pair (0x0d4a…1852)  value 1000000000 (1000 USDC)
+  2. Sync      USDC/WETH pair (0x0d4a…1852)   reserve0 5000000000000 (…)  reserve1 1500000000000000000000 (…)
+  3. Transfer  WETH token (0xC02a…6Cc2)   from USDC/WETH pair (0x0d4a…1852)  to me (0x9642…5D4E)  value 312100000000000000 (0.3121 WETH)
+
+✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)   0x3f9a…e1c2
+```
+
+- The headline is status + what was called + where. The muted second line
+  holds the numbers you rarely need (gas, nonce, block).
+- **Transfers** is derived from the `Transfer` / `Approval` logs so asset
+  movement is visible without reading the events. Unlimited approvals are
+  marked `UNLIMITED`.
+- Arrays longer than a few items and long `bytes` blobs are collapsed;
+  `--degen` expands everything, shows full addresses and switches the
+  parameter list to a table.
+- A reverted tx opens with `✗ reverted`; the revert reason, when known, is
+  the next line.
+
+### Signing screen
+
+Every `send`, `tx`, `msig init/approve/execute` and WalletConnect request
+ends in the same card. The decoded call comes first, the who/where/cost
+block sits directly above the prompt, and anything jarvis thinks you
+should double-check is listed as a `!` line right before you answer:
+
+```
+================ EOA transaction =================
+
+Call  approve  →  0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC)
+  spender  0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D  address
+  amount   uint256.max (∞)  uint256
+
+Sign with  0x9642b23Ed1E01Df1092B92641051881a322F5D4E (me)   mainnet
+Send to    0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC)
+Gas        max 20.0000 gwei, tip 1.5000 gwei · 85123 gas · ≈ 0.00170246 ETH   nonce 42
+
+! approves UNLIMITED USDC to 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
+! spender 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D is not in your address book
+
+Sign and broadcast (≈ 0.00170246 ETH)? [y/N]
+>
+```
+
+Warnings are emitted for: a destination that is not in your address book,
+native value sent into a contract, calldata jarvis could not decode,
+unlimited ERC-20 approvals, `setApprovalForAll`, approvals to unknown
+spenders, and Safe `DELEGATECALL` operations. Safe cards add the Safe
+address, operation, nonce, `safeTxHash` and the list of collected
+signatures. `-Y` / `--yes` skips the prompt but still prints the card.
+
+After signing, a live status line replaces the silent wait
+(`⠋ in mempool, waiting to be mined…  0:12`), and once mined jarvis prints
+the same headline + Transfers + Events view as `info` so you can see what
+actually happened. The same status line is used while jarvis waits for a
+Ledger to be plugged in and unlocked.
+
+### Batch runs
+
+`jarvis msig bapprove` shows the plan before asking anything, then works
+through the list with one indented block per item and a one-line result
+that stays in the transcript:
+
+```
+=============== Batch approve: 3 transaction(s) ===============
+1. Safe     eth:0xSafe…:0xhash…
+2. Safe     bsc:0xSafe…:0xhash…
+3. Classic  mainnet:0xinit…
+
+[1/3] Safe  eth:0xSafe…:0xhash…
+  ... signing card, prompt, spinner ...
+✓ approved  safeTxHash 0x…   (1 ok · 2 left)
+
+[2/3] Safe  bsc:0xSafe…:0xhash…
+  ...
+✗ failed  unlock wallet: ledger not connected   (1 ok · 1 failed · 1 left)
+Continue with the remaining 1 transaction(s)? [Y/n]
+
+[3/3] Classic  mainnet:0xinit…
+  ...
+✓ approved  confirm tx 0x…   (2 ok · 1 failed)
+
+===================== Batch summary =====================
+┌───┬─────────┬─────────┬──────────┬──────────┬───────────────────────┐
+│ # │ Kind    │ Network │ Target   │ Result   │ Detail                │
+├───┼─────────┼─────────┼──────────┼──────────┼───────────────────────┤
+│ 1 │ Safe    │ mainnet │ 0xSafe…  │ approved │ safeTxHash 0x…        │
+│ 2 │ Safe    │ bsc     │ 0xSafe…  │ failed   │ unlock wallet: …      │
+│ 3 │ Classic │ mainnet │ msig #7  │ approved │ confirm tx 0x…        │
+└───┴─────────┴─────────┴──────────┴──────────┴───────────────────────┘
+
+3 transaction(s): 2 ok · 1 failed
+```
+
+- `--continue-on-error` skips the `Continue with the remaining…?` question.
+- `--confirm-once` (Safe refs only) reviews every signing card first, asks
+  one `Sign all N reviewed Safe approval(s)?` question and then signs each
+  without further prompts. Anything that broadcasts a transaction — on-chain
+  `approveHash`, auto-execution when the threshold is met, Classic
+  confirmations — still asks per item.
+- The process exits with status 1 when any item failed; skipped items alone
+  keep it at 0.
+
 ## Multisig: Gnosis Classic and Gnosis Safe
 
 Jarvis has first-class support for both Gnosis Classic (on-chain

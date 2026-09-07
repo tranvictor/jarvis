@@ -271,11 +271,14 @@ Tests: existing batch tests extended with transcript assertions for a
 
 ## Phase 6 — Cleanup and docs
 
-- Remove `ui.Table`/`TableWithGroups` if no callers remain; fix the stale
-  `PrintVerboseParamResultToWriter` reference in `ui.UI.Writer` docs.
-- README: replace the output examples with the new layouts (`info`, confirm
-  screen, batch summary).
-- Release notes entry listing the visible changes and the two new flags.
+- Remove `ui.TableWithGroups` (no callers; `ui.Table` stays for `clearsign`);
+  fix the stale `PrintVerboseParamResultToWriter` reference in `ui.UI.Writer`
+  docs.
+- Land the two `bapprove` flags deferred from Phase 5: `--continue-on-error`
+  and `--confirm-once` (review all Safe cards → one confirm → sign each).
+- README: new "Reading the output" section with the `info`, signing card and
+  batch examples.
+- `CHANGELOG.md` entry listing the visible changes and the two new flags.
 
 ---
 

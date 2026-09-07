@@ -43,11 +43,42 @@ type TerminalUI struct {
 func NewTerminalUI() *TerminalUI {
 	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
 	return &TerminalUI{
-		out: os.Stdout,
+		out: &blankTracker{w: os.Stdout},
 		in:  bufio.NewReader(os.Stdin),
 		au:  aurora.NewAurora(isTTY),
 		tty: isTTY,
 	}
+}
+
+// blankTracker remembers whether the last bytes written ended with an empty
+// line so headings that want breathing room above them can avoid stacking a
+// second blank line on top of one that is already there.
+type blankTracker struct {
+	w         io.Writer
+	endsNL    bool // last write ended with '\n'
+	lastBlank bool // last write ended with an empty line
+}
+
+func (b *blankTracker) Write(p []byte) (int, error) {
+	if len(p) > 0 {
+		switch {
+		case bytes.HasSuffix(p, []byte("\n\n")):
+			b.lastBlank = true
+		case bytes.Equal(p, []byte("\n")):
+			b.lastBlank = b.endsNL
+		default:
+			b.lastBlank = false
+		}
+		b.endsNL = p[len(p)-1] == '\n'
+	}
+	return b.w.Write(p)
+}
+
+// endsWithBlankLine reports whether the last thing written to u.out was an
+// empty line. Always false for writers that are not tracked.
+func (u *TerminalUI) endsWithBlankLine() bool {
+	bt, ok := u.out.(*blankTracker)
+	return ok && bt.lastBlank
 }
 
 func (u *TerminalUI) child(indentLevel int, out io.Writer, tty bool) *TerminalUI {
@@ -133,7 +164,10 @@ func (u *TerminalUI) Section(title string) {
 
 // Subsection prints a bold heading after a blank line.
 func (u *TerminalUI) Subsection(title string) {
-	fmt.Fprintf(u.out, "\n%s%s\n", u.prefix(), u.au.Bold(title).String())
+	if !u.endsWithBlankLine() {
+		fmt.Fprint(u.out, "\n")
+	}
+	fmt.Fprintf(u.out, "%s%s\n", u.prefix(), u.au.Bold(title).String())
 }
 
 // RewriteLastLine moves the cursor up one line, clears it and writes line
@@ -261,31 +295,17 @@ func (u *TerminalUI) KeyValueCells(rows [][2]TableCell) {
 	}
 }
 
-// Table renders a full bordered table. Delegates to TableWithGroups.
+// Table renders a full bordered table of plain strings as one ungrouped
+// block. Converts the cells to TableCells and delegates to renderTable.
 func (u *TerminalUI) Table(headers []string, rows [][]string) {
-	u.TableWithGroups(headers, [][][]string{rows})
-}
-
-// TableWithGroups renders a bordered table where each group of rows is
-// separated from the next by a horizontal rule.
-// Converts plain strings to TableCells and delegates to renderTable in table.go.
-func (u *TerminalUI) TableWithGroups(headers []string, groups [][][]string) {
-	if len(groups) == 0 {
-		return
-	}
-	t := &Table{
-		Headers: headers,
-		Groups:  make([][][]TableCell, len(groups)),
-	}
-	for gi, group := range groups {
-		t.Groups[gi] = make([][]TableCell, len(group))
-		for ri, row := range group {
-			t.Groups[gi][ri] = make([]TableCell, len(row))
-			for ci, cell := range row {
-				t.Groups[gi][ri][ci] = TC(cell)
-			}
+	group := make([][]TableCell, len(rows))
+	for ri, row := range rows {
+		group[ri] = make([]TableCell, len(row))
+		for ci, cell := range row {
+			group[ri][ci] = TC(cell)
 		}
 	}
+	t := &Table{Headers: headers, Groups: [][][]TableCell{group}}
 	renderTable(u.out, u.prefix(), t, func(cell TableCell) string { return cell.Text })
 }
 
