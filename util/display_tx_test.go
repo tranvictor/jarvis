@@ -8,6 +8,7 @@ import (
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -526,5 +527,89 @@ func TestCompactTransfersAreCapped(t *testing.T) {
 	full := render(t, r, util.LayoutInfoFull, hashHex)
 	if strings.Count(full, "1 USDC   ") != 11 || strings.Contains(full, "more (-x") {
 		t.Fatalf("full layout must list every transfer:\n%s", full)
+	}
+}
+
+func TestInfoLayoutPrintsClearSignBeforeCall(t *testing.T) {
+	var buf bytes.Buffer
+	u := ui.NewTerminalUIWithWriter(&buf, false)
+	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex,
+		func(d *util.TxDisplay, result *jarviscommon.TxResult) {
+			if result == nil || result.FunctionCall == nil || result.FunctionCall.Method == "" {
+				t.Fatal("prepare should see the analysed call")
+			}
+			d.ClearSign = func(cu ui.UI) { cu.Info("CLEAR-SIGN-MARKER") }
+		})
+	out := buf.String()
+	cs := strings.Index(out, "CLEAR-SIGN-MARKER")
+	call := strings.Index(out, "Call  swapExactTokensForTokens")
+	if cs < 0 || call < 0 || cs > call {
+		t.Fatalf("clear-sign panel must sit above the ABI call:\n%s", out)
+	}
+	transfers := strings.Index(out, "Transfers")
+	if transfers < 0 || transfers > cs {
+		t.Fatalf("clear-sign panel must sit after transfers:\n%s", out)
+	}
+}
+
+func TestInfoLayoutRendersClearSignedBoxAboveCall(t *testing.T) {
+	var buf bytes.Buffer
+	u := ui.NewTerminalUIWithWriter(&buf, false)
+	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex,
+		func(d *util.TxDisplay, _ *jarviscommon.TxResult) {
+			d.ClearSign = func(cu ui.UI) {
+				erc7730.Render(cu, &erc7730.ClearSignedView{
+					InterpolatedIntent: "Swap 1,000 USDC for WETH",
+					Owner:              "Uniswap",
+					ContractName:       "Uniswap V2 Router",
+					Source:             "registry",
+					Fields: []erc7730.FormattedField{
+						{Label: "Amount in", Value: "1,000 USDC"},
+						{Label: "Recipient", Value: "me (0x9642…5D4E)"},
+					},
+				})
+			}
+		})
+	out := buf.String()
+	for _, w := range []string{
+		"Clear Signed · Uniswap (Uniswap V2 Router)",
+		"Swap 1,000 USDC for WETH",
+		"Source: ERC-7730 registry",
+		"Call  swapExactTokensForTokens",
+	} {
+		if !strings.Contains(out, w) {
+			t.Fatalf("missing %q in output:\n%s", w, out)
+		}
+	}
+	if strings.Index(out, "Clear Signed") > strings.Index(out, "Call  swapExactTokensForTokens") {
+		t.Fatalf("clear-signed box must sit above the ABI call:\n%s", out)
+	}
+}
+
+func TestPostSignLayoutSkipsClearSign(t *testing.T) {
+	var buf bytes.Buffer
+	u := ui.NewTerminalUIWithWriter(&buf, false)
+	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutPostSign, hashHex,
+		func(d *util.TxDisplay, _ *jarviscommon.TxResult) {
+			d.ClearSign = func(cu ui.UI) { cu.Info("CLEAR-SIGN-MARKER") }
+		})
+	if strings.Contains(buf.String(), "CLEAR-SIGN-MARKER") {
+		t.Fatalf("post-sign must not reprint the clear-sign panel:\n%s", buf.String())
+	}
+}
+
+func TestTxDisplayJSONOmitsClearSign(t *testing.T) {
+	var buf bytes.Buffer
+	u := ui.NewTerminalUIWithWriter(&buf, false)
+	d := util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex,
+		func(d *util.TxDisplay, _ *jarviscommon.TxResult) {
+			d.ClearSign = func(ui.UI) {}
+		})
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "ClearSign") {
+		t.Fatalf("JSON must omit the ClearSign callback: %s", raw)
 	}
 }
