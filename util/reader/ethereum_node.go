@@ -38,6 +38,9 @@ type EthereumNode interface {
 		args ...interface{},
 	) ([]byte, error)
 	EthCall(from string, to string, value *big.Int, data []byte, overrides *map[ethereum.Address]gethclient.OverrideAccount) ([]byte, error)
+	// CallAtBlock replays a call against the state at atBlock (nil = latest).
+	// Reverts surface as errors carrying the revert data (rpc.DataError).
+	CallAtBlock(from, to string, value *big.Int, gas uint64, data []byte, atBlock *big.Int) ([]byte, error)
 	StorageAt(atBlock int64, caddr string, slot string) ([]byte, error)
 	HeaderByNumber(number int64) (*types.Header, error)
 	GetLogs(fromBlock, toBlock int, addresses []string, topic string) ([]types.Log, error)

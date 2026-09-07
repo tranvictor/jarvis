@@ -326,6 +326,23 @@ func (onr *OneNodeReader) EthCall(from string, to string, value *big.Int, data [
 	}, big.NewInt(int64(rpc.PendingBlockNumber))) // pending block number is used to call the contract on the pending block
 }
 
+func (onr *OneNodeReader) CallAtBlock(from, to string, value *big.Int, gas uint64, data []byte, atBlock *big.Int) ([]byte, error) {
+	ethcli, err := onr.EthClient()
+	if err != nil {
+		return nil, err
+	}
+	contract := jarviscommon.HexToAddress(to)
+	timeout, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	return ethcli.CallContract(timeout, ethereum.CallMsg{
+		From:  jarviscommon.HexToAddress(from),
+		To:    &contract,
+		Gas:   gas,
+		Value: value,
+		Data:  data,
+	}, atBlock)
+}
+
 func (onr *OneNodeReader) CurrentBlock() (uint64, error) {
 	ethcli, err := onr.EthClient()
 	if err != nil {

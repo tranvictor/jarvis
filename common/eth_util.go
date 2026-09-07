@@ -17,6 +17,18 @@ func GetMultiSendABI() *abi.ABI {
 	return &result
 }
 
+// GetWellKnownEventsABI returns the ABI used to decode standard token events
+// when the emitting contract's own ABI is unavailable. erc721 selects the
+// ERC-721 variant (three indexed arguments) of Transfer/Approval.
+func GetWellKnownEventsABI(erc721 bool) *abi.ABI {
+	src := wellKnownEventsABI
+	if erc721 {
+		src = erc721EventsABI
+	}
+	result, _ := abi.JSON(strings.NewReader(src))
+	return &result
+}
+
 func GetEIP1967BeaconABI() *abi.ABI {
 	result, _ := abi.JSON(strings.NewReader(eip1967beacon))
 	return &result

@@ -8,9 +8,11 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient/gethclient"
+	"github.com/ethereum/go-ethereum/rpc"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	jarvisnetworks "github.com/tranvictor/jarvis/util/explorers"
@@ -396,6 +398,72 @@ func (er *EthReader) EthCall(from string, to string, value *big.Int, data []byte
 		errs = append(errs, result.Error)
 	}
 	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
+}
+
+// ErrNoRevertData is returned by RevertData when the replay did not revert
+// (state has moved on) or reverted without any data.
+var ErrNoRevertData = errors.New("replay produced no revert data")
+
+// RevertData replays a mined, reverted transaction against the state at the
+// start of its block and returns the raw revert payload (Error(string),
+// Panic(uint256) or a custom error). Replaying at the parent block ignores
+// earlier transactions in the same block, so the reason is a best effort;
+// callers should treat it as a hint, not proof.
+func (er *EthReader) RevertData(txinfo jarviscommon.TxInfo) ([]byte, error) {
+	if txinfo.Receipt == nil || txinfo.Receipt.BlockNumber == nil || txinfo.Tx == nil || txinfo.Tx.To() == nil {
+		return nil, ErrNoRevertData
+	}
+	parent := new(big.Int).Sub(txinfo.Receipt.BlockNumber, big.NewInt(1))
+	type reply struct {
+		data []byte
+		err  error
+	}
+	resCh := make(chan reply, len(er.nodes))
+	for i := range er.nodes {
+		n := er.nodes[i]
+		go func() {
+			data, err := n.CallAtBlock(
+				txinfo.Tx.Extra.From.Hex(), txinfo.Tx.To().Hex(),
+				txinfo.Tx.Value(), txinfo.Tx.Gas(), txinfo.Tx.Data(), parent,
+			)
+			resCh <- reply{data: data, err: wrapError(err, n.NodeName())}
+		}()
+	}
+	errs := []error{}
+	replaySucceeded := false
+	for i := 0; i < len(er.nodes); i++ {
+		r := <-resCh
+		if r.err == nil {
+			replaySucceeded = true
+			continue
+		}
+		if data := revertDataFromError(r.err); len(data) > 0 {
+			return data, nil
+		}
+		errs = append(errs, r.err)
+	}
+	if replaySucceeded || len(errs) == 0 {
+		return nil, ErrNoRevertData
+	}
+	return nil, fmt.Errorf("couldn't replay on any node: %w", errors.Join(errs...))
+}
+
+// revertDataFromError extracts the hex revert payload that JSON-RPC nodes
+// attach to "execution reverted" errors.
+func revertDataFromError(err error) []byte {
+	var de rpc.DataError
+	if !errors.As(err, &de) {
+		return nil
+	}
+	hexStr, ok := de.ErrorData().(string)
+	if !ok {
+		return nil
+	}
+	data, decErr := hexutil.Decode(hexStr)
+	if decErr != nil {
+		return nil
+	}
+	return data
 }
 
 func (er *EthReader) ImplementationOfEIP1967(

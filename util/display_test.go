@@ -325,7 +325,7 @@ func TestUndecodedCallShowsContractAndData(t *testing.T) {
 		"selector 0xdeadbeef   36 bytes",
 		"Raw calldata (36 bytes):",
 		"0xdeadbeef00000000000000000000000000000000000000000000000000000000",
-		"no method with id: 0xdeadbeef",
+		"calldata not decoded: no available ABI covers selector 0xdeadbeef",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("output missing %q:\n%s", want, joined)
