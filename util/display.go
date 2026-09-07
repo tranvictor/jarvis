@@ -558,8 +558,18 @@ func PrintFunctionCall(u ui.UI, d *FunctionCallDisplay) {
 // hash is the transaction hash shown in the headline/footer; pass an empty
 // string to omit it (e.g. when the hash is already shown by the caller).
 func DisplayTxResult(u ui.UI, result *jarviscommon.TxResult, network networks.Network, layout TxLayout, hash string) *TxDisplay {
+	return DisplayTxResultWith(u, result, network, layout, hash, nil)
+}
+
+// DisplayTxResultWith is DisplayTxResult plus an optional step after the
+// view-model is built and before it is printed. jarvis info uses this to
+// attach an ERC-7730 panel without util importing the erc7730 engine.
+func DisplayTxResultWith(u ui.UI, result *jarviscommon.TxResult, network networks.Network, layout TxLayout, hash string, prepare func(*TxDisplay, *jarviscommon.TxResult)) *TxDisplay {
 	d := buildTxDisplay(result, network)
 	d.Hash = hash
+	if prepare != nil {
+		prepare(d, result)
+	}
 	printTxDisplay(u, d, network, layout)
 	return d
 }

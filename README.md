@@ -194,13 +194,18 @@ Events (3)
   recovered by replaying the call, is the red `reason` line under the
   headline. Events that no ABI describes are listed as `<undecoded>` with
   their raw topics so the event count is always complete.
+- When an ERC-7730 descriptor matches the call (or an inner MultiSend / Safe
+  call), a green **Clear Signed** panel is printed above the ABI **Call**
+  tree — the same view shown at sign time. No match leaves the output
+  unchanged.
 
 ### Signing screen
 
 Every `send`, `tx`, `msig init/approve/execute`, Classic and Safe
 `msig info`, and WalletConnect `eth_sendTransaction` ends in the same
 card. WalletConnect `personal_sign` / typed-data still use a compact
-confirm. The decoded call comes first, the who/where/cost block sits
+confirm. The decoded call comes first (with a green Clear Signed panel
+above it when an ERC-7730 descriptor matches), the who/where/cost block sits
 directly above the prompt, and anything jarvis thinks you should
 double-check is listed as a `!` line right before you answer:
 

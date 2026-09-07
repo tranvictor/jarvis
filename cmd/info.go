@@ -66,6 +66,7 @@ var txCmd = &cobra.Command{
 				nil,
 				nil,
 				util.InfoLayout(config.DegenMode),
+				cmdutil.InfoClearSign(config.Network()),
 			)
 			displays[t] = d
 		}
