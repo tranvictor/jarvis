@@ -232,28 +232,30 @@ the on-chain transaction count.`,
 			return
 		}
 
-		appUI.Info("Owner list:")
+		appUI.Section("Classic governance")
 		owners, err := multisigContract.Owners()
 		if err != nil {
 			appUI.Error("Couldn't get owners of the multisig: %s", err)
 			return
 		}
+		appUI.Info("Address          : %s", appUI.Style(util.StyledAddress(util.GetJarvisAddress(msigAddress, config.Network()))))
+		appUI.Info("Owners (%d):", len(owners))
 		for i, owner := range owners {
 			ja := util.GetJarvisAddress(owner, config.Network())
-			appUI.Info("%d. %s", i+1, jarviscommon.NameFirst(ja, true))
+			appUI.Info("  %d. %s", i+1, appUI.Style(util.StyledAddress(ja)))
 		}
 		voteRequirement, err := multisigContract.VoteRequirement()
 		if err != nil {
 			appUI.Error("Couldn't get vote requirements of the multisig: %s", err)
 			return
 		}
-		appUI.Info("Vote requirement: %d/%d", voteRequirement, len(owners))
+		appUI.Info("Vote requirement : %d/%d", voteRequirement, len(owners))
 		noTxs, err := multisigContract.NOTransactions()
 		if err != nil {
 			appUI.Error("Couldn't get number of transactions of the multisig: %s", err)
 			return
 		}
-		appUI.Info("Number of transaction inited: %d", noTxs)
+		appUI.Info("On-chain txs     : %d", noTxs)
 	},
 }
 
@@ -1049,13 +1051,13 @@ func resolveNewMsigType() (cmdutil.MultisigType, error) {
 	if config.PrefillStr != "" {
 		return cmdutil.MultisigClassic, nil
 	}
-	appUI.Info("Which multisig to deploy?")
-	appUI.Info("1. Gnosis Safe (recommended)")
-	appUI.Info("2. Gnosis Classic")
-	switch cmdutil.PromptIndex(appUI, "Please choose [1, 2]", 1, 2) {
-	case 1:
+	switch appUI.Choose("Which multisig to deploy?", []string{
+		"Gnosis Safe (recommended)",
+		"Gnosis Classic",
+	}) {
+	case 0:
 		return cmdutil.MultisigSafe, nil
-	case 2:
+	case 1:
 		return cmdutil.MultisigClassic, nil
 	default:
 		return cmdutil.MultisigUnknown, fmt.Errorf("no multisig type selected")
@@ -1344,9 +1346,9 @@ func init() {
 	}
 	for _, c := range writeCmds {
 		AddCommonFlagsToTransactionalCmds(c)
-		c.Flags().StringVarP(&config.RawValue, "amount", "v", "0", "Amount of eth to send. It is in native token value, not wei.")
+		c.Flags().StringVarP(&config.RawValue, "amount", "v", "0", nativeAmountFlagHelp)
 		c.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
-		c.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
+		c.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", customABIFlagHelp)
 	}
 
 	AddCommonFlagsToTransactionalCmds(newMsigCmd)

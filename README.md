@@ -198,10 +198,11 @@ Events (3)
 ### Signing screen
 
 Every `send`, `tx`, `msig init/approve/execute`, Classic and Safe
-`msig info`, and WalletConnect request ends in the same card. The decoded
-call comes first, the who/where/cost block sits directly above the prompt,
-and anything jarvis thinks you should double-check is listed as a `!` line
-right before you answer:
+`msig info`, and WalletConnect `eth_sendTransaction` ends in the same
+card. WalletConnect `personal_sign` / typed-data still use a compact
+confirm. The decoded call comes first, the who/where/cost block sits
+directly above the prompt, and anything jarvis thinks you should
+double-check is listed as a `!` line right before you answer:
 
 ```
 ================ EOA transaction =================

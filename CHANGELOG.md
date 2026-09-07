@@ -141,8 +141,17 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - `jarvis version` leads with `jarvis <version>` and the GitHub URL, then
   the existing Kyber contact lines.
 - `--from` help points at `jarvis wallet list` (there is no `jarvis acc`);
-  `--gasprice` no longer mentions ethgasstation.info; `info --json-output`
-  describes this command; `-x/--degen` says what it expands.
+  `--gasprice` no longer mentions ethgasstation.info; `--abi` fetches from
+  the block explorer (not “etherscan”); `--amount` is native-token units,
+  not hard-coded ETH. `info --json-output` describes this command;
+  `-x/--degen` says what it expands.
+- `msig new` picks Safe vs Classic with the same numbered menu as
+  `wallet add`. Classic `msig gov` uses a `Section` header and
+  “On-chain txs” (the old “transaction inited” line is gone).
+- WalletConnect Classic/Safe `eth_sendTransaction` uses the same signing
+  card as `msig init` (inner Classic call + collapsed EOA wrap, or Safe
+  proposal card). Compact colon-block confirms remain only as a fallback
+  when the UI is not a full terminal, and for `personal_sign` / typed data.
 - `contract encode --help` is a short parameter summary instead of a
   50-line spec; `contract read` output uses the same param tree as a call
   body, not a bordered table per return value.
