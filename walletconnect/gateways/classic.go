@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
@@ -190,28 +191,8 @@ func (g *ClassicGateway) SendTransaction(
 		priceGwei, tipGwei, outerData, g.network.GetChainID(),
 	)
 
-	g.ui.Info("Multisig : %s", shortLabel(g.addr.Hex(), g.network))
-	g.ui.Info("Owner    : %s", ownerAddr)
-	g.ui.Info("To       : %s", shortLabel(innerTo.Hex(), g.network))
-	if innerValue.Sign() > 0 {
-		g.ui.Info("Value    : %s %s",
-			jarviscommon.BigToFloat(innerValue, g.network.GetNativeTokenDecimal()),
-			g.network.GetNativeTokenSymbol())
-	}
-	if len(innerData) > 0 {
-		preview := ethcommon.Bytes2Hex(innerData)
-		if len(preview) > 80 {
-			preview = preview[:80] + "…"
-		}
-		g.ui.Info("Data     : 0x%s", preview)
-	}
-	g.ui.Info("Outer gas: %d @ %v gwei", gasLimit, priceGwei)
-
-	if !g.ui.Confirm(
-		"Wrap this call in submitTransaction and broadcast it from the owner wallet?",
-		true,
-	) {
-		return "", walletconnect.ErrUserRejected
+	if err := g.promptClassicConfirm(ethTx, innerTo.Hex(), innerValue, innerData, msigABI); err != nil {
+		return "", err
 	}
 
 	ac, err := g.unlock()
@@ -245,6 +226,60 @@ func (g *ClassicGateway) SendTransaction(
 		go g.waitAndAnalyze(fullUI, signedTx)
 	}
 	return hash, nil
+}
+
+func (g *ClassicGateway) promptClassicConfirm(
+	ethTx *types.Transaction,
+	innerTo string,
+	innerValue *big.Int,
+	innerData []byte,
+	msigABI *abi.ABI,
+) error {
+	if fullUI, ok := g.ui.(jarvisui.UI); ok {
+		analyzer := txanalyzer.NewGenericAnalyzer(g.reader, g.network)
+		threshold, _ := g.msig.VoteRequirement()
+		inner := cmdutil.BuildClassicProposalCard(
+			g.addr.Hex(), innerTo, innerValue, innerData,
+			threshold, g.network, g.resolver, analyzer,
+		)
+		cmdutil.ShowSigningCard(fullUI, inner)
+		cmdutil.SetNextSigningNote(cmdutil.SigningNote{
+			CollapseCallNote: "(Classic transaction shown above)",
+			WalletName:       g.owner.Desc,
+			WalletKind:       g.owner.Kind,
+		})
+		customABIs := map[string]*abi.ABI{strings.ToLower(g.addr.Hex()): msigABI}
+		if a, err := g.resolver.ConfigToABI(innerTo, false, "", g.network); err == nil && a != nil {
+			customABIs[strings.ToLower(innerTo)] = a
+		}
+		fromAddr := util.GetJarvisAddress(g.owner.Address, g.network)
+		if err := cmdutil.PromptTxConfirmation(fullUI, analyzer, fromAddr, ethTx, customABIs, g.network); err != nil {
+			return walletconnect.ErrUserRejected
+		}
+		return nil
+	}
+	g.ui.Info("Multisig : %s", shortLabel(g.addr.Hex(), g.network))
+	g.ui.Info("Owner    : %s", g.owner.Address)
+	g.ui.Info("To       : %s", shortLabel(innerTo, g.network))
+	if innerValue.Sign() > 0 {
+		g.ui.Info("Value    : %s %s",
+			jarviscommon.BigToFloat(innerValue, g.network.GetNativeTokenDecimal()),
+			g.network.GetNativeTokenSymbol())
+	}
+	if len(innerData) > 0 {
+		preview := ethcommon.Bytes2Hex(innerData)
+		if len(preview) > 80 {
+			preview = preview[:80] + "…"
+		}
+		g.ui.Info("Data     : 0x%s", preview)
+	}
+	if !g.ui.Confirm(
+		"Wrap this call in submitTransaction and broadcast it from the owner wallet?",
+		true,
+	) {
+		return walletconnect.ErrUserRejected
+	}
+	return nil
 }
 
 func (g *ClassicGateway) waitAndAnalyze(

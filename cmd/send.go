@@ -588,8 +588,8 @@ func detectSafeForSend(
 // SafeTx (native transfer or ERC20 transfer) targeting --to with the
 // given amount, signs the EIP-712 safeTxHash with the single local
 // wallet that's also a Safe owner, and submits the proposal to the Safe
-// Transaction Service. The print-out matches `jarvis safe init` so the
-// follow-up commands (approve / execute) are immediately discoverable.
+// Transaction Service. Follow-up commands (approve / execute) are printed
+// the same way as `jarvis msig init`.
 func sendFromSafe(
 	reader utilreader.Reader,
 	analyzer util.TxAnalyzer,
@@ -740,8 +740,8 @@ func sendFromSafe(
 
 func init() {
 	AddCommonFlagsToTransactionalCmds(sendCmd)
-	sendCmd.Flags().StringVarP(&to, "to", "t", "", "Account to send eth to. It can be ethereum address or a hint string to look it up in the address database. See jarvis addr for all of the known addresses")
-	sendCmd.Flags().StringVarP(&value, "amount", "v", "0", "Amount of eth to send. It is in eth/token value, not wei/twei. If a float number is passed, it will be interpreted as ETH, otherwise, it must be in the form of `float|ALL address` or `float|ALL name`. In the later case, `name` will be used to look for the token address. Eg. 0.01, 0.01 knc, 0.01 0xdd974d5c2e2928dea5f71b9825b8b646686bd200, ALL KNC are valid values.")
+	sendCmd.Flags().StringVarP(&to, "to", "t", "", "Account to send to. It can be an address or a keyword (see jarvis addr)")
+	sendCmd.Flags().StringVarP(&value, "amount", "v", "0", "Amount to send, in token units not wei. A bare number is the network native token; otherwise amount token (e.g. 0.01, 0.01 knc, ALL KNC).")
 	sendCmd.Flags().StringVarP(&data, "data", "D", "", "Data to send along with the transaction. It is in hex format.")
 	sendCmd.MarkFlagRequired("to")
 	sendCmd.MarkFlagRequired("amount")

@@ -57,12 +57,14 @@ func buildClassicMsigCard(
 		Network: network.GetName(),
 		To:      util.StyledAddress(toJarvis),
 		Classic: &ClassicCardFields{
-			TxID:          txid.String(),
 			Multisig:      util.StyledAddress(util.GetJarvisAddress(msigAddr, network)),
 			Executed:      executed,
 			Confirmations: len(confirmations),
 			Threshold:     uint64(threshold),
 		},
+	}
+	if txid != nil {
+		card.Classic.TxID = txid.String()
 	}
 	if value != nil && value.Sign() > 0 {
 		card.Value = jarviscommon.BigToFloatString(value, network.GetNativeTokenDecimal()) +
@@ -129,6 +131,21 @@ func AnalyzeAndShowMsigTxInfo(
 		executed, confirmations, requirement, network, fc,
 	))
 	return
+}
+
+// BuildClassicProposalCard is the inner Classic call a WalletConnect dApp
+// (or similar) wants the msig to submit. There is no on-chain tx id yet.
+func BuildClassicProposalCard(
+	msigAddr, to string,
+	value *big.Int,
+	data []byte,
+	threshold int64,
+	network jarvisnetworks.Network,
+	resolver ABIResolver,
+	analyzer util.TxAnalyzer,
+) *SigningCard {
+	fc := decodeClassicCalldata(to, value, data, network, resolver, analyzer)
+	return buildClassicMsigCard(msigAddr, nil, to, value, data, false, nil, threshold, network, fc)
 }
 
 // SetClassicSigningNote collapses the following EOA confirm/revoke/execute

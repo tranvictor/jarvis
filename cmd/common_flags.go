@@ -16,6 +16,9 @@ func networkFlag() string {
 	return " --network " + config.Network().GetName()
 }
 
+const customABIFlagHelp = "Custom ABI: a contract address (fetched from the block explorer), a path to an ABI file, or a URL. Ignored when --erc20-abi is set."
+const nativeAmountFlagHelp = "Amount of native token to send with the transaction, in token units not wei."
+
 func AddCommonFlagsToTransactionalCmds(c *cobra.Command) {
 	c.PersistentFlags().
 		Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. 0 = suggested by the network's explorer or nodes. The tx uses gasprice + extraprice")

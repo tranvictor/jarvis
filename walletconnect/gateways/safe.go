@@ -12,6 +12,8 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/safe"
+	"github.com/tranvictor/jarvis/txanalyzer"
+	jarvisui "github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util/account"
 	"github.com/tranvictor/jarvis/walletconnect"
 )
@@ -166,26 +168,8 @@ func (g *SafeGateway) SendTransaction(
 	stx := safe.NewSafeTx(to, value, data, safe.OpCall, nonce)
 	hash := stx.SafeTxHash(domainSep)
 
-	g.ui.Info("Safe       : %s", shortLabel(g.addr.Hex(), g.network))
-	g.ui.Info("Owner      : %s", g.owner.Address)
-	g.ui.Info("To         : %s", shortLabel(to.Hex(), g.network))
-	if value.Sign() > 0 {
-		g.ui.Info("Value      : %s %s",
-			jarviscommon.BigToFloat(value, g.network.GetNativeTokenDecimal()),
-			g.network.GetNativeTokenSymbol())
-	}
-	g.ui.Info("Nonce      : %d", nonce)
-	if len(data) > 0 {
-		preview := ethcommon.Bytes2Hex(data)
-		if len(preview) > 80 {
-			preview = preview[:80] + "…"
-		}
-		g.ui.Info("Data       : 0x%s", preview)
-	}
-	g.ui.Info("safeTxHash : 0x%s", hex.EncodeToString(hash[:]))
-
-	if !g.ui.Confirm("Sign this Safe proposal and submit to the transaction service?", true) {
-		return "", walletconnect.ErrUserRejected
+	if err := g.promptSafeConfirm(stx, hash); err != nil {
+		return "", err
 	}
 
 	ac, err := g.unlock()
@@ -217,6 +201,49 @@ func (g *SafeGateway) SendTransaction(
 	// explorer link; that link won't resolve until the Safe executes,
 	// but giving the dApp something well-formed keeps its UI happy.
 	return "0x" + hex.EncodeToString(hash[:]), nil
+}
+
+func (g *SafeGateway) promptSafeConfirm(stx *safe.SafeTx, hash [32]byte) error {
+	if fullUI, ok := g.ui.(jarvisui.UI); ok {
+		rd, err := jarvisNetReader(g.network)
+		if err != nil {
+			return fmt.Errorf("reader for signing card: %w", err)
+		}
+		analyzer := txanalyzer.NewGenericAnalyzer(rd, g.network)
+		threshold, _ := g.safe.Threshold()
+		card := cmdutil.BuildSafeSigningCard(stx, hash, g.network, g.resolver, analyzer, cmdutil.SafeCardOptions{
+			Kind:      "Safe proposal",
+			Prompt:    "Sign this Safe proposal and submit to the transaction service?",
+			Signer:    g.owner.Address,
+			Threshold: threshold,
+		})
+		if !cmdutil.ConfirmSigningCard(fullUI, card) {
+			cmdutil.WarnCancelled(fullUI)
+			return walletconnect.ErrUserRejected
+		}
+		return nil
+	}
+	g.ui.Info("Safe       : %s", shortLabel(g.addr.Hex(), g.network))
+	g.ui.Info("Owner      : %s", g.owner.Address)
+	g.ui.Info("To         : %s", shortLabel(stx.To.Hex(), g.network))
+	if stx.Value != nil && stx.Value.Sign() > 0 {
+		g.ui.Info("Value      : %s %s",
+			jarviscommon.BigToFloat(stx.Value, g.network.GetNativeTokenDecimal()),
+			g.network.GetNativeTokenSymbol())
+	}
+	g.ui.Info("Nonce      : %s", stx.Nonce.String())
+	if len(stx.Data) > 0 {
+		preview := ethcommon.Bytes2Hex(stx.Data)
+		if len(preview) > 80 {
+			preview = preview[:80] + "…"
+		}
+		g.ui.Info("Data       : 0x%s", preview)
+	}
+	g.ui.Info("safeTxHash : 0x%s", hex.EncodeToString(hash[:]))
+	if !g.ui.Confirm("Sign this Safe proposal and submit to the transaction service?", true) {
+		return walletconnect.ErrUserRejected
+	}
+	return nil
 }
 
 func (g *SafeGateway) unlock() (*account.Account, error) {
