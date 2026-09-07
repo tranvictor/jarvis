@@ -275,6 +275,64 @@ func TestSigningWarningsHonourNativeDecimals(t *testing.T) {
 	}
 }
 
+func TestShowSigningCardClassicFields(t *testing.T) {
+	rec := ui.NewRecordingUI()
+	fc := &jarviscommon.FunctionCall{
+		Destination: cardAddr(cardUSDC, "USDC"), Method: "transfer",
+		Params: []jarviscommon.ParamResult{addrParam("to", cardMe, "me"), uintParam("amount", "1000")},
+	}
+	ShowSigningCard(rec, &SigningCard{
+		Kind:    "Classic multisig transaction",
+		Network: "mainnet",
+		To:      util.StyledAddress(cardAddr(cardUSDC, "USDC")),
+		Value:   "1.5 ETH",
+		Call:    util.NewFunctionCallDisplay(fc, nil),
+		Classic: &ClassicCardFields{
+			TxID:          "42",
+			Multisig:      util.StyledAddress(cardAddr(cardMe, "Treasury")),
+			Confirmations: 1,
+			Threshold:     2,
+			Signatures:    []ui.StyledText{util.StyledAddress(cardAddr(cardMe, "me"))},
+		},
+	})
+	for _, w := range []string{
+		"Classic multisig transaction",
+		"Calls: " + cardUSDC + " (USDC)",
+		"Multisig: " + cardMe + " (Treasury)",
+		"Tx ID: #42",
+		"Status: pending (1/2)",
+		"Network: mainnet",
+		"Signed by (1 of 2 required)",
+		"1. " + cardMe + " (me)",
+	} {
+		if !rec.HasMessage(w) {
+			t.Fatalf("missing %q in %v", w, rec.Entries())
+		}
+	}
+	if rec.HasMessage("Safe calls:") {
+		t.Fatalf("Classic card must not use the Safe destination label: %v", rec.Entries())
+	}
+}
+
+func TestShowSigningCardClassicCollapseNote(t *testing.T) {
+	rec := ui.NewRecordingUI()
+	ShowSigningCard(rec, &SigningCard{
+		Kind: "EOA transaction",
+		Call: util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{
+			Destination: cardAddr(cardMe, "Treasury"), Method: "confirmTransaction",
+			Params: []jarviscommon.ParamResult{uintParam("transactionId", "42")},
+		}, nil),
+		CollapseCall: true,
+		CollapseNote: "(Classic transaction shown above)",
+	})
+	if !rec.HasMessage("Call  confirmTransaction  →  " + cardMe + " (Treasury)   (Classic transaction shown above)") {
+		t.Fatalf("collapsed Classic note missing: %v", rec.Entries())
+	}
+	if rec.HasMessage("transactionId  42") {
+		t.Fatalf("collapsed call must not print params: %v", rec.Entries())
+	}
+}
+
 func TestSigningCardShowsWalletKind(t *testing.T) {
 	rec := ui.NewRecordingUI()
 	ShowSigningCard(rec, &SigningCard{

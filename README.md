@@ -197,10 +197,11 @@ Events (3)
 
 ### Signing screen
 
-Every `send`, `tx`, `msig init/approve/execute` and WalletConnect request
-ends in the same card. The decoded call comes first, the who/where/cost
-block sits directly above the prompt, and anything jarvis thinks you
-should double-check is listed as a `!` line right before you answer:
+Every `send`, `tx`, `msig init/approve/execute`, Classic and Safe
+`msig info`, and WalletConnect request ends in the same card. The decoded
+call comes first, the who/where/cost block sits directly above the prompt,
+and anything jarvis thinks you should double-check is listed as a `!` line
+right before you answer:
 
 ```
 ================ EOA transaction =================
@@ -225,7 +226,10 @@ native value sent into a contract, calldata jarvis could not decode,
 unlimited ERC-20 approvals, `setApprovalForAll`, approvals to unknown
 spenders, and Safe `DELEGATECALL` operations. Safe cards add the Safe
 address, operation, nonce, `safeTxHash` and the list of collected
-signatures. `-Y` / `--yes` skips the prompt but still prints the card.
+signatures. Classic cards add the multisig, on-chain tx id, confirmation
+progress and the list of confirmers; approving then collapses the inner
+`confirmTransaction` call the same way a Safe execution collapses
+`execTransaction`. `-Y` / `--yes` skips the prompt but still prints the card.
 
 After signing, a live status line replaces the silent wait
 (`⠋ in mempool, waiting to be mined…  0:12`), and once mined jarvis prints
@@ -307,7 +311,7 @@ of multisig you're talking to.
 | `jarvis msig approve`  | yes | yes | Add your approval. Auto-executes when threshold is met. |
 | `jarvis msig execute`  | yes | yes | Broadcast the on-chain execution. |
 | `jarvis msig info`     | yes | yes | Show a specific pending tx with decoded calldata. |
-| `jarvis msig summary`  | yes | yes | List all pending txs for the multisig. |
+| `jarvis msig summary`  | yes | yes | List pending txs (Classic: on-chain queue with id / to / sigs / status; Safe: Transaction Service queue). |
 | `jarvis msig gov`      | yes | yes | Show owners / threshold / version / nonce. |
 | `jarvis msig bapprove` | yes | yes | Batch-approve many pending txs in one shot. Safe refs may be Safe-app URLs, `multisig_<safe>_<hash>` tokens, or `<chain>:<safe>:<hash>` triples. |
 | `jarvis msig revoke`   | yes | **no** | Classic-only; errors with a clear message on Safe addresses. |
