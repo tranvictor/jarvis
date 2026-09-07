@@ -29,6 +29,26 @@ var addressWithDesc = regexp.MustCompile(`(^|[^0-9a-fA-Fx])(0x[0-9a-fA-F]{40})( 
 
 var descDecimalSuffix = regexp.MustCompile(` - \d+$`)
 
+// The "raw (readable)" number forms produced by PlainValue. Compact layouts
+// keep only the readable half.
+var (
+	groupedInteger  = regexp.MustCompile(`\b(-?\d{5,}) \((-?[\d,]+)\)`)
+	tokenAmount     = regexp.MustCompile(`\b(\d+) \((-?\d+(?:\.\d+)?)( [^\s()]+)?\)`)
+	unlimitedAmount = regexp.MustCompile(`\b(\d+) \((uint\d+\.max(?: \(∞\))?), all ([^\s()]+)\)`)
+)
+
+// compactNumberText rewrites every "raw (readable)" integer and token amount
+// in text into its readable form only: "1000000000 (1,000,000,000)" becomes
+// "1,000,000,000" and "1000000 (1 USDC)" becomes "1 USDC".
+func compactNumberText(text string) string {
+	text = unlimitedAmount.ReplaceAllString(text, "$2 $3")
+	text = groupedInteger.ReplaceAllString(text, "$2")
+	return tokenAmount.ReplaceAllStringFunc(text, func(m string) string {
+		sub := tokenAmount.FindStringSubmatch(m)
+		return jarviscommon.CompactAmount(sub[2]) + sub[3]
+	})
+}
+
 // compactAddressText rewrites every "0x… (Desc)" occurrence in text into the
 // NameFirst / ShortAddress form. Text without addresses is returned unchanged.
 func compactAddressText(text string) string {
@@ -58,6 +78,9 @@ type txPrinter struct {
 	u       ui.UI
 	layout  TxLayout
 	compact bool // shorten addresses / hex, collapse long arrays
+	// width is the terminal column count used to wrap event lines; 0 disables
+	// wrapping (non-TTY output, tests).
+	width int
 	// expandAll keeps every array element visible even in compact mode; used
 	// when echoing user input, where hiding elements would hide typos.
 	expandAll bool
@@ -113,10 +136,16 @@ func (p txPrinter) valueTree(d ParamDisplay) []string {
 
 func (p txPrinter) text(st ui.StyledText) string {
 	t := st.Text
+	sev := st.Severity
 	if p.compact {
-		t = compactHex(compactAddressText(t))
+		t = compactHex(compactNumberText(compactAddressText(t)))
+		// Green for "in the address book" earns its keep on the signing
+		// card; in a dense read-only view it just competes with the status.
+		if sev == ui.SeveritySuccess {
+			sev = ui.SeverityInfo
+		}
 	}
-	return p.u.Style(ui.StyledText{Text: t, Severity: st.Severity})
+	return p.u.Style(ui.StyledText{Text: t, Severity: sev})
 }
 
 func (p txPrinter) muted(s string) string {
@@ -173,7 +202,7 @@ func (p txPrinter) headline(d *TxDisplay, network networks.Network) string {
 // what happened (headline), what moved (transfers), what was called, what was
 // emitted, and the headline again so the last line on screen is the summary.
 func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network, layout TxLayout) {
-	p := txPrinter{u: u, layout: layout, compact: layout != LayoutInfoFull}
+	p := txPrinter{u: u, layout: layout, compact: layout != LayoutInfoFull, width: ui.TerminalWidth()}
 
 	if d.TxType == "" {
 		u.Info("%s", p.headline(d, network))
@@ -196,6 +225,10 @@ func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network, layout TxLa
 	}
 
 	printed := false
+	if len(d.NetEffect) > 0 {
+		p.printNetEffect(d.NetEffect)
+		printed = true
+	}
 	if len(d.Transfers) > 0 {
 		p.printTransfers(d.Transfers)
 		printed = true
@@ -236,6 +269,9 @@ func (p txPrinter) details(d *TxDisplay, network networks.Network) string {
 		from = compactAddressText(from)
 	}
 	parts := []string{"from " + from}
+	if p.layout != LayoutPostSign {
+		parts = []string{network.GetName(), "from " + from}
+	}
 	if d.TxType != "normal" && d.Value != "" {
 		parts = append(parts, "value "+d.Value+" "+sym)
 	}
@@ -285,14 +321,69 @@ func (p txPrinter) printCard(d *TxDisplay, network networks.Network) {
 	p.u.KeyValueCells(rows)
 }
 
+// maxCompactTransfers caps the Transfers list in compact layouts. Past this
+// the Net effect block carries the meaning; -x still lists everything.
+const maxCompactTransfers = 8
+
+// printNetEffect renders the per-address summary: one line per address, its
+// token deltas coloured by sign.
+func (p txPrinter) printNetEffect(rows []NetEffectDisplay) {
+	p.u.Subsection("Net effect")
+	addrWidth := 0
+	plainAddr := func(r NetEffectDisplay) string {
+		if p.compact {
+			return compactAddressText(r.Address.Text)
+		}
+		return r.Address.Text
+	}
+	for _, r := range rows {
+		if w := ui.VisibleWidth(plainAddr(r)); w > addrWidth {
+			addrWidth = w
+		}
+	}
+	for _, r := range rows {
+		pad := strings.Repeat(" ", addrWidth-ui.VisibleWidth(plainAddr(r)))
+		deltas := make([]string, len(r.Deltas))
+		for i, delta := range r.Deltas {
+			text := delta
+			if p.compact {
+				amount, sym, _ := strings.Cut(delta, " ")
+				text = string(amount[0]) + jarviscommon.CompactAmount(amount[1:])
+				if sym != "" {
+					text += " " + compactAddressText(sym)
+				}
+			}
+			sev := ui.SeveritySuccess
+			if strings.HasPrefix(delta, "-") {
+				sev = ui.SeverityError
+			}
+			deltas[i] = p.u.Style(ui.StyledText{Text: text, Severity: sev})
+		}
+		p.u.Indent().Info("%s%s   %s", p.text(r.Address), pad, strings.Join(deltas, "   "))
+	}
+}
+
 func (p txPrinter) printTransfers(ts []TransferDisplay) {
-	p.u.Subsection("Transfers")
+	title := "Transfers"
+	hidden := 0
+	if p.compact && len(ts) > maxCompactTransfers {
+		title = fmt.Sprintf("Transfers (%d)", len(ts))
+		hidden = len(ts) - maxCompactTransfers
+		ts = ts[:maxCompactTransfers]
+	}
+	p.u.Subsection(title)
 	amountWidth := 0
+	amountText := func(t TransferDisplay) string {
+		if p.compact && !strings.HasPrefix(t.Amount, "#") {
+			return jarviscommon.CompactAmount(t.Amount)
+		}
+		return t.Amount
+	}
 	plain := func(t TransferDisplay) string {
 		if t.Unlimited {
 			return compactAddressText(t.Token.Text)
 		}
-		return t.Amount + " " + compactAddressText(t.Token.Text)
+		return amountText(t) + " " + compactAddressText(t.Token.Text)
 	}
 	for _, t := range ts {
 		if w := ui.VisibleWidth(plain(t)); w > amountWidth {
@@ -300,7 +391,7 @@ func (p txPrinter) printTransfers(ts []TransferDisplay) {
 		}
 	}
 	for _, t := range ts {
-		amount := t.Amount + " " + p.text(t.Token)
+		amount := amountText(t) + " " + p.text(t.Token)
 		if t.Unlimited {
 			amount = p.text(t.Token)
 		}
@@ -321,6 +412,9 @@ func (p txPrinter) printTransfers(ts []TransferDisplay) {
 			line = fmt.Sprintf("%s%s   %s  →  %s", amount, pad, p.text(t.From), p.text(t.To))
 		}
 		p.u.Indent().Info("%s", line)
+	}
+	if hidden > 0 {
+		p.u.Indent().Info("%s", p.muted(fmt.Sprintf("… %d more (-x lists all)", hidden)))
 	}
 }
 
@@ -507,16 +601,49 @@ func (p txPrinter) printEvents(logs []LogDisplay) {
 		} else {
 			name = p.bold(name)
 		}
-		line := fmt.Sprintf("%d. %s  %s", i+1, name, p.text(l.Address))
-		if len(args) > 0 {
-			line += "   " + strings.Join(args, "  ")
+		head := fmt.Sprintf("%d. %s  %s", i+1, name, p.text(l.Address))
+		// Continuation lines start under the address so the event name and
+		// number column stay scannable.
+		contIndent := len(fmt.Sprintf("%d. ", len(logs))) + nameWidth + 2
+		for _, line := range p.packArgs(head, args, contIndent, 2) {
+			p.u.Indent().Info("%s", line)
 		}
-		p.u.Indent().Info("%s", line)
 	}
 	if undecoded > 0 {
 		p.u.Indent().Info("%s", p.muted(fmt.Sprintf(
 			"%d event(s) shown raw: the emitting contract has no ABI available (unverified or explorer unreachable)", undecoded)))
 	}
+}
+
+// packArgs lays out args after head, greedily filling terminal lines. The
+// first line holds head plus as many args as fit; overflow lines are indented
+// by contIndent. baseIndent is the indentation the caller will add. With no
+// known width everything goes on one line.
+func (p txPrinter) packArgs(head string, args []string, contIndent, baseIndent int) []string {
+	if len(args) == 0 {
+		return []string{head}
+	}
+	avail := p.width - baseIndent
+	joined := head + "   " + strings.Join(args, "  ")
+	if p.width == 0 || ui.VisibleWidth(joined) <= avail {
+		return []string{joined}
+	}
+	lines := []string{}
+	cur, curW := head+" ", ui.VisibleWidth(head)+1
+	first := true
+	pad := strings.Repeat(" ", contIndent)
+	for _, a := range args {
+		w := ui.VisibleWidth(a)
+		if !first && curW+2+w > avail {
+			lines = append(lines, cur)
+			cur, curW = pad+a, contIndent+w
+			continue
+		}
+		cur += "  " + a
+		curW += 2 + w
+		first = false
+	}
+	return append(lines, cur)
 }
 
 func eventName(l LogDisplay) string {

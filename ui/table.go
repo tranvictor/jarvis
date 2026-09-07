@@ -175,6 +175,12 @@ func shrinkToTerminal(widths []int) {
 // detectTerminalWidth returns os.Stdout's current column count, or 0
 // if we can't determine it (not a TTY, error, etc.) — callers treat 0
 // as "no cap".
+// TerminalWidth returns the current column count of stdout, or 0 when it is
+// not a terminal. Callers use 0 as "do not wrap".
+func TerminalWidth() int {
+	return detectTerminalWidth()
+}
+
 func detectTerminalWidth() int {
 	if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil && w > 0 {
 		return w

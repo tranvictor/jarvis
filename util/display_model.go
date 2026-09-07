@@ -82,6 +82,14 @@ type TransferDisplay struct {
 	Unlimited bool `json:"unlimited,omitempty"`
 }
 
+// NetEffectDisplay is one address's net token position change across all the
+// transfers in a tx: what it ended up with, after intermediate hops cancel out.
+type NetEffectDisplay struct {
+	Address ui.StyledText `json:"address"`
+	// Deltas are signed human amounts with symbol, e.g. "-1000 USDC".
+	Deltas []string `json:"deltas"`
+}
+
 // TxDisplay is the complete human-readable view-model for a single analyzed
 // transaction. StyledText fields carry Severity annotations used only by the
 // terminal print phase; JSON consumers receive clean plain strings.
@@ -102,7 +110,10 @@ type TxDisplay struct {
 	TxType       string               `json:"tx_type"`
 	FunctionCall *FunctionCallDisplay `json:"function_call,omitempty"`
 	Transfers    []TransferDisplay    `json:"transfers,omitempty"`
-	Logs         []LogDisplay         `json:"logs,omitempty"`
+	// NetEffect summarises Transfers per address; only computed when there
+	// are enough transfers for the list alone to be hard to read.
+	NetEffect []NetEffectDisplay `json:"net_effect,omitempty"`
+	Logs      []LogDisplay       `json:"logs,omitempty"`
 	// RevertReason is the decoded revert payload of a reverted tx, when the
 	// replay could recover one.
 	RevertReason string `json:"revert_reason,omitempty"`

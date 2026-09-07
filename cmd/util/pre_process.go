@@ -121,7 +121,7 @@ func CommonNetworkPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 	if err := config.SetNetwork(config.NetworkString); err != nil {
 		return err
 	}
-	u.Info("Network: %s", config.Network().GetName())
+	// The network is part of the tx details line; no separate header.
 
 	tc := TxContext{}
 

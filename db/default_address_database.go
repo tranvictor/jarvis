@@ -33,26 +33,30 @@ func getDataFromDefaultFile() map[string]string {
 	file := path.Join(dir, "addresses.json")
 	fi, err := os.Lstat(file)
 	if err != nil {
-		fmt.Printf("reading addresses from ~/addresses.json failed: %s. Ignored.\n", err)
+		// Having no personal address book is the normal state for a fresh
+		// install; only a file that exists but can't be read is worth a note.
+		if !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "reading addresses from ~/addresses.json failed: %s. Ignored.\n", err)
+		}
 		return map[string]string{}
 	}
 	// if the file is a symlink
 	if fi.Mode()&os.ModeSymlink != 0 {
 		file, err = os.Readlink(file)
 		if err != nil {
-			fmt.Printf("reading addresses from ~/addresses.json failed: %s. Ignored.\n", err)
+			fmt.Fprintf(os.Stderr, "reading addresses from ~/addresses.json failed: %s. Ignored.\n", err)
 			return map[string]string{}
 		}
 	}
 	content, err := ioutil.ReadFile(file)
 	if err != nil {
-		fmt.Printf("reading addresses from ~/addresses.json failed: %s. Ignored.\n", err)
+		fmt.Fprintf(os.Stderr, "reading addresses from ~/addresses.json failed: %s. Ignored.\n", err)
 		return map[string]string{}
 	}
 	result := map[string]string{}
 	err = json.Unmarshal(content, &result)
 	if err != nil {
-		fmt.Printf("reading addresses from ~/addresses.json failed: %s. Ignored.\n", err)
+		fmt.Fprintf(os.Stderr, "reading addresses from ~/addresses.json failed: %s. Ignored.\n", err)
 		return map[string]string{}
 	}
 
