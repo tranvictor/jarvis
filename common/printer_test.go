@@ -1,6 +1,10 @@
 package common
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+	"time"
+)
 
 func TestShortAddress(t *testing.T) {
 	cases := map[string]string{
@@ -87,6 +91,36 @@ func TestCompactAmount(t *testing.T) {
 	for in, want := range cases {
 		if got := CompactAmount(in); got != want {
 			t.Errorf("CompactAmount(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestTimestampLabel(t *testing.T) {
+	fixed := time.Date(2026, 9, 7, 3, 0, 0, 0, time.UTC)
+	prev := now
+	now = func() time.Time { return fixed }
+	t.Cleanup(func() { now = prev })
+	at := func(d time.Duration) string { return fmt.Sprintf("%d", fixed.Add(d).Unix()) }
+
+	cases := []struct {
+		name, raw, want string
+		ok              bool
+	}{
+		{"deadline", at(-7 * time.Hour), "2026-09-06 20:00:00 UTC, 7 h ago", true},
+		{"deadline", at(30 * time.Minute), "2026-09-07 03:30:00 UTC, in 30 min", true},
+		{"validUntil", at(30 * 24 * time.Hour), "2026-10-07 03:00:00 UTC, in 30 days", true},
+		{"expiration_time", "1725600000", "2024-09-06 05:20:00 UTC, 2 years ago", true},
+		{"unlockTime", at(45 * time.Second), "2026-09-07 03:00:45 UTC, in 45s", true},
+		{"deadline", "0", "", false}, // unset
+		{"deadline", "115792089237316195423570985008687907853269984665640564039457584007913129639935", "", false},
+		{"amount", at(time.Hour), "", false}, // not a time-named parameter
+		{"time", at(time.Hour), "", false},   // too generic to trust
+		{"deadline", "12345", "", false},     // not plausible as seconds
+	}
+	for _, c := range cases {
+		got, ok := TimestampLabel(c.name, c.raw)
+		if ok != c.ok || got != c.want {
+			t.Errorf("TimestampLabel(%q, %q) = %q, %v; want %q, %v", c.name, c.raw, got, ok, c.want, c.ok)
 		}
 	}
 }

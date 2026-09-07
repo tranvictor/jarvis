@@ -112,7 +112,7 @@ func TestInfoLayoutOrdersByImportance(t *testing.T) {
 		"✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)",
 		"         mainnet   from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567",
 		"Transfers",
-		"  1,000 USDC    me (0x9642…5D4E)  →  USDC/WETH pair (0x0d4a…1852)",
+		"  1,000 USDC    me (0x9642…5D4E)              →  USDC/WETH pair (0x0d4a…1852)",
 		"  0.3121 WETH   USDC/WETH pair (0x0d4a…1852)  →  me (0x9642…5D4E)",
 		"Call  swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)",
 		"  amountIn      1,000,000,000  uint256",
@@ -264,7 +264,7 @@ func TestUnlimitedApprovalIsFlagged(t *testing.T) {
 	if len(d.Transfers) != 1 || d.Transfers[0].Kind != "approval" || !d.Transfers[0].Unlimited {
 		t.Fatalf("expected one unlimited approval, got %+v", d.Transfers)
 	}
-	if !rec.HasMessage("approves UNLIMITED") {
+	if !rec.HasMessage("UNLIMITED USDC") || !rec.HasMessage("approves") {
 		t.Fatalf("expected UNLIMITED marker, got %v", rec.Entries())
 	}
 }
@@ -401,8 +401,63 @@ func TestTransfersUseTopicPositionsForDaiStyleNames(t *testing.T) {
 		Data: []jarviscommon.ParamResult{scalar("wad", "uint256", tokenValue("5000000000000000000", "WETH", 18))},
 	}}
 	out := render(t, r, util.LayoutInfo, hashHex)
-	if !strings.Contains(out, "5 WETH   me (0x9642…5D4E) approves  Uniswap V2 Router (0x7a25…488D)") {
+	if !strings.Contains(out, "5 WETH   me (0x9642…5D4E)  approves  Uniswap V2 Router (0x7a25…488D)") {
 		t.Fatalf("dai-style approval parties missing:\n%s", out)
+	}
+}
+
+func TestTimestampParamsShowTheDate(t *testing.T) {
+	r := swapTxResult()
+	compact := render(t, r, util.LayoutInfo, hashHex)
+	if !strings.Contains(compact, "  deadline      2024-09-06 05:20:00 UTC, ") || strings.Contains(compact, "1725600000") {
+		t.Fatalf("compact layout should show the deadline as a date only:\n%s", compact)
+	}
+	full := render(t, r, util.LayoutInfoFull, hashHex)
+	if !strings.Contains(full, "  deadline      1725600000 (2024-09-06 05:20:00 UTC, ") {
+		t.Fatalf("full layout should keep the raw seconds next to the date:\n%s", full)
+	}
+	// The echo of a typed parameter goes through the same path, so an operator
+	// who mistypes a deadline sees "2 years ago" before signing.
+	echo := util.ParamValueLines(ui.NewRecordingUI(), util.NewParamDisplay(scalar("deadline", "uint256", intValue("1725600000"))))
+	if len(echo) != 1 || !strings.HasPrefix(echo[0], "2024-09-06 05:20:00 UTC, ") || !strings.HasSuffix(echo[0], " ago") {
+		t.Fatalf("echo should be the date with a relative hint, got %q", echo)
+	}
+}
+
+func TestTransferRowsAlignAcrossKinds(t *testing.T) {
+	me := addr(meHex, "me")
+	router := addr(routerHex, "Uniswap V2 Router")
+	pair := addr(pairHex, "USDC/WETH pair")
+	weth := addr(wethHex, "WETH token")
+	r := swapTxResult()
+	r.FunctionCall = nil
+	r.Logs = []jarviscommon.LogResult{
+		transferLog(usdcHex, "USDC", 6, me, router, "1000000000"),
+		{Name: "Approval", Address: weth,
+			Topics: []jarviscommon.TopicResult{
+				{Name: "owner", Value: addrValue(me.Address, me.Desc)},
+				{Name: "spender", Value: addrValue(router.Address, router.Desc)},
+			},
+			Data: []jarviscommon.ParamResult{scalar("value", "uint256", tokenValue(
+				"115792089237316195423570985008687907853269984665640564039457584007913129639935", "WETH", 18))}},
+		{Name: "Deposit", Address: weth,
+			Topics: []jarviscommon.TopicResult{{Name: "dst", Value: addrValue(router.Address, router.Desc)}},
+			Data:   []jarviscommon.ParamResult{scalar("wad", "uint256", tokenValue("5000000000000000000", "WETH", 18))}},
+		{Name: "Withdrawal", Address: weth,
+			Topics: []jarviscommon.TopicResult{{Name: "src", Value: addrValue(pair.Address, pair.Desc)}},
+			Data:   []jarviscommon.ParamResult{scalar("wad", "uint256", tokenValue("1234500000000000000", "WETH", 18))}},
+	}
+	out := render(t, r, util.LayoutInfo, hashHex)
+	want := []string{
+		"  1,000 USDC       me (0x9642…5D4E)              →         Uniswap V2 Router (0x7a25…488D)",
+		"  UNLIMITED WETH   me (0x9642…5D4E)              approves  Uniswap V2 Router (0x7a25…488D)",
+		"  5 WETH           deposit                       →         Uniswap V2 Router (0x7a25…488D)",
+		"  1.2345 WETH      USDC/WETH pair (0x0d4a…1852)  →         withdrawal",
+	}
+	for _, w := range want {
+		if !strings.Contains(out, w) {
+			t.Fatalf("missing aligned row %q in:\n%s", w, out)
+		}
 	}
 }
 

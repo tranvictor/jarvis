@@ -63,7 +63,15 @@ func buildParamDisplay(param jarviscommon.ParamResult) ParamDisplay {
 	switch {
 	case param.Values != nil:
 		for _, v := range param.Values {
-			d.Values = append(d.Values, styledValue(v))
+			st := styledValue(v)
+			// A deadline is only meaningful as a date; the raw seconds stay for
+			// anyone who needs to compare them.
+			if v.Kind == jarviscommon.DisplayInteger {
+				if label, ok := jarviscommon.TimestampLabel(param.Name, v.Raw); ok {
+					st.Text = v.Raw + " (" + label + ")"
+				}
+			}
+			d.Values = append(d.Values, st)
 		}
 	case param.Tuples != nil:
 		for _, tuple := range param.Tuples {

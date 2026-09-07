@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -192,6 +193,23 @@ func GetNetworkByID(id uint64) (Network, error) {
 
 func GetSupportedNetworkNames() []string {
 	return globalSupportedNetworks.getSupportedNetworkNames()
+}
+
+// SupportedNetworkNamesHelp renders the canonical network names once each,
+// sorted, with aliases in parentheses: "arbitrum, avalanche (snowtrace),
+// base, …". For --help text; the lookup itself accepts any alias.
+func SupportedNetworkNamesHelp() string {
+	nets := GetSupportedNetworks()
+	sort.Slice(nets, func(i, j int) bool { return nets[i].GetName() < nets[j].GetName() })
+	parts := make([]string, 0, len(nets))
+	for _, n := range nets {
+		name := n.GetName()
+		if aliases := n.GetAlternativeNames(); len(aliases) > 0 {
+			name += " (" + strings.Join(aliases, ", ") + ")"
+		}
+		parts = append(parts, name)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // CustomNetworkFile returns the path of the ~/.jarvis/networks JSON that
