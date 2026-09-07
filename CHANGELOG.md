@@ -124,6 +124,26 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - `jarvis wallet add` offers the wallet kinds as a numbered menu with their
   derivation path or what will be asked next, instead of asking you to type
   one of five words.
+- `jarvis wallet list` is a table (Address / Kind / Description);
+  `jarvis addr` / `whois` drop the dashed rule and the `(Unknown)` label;
+  `jarvis network list` is a table of names, chain IDs and RPC **hosts**
+  (never the full URL, so default Infura keys stay off the screen);
+  `jarvis msig chains list` uses the same table primitive.
+- `jarvis version` leads with `jarvis <version>` and the GitHub URL, then
+  the existing Kyber contact lines.
+- `--from` help points at `jarvis wallet list` (there is no `jarvis acc`);
+  `--gasprice` no longer mentions ethgasstation.info; `info --json-output`
+  describes this command; `-x/--degen` says what it expands.
+- `contract encode --help` is a short parameter summary instead of a
+  50-line spec; `contract read` output uses the same param tree as a call
+  body, not a bordered table per return value.
+- Signing warnings and inner-call `value` labels use the network's native
+  decimals/symbol (not hardcoded 18 / ETH). Safe cards drop the raw-wei
+  parenthetical. Cancelling any confirm prints
+  `Cancelled — nothing was signed or sent.`
+- `send --from <safe>` no longer reprints Safe address/version/threshold
+  before the signing card (those are on the card). Classic `msig init`
+  gas-estimation failures use the same explained error as `send`.
 
 ### Internal
 

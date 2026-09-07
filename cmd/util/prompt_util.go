@@ -190,6 +190,13 @@ func mergeSigningNote(n SigningNote) {
 // Nothing has been signed or sent at that point; callers should exit quietly.
 var ErrUserCancelled = errors.New("cancelled by user")
 
+// WarnCancelled is the one-line message for a declined confirm. Callers that
+// prompt outside PromptTxConfirmation should use this so every cancel reads
+// the same.
+func WarnCancelled(u ui.UI) {
+	u.Warn("Cancelled — nothing was signed or sent.")
+}
+
 // PromptTxConfirmation displays the signing card for tx and asks the user to
 // confirm before signing. Returns an error if the user aborts.
 func PromptTxConfirmation(
@@ -208,7 +215,7 @@ func PromptTxConfirmation(
 		return err
 	}
 	if !ConfirmSigningCard(u, card) {
-		u.Warn("Cancelled — nothing was signed or sent.")
+		WarnCancelled(u)
 		return ErrUserCancelled
 	}
 	return nil
@@ -262,7 +269,8 @@ func buildEOASigningCard(
 			card.RawData = "0x" + ethcommon.Bytes2Hex(tx.Data())
 		}
 		card.Warnings = SigningWarnings(WarningInput{
-			Value: tx.Value(), NativeSymbol: symbol, SignerBalance: balance, MaxCost: maxCost,
+			Value: tx.Value(), NativeSymbol: symbol, NativeDecimals: network.GetNativeTokenDecimal(),
+			SignerBalance: balance, MaxCost: maxCost,
 		})
 		card.Prompt = fmt.Sprintf("Sign and broadcast contract creation (%s)?", gasCostOnly(card.Gas))
 		return card, nil
@@ -283,7 +291,8 @@ func buildEOASigningCard(
 	}
 	warn := WarningInput{
 		To: to, ToIsContract: isContract, Value: tx.Value(), NativeSymbol: symbol,
-		HasData: len(tx.Data()) > 0, SignerBalance: balance, MaxCost: maxCost,
+		NativeDecimals: network.GetNativeTokenDecimal(),
+		HasData:        len(tx.Data()) > 0, SignerBalance: balance, MaxCost: maxCost,
 	}
 
 	var fc *jarviscommon.FunctionCall
@@ -291,7 +300,7 @@ func buildEOASigningCard(
 		fc = analyzer.AnalyzeFunctionCallRecursively(util.GetABI, tx.Value(), toHex, tx.Data(), customABIs)
 		warn.Call = fc
 		if fc != nil {
-			card.Call = util.NewFunctionCallDisplay(fc)
+			card.Call = util.NewFunctionCallDisplay(fc, network)
 		}
 		// ERC-7730 clear-signing layer: when a descriptor matches the
 		// destination contract, the curated view is rendered above the raw

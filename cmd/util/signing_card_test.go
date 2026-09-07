@@ -134,7 +134,7 @@ func TestShowSigningCardOrderAndFullAddresses(t *testing.T) {
 		To:       util.StyledAddress(cardAddr(cardUSDC, "USDC")),
 		Gas:      "max 20.0000 gwei, tip 1.5000 gwei · 85123 gas · ≈ 0.00170246 ETH",
 		Nonce:    "42",
-		Call:     util.NewFunctionCallDisplay(fc),
+		Call:     util.NewFunctionCallDisplay(fc, nil),
 		Warnings: SigningWarnings(WarningInput{To: cardAddr(cardUSDC, "USDC"), HasData: true, Call: fc}),
 		Prompt:   "Sign and broadcast (≈ 0.00170246 ETH)?",
 	}
@@ -208,7 +208,7 @@ func TestShowSigningCardSafeFieldsAndCollapse(t *testing.T) {
 	rec = ui.NewRecordingUI()
 	exec := &SigningCard{
 		Kind:         "Safe execution",
-		Call:         util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{Destination: cardAddr(cardRouter, "Safe"), Method: "execTransaction", Params: []jarviscommon.ParamResult{uintParam("value", "0")}}),
+		Call:         util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{Destination: cardAddr(cardRouter, "Safe"), Method: "execTransaction", Params: []jarviscommon.ParamResult{uintParam("value", "0")}}, nil),
 		CollapseCall: true,
 		Safe:         &SafeCardFields{Executes: "0xabc"},
 	}
@@ -260,6 +260,18 @@ func TestInsufficientBalanceWarning(t *testing.T) {
 	in.SignerBalance = nil
 	if got := SigningWarnings(in); len(got) != 0 {
 		t.Fatalf("unknown balance must not warn: %q", got)
+	}
+}
+
+func TestSigningWarningsHonourNativeDecimals(t *testing.T) {
+	// 8-decimal native: 1.5 units into a contract must not be rendered as if 18.
+	in := WarningInput{
+		To: cardAddr(cardRouter, "Router"), ToIsContract: true,
+		Value: big.NewInt(150_000_000), NativeSymbol: "TKN", NativeDecimals: 8,
+	}
+	got := SigningWarnings(in)
+	if len(got) != 1 || got[0] != "sends 1.5 TKN into a contract" {
+		t.Fatalf("8-decimal native: %q", got)
 	}
 }
 

@@ -182,7 +182,7 @@ approve' and any owner can finalise via 'jarvis msig execute'.`,
 			prompt:    "Sign and submit this Safe proposal (off-chain, no gas)?",
 		})
 		if !cmdutil.ConfirmSigningCard(appUI, card) {
-			appUI.Warn("Aborted by user.")
+			cmdutil.WarnCancelled(appUI)
 			return
 		}
 
@@ -368,7 +368,7 @@ over an off-chain signature store. Other owners' off-chain signatures
 		}
 
 		if !config.YesToAllPrompt && !appUI.Confirm("Sign approval (off-chain, no gas)?", true) {
-			appUI.Warn("Aborted by user.")
+			cmdutil.WarnCancelled(appUI)
 			return
 		}
 

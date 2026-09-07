@@ -100,21 +100,21 @@ func buildSafeSigningCard(
 		card.Signer = util.StyledAddress(util.GetJarvisAddress(opt.signer, network))
 	}
 	if stx.Value != nil && stx.Value.Sign() > 0 {
-		card.Value = fmt.Sprintf("%s %s (%s wei)",
-			jarviscommon.BigToFloatString(stx.Value, network.GetNativeTokenDecimal()),
-			network.GetNativeTokenSymbol(), stx.Value.String())
+		card.Value = jarviscommon.BigToFloatString(stx.Value, network.GetNativeTokenDecimal()) +
+			" " + network.GetNativeTokenSymbol()
 	}
 	for _, sig := range opt.sigs {
 		card.Safe.Signatures = append(card.Safe.Signatures, signerLine(sig))
 	}
 
 	warn := cmdutil.WarningInput{
-		To:           toJarvis,
-		Value:        stx.Value,
-		NativeSymbol: network.GetNativeTokenSymbol(),
-		HasData:      len(stx.Data) > 0,
-		DelegateCall: stx.Operation == safe.OpDelegateCall,
-		MultiSend:    isMultiSend,
+		To:             toJarvis,
+		Value:          stx.Value,
+		NativeSymbol:   network.GetNativeTokenSymbol(),
+		NativeDecimals: network.GetNativeTokenDecimal(),
+		HasData:        len(stx.Data) > 0,
+		DelegateCall:   stx.Operation == safe.OpDelegateCall,
+		MultiSend:      isMultiSend,
 	}
 	if len(stx.Data) > 0 {
 		if isContract, err := util.IsContract(stx.To.Hex(), network); err == nil {
@@ -123,7 +123,7 @@ func buildSafeSigningCard(
 		fc := decodeSafeCalldata(stx, tc, opt.extraABIs)
 		if fc != nil {
 			warn.Call = fc
-			card.Call = util.NewFunctionCallDisplay(fc)
+			card.Call = util.NewFunctionCallDisplay(fc, network)
 		} else {
 			card.RawData = "0x" + ethcommon.Bytes2Hex(stx.Data)
 		}

@@ -53,6 +53,16 @@ func TestIsKnownAddress(t *testing.T) {
 	}
 }
 
+func TestPlainAddressOmitsUnknown(t *testing.T) {
+	hex := "0x9642b23Ed1E01Df1092B92641051881a322F5D4E"
+	if got := PlainAddress(Address{Address: hex, Desc: "unknown"}); got != hex {
+		t.Fatalf("unknown desc leaked: %q", got)
+	}
+	if got := PlainAddress(Address{Address: hex, Desc: "me"}); got != hex+" (me)" {
+		t.Fatalf("known desc dropped: %q", got)
+	}
+}
+
 func TestGroupDigitsAndReadableNumber(t *testing.T) {
 	cases := map[string]string{
 		"1000000000":  "1,000,000,000",
