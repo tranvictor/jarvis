@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	ethcommon "github.com/ethereum/go-ethereum/common"
+
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	db "github.com/tranvictor/jarvis/db"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
@@ -36,6 +38,15 @@ func NewDefault(network jarvisnetworks.Network) AddressResolver {
 // Resolve looks up addr in the local address databases and enriches the result
 // with ERC20 decimal metadata when available from the on-disk cache.
 func (r Default) Resolve(addr string) jarviscommon.Address {
+	// address(0) is a mint/burn/"none" sentinel, never a named EOA. Skip
+	// the address book, ERC-20 cache and explorer-name cache: a bad
+	// addresses.json key (go-ethereum HexToAddress maps garbage to zero)
+	// or a leftover cache entry would otherwise print as a person.
+	if jarviscommon.IsZeroAddress(addr) ||
+		(jarviscommon.LooksLikeAddress(addr) && ethcommon.HexToAddress(addr) == (ethcommon.Address{})) {
+		return jarviscommon.Address{Address: ethcommon.HexToAddress("0x0").Hex(), Desc: "zero address"}
+	}
+
 	// ERC20 enrichment — cache-only, no network call.
 	// Caches are pre-populated by AnalysisContext.ERC20InfoFor during tx
 	// analysis, by util.IsERC20, or by util.GetERC20Symbol/GetERC20Decimal.

@@ -177,6 +177,12 @@ func PlainAddress(addr Address) string {
 	if addr.Address == "" {
 		return ""
 	}
+	// address(0) is a sentinel (mint/burn/"none"), never a person. A
+	// malformed addresses.json key can otherwise bind a name to it because
+	// go-ethereum HexToAddress maps invalid hex to the zero address.
+	if IsZeroAddress(addr.Address) {
+		return addr.Address + " (zero address)"
+	}
 	if addr.Decimal != 0 {
 		return fmt.Sprintf("%s (%s - %d)", addr.Address, addr.Desc, addr.Decimal)
 	}
@@ -239,6 +245,9 @@ func IsZeroAddress(hex string) bool {
 func VerboseAddress(addr Address) string {
 	if addr.Address == "" {
 		return ""
+	}
+	if IsZeroAddress(addr.Address) {
+		return fmt.Sprintf("%s (%s)", addr.Address, NameWithColor("zero address"))
 	}
 	if addr.Decimal != 0 {
 		return fmt.Sprintf(

@@ -17,7 +17,8 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - `--degen` expands collapsed values, shows full addresses and switches the
   parameter list back to a bordered table.
 - Addresses are name-first (`me (0x9642…5D4E)`); unknown ones are bare
-  short hex, the zero address is labelled. Only an *unknown call target* is
+  short hex, the zero address is labelled `(zero address)` even if the
+  address book has a name for it. Only an *unknown call target* is
   highlighted in yellow. Each tx ends with a one-line footer (status,
   method, hash) so the outcome is visible even after a long event list.
 - **Net effect** block (per-address net token change) when a tx has four or

@@ -35,6 +35,7 @@ func TestNameFirst(t *testing.T) {
 		{unknown, false, "0x9642…5D4E"},
 		{blank, true, "0x9642b23Ed1E01Df1092B92641051881a322F5D4E"},
 		{Address{Address: "0x0000000000000000000000000000000000000000"}, false, "0x0000…0000 (zero address)"},
+		{Address{Address: "0x0000000000000000000000000000000000000000", Desc: "Quang Le"}, false, "0x0000…0000 (zero address)"},
 		{Address{}, false, ""},
 	}
 	for _, c := range cases {
@@ -60,6 +61,10 @@ func TestPlainAddressOmitsUnknown(t *testing.T) {
 	}
 	if got := PlainAddress(Address{Address: hex, Desc: "me"}); got != hex+" (me)" {
 		t.Fatalf("known desc dropped: %q", got)
+	}
+	zero := "0x0000000000000000000000000000000000000000"
+	if got := PlainAddress(Address{Address: zero, Desc: "Quang Le"}); got != zero+" (zero address)" {
+		t.Fatalf("zero address must ignore address-book names, got %q", got)
 	}
 }
 
