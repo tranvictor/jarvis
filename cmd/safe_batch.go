@@ -17,6 +17,7 @@ import (
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/safe"
 	"github.com/tranvictor/jarvis/txanalyzer"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -31,6 +32,90 @@ type safeBatchResult struct {
 	execTxHash  string
 	status      string // "approved", "executed", "skipped", "failed"
 	reason      string
+}
+
+// fill copies the per-ref outcome into the summary row.
+func (r *safeBatchResult) fill(res approveSafeRefResult) {
+	r.network = res.network
+	r.networkObj = res.networkObj
+	r.safeAddress = res.safeAddress
+	r.safeTxHash = res.safeTxHash
+	r.confirmType = res.confirmType
+	r.execTxHash = res.execTxHash
+	r.status = res.status
+	r.reason = res.reason
+}
+
+// reviewSafeRefFn / signSafeRefFn are swapped out by tests of the
+// --confirm-once orchestration so no network or wallet is needed.
+var (
+	reviewSafeRefFn = reviewSafeRef
+	signSafeRefFn   = signSafeRef
+)
+
+// approveSafeRefsConfirmOnce is the --confirm-once variant of the Safe loop
+// in bapprove: every ref is reviewed (checks + signing card) first, one
+// prompt covers all the off-chain signatures, then each ref is signed under
+// its own banner. Refs that fail review are recorded immediately. Returns
+// the results in input order, the number of items consumed and whether the
+// user aborted the rest of the batch.
+func approveSafeRefsConfirmOnce(refs []safeRefInput, tally *batchTally) ([]safeBatchResult, int, bool) {
+	results := make([]safeBatchResult, len(refs))
+	prepared := make([]*preparedSafeRef, len(refs))
+	item := 0
+	ready := 0
+	for i, ref := range refs {
+		item++
+		results[i] = safeBatchResult{ref: ref.original}
+		printBatchBanner(item, tally.total, "Safe", ref.original)
+		var (
+			p   *preparedSafeRef
+			res approveSafeRefResult
+		)
+		withIndentedUI(func() { p, res = reviewSafeRefFn(ref) })
+		if p == nil {
+			results[i].fill(res)
+			tally.add(res.status)
+			printBatchItemResult(res.status, safeResultDetail(results[i]), *tally)
+			continue
+		}
+		prepared[i] = p
+		ready++
+		appUI.Info("%s", appUI.Style(ui.StyledText{Text: "reviewed, signing deferred", Severity: ui.SeverityMuted}))
+	}
+	if ready == 0 {
+		return results, item, false
+	}
+
+	appUI.Info("")
+	ok := config.YesToAllPrompt ||
+		appUI.Confirm(fmt.Sprintf("Sign all %d reviewed Safe approval(s) (off-chain, no gas)?", ready), true)
+
+	aborted := false
+	for i, p := range prepared {
+		if p == nil {
+			continue
+		}
+		var res approveSafeRefResult
+		switch {
+		case !ok:
+			res = p.res
+			res.status, res.reason = "skipped", "user aborted"
+		case aborted:
+			res = p.res
+			res.status, res.reason = "skipped", "aborted by user"
+		default:
+			printBatchBanner(i+1, tally.total, "Safe", p.in.original)
+			withIndentedUI(func() { res = signSafeRefFn(p, true) })
+		}
+		results[i].fill(res)
+		tally.add(res.status)
+		printBatchItemResult(res.status, safeResultDetail(results[i]), *tally)
+		if res.status == "failed" && !continueBatchAfterFailure(tally.total-tally.done()) {
+			aborted = true
+		}
+	}
+	return results, item, aborted
 }
 
 // safeRefInput pairs the canonical SafeAppRef with the original token
@@ -94,6 +179,20 @@ type approveSafeRefResult struct {
 	reason      string
 }
 
+// preparedSafeRef is a Safe approval that passed every check and has had
+// its signing card shown, but has not been signed yet. --confirm-once
+// collects these so one prompt can cover all of them.
+type preparedSafeRef struct {
+	in           safeRefInput
+	res          approveSafeRefResult
+	network      jarvisnetworks.Network
+	safeContract *safe.SafeContract
+	pending      *safe.PendingTx
+	domainSep    [32]byte
+	fromAcc      jtypes.AccDesc
+	tc           cmdutil.TxContext
+}
+
 // approveSafeRef performs the same logical steps as `jarvis msig approve`
 // for one ref: resolve the network + safe, find a local owner wallet,
 // sign the EIP-712 hash, submit to the Tx Service, and (when this approval
@@ -101,6 +200,17 @@ type approveSafeRefResult struct {
 // runSafeExecute. Errors are returned as `failed`/`skipped` results rather
 // than propagated, so the batch keeps going.
 func approveSafeRef(in safeRefInput) approveSafeRefResult {
+	prep, res := reviewSafeRef(in)
+	if prep == nil {
+		return res
+	}
+	return signSafeRef(prep, false)
+}
+
+// reviewSafeRef runs every read-only step of approveSafeRef and shows the
+// signing card. It returns a non-nil preparedSafeRef when the ref is ready
+// to sign; otherwise the returned result is final (skipped or failed).
+func reviewSafeRef(in safeRefInput) (*preparedSafeRef, approveSafeRefResult) {
 	ref := in.ref
 	res := approveSafeRefResult{
 		safeAddress: ref.SafeAddress.Hex(),
@@ -110,14 +220,14 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		res.status = "skipped"
 		res.reason = fmt.Sprintf("no chain hint in %q (use a URL or <chain>:<safe>:<hash>)", in.original)
 		appUI.Warn("%s", res.reason)
-		return res
+		return nil, res
 	}
 	network, err := jarvisnetworks.GetNetworkByID(ref.ChainID)
 	if err != nil {
 		res.status = "skipped"
 		res.reason = fmt.Sprintf("unsupported chain id %d", ref.ChainID)
 		appUI.Warn("%s", res.reason)
-		return res
+		return nil, res
 	}
 	res.network = network.GetName()
 	res.networkObj = network
@@ -128,14 +238,14 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		res.status = "failed"
 		res.reason = fmt.Sprintf("init safe reader: %s", err)
 		appUI.Error("%s", res.reason)
-		return res
+		return nil, res
 	}
 	owners, err := safeContract.Owners()
 	if err != nil {
 		res.status = "failed"
 		res.reason = fmt.Sprintf("read safe owners: %s", err)
 		appUI.Error("%s", res.reason)
-		return res
+		return nil, res
 	}
 
 	var fromAcc jtypes.AccDesc
@@ -145,19 +255,19 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 			res.status = "skipped"
 			res.reason = "no local wallet is an owner of this safe"
 			appUI.Warn("%s", res.reason)
-			return res
+			return nil, res
 		}
 		if errors.Is(err, cmdutil.ErrMultipleLocalOwners) {
 			res.status = "skipped"
 			res.reason = "multiple local owner wallets; pass --from to disambiguate"
 			appUI.Warn("%s", res.reason)
-			return res
+			return nil, res
 		}
 		if err != nil {
 			res.status = "failed"
 			res.reason = err.Error()
 			appUI.Error("%s", res.reason)
-			return res
+			return nil, res
 		}
 		fromAcc = acc
 	} else {
@@ -166,13 +276,13 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 			res.status = "failed"
 			res.reason = fmt.Sprintf("--from %q: %s", config.From, err)
 			appUI.Error("%s", res.reason)
-			return res
+			return nil, res
 		}
 		if !cmdutil.IsAmongOwners(owners, acc.Address) {
 			res.status = "skipped"
 			res.reason = fmt.Sprintf("--from %s is not an owner of this safe", acc.Address)
 			appUI.Warn("%s", res.reason)
-			return res
+			return nil, res
 		}
 		fromAcc = acc
 	}
@@ -182,20 +292,20 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		res.status = "failed"
 		res.reason = fmt.Sprintf("init safe tx service: %s", err)
 		appUI.Error("%s", res.reason)
-		return res
+		return nil, res
 	}
 	pending, err := collector.Get(ref.SafeTxHash)
 	if err != nil {
 		res.status = "failed"
 		res.reason = fmt.Sprintf("fetch pending tx: %s", err)
 		appUI.Error("%s", res.reason)
-		return res
+		return nil, res
 	}
 	if pending.IsExecuted {
 		res.status = "skipped"
 		res.reason = "already executed"
 		appUI.Warn("%s", res.reason)
-		return res
+		return nil, res
 	}
 
 	domainSep, err := safeContract.DomainSeparator()
@@ -203,13 +313,13 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		res.status = "failed"
 		res.reason = fmt.Sprintf("read domainSeparator: %s", err)
 		appUI.Error("%s", res.reason)
-		return res
+		return nil, res
 	}
 	if _, err := verifyPendingSafeTxHash(pending, domainSep); errors.Is(err, errPendingHashMismatch) {
 		res.status = "failed"
 		res.reason = "service safeTxHash doesn't match locally recomputed hash"
 		appUI.Error("%s", res.reason)
-		return res
+		return nil, res
 	}
 
 	// Merge on-chain approvals so the self-signed check and display
@@ -230,10 +340,10 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 			res.reason = fmt.Sprintf("%s already signed off-chain", me.Hex())
 		}
 		appUI.Warn("%s", res.reason)
-		return res
+		return nil, res
 	}
 
-	// Build a TxContext rich enough for showSafeTxToConfirm and (for the
+	// Build a TxContext rich enough for the signing card and (for the
 	// optional auto-execute step) for runSafeExecute. We deliberately do
 	// the gas/nonce/tx-type lookups here rather than relying on a global
 	// preprocess because this command runs across many networks.
@@ -242,7 +352,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		res.status = "failed"
 		res.reason = err.Error()
 		appUI.Error("%s", res.reason)
-		return res
+		return nil, res
 	}
 
 	threshold, _ := safeContract.Threshold()
@@ -252,6 +362,27 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		threshold: threshold,
 		signer:    fromAcc.Address,
 	}))
+
+	return &preparedSafeRef{
+		in:           in,
+		res:          res,
+		network:      network,
+		safeContract: safeContract,
+		pending:      pending,
+		domainSep:    domainSep,
+		fromAcc:      fromAcc,
+		tc:           tc,
+	}, res
+}
+
+// signSafeRef finishes a reviewed ref: confirm (unless preConfirmed or
+// --yes), sign, submit, and optionally chain into execution. Broadcasts
+// (approveHash, execTransaction) always confirm per item because they cost
+// gas; preConfirmed only covers the off-chain signature.
+func signSafeRef(p *preparedSafeRef, preConfirmed bool) approveSafeRefResult {
+	res := p.res
+	pending := p.pending
+	me := ethcommon.HexToAddress(p.fromAcc.Address)
 
 	if safeApproveOnChain {
 		// On-chain batch approval: broadcast approveHash and let
@@ -265,20 +396,20 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 			res.reason = "user aborted"
 			return res
 		}
-		runSafeApproveOnChain(tc, safeContract, pending, domainSep, me)
+		runSafeApproveOnChain(p.tc, p.safeContract, pending, p.domainSep, me)
 		res.status = "approved"
 		res.confirmType = "approve-onchain"
 		return res
 	}
 
-	if !config.YesToAllPrompt && !appUI.Confirm("Sign approval (off-chain, no gas)?", true) {
+	if !preConfirmed && !config.YesToAllPrompt && !appUI.Confirm("Sign approval (off-chain, no gas)?", true) {
 		res.status = "skipped"
 		res.reason = "user aborted"
 		return res
 	}
 
-	appUI.Info("Unlock %s and sign the EIP-712 safeTxHash now...", fromAcc.Address)
-	sig, err := signPendingSafeTx(fromAcc, pending, domainSep)
+	appUI.Info("Unlock %s and sign the EIP-712 safeTxHash now...", p.fromAcc.Address)
+	sig, err := signPendingSafeTx(p.fromAcc, pending, p.domainSep)
 	if errors.Is(err, errSignSafeHash) {
 		res.status = "failed"
 		res.reason = fmt.Sprintf("sign safeTxHash: %s", signCause(err))
@@ -292,7 +423,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		return res
 	}
 
-	if err := persistApproval(tc, safeContract.Address, pending, me, sig, "", network.GetChainID()); err != nil {
+	if err := persistApproval(p.tc, p.safeContract.Address, pending, me, sig, "", p.network.GetChainID()); err != nil {
 		res.status = "failed"
 		res.reason = fmt.Sprintf("submit confirmation: %s", err)
 		appUI.Error("%s", res.reason)
@@ -302,7 +433,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 	res.confirmType = "approve"
 	appUI.Success("Confirmation submitted.")
 
-	threshold, err = safeContract.Threshold()
+	threshold, err := p.safeContract.Threshold()
 	if err != nil {
 		appUI.Warn("Couldn't read threshold post-approval: %s", err)
 		return res
@@ -317,7 +448,7 @@ func approveSafeRef(in safeRefInput) approveSafeRefResult {
 		return res
 	}
 
-	runSafeExecute(tc, safeContract, pendingWithNewSig(pending, me, sig), domainSep)
+	runSafeExecute(p.tc, p.safeContract, pendingWithNewSig(pending, me, sig), p.domainSep)
 	res.confirmType = "approve+execute"
 	res.status = "executed"
 	return res

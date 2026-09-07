@@ -52,6 +52,23 @@ func TestSubsectionAndRewriteOffTTY(t *testing.T) {
 	}
 }
 
+func TestSubsectionDoesNotStackBlankLines(t *testing.T) {
+	var buf bytes.Buffer
+	u := NewTerminalUIWithWriter(&buf, false)
+	u.Section("Card")
+	u.Subsection("Call")
+	u.Info("row")
+	u.Info("")
+	u.Subsection("Next")
+	out := buf.String()
+	if strings.Contains(out, "\n\n\n") {
+		t.Fatalf("blank lines stacked:\n%q", out)
+	}
+	if !strings.Contains(out, "\n\nCall\n") || !strings.Contains(out, "row\n\nNext\n") {
+		t.Fatalf("headings should keep one blank line above them:\n%q", out)
+	}
+}
+
 func TestRewriteOnTTYMovesCursorUp(t *testing.T) {
 	var buf bytes.Buffer
 	u := NewTerminalUIWithWriter(&buf, false)

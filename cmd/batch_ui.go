@@ -16,6 +16,14 @@ import (
 // exitFunc is os.Exit unless a test swaps it out.
 var exitFunc = os.Exit
 
+// batchContinueOnError (--continue-on-error) keeps a batch going after a
+// failed item without asking. batchConfirmOnce (--confirm-once) shows every
+// Safe signing card up front and asks once before signing them all.
+var (
+	batchContinueOnError bool
+	batchConfirmOnce     bool
+)
+
 // batchTally counts outcomes as items complete.
 type batchTally struct {
 	total, ok, skipped, failed int
@@ -90,9 +98,9 @@ func printBatchItemResult(status, detail string, tally batchTally) {
 }
 
 // continueBatchAfterFailure asks whether to keep going once an item failed.
-// --yes never stops; an empty answer continues.
+// --yes and --continue-on-error never stop; an empty answer continues.
 func continueBatchAfterFailure(left int) bool {
-	if config.YesToAllPrompt || left <= 0 {
+	if config.YesToAllPrompt || batchContinueOnError || left <= 0 {
 		return true
 	}
 	return appUI.Confirm(fmt.Sprintf("Continue with the remaining %d transaction(s)?", left), true)

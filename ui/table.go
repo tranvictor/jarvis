@@ -235,8 +235,8 @@ func wrapCell(s string, maxWidth int) []string {
 	return lines
 }
 
-// renderTable is the single table rendering engine used by PrintTable,
-// Table, and TableWithGroups.
+// renderTable is the single table rendering engine used by PrintTable and
+// Table.
 //
 // prefix is prepended to every output line — callers pass u.prefix() so
 // that nested UI indent levels are respected.

@@ -285,9 +285,9 @@ func flattenParamRows(d ParamDisplay, indent string) [][]ui.TableCell {
 	return nil
 }
 
-// printParamList renders a slice of ParamDisplays as a single unified
-// TableWithGroups. Consecutive scalar params share a group; each complex
-// param (tuple / array) gets its own group.
+// printParamList renders a slice of ParamDisplays as a single grouped
+// table. Consecutive scalar params share a group; each complex param
+// (tuple / array) gets its own group.
 func printParamList(u ui.UI, params []ParamDisplay) {
 	var groups [][][]ui.TableCell
 	var scalarGroup [][]ui.TableCell
