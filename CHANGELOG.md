@@ -48,8 +48,9 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   echo of a typed parameter, so a stale deadline shows as "… ago" before
   signing.
 - When an ERC-7730 descriptor matches, a green **Clear Signed** panel is
-  printed above the ABI call — the same view as at sign time, including
-  inner MultiSend / Safe destinations. No match leaves the output unchanged.
+  printed above the ABI call — the same fields as at sign time, including
+  inner MultiSend / Safe destinations, but without the hardware-wallet
+  comparison hint. No match leaves the output unchanged.
 
 ### Interactive parameter entry
 
