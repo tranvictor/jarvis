@@ -2,11 +2,14 @@ package explorers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -119,26 +122,72 @@ type abiresponse struct {
 	Result  string `json:"result"`
 }
 
+// abiFetchAttempts and abiRetryDelay bound the retry loop around Etherscan's
+// per-second rate limit. A single `jarvis info` can look up a dozen ABIs in a
+// burst, so one short pause usually turns "rate limit reached" into a hit.
+var (
+	abiFetchAttempts = 3
+	abiRetryDelay    = 400 * time.Millisecond
+)
+
+// label names the explorer in errors without echoing the request URL, which
+// carries the API key.
+func (ee *EtherscanLikeExplorer) label() string {
+	return fmt.Sprintf("%s (chain %d)", ee.Domain, ee.ChainID)
+}
+
+func isRateLimited(msg string) bool {
+	return strings.Contains(strings.ToLower(msg), "rate limit")
+}
+
 func (ee *EtherscanLikeExplorer) GetABIString(address string) (string, error) {
-	url := ee.GetABIStringAPIURL(address)
-	resp, err := http.Get(url)
+	var lastErr error
+	for attempt := 0; attempt < abiFetchAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(abiRetryDelay)
+		}
+		result, retry, err := ee.getABIStringOnce(address)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if !retry {
+			break
+		}
+	}
+	return "", lastErr
+}
+
+// getABIStringOnce performs one getabi request. retry is true only for
+// transient failures (rate limiting, transport errors).
+func (ee *EtherscanLikeExplorer) getABIStringOnce(address string) (result string, retry bool, err error) {
+	resp, err := http.Get(ee.GetABIStringAPIURL(address))
 	if err != nil {
-		return "", err
+		return "", true, fmt.Errorf("%s: %w", ee.label(), redactURLError(err))
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("error reading body from %s: %w", url, err)
+		return "", true, fmt.Errorf("%s: reading response: %w", ee.label(), err)
 	}
 	abiresp := abiresponse{}
-	err = json.Unmarshal(body, &abiresp)
-	if err != nil {
-		return "", fmt.Errorf("error unmarshalling body from %s: %w", url, err)
+	if err := json.Unmarshal(body, &abiresp); err != nil {
+		return "", false, fmt.Errorf("%s: unexpected response: %w", ee.label(), err)
 	}
 	if abiresp.Status != "1" {
-		return "", fmt.Errorf("error from %s: %s", url, abiresp.Result)
+		return "", isRateLimited(abiresp.Result), fmt.Errorf("%s: %s", ee.label(), abiresp.Result)
 	}
-	return abiresp.Result, nil
+	return abiresp.Result, false, nil
+}
+
+// redactURLError strips the request URL (and with it the API key) out of
+// net/http transport errors, keeping only the underlying cause.
+func redactURLError(err error) error {
+	var uerr *url.Error
+	if errors.As(err, &uerr) {
+		return uerr.Err
+	}
+	return err
 }
 
 func (ee *EtherscanLikeExplorer) getSourceCodeAPIURL(address string) string {
@@ -167,15 +216,14 @@ type sourceCodeResponse struct {
 }
 
 func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, error) {
-	url := ee.getSourceCodeAPIURL(address)
-	resp, err := http.Get(url)
+	resp, err := http.Get(ee.getSourceCodeAPIURL(address))
 	if err != nil {
-		return ContractInfo{}, err
+		return ContractInfo{}, fmt.Errorf("%s: %w", ee.label(), redactURLError(err))
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return ContractInfo{}, fmt.Errorf("error reading body from %s: %w", url, err)
+		return ContractInfo{}, fmt.Errorf("%s: reading response: %w", ee.label(), err)
 	}
 	var sc sourceCodeResponse
 	if err := json.Unmarshal(body, &sc); err != nil {
