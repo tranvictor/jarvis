@@ -33,6 +33,9 @@ func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult) {
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
 	result.GasUsed = fmt.Sprintf("%d", txinfo.Receipt.GasUsed)
 	result.GasCost = fmt.Sprintf("%.8f", BigToFloat(txinfo.GasCost(), self.ctx.Network.GetNativeTokenDecimal()))
+	if txinfo.Receipt != nil && txinfo.Receipt.BlockNumber != nil {
+		result.BlockNumber = txinfo.Receipt.BlockNumber.String()
+	}
 }
 
 // nonArrayParamAsJarvisValue converts a scalar ABI value to a jarvis Value,
@@ -469,9 +472,10 @@ func (self *TxAnalyzer) AnalyzeLog(
 	l *types.Log,
 ) (LogResult, error) {
 	logResult := LogResult{
-		Name:   "",
-		Topics: []TopicResult{},
-		Data:   []ParamResult{},
+		Name:    "",
+		Address: self.ctx.GetJarvisAddress(l.Address.Hex()),
+		Topics:  []TopicResult{},
+		Data:    []ParamResult{},
 	}
 
 	var err error
@@ -498,6 +502,10 @@ func (self *TxAnalyzer) AnalyzeLog(
 
 	// Annotate token amounts if the emitting contract is a known ERC20.
 	hint := self.ctx.ERC20InfoFor(l.Address.Hex())
+	if hint != nil && hint.Symbol != "" && !IsKnownAddress(logResult.Address) {
+		logResult.Address.Desc = hint.Symbol + " token"
+		logResult.Address.Decimal = int64(hint.Decimal)
+	}
 
 	iArgs, niArgs := SplitEventArguments(event.Inputs)
 	for j, topic := range l.Topics[1:] {

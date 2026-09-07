@@ -107,25 +107,30 @@ type TopicResult struct {
 }
 
 type LogResult struct {
-	Name   string
-	Topics []TopicResult
-	Data   []ParamResult
+	Name string
+	// Address is the contract that emitted the log, resolved through the
+	// address book so token symbols are available to the display layer.
+	Address Address
+	Topics  []TopicResult
+	Data    []ParamResult
 }
 
 type TxResult struct {
-	Hash      string
-	Network   string
-	Status    string
-	From      Address
-	Value     string
-	To        Address
-	Nonce     string
-	GasPrice  string
-	GasLimit  string
-	GasUsed   string
-	GasCost   string
-	Timestamp string
-	TxType    string
+	Hash     string
+	Network  string
+	Status   string
+	From     Address
+	Value    string
+	To       Address
+	Nonce    string
+	GasPrice string
+	GasLimit string
+	GasUsed  string
+	GasCost  string
+	// BlockNumber is the decimal block the tx was mined in; empty while pending.
+	BlockNumber string
+	Timestamp   string
+	TxType      string
 
 	FunctionCall *FunctionCall
 	Logs         []LogResult

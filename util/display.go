@@ -13,23 +13,36 @@ import (
 
 // ── Severity helpers ─────────────────────────────────────────────────────────
 
-// StyledAddress wraps a common.Address in a StyledText.
-// Known addresses (non-empty, non-"unknown" description) are Success (green);
-// unknown ones are Warn (yellow) so they stand out without being alarming.
+// StyledAddress wraps the *target* of a call (tx `to`, inner-call destination)
+// in a StyledText. Known addresses are Success (green); an unknown target is
+// Warn (yellow) because sending a call somewhere the address book has never
+// seen is the one address-level fact worth the reader's attention.
 func StyledAddress(addr jarviscommon.Address) ui.StyledText {
 	text := jarviscommon.PlainAddress(addr)
-	if addr.Desc == "" || addr.Desc == "unknown" {
+	if !jarviscommon.IsKnownAddress(addr) {
 		return ui.StyledText{Text: text, Severity: ui.SeverityWarn}
 	}
 	return ui.StyledText{Text: text, Severity: ui.SeveritySuccess}
 }
 
+// styledParamAddress wraps an address that appears as data (a parameter, an
+// event argument, the sender, a log emitter). Known addresses are green;
+// unknown ones stay plain — most addresses in a busy tx are unknown, and
+// colouring them all yellow would drown the warnings that matter.
+func styledParamAddress(addr jarviscommon.Address) ui.StyledText {
+	text := jarviscommon.PlainAddress(addr)
+	if !jarviscommon.IsKnownAddress(addr) {
+		return ui.StyledText{Text: text, Severity: ui.SeverityInfo}
+	}
+	return ui.StyledText{Text: text, Severity: ui.SeveritySuccess}
+}
+
 // styledValue wraps a common.Value in a StyledText.
-// Address values inherit their severity from StyledAddress; all other values
-// are SeverityInfo (plain).
+// Address values inherit their severity from styledParamAddress; all other
+// values are SeverityInfo (plain).
 func styledValue(v jarviscommon.Value) ui.StyledText {
 	if v.Kind == jarviscommon.DisplayAddress && v.Address != nil {
-		return StyledAddress(*v.Address)
+		return styledParamAddress(*v.Address)
 	}
 	return ui.StyledText{Text: jarviscommon.PlainValue(v), Severity: ui.SeverityInfo}
 }
@@ -88,6 +101,9 @@ func buildFunctionCallDisplay(fc *jarviscommon.FunctionCall, nested bool) *Funct
 
 func buildLogDisplay(log jarviscommon.LogResult) LogDisplay {
 	d := LogDisplay{Name: log.Name}
+	if log.Address.Address != "" {
+		d.Address = styledParamAddress(log.Address)
+	}
 	for _, topic := range log.Topics {
 		d.Topics = append(d.Topics, TopicDisplay{
 			Name:    topic.Name,
@@ -100,32 +116,113 @@ func buildLogDisplay(log jarviscommon.LogResult) LogDisplay {
 	return d
 }
 
-func buildTxDisplay(result *jarviscommon.TxResult, fullDetail bool) *TxDisplay {
+func buildTxDisplay(result *jarviscommon.TxResult) *TxDisplay {
 	d := &TxDisplay{
-		Status: result.Status,
-		From:   StyledAddress(result.From),
-		To:     StyledAddress(result.To),
-		Value:  result.Value,
-		TxType: result.TxType,
-		Error:  result.Error,
-	}
-	if fullDetail {
-		d.Nonce = result.Nonce
-		d.GasPrice = result.GasPrice
-		d.GasLimit = result.GasLimit
-		d.GasUsed = result.GasUsed
-		d.GasCost = result.GasCost
+		Status:      result.Status,
+		From:        styledParamAddress(result.From),
+		To:          StyledAddress(result.To),
+		Value:       result.Value,
+		TxType:      result.TxType,
+		Error:       result.Error,
+		Nonce:       result.Nonce,
+		GasPrice:    result.GasPrice,
+		GasLimit:    result.GasLimit,
+		GasUsed:     result.GasUsed,
+		GasCost:     result.GasCost,
+		BlockNumber: result.BlockNumber,
 	}
 	if result.TxType == "" || result.TxType == "normal" {
 		return d
 	}
-	if fullDetail && result.FunctionCall != nil {
+	if result.FunctionCall != nil {
 		d.FunctionCall = buildFunctionCallDisplay(result.FunctionCall, false)
 	}
+	d.Transfers = buildTransfers(result.Logs)
 	for _, l := range result.Logs {
 		d.Logs = append(d.Logs, buildLogDisplay(l))
 	}
 	return d
+}
+
+// buildTransfers derives asset movements from the well-known token events so
+// the reader gets "what moved" without scanning the event table.
+func buildTransfers(logs []jarviscommon.LogResult) []TransferDisplay {
+	var out []TransferDisplay
+	for _, l := range logs {
+		args := map[string]jarviscommon.Value{}
+		for _, t := range l.Topics {
+			args[strings.ToLower(t.Name)] = t.Value
+		}
+		for _, p := range l.Data {
+			if len(p.Values) == 1 {
+				args[strings.ToLower(p.Name)] = p.Values[0]
+			}
+		}
+		amount, unlimited, ok := transferAmount(args)
+		if !ok {
+			continue
+		}
+		td := TransferDisplay{Amount: amount, Unlimited: unlimited, Token: transferToken(l, args)}
+		switch l.Name {
+		case "Transfer":
+			td.Kind = "transfer"
+			td.From, td.To = transferParty(args, "from", "src", "_from"), transferParty(args, "to", "dst", "_to")
+		case "Approval":
+			td.Kind = "approval"
+			td.From, td.To = transferParty(args, "owner", "_owner"), transferParty(args, "spender", "_spender")
+		case "Deposit":
+			td.Kind = "deposit"
+			td.To = transferParty(args, "dst", "to", "user", "account")
+		case "Withdrawal":
+			td.Kind = "withdrawal"
+			td.From = transferParty(args, "src", "from", "user", "account")
+		default:
+			continue
+		}
+		out = append(out, td)
+	}
+	return out
+}
+
+// transferAmount picks the amount-like argument of a token event and renders
+// it with the token's decimals when the analyzer attached a hint. The symbol
+// is carried separately by TransferDisplay.Token.
+func transferAmount(args map[string]jarviscommon.Value) (amount string, unlimited, ok bool) {
+	if v, has := args["tokenid"]; has {
+		return "#" + v.Raw, false, true
+	}
+	for _, name := range []string{"value", "amount", "wad", "_value", "_amount"} {
+		v, has := args[name]
+		if !has {
+			continue
+		}
+		if _, isMax := jarviscommon.MaxUintLabel(v.Raw); isMax {
+			return "unlimited", true, true
+		}
+		if v.Kind == jarviscommon.DisplayToken && v.Token != nil {
+			return jarviscommon.BigToFloatString(jarviscommon.StringToBig(v.Raw), v.Token.Decimal), false, true
+		}
+		return v.Raw, false, true
+	}
+	return "", false, false
+}
+
+func transferToken(l jarviscommon.LogResult, args map[string]jarviscommon.Value) ui.StyledText {
+	for _, v := range args {
+		if v.Kind == jarviscommon.DisplayToken && v.Token != nil && v.Token.Symbol != "" {
+			return ui.StyledText{Text: v.Token.Symbol, Severity: ui.SeveritySuccess}
+		}
+	}
+	return styledParamAddress(l.Address)
+}
+
+func transferParty(args map[string]jarviscommon.Value, names ...string) ui.StyledText {
+	for _, n := range names {
+		if v, ok := args[n]; ok {
+			return styledValue(v)
+		}
+	}
+	return ui.StyledText{}
 }
 
 // ── Print phase (reads only from the display struct, colours via u.Style) ────
@@ -390,49 +487,6 @@ func printAllLogs(u ui.UI, logs []LogDisplay) {
 	})
 }
 
-func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network) {
-	// Transaction summary card.
-	statusVal := d.Status
-	if d.Status == "done" {
-		statusVal = "✓ " + d.Status
-	}
-	txGroup := [][]ui.TableCell{
-		{ui.TC("Status"), ui.TC(statusVal)},
-		{ui.TC("From"), tableCell(d.From)},
-		{ui.TC("Value"), ui.TC(d.Value + " " + network.GetNativeTokenSymbol())},
-		{ui.TC("To"), tableCell(d.To)},
-	}
-	if d.Hash != "" {
-		txGroup = append([][]ui.TableCell{{ui.TC("Hash"), ui.TC(d.Hash)}}, txGroup...)
-	}
-
-	if d.Nonce != "" {
-		// Degen mode: gas details in the same card, separated by a divider.
-		gasGroup := [][]ui.TableCell{
-			{ui.TC("Nonce"), ui.TC(d.Nonce)},
-			{ui.TC("Gas price"), ui.TC(d.GasPrice + " gwei")},
-			{ui.TC("Gas limit"), ui.TC(d.GasLimit)},
-			{ui.TC("Gas used"), ui.TC(d.GasUsed)},
-			{ui.TC("Gas cost"), ui.TC(d.GasCost)},
-		}
-		u.PrintTable(&ui.Table{Groups: [][][]ui.TableCell{txGroup, gasGroup}})
-	} else {
-		u.PrintTable(&ui.Table{Rows: txGroup})
-	}
-
-	if d.TxType == "" {
-		u.Error("Checking tx type failed: %s", d.Error)
-		return
-	}
-	if d.TxType == "normal" {
-		return
-	}
-	if d.FunctionCall != nil {
-		printFunctionCallDisplay(u, d.FunctionCall, false)
-	}
-	printAllLogs(u, d.Logs)
-}
-
 // ── Public API ───────────────────────────────────────────────────────────────
 
 // DisplayParam builds the human-readable view-model for a single decoded ABI
@@ -465,15 +519,23 @@ func DisplayFunctionCall(u ui.UI, fc *jarviscommon.FunctionCall) *FunctionCallDi
 }
 
 // DisplayTxResult builds the human-readable view-model for an analyzed
-// transaction and writes it to u. The returned *TxDisplay serializes cleanly
-// to JSON (StyledText fields marshal as plain strings); the terminal sees
-// coloured output via u.Style.
+// transaction and writes it to u using the given layout. The returned
+// *TxDisplay is always complete regardless of layout and serializes cleanly
+// to JSON (StyledText fields marshal as plain strings).
 //
-// hash is the transaction hash string shown in the summary card; pass an empty
+// hash is the transaction hash shown in the headline/footer; pass an empty
 // string to omit it (e.g. when the hash is already shown by the caller).
-func DisplayTxResult(u ui.UI, result *jarviscommon.TxResult, network networks.Network, fullDetail bool, hash string) *TxDisplay {
-	d := buildTxDisplay(result, fullDetail)
+func DisplayTxResult(u ui.UI, result *jarviscommon.TxResult, network networks.Network, layout TxLayout, hash string) *TxDisplay {
+	d := buildTxDisplay(result)
 	d.Hash = hash
-	printTxDisplay(u, d, network)
+	printTxDisplay(u, d, network, layout)
 	return d
+}
+
+// InfoLayout maps the --degen flag onto the `jarvis info` layouts.
+func InfoLayout(degen bool) TxLayout {
+	if degen {
+		return LayoutInfoFull
+	}
+	return LayoutInfo
 }

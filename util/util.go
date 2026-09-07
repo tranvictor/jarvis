@@ -275,7 +275,7 @@ func DisplayWaitAnalyze(
 	network networks.Network,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	degenMode bool,
+	layout TxLayout,
 ) {
 	DisplayBroadcastedTx(u, t, broadcasted, err, network)
 	if broadcasted {
@@ -295,7 +295,7 @@ func DisplayWaitAnalyze(
 			"",
 			a,
 			customABIs,
-			degenMode,
+			layout,
 		)
 	}
 }
@@ -325,7 +325,7 @@ func AnalyzeAndPrint(
 	customABI string,
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
-	degenMode bool,
+	layout TxLayout,
 ) *TxDisplay {
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
@@ -364,7 +364,7 @@ func AnalyzeAndPrint(
 		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false)
 	}
 
-	return DisplayTxResult(u, result, network, degenMode, tx)
+	return DisplayTxResult(u, result, network, layout, tx)
 }
 
 func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {
