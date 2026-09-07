@@ -57,7 +57,7 @@ type FunctionCallDisplay struct {
 type TxLayout int
 
 const (
-	// LayoutInfo is the default for `jarvis info`: headline, transfers,
+	// LayoutInfo is the default for `jarvis info`: headline, net effect,
 	// collapsed call, one line per event, shortened addresses.
 	LayoutInfo TxLayout = iota
 	// LayoutInfoFull is `jarvis info -x`: nothing collapsed, gas card, full
@@ -65,8 +65,8 @@ const (
 	LayoutInfoFull
 	// LayoutPostSign is shown right after a tx the user just signed was
 	// mined: the call was already confirmed on the signing screen, so only
-	// status, gas, transfers and events are printed (the call reappears only
-	// when the tx reverted).
+	// status, gas, net effect and events are printed (the call reappears
+	// only when the tx reverted).
 	LayoutPostSign
 )
 
@@ -109,9 +109,11 @@ type TxDisplay struct {
 
 	TxType       string               `json:"tx_type"`
 	FunctionCall *FunctionCallDisplay `json:"function_call,omitempty"`
-	Transfers    []TransferDisplay    `json:"transfers,omitempty"`
+	// Transfers is kept for --json-output; the terminal no longer prints a
+	// per-hop list (Events at the bottom already has every movement).
+	Transfers []TransferDisplay `json:"transfers,omitempty"`
 	// NetEffect summarises Transfers per address; only computed when there
-	// are enough transfers for the list alone to be hard to read.
+	// are enough transfers for the event list alone to be hard to read.
 	NetEffect []NetEffectDisplay `json:"net_effect,omitempty"`
 	Logs      []LogDisplay       `json:"logs,omitempty"`
 	// RevertReason is the decoded revert payload of a reverted tx, when the

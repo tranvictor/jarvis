@@ -206,7 +206,7 @@ func (p txPrinter) headline(d *TxDisplay, network networks.Network) string {
 }
 
 // printTxDisplay renders d according to layout. The order is by importance:
-// what happened (headline), what moved (transfers), the ERC-7730 clear-signed
+// what happened (headline), what moved (net effect), the ERC-7730 clear-signed
 // reading when a descriptor matched, what was called, what was emitted, and
 // the headline again so the last line on screen is the summary.
 func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network, layout TxLayout) {
@@ -237,17 +237,13 @@ func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network, layout TxLa
 		p.printNetEffect(d.NetEffect)
 		printed = true
 	}
-	if len(d.Transfers) > 0 {
-		p.printTransfers(d.Transfers)
-		printed = true
-	}
 	emptyCall := d.FunctionCall != nil && d.FunctionCall.Method == "" &&
 		(d.FunctionCall.Data == "" || d.FunctionCall.Data == "0x") && len(d.FunctionCall.InnerCalls) == 0
 	showCall := d.FunctionCall != nil && !emptyCall && (layout != LayoutPostSign || d.Status == "reverted")
 	// Post-sign already showed the panel on the signing card. Info layouts
 	// print it above the ABI call so the operator gets the same reading
 	// without signing. Leading Info("") matches Subsection spacing; a
-	// no-op callback then looks the same as today's transfers → call gap.
+	// no-op callback then looks the same as today's net-effect → call gap.
 	if layout != LayoutPostSign && d.ClearSign != nil {
 		u.Info("")
 		d.ClearSign(u)
@@ -337,10 +333,6 @@ func (p txPrinter) printCard(d *TxDisplay, network networks.Network) {
 	p.u.KeyValueCells(rows)
 }
 
-// maxCompactTransfers caps the Transfers list in compact layouts. Past this
-// the Net effect block carries the meaning; -x still lists everything.
-const maxCompactTransfers = 8
-
 // printNetEffect renders the per-address summary: one line per address, its
 // token deltas coloured by sign.
 func (p txPrinter) printNetEffect(rows []NetEffectDisplay) {
@@ -376,81 +368,6 @@ func (p txPrinter) printNetEffect(rows []NetEffectDisplay) {
 			deltas[i] = p.u.Style(ui.StyledText{Text: text, Severity: sev})
 		}
 		p.u.Indent().Info("%s%s   %s", p.text(r.Address), pad, strings.Join(deltas, "   "))
-	}
-}
-
-func (p txPrinter) printTransfers(ts []TransferDisplay) {
-	title := "Transfers"
-	hidden := 0
-	if p.compact && len(ts) > maxCompactTransfers {
-		title = fmt.Sprintf("Transfers (%d)", len(ts))
-		hidden = len(ts) - maxCompactTransfers
-		ts = ts[:maxCompactTransfers]
-	}
-	p.u.Subsection(title)
-	amountWidth := 0
-	amountText := func(t TransferDisplay) string {
-		if p.compact && !strings.HasPrefix(t.Amount, "#") {
-			return jarviscommon.CompactAmount(t.Amount)
-		}
-		return t.Amount
-	}
-	plain := func(t TransferDisplay) string {
-		if t.Unlimited {
-			return "UNLIMITED " + p.plainText(t.Token)
-		}
-		return amountText(t) + " " + p.plainText(t.Token)
-	}
-	// Every row is "amount   from  verb  to" with each column padded to the
-	// widest entry so the arrows and destinations line up. Deposits and
-	// withdrawals name the mechanism in place of the missing party; approvals
-	// swap the arrow for a verb, and an unlimited allowance is flagged in the
-	// amount column where the eye already is.
-	type cell struct{ plain, styled string }
-	fromCell := func(t TransferDisplay) cell {
-		if t.Kind == "deposit" {
-			return cell{"deposit", p.muted("deposit")}
-		}
-		return cell{p.plainText(t.From), p.text(t.From)}
-	}
-	toCell := func(t TransferDisplay) cell {
-		if t.Kind == "withdrawal" {
-			return cell{"withdrawal", p.muted("withdrawal")}
-		}
-		return cell{p.plainText(t.To), p.text(t.To)}
-	}
-	verbCell := func(t TransferDisplay) cell {
-		if t.Kind == "approval" {
-			return cell{"approves", "approves"}
-		}
-		return cell{"→", "→"}
-	}
-	fromWidth, verbWidth := 0, 0
-	for _, t := range ts {
-		if w := ui.VisibleWidth(plain(t)); w > amountWidth {
-			amountWidth = w
-		}
-		if w := ui.VisibleWidth(fromCell(t).plain); w > fromWidth {
-			fromWidth = w
-		}
-		if w := ui.VisibleWidth(verbCell(t).plain); w > verbWidth {
-			verbWidth = w
-		}
-	}
-	for _, t := range ts {
-		amount := amountText(t) + " " + p.text(t.Token)
-		if t.Unlimited {
-			amount = p.u.Style(ui.StyledText{Text: plain(t), Severity: ui.SeverityWarn})
-		}
-		from, verb, to := fromCell(t), verbCell(t), toCell(t)
-		p.u.Indent().Info("%s%s   %s%s  %s%s  %s",
-			amount, strings.Repeat(" ", amountWidth-ui.VisibleWidth(plain(t))),
-			from.styled, strings.Repeat(" ", fromWidth-ui.VisibleWidth(from.plain)),
-			verb.styled, strings.Repeat(" ", verbWidth-ui.VisibleWidth(verb.plain)),
-			to.styled)
-	}
-	if hidden > 0 {
-		p.u.Indent().Info("%s", p.muted(fmt.Sprintf("… %d more (-x lists all)", hidden)))
 	}
 }
 

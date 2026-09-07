@@ -12,8 +12,6 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 
 - Headline line: status glyph, method, destination; a muted second line
   carries from / value / gas / nonce / block.
-- New **Transfers** section derived from `Transfer` and `Approval` logs, with
-  `UNLIMITED` marking max-uint approvals.
 - Function call shown as an indented tree; arrays longer than a few items and
   long `bytes` values collapse. Events are one line each.
 - `--degen` expands collapsed values, shows full addresses and switches the
@@ -23,7 +21,8 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   highlighted in yellow. Each tx ends with a one-line footer (status,
   method, hash) so the outcome is visible even after a long event list.
 - **Net effect** block (per-address net token change) when a tx has four or
-  more transfers; the transfer list is capped at eight in the compact view.
+  more token movements. The per-hop Transfers list is not printed; Events
+  already has every movement. `--json-output` still includes `transfers`.
 - Integers carry thousands separators (`1,000,000,000`); token amounts are
   rounded to four decimals in compact views. `--degen`/JSON keep full
   precision.
@@ -37,10 +36,6 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - Overloaded methods show their Solidity name (`execute`, not `execute0`).
 - The `Network:` header and the bare hash echo are gone; the network sits on
   the details line.
-- Transfer rows are laid out in columns (`amount   from  →  to`) so arrows
-  and destinations line up; approvals read `from  approves  spender` with
-  `UNLIMITED <token>` in the amount column, deposits/withdrawals name the
-  mechanism in place of the missing party.
 - Time-named integer parameters (`deadline`, `expiry`, `validUntil`,
   `unlockTime`, …) holding a plausible unix time show the date and how far
   away it is: `2026-09-07 03:30:00 UTC, in 30 min`. The compact view shows
@@ -100,7 +95,7 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - Broadcasting prints `✓ broadcast` followed by a live status line
   (not in mempool → in mempool → mined / reverted / dropped) with elapsed
   time; off-TTY each state is printed once.
-- After mining, the post-sign view shows the headline, Transfers and Events
+- After mining, the post-sign view shows the headline, Net effect and Events
   (gas used / limit in the details line) instead of the full `info` dump.
 - Waiting for a Ledger uses the same status line with a countdown.
 
