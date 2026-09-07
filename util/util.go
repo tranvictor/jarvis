@@ -675,6 +675,12 @@ func GetABIStringBypassCache(addr string, network networks.Network) (string, err
 	return abiStr, nil
 }
 
+// IsDelegationDesignator reports whether code is an EIP-7702 delegation
+// designator: exactly 0xef0100 followed by a 20-byte address.
+func IsDelegationDesignator(code []byte) bool {
+	return len(code) == 23 && code[0] == 0xef && code[1] == 0x01 && code[2] == 0x00
+}
+
 func IsContract(addr string, network networks.Network) (bool, error) {
 	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network)
 	_, found := cache.GetCache(cacheKey)
@@ -692,7 +698,10 @@ func IsContract(addr string, network networks.Network) (bool, error) {
 		return false, err
 	}
 
-	isContract := len(code) > 0
+	// An EIP-7702 delegation designator (0xef0100 ‖ address) marks an EOA
+	// that delegates to code; for jarvis's purposes — "does a value transfer
+	// land in a contract?", "does this need an ABI?" — it is still a wallet.
+	isContract := len(code) > 0 && !IsDelegationDesignator(code)
 
 	if isContract {
 		cache.SetCache(

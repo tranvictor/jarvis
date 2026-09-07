@@ -227,14 +227,52 @@ func TestShowSigningCardSafeFieldsAndCollapse(t *testing.T) {
 func TestFormatGasLine(t *testing.T) {
 	gwei := big.NewInt(1_000_000_000)
 	legacy := FormatGasLine(true, new(big.Int).Mul(big.NewInt(20), gwei), nil, nil, 21000, "ETH")
-	if legacy != "20.0000 gwei · 21000 gas · ≈ 0.00042000 ETH" {
+	if legacy != "≈ 0.00042000 ETH   (21,000 gas × 20 gwei)" {
 		t.Fatalf("legacy: %q", legacy)
 	}
-	dyn := FormatGasLine(false, nil, new(big.Int).Mul(big.NewInt(20), gwei), new(big.Int).Mul(big.NewInt(2), gwei), 21000, "ETH")
-	if dyn != "max 20.0000 gwei, tip 2.0000 gwei · 21000 gas · ≈ 0.00042000 ETH" {
+	tip := new(big.Int).Div(new(big.Int).Mul(big.NewInt(15), gwei), big.NewInt(10)) // 1.5 gwei
+	dyn := FormatGasLine(false, nil, new(big.Int).Mul(big.NewInt(20), gwei), tip, 85123, "ETH")
+	if dyn != "≈ 0.00170246 ETH   (85,123 gas × max 20 gwei, tip 1.5 gwei)" {
 		t.Fatalf("dynamic: %q", dyn)
 	}
-	if gasCostOnly(dyn) != "≈ 0.00042000 ETH" {
+	if gasCostOnly(dyn) != "≈ 0.00170246 ETH" {
 		t.Fatalf("gasCostOnly: %q", gasCostOnly(dyn))
+	}
+}
+
+func TestInsufficientBalanceWarning(t *testing.T) {
+	eth := big.NewInt(1_000_000_000_000_000_000)
+	in := WarningInput{
+		To:            jarviscommon.Address{Address: cardMe, Desc: "me"},
+		Value:         new(big.Int).Mul(big.NewInt(2), eth),
+		NativeSymbol:  "ETH",
+		SignerBalance: eth,
+		MaxCost:       new(big.Int).Add(new(big.Int).Mul(big.NewInt(2), eth), big.NewInt(420_000_000_000_000)),
+	}
+	got := SigningWarnings(in)
+	if len(got) != 1 || got[0] != "balance 1 ETH does not cover value + max gas (2.0004 ETH); the tx would be rejected" {
+		t.Fatalf("warnings: %q", got)
+	}
+	in.SignerBalance = new(big.Int).Mul(big.NewInt(3), eth)
+	if got := SigningWarnings(in); len(got) != 0 {
+		t.Fatalf("sufficient balance must not warn: %q", got)
+	}
+	in.SignerBalance = nil
+	if got := SigningWarnings(in); len(got) != 0 {
+		t.Fatalf("unknown balance must not warn: %q", got)
+	}
+}
+
+func TestSigningCardShowsWalletKind(t *testing.T) {
+	rec := ui.NewRecordingUI()
+	ShowSigningCard(rec, &SigningCard{
+		Kind:    "EOA transaction",
+		Network: "mainnet",
+		Signer:  ui.StyledText{Text: cardMe + " (hot wallet)"},
+		Wallet:  "ledger",
+		To:      ui.StyledText{Text: cardUSDC + " (USDC)"},
+	})
+	if !rec.HasMessage("Sign with: " + cardMe + " (hot wallet)   ledger   mainnet") {
+		t.Fatalf("wallet kind missing from signer line: %v", rec.Entries())
 	}
 }

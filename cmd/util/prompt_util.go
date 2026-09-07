@@ -2,7 +2,9 @@ package util
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -120,8 +122,12 @@ const foldableInputLen = 60
 // echoParam shows what jarvis understood from the user's answer. The first
 // line replaces the raw "> answer" row on a TTY (when it is short enough to be
 // sure it occupied one row); nested values follow as an indented tree.
-func echoParam(u ui.UI, analyzer util.TxAnalyzer, input abi.Argument, value any, raw string, fold bool) {
-	d := util.NewParamDisplay(analyzer.ParamAsJarvisParamResult(input.Name, input.Type, value))
+func echoParam(u ui.UI, analyzer util.TxAnalyzer, contract string, input abi.Argument, value any, raw string, fold bool) {
+	// Only integers can be token amounts; skip the ERC-20 lookup otherwise.
+	if t := input.Type.T; t != abi.UintTy && t != abi.IntTy {
+		contract = ""
+	}
+	d := util.NewParamDisplay(analyzer.ParamAsJarvisParamResultFor(contract, input.Name, input.Type, value))
 	lines := util.ParamValueLines(u, d)
 	if len(lines) == 0 {
 		return
@@ -147,10 +153,42 @@ type SigningNote struct {
 	// ExecutesSafeTxHash marks the tx as the execTransaction of a Safe tx the
 	// user has just reviewed, so the card links to it and collapses the call.
 	ExecutesSafeTxHash string
+	// WalletName and WalletKind describe the signing account; the name fills
+	// in for an address-book entry when there is none, the kind is shown
+	// next to the signer.
+	WalletName string
+	WalletKind string
+	// SignerBalance, when known, enables the insufficient-funds warning.
+	SignerBalance *big.Int
 }
 
 // SetNextSigningNote attaches a note to the next PromptTxConfirmation call.
 func SetNextSigningNote(n SigningNote) { nextSigningNote = &n }
+
+// mergeSigningNote fills the empty fields of the pending note from n, so a
+// caller that only knows the wallet does not erase a caller that only knows
+// the Safe context (or vice versa).
+func mergeSigningNote(n SigningNote) {
+	if nextSigningNote == nil {
+		nextSigningNote = &SigningNote{}
+	}
+	if nextSigningNote.ExecutesSafeTxHash == "" {
+		nextSigningNote.ExecutesSafeTxHash = n.ExecutesSafeTxHash
+	}
+	if nextSigningNote.WalletName == "" {
+		nextSigningNote.WalletName = n.WalletName
+	}
+	if nextSigningNote.WalletKind == "" {
+		nextSigningNote.WalletKind = n.WalletKind
+	}
+	if nextSigningNote.SignerBalance == nil {
+		nextSigningNote.SignerBalance = n.SignerBalance
+	}
+}
+
+// ErrUserCancelled is returned when the operator declines the signing card.
+// Nothing has been signed or sent at that point; callers should exit quietly.
+var ErrUserCancelled = errors.New("cancelled by user")
 
 // PromptTxConfirmation displays the signing card for tx and asks the user to
 // confirm before signing. Returns an error if the user aborts.
@@ -170,7 +208,8 @@ func PromptTxConfirmation(
 		return err
 	}
 	if !ConfirmSigningCard(u, card) {
-		return fmt.Errorf("user aborted")
+		u.Warn("Cancelled — nothing was signed or sent.")
+		return ErrUserCancelled
 	}
 	return nil
 }
@@ -188,16 +227,33 @@ func buildEOASigningCard(
 	note *SigningNote,
 ) (*SigningCard, error) {
 	symbol := network.GetNativeTokenSymbol()
+	// The card shows checksummed hex whatever form the wallet file stored.
+	from.Address = jarviscommon.HexToAddress(from.Address).Hex()
+	if note != nil && note.WalletName != "" && !jarviscommon.IsKnownAddress(from) {
+		from.Desc = note.WalletName
+	}
+	legacy := tx.Type() == types.LegacyTxType
+	price := tx.GasFeeCap()
+	if legacy {
+		price = tx.GasPrice()
+	}
 	card := &SigningCard{
 		Kind:    "EOA transaction",
 		Network: network.GetName(),
 		Signer:  util.StyledAddress(from),
 		Nonce:   fmt.Sprintf("%d", tx.Nonce()),
-		Gas: FormatGasLine(tx.Type() == types.LegacyTxType,
-			tx.GasPrice(), tx.GasFeeCap(), tx.GasTipCap(), tx.Gas(), symbol),
+		Gas:     FormatGasLine(legacy, tx.GasPrice(), tx.GasFeeCap(), tx.GasTipCap(), tx.Gas(), symbol),
+	}
+	if note != nil {
+		card.Wallet = note.WalletKind
 	}
 	if tx.Value().Sign() > 0 {
 		card.Value = jarviscommon.BigToFloatString(tx.Value(), network.GetNativeTokenDecimal()) + " " + symbol
+	}
+	maxCost := new(big.Int).Add(tx.Value(), MaxGasCost(price, tx.Gas()))
+	var balance *big.Int
+	if note != nil {
+		balance = note.SignerBalance
 	}
 
 	if tx.To() == nil {
@@ -205,6 +261,9 @@ func buildEOASigningCard(
 		if len(tx.Data()) > 0 {
 			card.RawData = "0x" + ethcommon.Bytes2Hex(tx.Data())
 		}
+		card.Warnings = SigningWarnings(WarningInput{
+			Value: tx.Value(), NativeSymbol: symbol, SignerBalance: balance, MaxCost: maxCost,
+		})
 		card.Prompt = fmt.Sprintf("Sign and broadcast contract creation (%s)?", gasCostOnly(card.Gas))
 		return card, nil
 	}
@@ -224,7 +283,7 @@ func buildEOASigningCard(
 	}
 	warn := WarningInput{
 		To: to, ToIsContract: isContract, Value: tx.Value(), NativeSymbol: symbol,
-		HasData: len(tx.Data()) > 0,
+		HasData: len(tx.Data()) > 0, SignerBalance: balance, MaxCost: maxCost,
 	}
 
 	var fc *jarviscommon.FunctionCall
@@ -260,10 +319,10 @@ func buildEOASigningCard(
 	return card, nil
 }
 
-// gasCostOnly extracts the "≈ 0.0017 ETH" tail of a FormatGasLine string.
+// gasCostOnly extracts the "≈ 0.0017 ETH" head of a FormatGasLine string.
 func gasCostOnly(gas string) string {
-	if i := strings.LastIndex(gas, "≈"); i >= 0 {
-		return gas[i:]
+	if i := strings.Index(gas, "   ("); i >= 0 {
+		return gas[:i]
 	}
 	return gas
 }
@@ -422,17 +481,39 @@ func PromptFunctionCallData(
 		inputParam, err := ConvertParamInput(input, raw, network)
 		if err != nil {
 			paramUI.Error("✗ %s", err)
+			if hint := inputHint(input.Type, network); hint != "" && interactive {
+				paramUI.Info("%s", paramUI.Style(ui.StyledText{Text: hint, Severity: ui.SeverityMuted}))
+			}
 			if !interactive {
 				return nil, nil, fmt.Errorf("your input is not valid: %w", err)
 			}
 			continue
 		}
 
-		echoParam(paramUI, analyzer, input, inputParam, raw, interactive)
+		echoParam(paramUI, analyzer, contractAddress, input, inputParam, raw, interactive)
 		params = append(params, inputParam)
 		pi++
 	}
 	return method, params, nil
+}
+
+// inputHint is the one-line reminder of the accepted input forms for a type,
+// shown after a rejected answer so the operator doesn't have to guess.
+func inputHint(t abi.Type, network jarvisnetworks.Network) string {
+	switch t.T {
+	case abi.UintTy, abi.IntTy:
+		return fmt.Sprintf("accepted: raw integer (1000000), hex (0xf4240), or amount with token (0.5 %s, 1000 USDC)",
+			network.GetNativeTokenSymbol())
+	case abi.AddressTy:
+		return "accepted: 0x address or an address-book name (jarvis addr to list)"
+	case abi.BoolTy:
+		return "accepted: true / false"
+	case abi.BytesTy, abi.FixedBytesTy:
+		return "accepted: 0x-prefixed hex"
+	case abi.SliceTy, abi.ArrayTy:
+		return "accepted: comma-separated items in brackets, e.g. [a, b, c]"
+	}
+	return ""
 }
 
 // renderContractClearSign asks the shared ERC-7730 engine for a

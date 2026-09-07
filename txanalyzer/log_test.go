@@ -3,6 +3,7 @@ package txanalyzer
 import (
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -10,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/networks"
 )
 
@@ -113,5 +115,23 @@ func TestDecodeRevertData(t *testing.T) {
 	}
 	if got := DecodeRevertData(nil, nil); got != "" {
 		t.Fatalf("empty payload: %q", got)
+	}
+}
+
+func TestParamAsJarvisParamResultForAnnotatesTokenAmounts(t *testing.T) {
+	network, _ := networks.GetNetwork("mainnet")
+	ctx := NewAnalysisContext(nil, network)
+	usdc := "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"
+	ctx.erc20[strings.ToLower(usdc)] = cachedERC20{info: &ERC20Info{Decimal: 6, Symbol: "USDC"}}
+	ta := NewGenericAnalyzerWithContext(ctx)
+
+	uintT, _ := abi.NewType("uint256", "", nil)
+	with := ta.ParamAsJarvisParamResultFor(usdc, "amount", uintT, big.NewInt(1000000))
+	if v := with.Values[0]; v.Kind != jarviscommon.DisplayToken || v.Token == nil || v.Token.Symbol != "USDC" || v.Token.Decimal != 6 {
+		t.Fatalf("expected token-annotated value, got %+v", v)
+	}
+	without := ta.ParamAsJarvisParamResultFor("", "amount", uintT, big.NewInt(1000000))
+	if v := without.Values[0]; v.Kind != jarviscommon.DisplayInteger {
+		t.Fatalf("no contract must mean a plain integer, got %+v", v)
 	}
 }

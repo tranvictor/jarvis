@@ -205,9 +205,9 @@ Call  approve  →  0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC)
   spender  0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D  address
   amount   uint256.max (∞)  uint256
 
-Sign with  0x9642b23Ed1E01Df1092B92641051881a322F5D4E (me)   mainnet
+Sign with  0x9642b23Ed1E01Df1092B92641051881a322F5D4E (me)   ledger   mainnet
 Send to    0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC)
-Gas        max 20.0000 gwei, tip 1.5000 gwei · 85123 gas · ≈ 0.00170246 ETH   nonce 42
+Gas        ≈ 0.00170246 ETH   (85,123 gas × max 20 gwei, tip 1.5 gwei)   nonce 42
 
 ! approves UNLIMITED USDC to 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
 ! spender 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D is not in your address book

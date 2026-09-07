@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"math/big"
 	"os"
 	"strings"
 
@@ -18,8 +20,8 @@ import (
 )
 
 var composeDataContractCmd = &cobra.Command{
-	Use:   "encode",
-	Short: "Encode tx data to interact with smart contracts",
+	Use:              "encode",
+	Short:            "Encode tx data to interact with smart contracts",
 	TraverseChildren: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return cmdutil.CommonFunctionCallPreprocess(appUI, cmd, args)
@@ -163,7 +165,11 @@ var txContractCmd = &cobra.Command{
 		if gasLimit == 0 {
 			gasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, data)
 			if err != nil {
-				appUI.Error("Couldn't estimate gas limit: %s", err)
+				var bal *big.Int
+				if b, berr := reader.GetBalance(tc.From); berr == nil {
+					bal = b
+				}
+				appUI.Error("%s", cmdutil.ExplainEstimateGasError(err, tc.From, bal, config.Network().GetNativeTokenSymbol()))
 				return
 			}
 		}
@@ -183,7 +189,7 @@ var txContractCmd = &cobra.Command{
 			appUI, tc.FromAcc, tx,
 			map[string]*abi.ABI{strings.ToLower(tc.To): a},
 			reader, tc.Analyzer, a, tc.Broadcaster,
-		); err != nil && !broadcasted {
+		); err != nil && !broadcasted && !errors.Is(err, cmdutil.ErrUserCancelled) {
 			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 		}
 	},
@@ -289,10 +295,10 @@ var readContractCmd = &cobra.Command{
 				appUI.Info("---------------------------------------------------")
 			}
 		} else {
-		resultJSON := contractReadResultJSON{
-			Result: nil,
-			Error:  "",
-		}
+			resultJSON := contractReadResultJSON{
+				Result: nil,
+				Error:  "",
+			}
 
 			if config.JSONOutputFile != "" {
 				defer resultJSON.Write(config.JSONOutputFile)
