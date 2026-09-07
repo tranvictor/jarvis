@@ -8,6 +8,7 @@ import (
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -548,6 +549,40 @@ func TestInfoLayoutPrintsClearSignBeforeCall(t *testing.T) {
 	transfers := strings.Index(out, "Transfers")
 	if transfers < 0 || transfers > cs {
 		t.Fatalf("clear-sign panel must sit after transfers:\n%s", out)
+	}
+}
+
+func TestInfoLayoutRendersClearSignedBoxAboveCall(t *testing.T) {
+	var buf bytes.Buffer
+	u := ui.NewTerminalUIWithWriter(&buf, false)
+	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex,
+		func(d *util.TxDisplay, _ *jarviscommon.TxResult) {
+			d.ClearSign = func(cu ui.UI) {
+				erc7730.Render(cu, &erc7730.ClearSignedView{
+					InterpolatedIntent: "Swap 1,000 USDC for WETH",
+					Owner:              "Uniswap",
+					ContractName:       "Uniswap V2 Router",
+					Source:             "registry",
+					Fields: []erc7730.FormattedField{
+						{Label: "Amount in", Value: "1,000 USDC"},
+						{Label: "Recipient", Value: "me (0x9642…5D4E)"},
+					},
+				})
+			}
+		})
+	out := buf.String()
+	for _, w := range []string{
+		"Clear Signed · Uniswap (Uniswap V2 Router)",
+		"Swap 1,000 USDC for WETH",
+		"Source: ERC-7730 registry",
+		"Call  swapExactTokensForTokens",
+	} {
+		if !strings.Contains(out, w) {
+			t.Fatalf("missing %q in output:\n%s", w, out)
+		}
+	}
+	if strings.Index(out, "Clear Signed") > strings.Index(out, "Call  swapExactTokensForTokens") {
+		t.Fatalf("clear-signed box must sit above the ABI call:\n%s", out)
 	}
 }
 
