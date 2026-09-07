@@ -58,12 +58,12 @@ func getAccDescsFromHW(hw HW, t string, path string) (*types.AccDesc, error) {
 }
 
 func handleHW(hw HW, t string) {
-	var accs []*types.AccDesc
 	var accDesc *types.AccDesc
 	var err error
 
 	batch := 0
 	for {
+		page := make([]*types.AccDesc, 0, WALLET_PAGING)
 		for i := 0; i < WALLET_PAGING; i++ {
 			var pathTemplate string
 			switch t {
@@ -79,32 +79,26 @@ func handleHW(hw HW, t string) {
 			if err != nil {
 				return
 			}
-			accs = append(accs, acc)
+			page = append(page, acc)
 		}
-		for i, acc := range accs {
-			appUI.Info("%d. %s (%s)", i, acc.Address, acc.Derpath)
-		}
-
-		index := cmdutil.PromptIndex(appUI, "Please enter the wallet index you want to add (0, 1, 2,..., next, back, custom)", 0, len(accs)-1)
-		if index == cmdutil.NEXT {
-			batch += 1
+		labels, next, back, custom := hwChooseOptions(page, batch)
+		choice := appUI.Choose("Which address do you want to add?", labels)
+		switch {
+		case choice == next:
+			batch++
 			continue
-		} else if index == cmdutil.BACK {
-			if batch > 0 {
-				batch -= 1
-			} else {
-				appUI.Warn("It can't be back. Continue with path 0")
-			}
+		case back >= 0 && choice == back:
+			batch--
 			continue
-		} else if index == cmdutil.CUSTOM {
+		case choice == custom:
 			path := cmdutil.PromptInput(appUI, "Please enter custom derivation path (eg: m/44'/60'/0'/88)")
 			accDesc, err = getAccDescsFromHW(hw, t, path)
 			if err != nil {
 				return
 			}
 			appUI.Info("%s (%s)", accDesc.Address, accDesc.Derpath)
-		} else {
-			accDesc = accs[index]
+		default:
+			accDesc = page[choice]
 		}
 
 		des := cmdutil.PromptInput(appUI, "Please enter description of this wallet, it will be used to search your wallet by keywords")
@@ -117,6 +111,26 @@ func handleHW(hw HW, t string) {
 		}
 		return
 	}
+}
+
+// hwChooseOptions builds the numbered menu for one page of hardware-wallet
+// addresses. next / back / custom are 0-based indices into labels; back is
+// -1 when this is the first page.
+func hwChooseOptions(page []*types.AccDesc, batch int) (labels []string, next, back, custom int) {
+	labels = make([]string, 0, len(page)+3)
+	for _, a := range page {
+		labels = append(labels, fmt.Sprintf("%s  %s", a.Address, a.Derpath))
+	}
+	next = len(labels)
+	labels = append(labels, "next page")
+	back = -1
+	if batch > 0 {
+		back = len(labels)
+		labels = append(labels, "previous page")
+	}
+	custom = len(labels)
+	labels = append(labels, "custom derivation path")
+	return labels, next, back, custom
 }
 
 func handleLedger(version string) {

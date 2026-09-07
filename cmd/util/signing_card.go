@@ -18,7 +18,7 @@ import (
 // Addresses on this screen are always complete: the card is the last place a
 // lookalike address can be caught.
 type SigningCard struct {
-	Kind    string // "EOA transaction", "Safe proposal", "Safe approval", "Safe execution"
+	Kind    string // "EOA transaction", "Safe proposal", "Safe approval", "Safe execution", "Classic multisig transaction"
 	Network string
 
 	Signer ui.StyledText
@@ -33,15 +33,20 @@ type SigningCard struct {
 	Gas           string // "max 20.0 gwei, tip 1.5 gwei · 85,123 gas · ≈ 0.0017 ETH"; empty hides
 	Nonce         string
 
-	Safe *SafeCardFields
+	Safe    *SafeCardFields
+	Classic *ClassicCardFields
 
 	// Call is the decoded calldata. Nil when there is none or it could not be
 	// analyzed; RawData is shown instead when set.
 	Call    *util.FunctionCallDisplay
 	RawData string
 	// CollapseCall prints the call as a single header line. Used when the
-	// same call was fully displayed moments ago (Safe approve → execute).
+	// same call was fully displayed moments ago (Safe approve → execute,
+	// Classic info → confirm).
 	CollapseCall bool
+	// CollapseNote is the muted suffix on a collapsed call header. Empty
+	// means "(Safe transaction shown above)".
+	CollapseNote string
 
 	// ClearSign renders the ERC-7730 view when a descriptor matched. It is
 	// a callback so this package does not depend on the erc7730 engine.
@@ -71,6 +76,17 @@ type SafeCardFields struct {
 	Executes string
 }
 
+// ClassicCardFields are the Gnosis Classic tx parameters that have no EOA
+// equivalent: the on-chain tx id, confirmation progress, and confirmer list.
+type ClassicCardFields struct {
+	TxID          string
+	Multisig      ui.StyledText
+	Executed      bool
+	Confirmations int
+	Threshold     uint64
+	Signatures    []ui.StyledText
+}
+
 // ShowSigningCard prints the card. Order is chosen so that what the reader
 // must verify sits directly above the prompt: the call first, then the
 // summary block, then the warnings.
@@ -84,9 +100,13 @@ func ShowSigningCard(u ui.UI, c *SigningCard) {
 	body := c.ClearSign != nil || c.Call != nil || c.RawData != ""
 	switch {
 	case c.Call != nil && c.CollapseCall:
+		note := c.CollapseNote
+		if note == "" {
+			note = "(Safe transaction shown above)"
+		}
 		u.Subsection(fmt.Sprintf("Call  %s  →  %s   %s",
 			c.Call.Method, u.Style(c.Call.Destination),
-			u.Style(ui.StyledText{Text: "(Safe transaction shown above)", Severity: ui.SeverityMuted})))
+			u.Style(ui.StyledText{Text: note, Severity: ui.SeverityMuted})))
 	case c.Call != nil:
 		util.PrintFunctionCall(u, c.Call)
 	case c.RawData != "":
@@ -105,13 +125,18 @@ func ShowSigningCard(u ui.UI, c *SigningCard) {
 	}
 	if c.Signer.Text != "" {
 		rows = append(rows, [2]ui.TableCell{label("Sign with"), ui.TCS(signer, c.Signer.Severity)})
+	} else if c.Network != "" {
+		rows = append(rows, [2]ui.TableCell{label("Network"), ui.TC(c.Network)})
 	}
 	if c.CreateAddress != "" {
 		rows = append(rows, [2]ui.TableCell{label("Creates"), ui.TC(c.CreateAddress)})
 	} else if c.To.Text != "" {
 		toLabel := "Send to"
-		if c.Safe != nil {
+		switch {
+		case c.Safe != nil:
 			toLabel = "Safe calls"
+		case c.Classic != nil:
+			toLabel = "Calls"
 		}
 		rows = append(rows, [2]ui.TableCell{label(toLabel), ui.TCS(c.To.Text, c.To.Severity)})
 	}
@@ -149,19 +174,44 @@ func ShowSigningCard(u ui.UI, c *SigningCard) {
 			), ui.SeverityMuted)})
 		}
 	}
+	if cl := c.Classic; cl != nil {
+		if cl.Multisig.Text != "" {
+			rows = append(rows, [2]ui.TableCell{label("Multisig"), ui.TCS(cl.Multisig.Text, cl.Multisig.Severity)})
+		}
+		if cl.TxID != "" {
+			rows = append(rows, [2]ui.TableCell{label("Tx ID"), ui.TC("#" + cl.TxID)})
+		}
+		status, sev := "pending", ui.SeverityWarn
+		switch {
+		case cl.Executed:
+			status, sev = "executed", ui.SeveritySuccess
+		case cl.Threshold > 0 && uint64(cl.Confirmations) >= cl.Threshold:
+			status, sev = fmt.Sprintf("ready to execute (%d/%d)", cl.Confirmations, cl.Threshold), ui.SeveritySuccess
+		case cl.Threshold > 0:
+			status = fmt.Sprintf("pending (%d/%d)", cl.Confirmations, cl.Threshold)
+		}
+		rows = append(rows, [2]ui.TableCell{label("Status"), ui.TCS(status, sev)})
+	}
 	if body {
 		u.Info("")
 	}
 	u.KeyValueCells(rows)
 
-	if c.Safe != nil && (len(c.Safe.Signatures) > 0 || c.Safe.Threshold > 0) {
-		heading := fmt.Sprintf("Signed by (%d)", len(c.Safe.Signatures))
-		if c.Safe.Threshold > 0 {
-			heading = fmt.Sprintf("Signed by (%d of %d required)", len(c.Safe.Signatures), c.Safe.Threshold)
+	sigs, thresh := []ui.StyledText(nil), uint64(0)
+	switch {
+	case c.Safe != nil && (len(c.Safe.Signatures) > 0 || c.Safe.Threshold > 0):
+		sigs, thresh = c.Safe.Signatures, c.Safe.Threshold
+	case c.Classic != nil && (len(c.Classic.Signatures) > 0 || c.Classic.Threshold > 0):
+		sigs, thresh = c.Classic.Signatures, c.Classic.Threshold
+	}
+	if len(sigs) > 0 || thresh > 0 {
+		heading := fmt.Sprintf("Signed by (%d)", len(sigs))
+		if thresh > 0 {
+			heading = fmt.Sprintf("Signed by (%d of %d required)", len(sigs), thresh)
 		}
 		u.Info("")
 		u.Info("%s", u.Style(ui.StyledText{Text: heading, Severity: ui.SeverityMuted}))
-		for i, s := range c.Safe.Signatures {
+		for i, s := range sigs {
 			u.Indent().Info("%d. %s", i+1, u.Style(s))
 		}
 	}

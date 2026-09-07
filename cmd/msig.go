@@ -67,44 +67,74 @@ automatically based on an on-chain probe of the address.`,
 			appUI.Error("Couldn't get number of transactions of the multisig: %s", err)
 			return
 		}
-		appUI.Info("Number of transactions: %d", noTxs)
+		requirement, err := multisigContract.VoteRequirement()
+		if err != nil {
+			appUI.Error("Couldn't get msig requirement: %s", err)
+			return
+		}
+		owners, err := multisigContract.Owners()
+		if err != nil {
+			appUI.Error("Couldn't get owners of the multisig: %s", err)
+			return
+		}
+
+		network := config.Network()
+		msigJarvis := util.GetJarvisAddress(msigAddress, network)
+		appUI.Section("Classic multisig")
+		appUI.Info("Address          : %s", appUI.Style(util.StyledAddress(msigJarvis)))
+		appUI.Info("Vote requirement : %d/%d", requirement, len(owners))
+		appUI.Info("On-chain txs     : %d", noTxs)
+
+		type pendingRow struct {
+			id        int64
+			to        string
+			value     *big.Int
+			confirmed int
+			status    string
+		}
+		pending := []pendingRow{}
 		noExecuted := 0
-		noConfirmed := 0
 		noError := 0
-		nonExecutedConfirmedIds := []int64{}
+		progress := appUI.Spinner(fmt.Sprintf("Checking 0/%d…", noTxs))
 		for i := int64(0); i < noTxs; i++ {
-			executed, err := multisigContract.IsExecuted(big.NewInt(i))
+			progress.Update(fmt.Sprintf("Checking %d/%d…", i+1, noTxs))
+			to, value, _, executed, confirmations, err := multisigContract.TransactionInfo(big.NewInt(i))
 			if err != nil {
-				appUI.Error("%d. error: %s", i, err)
 				noError++
 				continue
 			}
 			if executed {
-				appUI.Success("%d. executed", i)
 				noExecuted++
-				noConfirmed++
 				continue
 			}
-			confirmed, err := multisigContract.IsConfirmed(big.NewInt(i))
-			if err != nil {
-				appUI.Error("%d. error: %s", i, err)
-				noError++
-				continue
-			}
-			if confirmed {
-				appUI.Warn("%d. confirmed - not yet executed", i)
-				nonExecutedConfirmedIds = append(nonExecutedConfirmedIds, i)
-				noConfirmed++
-				continue
-			}
-			appUI.Info("%d. unconfirmed", i)
+			pending = append(pending, pendingRow{
+				id:        i,
+				to:        to,
+				value:     value,
+				confirmed: len(confirmations),
+				status:    cmdutil.ClassicSummaryStatus(len(confirmations), requirement, false),
+			})
 		}
-		appUI.Info("------------")
-		appUI.Info("Total executed txs: %d", noExecuted)
-		appUI.Info("Total confirmed but NOT executed txs: %d. IDs: %v", noConfirmed-noExecuted, nonExecutedConfirmedIds)
-		appUI.Info("Total unconfirmed txs: %d", int(noTxs)-noConfirmed)
+		progress.Stop(ui.StyledText{})
+		appUI.Info("Executed         : %d", noExecuted)
 		if noError > 0 {
 			appUI.Warn("Txs with query errors (excluded from counts above): %d", noError)
+		}
+
+		appUI.Section(fmt.Sprintf("Pending Classic transactions: %d", len(pending)))
+		if len(pending) == 0 {
+			appUI.Info("Queue is empty.")
+			return
+		}
+		for _, p := range pending {
+			toJarvis := util.GetJarvisAddress(p.to, network)
+			progressLabel := fmt.Sprintf("%d/%d", p.confirmed, requirement)
+			appUI.Info("  #%d  sigs %s  status %s", p.id, progressLabel, p.status)
+			appUI.Info("       to     %s", appUI.Style(util.StyledAddress(toJarvis)))
+			if p.value != nil && p.value.Sign() > 0 {
+				amount := jarviscommon.CompactAmount(jarviscommon.BigToFloatString(p.value, network.GetNativeTokenDecimal()))
+				appUI.Info("       value  %s %s", amount, network.GetNativeTokenSymbol())
+			}
 		}
 	},
 }
@@ -153,7 +183,20 @@ or msig tx id / init tx hash for Classic targets.`,
 			return
 		}
 
-		cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, config.Network(), cmdutil.DefaultABIResolver{}, tc.Analyzer) //nolint:dogsled
+		_, _, confirmed, executed, err := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, config.Network(), cmdutil.DefaultABIResolver{}, tc.Analyzer)
+		if err != nil {
+			return
+		}
+		switch {
+		case executed:
+			appUI.Success("Status: executed.")
+		case confirmed:
+			appUI.Success("Status: threshold met — ready to execute.")
+			appUI.Info("  jarvis msig execute %s %s%s", msigAddress, txid.String(), networkFlag())
+		default:
+			appUI.Info("Status: pending — needs more approval(s).")
+			appUI.Info("  jarvis msig approve %s %s%s", msigAddress, txid.String(), networkFlag())
+		}
 	},
 }
 
@@ -365,10 +408,6 @@ type msigTxHistory struct {
 
 const logsChunkSize = 9000
 
-func clearProgressLine() {
-	fmt.Fprintf(os.Stdout, "\r%s\r", strings.Repeat(" ", 80))
-}
-
 func queryMsigTxHistory(ethReader *reader.EthReader, msigABI *abi.ABI, msigAddr string, txID *big.Int, fromBlock int64, network jarvisnetworks.Network, executed bool, numConfirmations int) *msigTxHistory {
 	history := &msigTxHistory{}
 	txIDHash := ethcommon.BigToHash(txID)
@@ -385,6 +424,7 @@ func queryMsigTxHistory(ethReader *reader.EthReader, msigABI *abi.ABI, msigAddr 
 	addrs := []string{msigAddr}
 
 	// Phase 1: find all Confirmation events, stop as soon as we have enough
+	progress := appUI.Spinner("Querying confirmation logs…")
 	for start := fromBlock; start <= latestBlock && len(history.confirmations) < numConfirmations; start += logsChunkSize {
 		end := start + logsChunkSize - 1
 		if end > latestBlock {
@@ -392,11 +432,11 @@ func queryMsigTxHistory(ethReader *reader.EthReader, msigABI *abi.ABI, msigAddr 
 		}
 
 		pct := int(float64(start-fromBlock) / float64(totalBlocks) * 100)
-		fmt.Fprintf(os.Stdout, "\r  Querying confirmation logs... %d%%", pct)
+		progress.Update(fmt.Sprintf("Querying confirmation logs… %d%%", pct))
 
 		logs, err := ethReader.GetLogs(int(start), int(end), addrs, confirmTopic)
 		if err != nil {
-			clearProgressLine()
+			progress.Stop(ui.StyledText{})
 			appUI.Warn("Couldn't query confirmation logs: %s", err)
 			return history
 		}
@@ -412,7 +452,7 @@ func queryMsigTxHistory(ethReader *reader.EthReader, msigABI *abi.ABI, msigAddr 
 
 		time.Sleep(200 * time.Millisecond)
 	}
-	clearProgressLine()
+	progress.Stop(ui.StyledText{})
 
 	// Phase 2: find the Execution event if the tx is executed.
 	// Execution can only happen at or after the last confirmation, so
@@ -430,6 +470,7 @@ func queryMsigTxHistory(ethReader *reader.EthReader, msigABI *abi.ABI, msigAddr 
 		execTopic := msigABI.Events["Execution"].ID.Hex()
 		execTotal := latestBlock - execFrom + 1
 
+		progress = appUI.Spinner("Querying execution logs…")
 		for start := execFrom; start <= latestBlock && history.executionTxHash == ""; start += logsChunkSize {
 			end := start + logsChunkSize - 1
 			if end > latestBlock {
@@ -437,11 +478,11 @@ func queryMsigTxHistory(ethReader *reader.EthReader, msigABI *abi.ABI, msigAddr 
 			}
 
 			pct := int(float64(start-execFrom) / float64(execTotal) * 100)
-			fmt.Fprintf(os.Stdout, "\r  Querying execution logs... %d%%", pct)
+			progress.Update(fmt.Sprintf("Querying execution logs… %d%%", pct))
 
 			execLogs, err := ethReader.GetLogs(int(start), int(end), addrs, execTopic)
 			if err != nil {
-				clearProgressLine()
+				progress.Stop(ui.StyledText{})
 				appUI.Warn("Couldn't query execution logs: %s", err)
 				return history
 			}
@@ -454,7 +495,7 @@ func queryMsigTxHistory(ethReader *reader.EthReader, msigABI *abi.ABI, msigAddr 
 
 			time.Sleep(200 * time.Millisecond)
 		}
-		clearProgressLine()
+		progress.Stop(ui.StyledText{})
 	}
 
 	return history
@@ -841,7 +882,11 @@ func approveClassicRef(cm *walletarmy.WalletManager, a *abi.ABI, r *batchResult)
 		return
 	}
 
-	_, numConf, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
+	_, numConf, confirmed, executed, err := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
+	if err != nil {
+		r.status, r.reason = "failed", err.Error()
+		return
+	}
 	if executed {
 		appUI.Warn("Already executed. Skip.")
 		r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, true, numConf)
@@ -898,6 +943,7 @@ func approveClassicRef(cm *walletarmy.WalletManager, a *abi.ABI, r *batchResult)
 				appUI.Error("Couldn't build tx: %s", buildError)
 				return buildError
 			}
+			cmdutil.SetClassicSigningNote()
 			err = cmdutil.PromptTxConfirmation(
 				appUI,
 				cm.Analyzer(network),
