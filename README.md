@@ -279,6 +279,13 @@ Continue with the remaining 1 transaction(s)? [Y/n]
 - The process exits with status 1 when any item failed; skipped items alone
   keep it at 0.
 
+### Directories
+
+`jarvis wallet list`, `jarvis network list` and `jarvis msig chains list`
+are bordered tables. `network list` prints RPC **hostnames** only so a
+default Infura/Alchemy key never lands on the screen; full URLs live
+under `jarvis node list <network>`.
+
 ## Multisig: Gnosis Classic and Gnosis Safe
 
 Jarvis has first-class support for both Gnosis Classic (on-chain

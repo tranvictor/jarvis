@@ -132,7 +132,7 @@ func Execute() {
 		"degen",
 		"x",
 		false,
-		"Set to enable degen prints such as detailed contract calls, nonces... Default false",
+		"show full addresses, uncollapsed arrays, gas/nonce details and the event table",
 	)
 
 	rootCmd.PersistentFlags().BoolVarP(

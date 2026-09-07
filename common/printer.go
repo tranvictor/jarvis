@@ -180,7 +180,7 @@ func PlainAddress(addr Address) string {
 	if addr.Decimal != 0 {
 		return fmt.Sprintf("%s (%s - %d)", addr.Address, addr.Desc, addr.Decimal)
 	}
-	if addr.Desc != "" {
+	if addr.Desc != "" && addr.Desc != "unknown" {
 		return fmt.Sprintf("%s (%s)", addr.Address, addr.Desc)
 	}
 	return addr.Address
@@ -205,9 +205,8 @@ func ShortAddress(hex string) string {
 }
 
 // NameFirst formats an address for dense, read-only views. Known addresses
-// lead with their name and put the hex in parentheses; unknown ones lead with
-// the hex followed by "(unknown)". full selects the complete hex over the
-// ShortAddress form.
+// lead with their name and put the hex in parentheses; unknown ones are the
+// hex alone. full selects the complete hex over the ShortAddress form.
 func NameFirst(addr Address, full bool) string {
 	if addr.Address == "" {
 		return ""

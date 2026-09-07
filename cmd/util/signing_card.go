@@ -211,14 +211,27 @@ type WarningInput struct {
 	ToIsContract bool
 	Value        *big.Int
 	NativeSymbol string
-	HasData      bool
-	Call         *jarviscommon.FunctionCall
-	DelegateCall bool
-	MultiSend    bool
+	// NativeDecimals is the native token's decimal count; 0 means 18.
+	NativeDecimals uint64
+	HasData        bool
+	Call           *jarviscommon.FunctionCall
+	DelegateCall   bool
+	MultiSend      bool
 	// SignerBalance and MaxCost enable the insufficient-funds warning; either
 	// nil skips it. MaxCost is value + gasLimit × max fee.
 	SignerBalance *big.Int
 	MaxCost       *big.Int
+}
+
+func (in WarningInput) nativeDecimals() uint64 {
+	if in.NativeDecimals == 0 {
+		return 18
+	}
+	return in.NativeDecimals
+}
+
+func (in WarningInput) nativeAmount(v *big.Int) string {
+	return jarviscommon.CompactAmount(jarviscommon.BigToFloatString(v, in.nativeDecimals()))
 }
 
 // approvalMethods maps ERC-20/721/1155 approval selectors to the parameter
@@ -241,12 +254,12 @@ func SigningWarnings(in WarningInput) []string {
 	}
 	if in.Value != nil && in.Value.Sign() > 0 && in.ToIsContract {
 		out = append(out, fmt.Sprintf("sends %s %s into a contract",
-			jarviscommon.BigToFloatString(in.Value, 18), in.NativeSymbol))
+			in.nativeAmount(in.Value), in.NativeSymbol))
 	}
 	if in.SignerBalance != nil && in.MaxCost != nil && in.SignerBalance.Cmp(in.MaxCost) < 0 {
 		out = append(out, fmt.Sprintf("balance %s %s does not cover value + max gas (%s %s); the tx would be rejected",
-			jarviscommon.CompactAmount(jarviscommon.BigToFloatString(in.SignerBalance, 18)), in.NativeSymbol,
-			jarviscommon.CompactAmount(jarviscommon.BigToFloatString(in.MaxCost, 18)), in.NativeSymbol))
+			in.nativeAmount(in.SignerBalance), in.NativeSymbol,
+			in.nativeAmount(in.MaxCost), in.NativeSymbol))
 	}
 	if in.DelegateCall {
 		if in.MultiSend {

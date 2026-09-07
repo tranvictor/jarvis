@@ -196,12 +196,8 @@ the on-chain transaction count.`,
 			return
 		}
 		for i, owner := range owners {
-			_, name, err := util.GetMatchingAddress(owner)
-			if err != nil {
-				appUI.Info("%d. %s (Unknown)", i+1, owner)
-			} else {
-				appUI.Info("%d. %s (%s)", i+1, owner, name)
-			}
+			ja := util.GetJarvisAddress(owner, config.Network())
+			appUI.Info("%d. %s", i+1, jarviscommon.NameFirst(ja, true))
 		}
 		voteRequirement, err := multisigContract.VoteRequirement()
 		if err != nil {
@@ -227,7 +223,7 @@ func getMsigContractFromParams(args []string, resolver cmdutil.ABIResolver) (msi
 	addr, name, err := resolver.GetMatchingAddress(args[0])
 	var msigName string
 	if err != nil {
-		msigName = "Unknown"
+		msigName = ""
 		addresses := util.ScanForAddresses(args[0])
 		if len(addresses) == 0 {
 			appUI.Error("Couldn't find any address for \"%s\"", args[0])
@@ -240,19 +236,26 @@ func getMsigContractFromParams(args []string, resolver cmdutil.ABIResolver) (msi
 	}
 	a, err := resolver.GetABI(msigAddress, config.Network())
 	if err != nil {
-		appUI.Error("Couldn't get ABI of %s from etherscan", msigAddress)
+		appUI.Error("Couldn't get ABI of %s from the block explorer", msigAddress)
 		return "", err
 	}
 	isGnosisMultisig, err := util.IsGnosisMultisig(a)
+	labelled := func() string {
+		ja := util.GetJarvisAddress(msigAddress, config.Network())
+		if msigName != "" {
+			ja.Desc = msigName
+		}
+		return jarviscommon.NameFirst(ja, true)
+	}
 	if err != nil {
-		appUI.Error("Checking failed, %s (%s) is not a contract", msigAddress, msigName)
+		appUI.Error("Checking failed, %s is not a contract", labelled())
 		return "", err
 	}
 	if !isGnosisMultisig {
-		appUI.Error("%s (%s) is not a Gnosis multisig or not with a version I understand.", msigAddress, msigName)
+		appUI.Error("%s is not a Gnosis Classic or Safe multisig (or not a version jarvis understands).", labelled())
 		return "", fmt.Errorf("not gnosis multisig")
 	}
-	appUI.Info("Multisig: %s (%s)", msigAddress, msigName)
+	appUI.Info("Multisig: %s", labelled())
 	return msigAddress, nil
 }
 
@@ -1217,7 +1220,11 @@ the Safe, so the positional Safe address and --network become optional.`,
 		if gasLimit == 0 {
 			gasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, txdata)
 			if err != nil {
-				appUI.Error("Couldn't estimate gas limit: %s", err)
+				var bal *big.Int
+				if b, berr := reader.GetBalance(tc.From); berr == nil {
+					bal = b
+				}
+				appUI.Error("%s", cmdutil.ExplainEstimateGasError(err, tc.From, bal, config.Network().GetNativeTokenSymbol()))
 				return
 			}
 		}

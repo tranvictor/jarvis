@@ -48,14 +48,19 @@ var listChainsMsigCmd = &cobra.Command{
 			}
 		}
 		appUI.Info("%d chains known:", len(entries))
-		fmt.Printf("%-10s  %-10s  %s\n", "chainID", "shortName", "txService")
+		rows := make([][]string, 0, len(entries))
 		for _, ci := range entries {
 			svc := ci.TransactionService
 			if svc == "" {
 				svc = "(no tx service)"
 			}
-			fmt.Printf("%-10d  %-10s  %s\n", ci.ChainID, ci.ShortName, svc)
+			rows = append(rows, []string{
+				fmt.Sprintf("%d", ci.ChainID),
+				ci.ShortName,
+				svc,
+			})
 		}
+		appUI.Table([]string{"chainID", "shortName", "txService"}, rows)
 	},
 }
 

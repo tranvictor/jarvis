@@ -56,7 +56,7 @@ func FillSigningTxParams(u ui.UI, tc *TxContext, network jarvisnetworks.Network)
 
 	if tc.TxType == types.LegacyTxType {
 		if config.TipGas > 0 && u != nil {
-			u.Warn("We are doing legacy tx hence we ignore tip gas parameter.")
+			u.Warn("Legacy tx: ignoring --tipgas (EIP-1559 tips apply only to type-2 txs).")
 		}
 	} else if tc.TxType == types.DynamicFeeTxType {
 		if config.TipGas == 0 {

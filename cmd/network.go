@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -13,6 +14,7 @@ import (
 
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -261,28 +263,67 @@ needs --safe-tx-file to keep proposals in a local file instead.`,
 var listNetworkCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Show all of supported networks",
-	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		nets := networks.GetSupportedNetworks()
-		for i, n := range nets {
+		sort.Slice(nets, func(i, j int) bool { return nets[i].GetName() < nets[j].GetName() })
+		rows := make([][]string, 0, len(nets))
+		var hasOverride bool
+		for _, n := range nets {
 			nodes, err := util.GetNodes(n)
 			if err != nil {
-				appUI.Error("Error: %s", err)
+				appUI.Error("%s: %s", n.GetName(), err)
 				continue
 			}
-			appUI.Info("%d. Name: %s, Chain ID: %d", i+1, n.GetName(), n.GetChainID())
-			if src := networks.CustomNetworkFile(n.GetName()); src != "" {
-				appUI.Info("    Override: %s", src)
+			hosts := make([]string, 0, len(nodes))
+			seen := map[string]bool{}
+			for _, node := range nodes {
+				h := nodeHost(node)
+				if h == "" || seen[h] {
+					continue
+				}
+				seen[h] = true
+				hosts = append(hosts, h)
 			}
-			appUI.Info("    RPC nodes:")
-			for key, node := range nodes {
-				appUI.Info("    - %s: %s", key, node)
+			sort.Strings(hosts)
+			alias := strings.Join(n.GetAlternativeNames(), ", ")
+			rpc := ""
+			if len(hosts) == 1 {
+				rpc = hosts[0]
+			} else if len(hosts) > 1 {
+				rpc = fmt.Sprintf("%s +%d", hosts[0], len(hosts)-1)
+			}
+			src := ""
+			if networks.CustomNetworkFile(n.GetName()) != "" {
+				src = "override"
+				hasOverride = true
+			}
+			rows = append(rows, []string{n.GetName(), fmt.Sprintf("%d", n.GetChainID()), alias, rpc, src})
+		}
+		headers := []string{"Network", "Chain ID", "Alias", "RPC"}
+		if hasOverride {
+			headers = append(headers, "Source")
+		} else {
+			for i := range rows {
+				rows[i] = rows[i][:4]
 			}
 		}
-
-		appUI.Info("\nIf you want to add more networks to the list, use following command:\n> jarvis network add")
-		appUI.Info("\nIf you want to delete a network, just delete the corresponding json file in ~/.jarvis/networks/.")
+		appUI.Table(headers, rows)
+		appUI.Info("%s", appUI.Style(ui.StyledText{
+			Text:     "full URLs: jarvis node list <network>   add a chain: jarvis network add",
+			Severity: ui.SeverityMuted,
+		}))
 	},
+}
+
+// nodeHost is the hostname of an RPC URL, so listing networks never echoes
+// an embedded API key from a default Infura/Alchemy path.
+func nodeHost(raw string) string {
+	raw = strings.TrimSpace(raw)
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return raw
+	}
+	return u.Host
 }
 
 var networkCmd = &cobra.Command{

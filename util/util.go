@@ -346,7 +346,7 @@ func AnalyzeMethodCallAndPrint(
 ) (fc *jarviscommon.FunctionCall) {
 	fc = analyzer.AnalyzeFunctionCallRecursively(
 		GetABI, value, destination, data, customABIs)
-	DisplayFunctionCall(u, fc)
+	DisplayFunctionCall(u, fc, network)
 	return fc
 }
 

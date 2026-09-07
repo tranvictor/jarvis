@@ -190,46 +190,41 @@ func TestNestedLayerUIRepresentation(t *testing.T) {
 	params := nestedLayerFixture(t)
 	util.DisplayParams(rec, params)
 
-	entries := rec.Entries()
-	tableRows := filterTableEntries(entries)
-
-	// The table should start with a header and contain the expected groups
-	// separated by "---" dividers.
-	expected := []string{
-		"Parameter | Value",
-		// Group 1: scalar params
-		"num (uint256) | 1000",
-		"account (address) | 0x9642b23Ed1E01Df1092B92641051881a322F5D4E (unknown)",
-		"---",
-		// Group 2: secondLayer
-		"secondLayer (TestNestedReturnSecondLayer) | ",
-		"  id (uint256) | 10",
-		"  layers ((uint256,address,string)[]) | ",
-		"    [0] index (uint256) | 1",
-		"        owner (address) | 0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97 (unknown)",
-		"        text (string) | Hello 1",
-		"    [1] index (uint256) | 2",
-		"        owner (address) | 0x9642b23Ed1E01Df1092B92641051881a322F5D4E (unknown)",
-		"        text (string) | Hello 2",
-		"---",
-		// Group 3: value
-		"value (TestNestedReturnSomeValues) | ",
-		"  firstVal (uint256) | 16",
-		"  secondVal (uint256) | 30",
-		"  addrVal (address) | 0x559432E18b281731c054cD703D4B49872BE4ed53 (unknown)",
+	var got []string
+	for _, e := range rec.Entries() {
+		if e.Method == "Info" {
+			got = append(got, e.Value)
+		}
 	}
-
-	if len(tableRows) != len(expected) {
-		t.Errorf("expected %d table entries, got %d", len(expected), len(tableRows))
-		for i, row := range tableRows {
+	expected := []string{
+		"num          1000  uint256",
+		"account      0x9642b23Ed1E01Df1092B92641051881a322F5D4E  address",
+		"secondLayer  TestNestedReturnSecondLayer",
+		"├─ id      10  uint256",
+		"└─ layers  [2 items]  (uint256,address,string)[]",
+		"   ├─ [0]",
+		"   │  ├─ index  1  uint256",
+		"   │  ├─ owner  0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97  address",
+		"   │  └─ text   Hello 1  string",
+		"   └─ [1]",
+		"      ├─ index  2  uint256",
+		"      ├─ owner  0x9642b23Ed1E01Df1092B92641051881a322F5D4E  address",
+		"      └─ text   Hello 2  string",
+		"value        TestNestedReturnSomeValues",
+		"├─ firstVal   16  uint256",
+		"├─ secondVal  30  uint256",
+		"└─ addrVal    0x559432E18b281731c054cD703D4B49872BE4ed53  address",
+	}
+	if len(got) != len(expected) {
+		t.Errorf("expected %d lines, got %d", len(expected), len(got))
+		for i, row := range got {
 			t.Logf("  [%d] %q", i, row)
 		}
 		t.FailNow()
 	}
-
 	for i, want := range expected {
-		if tableRows[i] != want {
-			t.Errorf("row %d:\n  want: %q\n   got: %q", i, want, tableRows[i])
+		if got[i] != want {
+			t.Errorf("row %d:\n  want: %q\n   got: %q", i, want, got[i])
 		}
 	}
 }
@@ -237,16 +232,6 @@ func TestNestedLayerUIRepresentation(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-func filterTableEntries(entries []ui.Entry) []string {
-	var rows []string
-	for _, e := range entries {
-		if e.Method == "Table" {
-			rows = append(rows, e.Value)
-		}
-	}
-	return rows
-}
 
 func assertParam(t *testing.T, d util.ParamDisplay, name, typ string) {
 	t.Helper()
@@ -305,7 +290,7 @@ func TestUndecodedCallShowsContractAndData(t *testing.T) {
 		DecodedFunctionCalls: []*jarviscommon.FunctionCall{inner},
 	}
 
-	d := util.DisplayFunctionCall(rec, outer)
+	d := util.DisplayFunctionCall(rec, outer, networks.EthereumMainnet)
 
 	if d.InnerCalls[0].Data != "0xdeadbeef0000000000000000000000000000000000000000000000000000000000000001" {
 		t.Errorf("inner Data not carried into the view-model: %q", d.InnerCalls[0].Data)
@@ -330,5 +315,22 @@ func TestUndecodedCallShowsContractAndData(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("output missing %q:\n%s", want, joined)
 		}
+	}
+}
+
+func TestInnerCallValueUsesNetworkToken(t *testing.T) {
+	inner := &jarviscommon.FunctionCall{
+		Destination: jarviscommon.Address{Address: "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97"},
+		Method:      "doSomething",
+		Value:       big.NewInt(1_500_000_000_000_000_000),
+	}
+	outer := &jarviscommon.FunctionCall{
+		Destination:          jarviscommon.Address{Address: "0x9642b23Ed1E01Df1092B92641051881a322F5D4E", Desc: "MultiSend"},
+		Method:               "multiSend",
+		DecodedFunctionCalls: []*jarviscommon.FunctionCall{inner},
+	}
+	d := util.NewFunctionCallDisplay(outer, networks.BSCMainnet)
+	if got := d.InnerCalls[0].Value; got != "1.5 BNB" {
+		t.Fatalf("inner value = %q, want 1.5 BNB", got)
 	}
 }

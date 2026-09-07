@@ -89,14 +89,14 @@ func buildParamDisplay(param jarviscommon.ParamResult) ParamDisplay {
 	return d
 }
 
-func buildFunctionCallDisplay(fc *jarviscommon.FunctionCall, nested bool) *FunctionCallDisplay {
+func buildFunctionCallDisplay(fc *jarviscommon.FunctionCall, nested bool, network networks.Network) *FunctionCallDisplay {
 	d := &FunctionCallDisplay{
 		Destination: StyledAddress(fc.Destination),
 		Error:       fc.Error,
 		Method:      fc.Method,
 	}
-	if nested && fc.Value != nil {
-		d.Value = fmt.Sprintf("%f ETH", jarviscommon.BigToFloat(fc.Value, 18))
+	if nested && fc.Value != nil && fc.Value.Sign() > 0 {
+		d.Value = nativeValueText(fc.Value, network)
 	}
 	// Only carried when the method couldn't be resolved — a decoded call already
 	// shows everything the calldata contains.
@@ -107,7 +107,7 @@ func buildFunctionCallDisplay(fc *jarviscommon.FunctionCall, nested bool) *Funct
 		d.Params = append(d.Params, buildParamDisplay(param))
 	}
 	for _, inner := range fc.DecodedFunctionCalls {
-		d.InnerCalls = append(d.InnerCalls, buildFunctionCallDisplay(inner, true))
+		d.InnerCalls = append(d.InnerCalls, buildFunctionCallDisplay(inner, true, network))
 	}
 	return d
 }
@@ -129,7 +129,16 @@ func buildLogDisplay(log jarviscommon.LogResult) LogDisplay {
 	return d
 }
 
-func buildTxDisplay(result *jarviscommon.TxResult) *TxDisplay {
+func nativeValueText(v *big.Int, network networks.Network) string {
+	dec, sym := uint64(18), "ETH"
+	if network != nil {
+		dec = network.GetNativeTokenDecimal()
+		sym = network.GetNativeTokenSymbol()
+	}
+	return jarviscommon.BigToFloatString(v, dec) + " " + sym
+}
+
+func buildTxDisplay(result *jarviscommon.TxResult, network networks.Network) *TxDisplay {
 	d := &TxDisplay{
 		Status:       result.Status,
 		From:         styledParamAddress(result.From),
@@ -149,7 +158,7 @@ func buildTxDisplay(result *jarviscommon.TxResult) *TxDisplay {
 		return d
 	}
 	if result.FunctionCall != nil {
-		d.FunctionCall = buildFunctionCallDisplay(result.FunctionCall, false)
+		d.FunctionCall = buildFunctionCallDisplay(result.FunctionCall, false, network)
 	}
 	d.Transfers = buildTransfers(result.Logs)
 	d.NetEffect = buildNetEffect(d.Transfers, d.From)
@@ -417,36 +426,9 @@ func flattenParamRows(d ParamDisplay, indent string) [][]ui.TableCell {
 // table. Consecutive scalar params share a group; each complex param
 // (tuple / array) gets its own group.
 func printParamList(u ui.UI, params []ParamDisplay) {
-	var groups [][][]ui.TableCell
-	var scalarGroup [][]ui.TableCell
-
-	flushScalars := func() {
-		if len(scalarGroup) > 0 {
-			groups = append(groups, scalarGroup)
-			scalarGroup = nil
-		}
-	}
-
-	for _, p := range params {
-		rows := flattenParamRows(p, "")
-		if len(rows) == 0 {
-			continue
-		}
-		if p.Values != nil {
-			scalarGroup = append(scalarGroup, rows...)
-		} else {
-			flushScalars()
-			groups = append(groups, rows)
-		}
-	}
-
-	flushScalars()
-
-	if len(groups) > 0 {
-		u.PrintTable(&ui.Table{
-			Headers: []string{"Parameter", "Value"},
-			Groups:  groups,
-		})
+	p := txPrinter{u: u, layout: LayoutInfoFull, compact: false}
+	for _, line := range p.paramLines(params) {
+		u.Info("%s", line)
 	}
 }
 
@@ -535,9 +517,8 @@ func DisplayParam(u ui.UI, param jarviscommon.ParamResult) ParamDisplay {
 }
 
 // DisplayParams builds view-models for a slice of ABI parameters and renders
-// them together in one pass: all scalar params appear in a single table and
-// complex params (tuples, arrays) are printed below it. This avoids the
-// fragmented output produced by calling DisplayParam once per param.
+// them as aligned name/value/type lines with tuples and arrays expanded as a
+// tree — the same form as a function-call body.
 func DisplayParams(u ui.UI, params []jarviscommon.ParamResult) []ParamDisplay {
 	displays := make([]ParamDisplay, len(params))
 	for i, p := range params {
@@ -551,16 +532,17 @@ func DisplayParams(u ui.UI, params []jarviscommon.ParamResult) []ParamDisplay {
 // function call (and any recursively decoded inner calls) and writes it to u
 // as an indented tree with full addresses and nothing collapsed — the form
 // used wherever the reader is about to sign what they see.
-func DisplayFunctionCall(u ui.UI, fc *jarviscommon.FunctionCall) *FunctionCallDisplay {
-	d := buildFunctionCallDisplay(fc, false)
+func DisplayFunctionCall(u ui.UI, fc *jarviscommon.FunctionCall, network networks.Network) *FunctionCallDisplay {
+	d := buildFunctionCallDisplay(fc, false, network)
 	PrintFunctionCall(u, d)
 	return d
 }
 
 // NewFunctionCallDisplay builds the view-model for a decoded call without
-// printing it.
-func NewFunctionCallDisplay(fc *jarviscommon.FunctionCall) *FunctionCallDisplay {
-	return buildFunctionCallDisplay(fc, false)
+// printing it. network supplies the native token for inner-call value labels;
+// nil falls back to 18-decimal ETH.
+func NewFunctionCallDisplay(fc *jarviscommon.FunctionCall, network networks.Network) *FunctionCallDisplay {
+	return buildFunctionCallDisplay(fc, false, network)
 }
 
 // PrintFunctionCall renders an already-built call view-model in full detail.
@@ -576,7 +558,7 @@ func PrintFunctionCall(u ui.UI, d *FunctionCallDisplay) {
 // hash is the transaction hash shown in the headline/footer; pass an empty
 // string to omit it (e.g. when the hash is already shown by the caller).
 func DisplayTxResult(u ui.UI, result *jarviscommon.TxResult, network networks.Network, layout TxLayout, hash string) *TxDisplay {
-	d := buildTxDisplay(result)
+	d := buildTxDisplay(result, network)
 	d.Hash = hash
 	printTxDisplay(u, d, network, layout)
 	return d

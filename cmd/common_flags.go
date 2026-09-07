@@ -18,7 +18,7 @@ func networkFlag() string {
 
 func AddCommonFlagsToTransactionalCmds(c *cobra.Command) {
 	c.PersistentFlags().
-		Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. If default value is used, we will use https://ethgasstation.info/ to get fast gas price. The gas price to be used in the tx is gas price + extra gas price")
+		Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. 0 = suggested by the network's explorer or nodes. The tx uses gasprice + extraprice")
 	c.PersistentFlags().
 		Float64VarP(&config.TipGas, "tipgas", "s", 0, "tip in gwei, will be use in dynamic fee tx, default value get from node.")
 	c.PersistentFlags().
@@ -32,7 +32,7 @@ func AddCommonFlagsToTransactionalCmds(c *cobra.Command) {
 	c.PersistentFlags().
 		Uint64VarP(&config.Nonce, "nonce", "n", 0, "Nonce of the from account. If default value is used, we will use the next available nonce of from account")
 	c.PersistentFlags().
-		StringVarP(&config.From, "from", "f", "", "Account to use to send the transaction. It can be ethereum address or a hint string to look it up in the list of account. See jarvis acc for all of the registered accounts")
+		StringVarP(&config.From, "from", "f", "", "Account to send from: an address or a keyword (see jarvis wallet list)")
 	c.PersistentFlags().
 		BoolVarP(&config.DontBroadcast, "dry", "d", false, "Will not broadcast the tx, only show signed tx.")
 	c.PersistentFlags().
