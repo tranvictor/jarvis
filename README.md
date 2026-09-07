@@ -177,7 +177,8 @@ Events (3)
   token events from unverified contracts. `--json-output` still includes
   a `transfers` array.
 - Unknown addresses are shown as bare short hex; `(zero address)` marks
-  mints and burns. Integers get thousands separators and token amounts are
+  mints, burns and empty approve-targets, and is never replaced by an
+  address-book name. Integers get thousands separators and token amounts are
   rounded to four decimals (four significant digits below 1). `--degen` and
   `--json-output` keep every digit.
 - Arrays longer than a few items and long `bytes` blobs are collapsed;

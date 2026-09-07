@@ -248,6 +248,24 @@ func TestPlainTransferIsHeadlineOnly(t *testing.T) {
 	}
 }
 
+func TestZeroAddressNeverShowsAddressBookName(t *testing.T) {
+	r := swapTxResult()
+	zero := "0x0000000000000000000000000000000000000000"
+	r.FunctionCall.Params = []jarviscommon.ParamResult{
+		scalar("approveTarget", "address", addrValue(zero, "Quang Le")),
+	}
+	r.Logs = nil
+	for _, layout := range []util.TxLayout{util.LayoutInfo, util.LayoutInfoFull} {
+		out := render(t, r, layout, "")
+		if strings.Contains(out, "Quang Le") {
+			t.Fatalf("zero address must not show an address-book name in layout %v:\n%s", layout, out)
+		}
+		if !strings.Contains(out, "zero address") {
+			t.Fatalf("zero address must be labelled in layout %v:\n%s", layout, out)
+		}
+	}
+}
+
 func TestUnlimitedApprovalIsFlagged(t *testing.T) {
 	r := swapTxResult()
 	r.FunctionCall = nil
