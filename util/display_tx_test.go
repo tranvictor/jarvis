@@ -110,19 +110,19 @@ func TestInfoLayoutOrdersByImportance(t *testing.T) {
 
 	want := []string{
 		"✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)",
-		"         from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567",
+		"         mainnet   from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567",
 		"Transfers",
-		"  1000 USDC     me (0x9642…5D4E)  →  USDC/WETH pair (0x0d4a…1852)",
+		"  1,000 USDC    me (0x9642…5D4E)  →  USDC/WETH pair (0x0d4a…1852)",
 		"  0.3121 WETH   USDC/WETH pair (0x0d4a…1852)  →  me (0x9642…5D4E)",
 		"Call  swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)",
-		"  amountIn      1000000000 (1‸000￺000￺000)  uint256",
+		"  amountIn      1,000,000,000  uint256",
 		"  path          [2 items]  address[]",
 		"  ├─ USDC (0xA0b8…eB48)",
 		"  └─ WETH (0xC02a…6Cc2)",
 		"  to            me (0x9642…5D4E)  address",
 		"Events (3)",
-		"  1. Transfer  USDC token (0xA0b8…eB48)   from me (0x9642…5D4E)  to USDC/WETH pair (0x0d4a…1852)  value 1000000000 (1000 USDC)",
-		"  2. Sync      USDC/WETH pair (0x0d4a…1852)   reserve0 5000000000000",
+		"  1. Transfer  USDC token (0xA0b8…eB48)   from me (0x9642…5D4E)  to USDC/WETH pair (0x0d4a…1852)  value 1,000 USDC",
+		"  2. Sync      USDC/WETH pair (0x0d4a…1852)   reserve0 5,000,000,000,000",
 		"✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)   0x3f9a…e1c2",
 	}
 	pos := -1
@@ -236,10 +236,10 @@ func TestPlainTransferIsHeadlineOnly(t *testing.T) {
 	if len(lines) != 2 {
 		t.Fatalf("expected 2 lines for a plain transfer, got %d:\n%s", len(lines), out)
 	}
-	if lines[0] != "✓ done   transfer 1.5 ETH  →  0x7a25…488D (unknown)" {
+	if lines[0] != "✓ done   transfer 1.5 ETH  →  0x7a25…488D" {
 		t.Fatalf("unexpected headline %q", lines[0])
 	}
-	if !strings.Contains(lines[1], "from me (0x9642…5D4E)   gas 0.00031500 ETH   nonce 7") {
+	if !strings.Contains(lines[1], "mainnet   from me (0x9642…5D4E)   gas 0.00031500 ETH   nonce 7") {
 		t.Fatalf("unexpected details %q", lines[1])
 	}
 }
@@ -348,7 +348,7 @@ func TestContractCreationAndEmptyCalldataIntents(t *testing.T) {
 	r.To = addr(routerHex, "")
 	r.Value = "0"
 	out := render(t, r, util.LayoutInfo, hashHex)
-	if !strings.HasPrefix(out, "✓ done   deploy contract  →  0x7a25…488D (unknown)") {
+	if !strings.HasPrefix(out, "✓ done   deploy contract  →  0x7a25…488D") {
 		t.Fatalf("creation headline:\n%s", out)
 	}
 
@@ -378,7 +378,7 @@ func TestUndecodedEventsAreCountedAndShownRaw(t *testing.T) {
 	if !strings.Contains(out, "Events (4)") {
 		t.Fatalf("undecoded logs must count:\n%s", out)
 	}
-	if !strings.Contains(out, "4. <undecoded>  0x0d4a…1852 (unknown)   topic0 0xabab") {
+	if !strings.Contains(out, "4. <undecoded>  0x0d4a…1852   topic0 0xabab") {
 		t.Fatalf("raw event line missing:\n%s", out)
 	}
 	if !strings.Contains(out, "1 event(s) shown raw") {
@@ -403,5 +403,73 @@ func TestTransfersUseTopicPositionsForDaiStyleNames(t *testing.T) {
 	out := render(t, r, util.LayoutInfo, hashHex)
 	if !strings.Contains(out, "5 WETH   me (0x9642…5D4E) approves  Uniswap V2 Router (0x7a25…488D)") {
 		t.Fatalf("dai-style approval parties missing:\n%s", out)
+	}
+}
+
+func TestNetEffectSummarisesManyTransfers(t *testing.T) {
+	me := addr(meHex, "me")
+	pair := addr(pairHex, "USDC/WETH pair")
+	router := addr(routerHex, "Uniswap V2 Router")
+	zero := addr("0x0000000000000000000000000000000000000000", "")
+	r := swapTxResult()
+	r.FunctionCall = nil
+	// me → router → pair → router → me: router is a pass-through and must not
+	// appear; a burn to the zero address must not add a row.
+	r.Logs = []jarviscommon.LogResult{
+		transferLog(usdcHex, "USDC", 6, me, router, "1000000000"),
+		transferLog(usdcHex, "USDC", 6, router, pair, "1000000000"),
+		transferLog(wethHex, "WETH", 18, pair, router, "312100000000000000"),
+		transferLog(wethHex, "WETH", 18, router, me, "312100000000000000"),
+		transferLog(usdcHex, "USDC", 6, pair, zero, "5000000"),
+	}
+	rec := ui.NewRecordingUI()
+	d := util.DisplayTxResult(rec, r, networks.EthereumMainnet, util.LayoutInfo, hashHex)
+	if len(d.NetEffect) != 2 {
+		t.Fatalf("expected 2 net rows (me, pair), got %+v", d.NetEffect)
+	}
+	if d.NetEffect[0].Address.Text != meHex+" (me)" {
+		t.Fatalf("sender must come first: %+v", d.NetEffect[0])
+	}
+	if got := strings.Join(d.NetEffect[0].Deltas, " | "); got != "-1000 USDC | +0.3121 WETH" {
+		t.Fatalf("sender deltas %q", got)
+	}
+	if got := strings.Join(d.NetEffect[1].Deltas, " | "); got != "+995 USDC | -0.3121 WETH" {
+		t.Fatalf("pair deltas %q", got)
+	}
+
+	out := render(t, r, util.LayoutInfo, hashHex)
+	if !strings.Contains(out, "Net effect\n  me (0x9642…5D4E)               -1,000 USDC   +0.3121 WETH\n") {
+		t.Fatalf("net effect block:\n%s", out)
+	}
+	if strings.Index(out, "Net effect") > strings.Index(out, "Transfers") {
+		t.Fatalf("net effect should precede the transfer list:\n%s", out)
+	}
+
+	r.Logs = r.Logs[:3]
+	d = util.DisplayTxResult(ui.NewRecordingUI(), r, networks.EthereumMainnet, util.LayoutInfo, hashHex)
+	if d.NetEffect != nil {
+		t.Fatalf("three transfers need no summary: %+v", d.NetEffect)
+	}
+}
+
+func TestCompactTransfersAreCapped(t *testing.T) {
+	me := addr(meHex, "me")
+	pair := addr(pairHex, "USDC/WETH pair")
+	r := swapTxResult()
+	r.FunctionCall = nil
+	r.Logs = nil
+	for i := 0; i < 11; i++ {
+		r.Logs = append(r.Logs, transferLog(usdcHex, "USDC", 6, me, pair, "1000000"))
+	}
+	out := render(t, r, util.LayoutInfo, hashHex)
+	if !strings.Contains(out, "Transfers (11)") || strings.Count(out, "1 USDC   me") != 8 {
+		t.Fatalf("compact layout should list 8 of 11 transfers:\n%s", out)
+	}
+	if !strings.Contains(out, "… 3 more (-x lists all)") {
+		t.Fatalf("hidden count missing:\n%s", out)
+	}
+	full := render(t, r, util.LayoutInfoFull, hashHex)
+	if strings.Count(full, "1 USDC   ") != 11 || strings.Contains(full, "more (-x") {
+		t.Fatalf("full layout must list every transfer:\n%s", full)
 	}
 }

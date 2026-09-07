@@ -48,8 +48,13 @@ var txCmd = &cobra.Command{
 			}()
 		}
 
-		for _, t := range txs {
-			appUI.Info("%s", t)
+		for i, t := range txs {
+			if i > 0 {
+				appUI.Info("")
+			}
+			if len(txs) > 1 {
+				appUI.Info("%s", t)
+			}
 			d := util.AnalyzeAndPrint(
 				appUI,
 				tc.Reader,
@@ -63,7 +68,6 @@ var txCmd = &cobra.Command{
 				util.InfoLayout(config.DegenMode),
 			)
 			displays[t] = d
-			appUI.Info("")
 		}
 	},
 }

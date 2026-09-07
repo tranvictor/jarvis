@@ -2,6 +2,8 @@ package util
 
 import (
 	"fmt"
+	"math/big"
+	"sort"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -139,6 +141,7 @@ func buildTxDisplay(result *jarviscommon.TxResult) *TxDisplay {
 		d.FunctionCall = buildFunctionCallDisplay(result.FunctionCall, false)
 	}
 	d.Transfers = buildTransfers(result.Logs)
+	d.NetEffect = buildNetEffect(d.Transfers, d.From)
 	for _, l := range result.Logs {
 		d.Logs = append(d.Logs, buildLogDisplay(l))
 	}
@@ -195,6 +198,107 @@ func buildTransfers(logs []jarviscommon.LogResult) []TransferDisplay {
 		out = append(out, td)
 	}
 	return out
+}
+
+// netEffectMinTransfers is the transfer count from which a per-address net
+// summary is worth printing; below it the list itself is the summary.
+const netEffectMinTransfers = 4
+
+// netEffectMaxRows caps the summary so it stays a summary.
+const netEffectMaxRows = 6
+
+// buildNetEffect folds transfers into per-address, per-token net changes.
+// Approvals are not movements and NFTs are counted as ±1. The sender comes
+// first; other addresses follow by how many tokens they touched. Mint/burn
+// counterparties (the zero address) are left out.
+func buildNetEffect(transfers []TransferDisplay, sender ui.StyledText) []NetEffectDisplay {
+	if len(transfers) < netEffectMinTransfers {
+		return nil
+	}
+	type tokenNet struct {
+		token ui.StyledText
+		net   *big.Rat
+	}
+	type addrNet struct {
+		addr   ui.StyledText
+		tokens []*tokenNet // insertion order
+		byName map[string]*tokenNet
+	}
+	addrs := map[string]*addrNet{}
+	order := []string{}
+	add := func(who ui.StyledText, token ui.StyledText, amount *big.Rat) {
+		if who.Text == "" || jarviscommon.IsZeroAddress(strings.Fields(who.Text)[0]) {
+			return
+		}
+		an := addrs[who.Text]
+		if an == nil {
+			an = &addrNet{addr: who, byName: map[string]*tokenNet{}}
+			addrs[who.Text] = an
+			order = append(order, who.Text)
+		}
+		tn := an.byName[token.Text]
+		if tn == nil {
+			tn = &tokenNet{token: token, net: new(big.Rat)}
+			an.byName[token.Text] = tn
+			an.tokens = append(an.tokens, tn)
+		}
+		tn.net.Add(tn.net, amount)
+	}
+	for _, t := range transfers {
+		amount := new(big.Rat)
+		if strings.HasPrefix(t.Amount, "#") {
+			amount.SetInt64(1)
+		} else if _, ok := amount.SetString(t.Amount); !ok {
+			continue
+		}
+		neg := new(big.Rat).Neg(amount)
+		switch t.Kind {
+		case "transfer":
+			add(t.From, t.Token, neg)
+			add(t.To, t.Token, amount)
+		case "deposit":
+			add(t.To, t.Token, amount)
+		case "withdrawal":
+			add(t.From, t.Token, neg)
+		}
+	}
+	rows := []NetEffectDisplay{}
+	for _, key := range order {
+		an := addrs[key]
+		row := NetEffectDisplay{Address: an.addr}
+		for _, tn := range an.tokens {
+			if tn.net.Sign() == 0 {
+				continue
+			}
+			row.Deltas = append(row.Deltas, signedAmount(tn.net)+" "+tn.token.Text)
+		}
+		if len(row.Deltas) > 0 {
+			rows = append(rows, row)
+		}
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if (rows[i].Address.Text == sender.Text) != (rows[j].Address.Text == sender.Text) {
+			return rows[i].Address.Text == sender.Text
+		}
+		return len(rows[i].Deltas) > len(rows[j].Deltas)
+	})
+	if len(rows) > netEffectMaxRows {
+		rows = rows[:netEffectMaxRows]
+	}
+	return rows
+}
+
+// signedAmount renders r as a decimal with an explicit sign and no trailing
+// zeros, exact to 18 places.
+func signedAmount(r *big.Rat) string {
+	s := r.FloatString(18)
+	if strings.Contains(s, ".") {
+		s = strings.TrimRight(strings.TrimRight(s, "0"), ".")
+	}
+	if r.Sign() > 0 {
+		return "+" + s
+	}
+	return s
 }
 
 // transferAmount picks the amount-like argument of a token event and renders

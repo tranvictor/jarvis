@@ -146,39 +146,50 @@ this and always carries full, untruncated values.
 
 ```
 ✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
-         from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567
+         mainnet   from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567
 
 Transfers
-  1000 USDC     me (0x9642…5D4E)  →  USDC/WETH pair (0x0d4a…1852)
+  1,000 USDC    me (0x9642…5D4E)  →  USDC/WETH pair (0x0d4a…1852)
   0.3121 WETH   USDC/WETH pair (0x0d4a…1852)  →  me (0x9642…5D4E)
 
 Call  swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
-  amountIn      1000000000 (1‸000￺000￺000)  uint256
-  amountOutMin  311200000000000000 (311￺200￺000‸000￺000￺000)  uint256
+  amountIn      1,000,000,000  uint256
+  amountOutMin  311,200,000,000,000,000  uint256
   path          [2 items]  address[]
   ├─ USDC (0xA0b8…eB48)
   └─ WETH (0xC02a…6Cc2)
   to            me (0x9642…5D4E)  address
-  deadline      1725600000 (1‸725￺600￺000)  uint256
+  deadline      1,725,600,000  uint256
 
 Events (3)
-  1. Transfer  USDC token (0xA0b8…eB48)   from me (0x9642…5D4E)  to USDC/WETH pair (0x0d4a…1852)  value 1000000000 (1000 USDC)
-  2. Sync      USDC/WETH pair (0x0d4a…1852)   reserve0 5000000000000 (…)  reserve1 1500000000000000000000 (…)
-  3. Transfer  WETH token (0xC02a…6Cc2)   from USDC/WETH pair (0x0d4a…1852)  to me (0x9642…5D4E)  value 312100000000000000 (0.3121 WETH)
+  1. Transfer  USDC token (0xA0b8…eB48)   from me (0x9642…5D4E)  to USDC/WETH pair (0x0d4a…1852)  value 1,000 USDC
+  2. Sync      USDC/WETH pair (0x0d4a…1852)   reserve0 5,000,000,000,000  reserve1 1,500,000,000,000,000,000,000
+  3. Transfer  WETH token (0xC02a…6Cc2)   from USDC/WETH pair (0x0d4a…1852)  to me (0x9642…5D4E)  value 0.3121 WETH
 
 ✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)   0x3f9a…e1c2
 ```
 
 - The headline is status + what was called + where. The muted second line
-  holds the numbers you rarely need (gas, nonce, block).
-- **Transfers** is derived from the `Transfer` / `Approval` logs so asset
-  movement is visible without reading the events. Unlimited approvals are
-  marked `UNLIMITED`.
+  holds the numbers you rarely need (network, gas, nonce, block).
+- **Transfers** is derived from the `Transfer` / `Approval` / `Deposit` /
+  `Withdrawal` logs so asset movement is visible without reading the
+  events. Unlimited approvals are marked `UNLIMITED`. Standard token events
+  decode even when the emitting contract is unverified.
+- With four or more transfers a **Net effect** block comes first: one line
+  per address with its net change per token, sender first, so a swap that
+  hops through three pools still reads as "−1,000 USDC, +0.3121 WETH". The
+  transfer list is capped at eight lines in the compact view.
+- Unknown addresses are shown as bare short hex; `(zero address)` marks
+  mints and burns. Integers get thousands separators and token amounts are
+  rounded to four decimals (four significant digits below 1). `--degen` and
+  `--json-output` keep every digit.
 - Arrays longer than a few items and long `bytes` blobs are collapsed;
   `--degen` expands everything, shows full addresses and switches the
   parameter list to a table.
-- A reverted tx opens with `✗ reverted`; the revert reason, when known, is
-  the next line.
+- A reverted tx opens with `✗ reverted`; the revert reason, when it can be
+  recovered by replaying the call, is the red `reason` line under the
+  headline. Events that no ABI describes are listed as `<undecoded>` with
+  their raw topics so the event count is always complete.
 
 ### Signing screen
 
