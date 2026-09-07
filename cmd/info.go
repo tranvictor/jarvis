@@ -30,9 +30,11 @@ var txCmd = &cobra.Command{
 			return
 		}
 
-		appUI.Info("Following tx hash(es) will be analyzed shortly:")
-		for i, t := range txs {
-			appUI.Info("  %d. %s", i, t)
+		if len(txs) > 1 {
+			appUI.Info("Analyzing %d transactions:", len(txs))
+			for i, t := range txs {
+				appUI.Info("  %d. %s", i+1, t)
+			}
 		}
 
 		displays := map[string]*util.TxDisplay{}
@@ -47,8 +49,7 @@ var txCmd = &cobra.Command{
 		}
 
 		for _, t := range txs {
-			appUI.Info("Analyzing tx: %s...", t)
-
+			appUI.Info("%s", t)
 			d := util.AnalyzeAndPrint(
 				appUI,
 				tc.Reader,
@@ -59,10 +60,10 @@ var txCmd = &cobra.Command{
 				config.CustomABI,
 				nil,
 				nil,
-				config.DegenMode,
+				util.InfoLayout(config.DegenMode),
 			)
 			displays[t] = d
-			appUI.Info("----------------------------------------------------------")
+			appUI.Info("")
 		}
 	},
 }

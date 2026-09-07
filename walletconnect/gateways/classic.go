@@ -254,7 +254,7 @@ func (g *ClassicGateway) waitAndAnalyze(
 	analyzer := txanalyzer.NewGenericAnalyzer(g.reader, g.network)
 	util.DisplayWaitAnalyze(
 		fullUI, g.reader, analyzer, signedTx, true, nil, g.network,
-		nil, nil, config.DegenMode,
+		nil, nil, util.InfoLayout(config.DegenMode),
 	)
 }
 

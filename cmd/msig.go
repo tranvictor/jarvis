@@ -949,7 +949,7 @@ Safe+Classic runs write both arrays into one file.`,
 				util.AnalyzeAndPrint(
 					appUI,
 					cm.Reader(network), cm.Analyzer(network),
-					minedTx.Hash().Hex(), network, false, "", a, nil, config.DegenMode,
+					minedTx.Hash().Hex(), network, false, "", a, nil, util.InfoLayout(config.DegenMode),
 				)
 			}
 

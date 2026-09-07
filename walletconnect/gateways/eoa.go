@@ -302,7 +302,7 @@ func (g *EOAGateway) waitAndAnalyze(
 	}
 	jarvisutil.DisplayWaitAnalyze(
 		fullUI, rd, analyzer, signedTx, true, nil, net,
-		nil, customABIs, config.DegenMode,
+		nil, customABIs, jarvisutil.InfoLayout(config.DegenMode),
 	)
 }
 
