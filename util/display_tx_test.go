@@ -317,3 +317,91 @@ func TestUnknownCallTargetIsWarnButParamsAreNot(t *testing.T) {
 		t.Fatalf("known param address should be green, got %v", path.Values[0].Severity)
 	}
 }
+
+func TestRevertReasonShownUnderHeadline(t *testing.T) {
+	r := swapTxResult()
+	r.Status = "reverted"
+	r.Logs = nil
+	r.RevertReason = `"UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT"`
+
+	out := render(t, r, util.LayoutInfo, hashHex)
+	lines := strings.Split(out, "\n")
+	if len(lines) < 3 || !strings.Contains(lines[2], `reason  "UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT"`) {
+		t.Fatalf("revert reason should be the third line:\n%s", out)
+	}
+	if !strings.HasPrefix(lines[2], "             reason") {
+		t.Fatalf("reason should align with the details line:\n%q", lines[2])
+	}
+	d := util.DisplayTxResult(ui.NewRecordingUI(), r, networks.EthereumMainnet, util.LayoutInfo, hashHex)
+	raw, _ := json.Marshal(d)
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil || m["revert_reason"] != r.RevertReason {
+		t.Fatalf("revert_reason should be in the JSON: %v %s", err, raw)
+	}
+}
+
+func TestContractCreationAndEmptyCalldataIntents(t *testing.T) {
+	r := jarviscommon.NewTxResult()
+	r.Status = "done"
+	r.TxType = "contract creation"
+	r.From = addr(meHex, "me")
+	r.To = addr(routerHex, "")
+	r.Value = "0"
+	out := render(t, r, util.LayoutInfo, hashHex)
+	if !strings.HasPrefix(out, "✓ done   deploy contract  →  0x7a25…488D (unknown)") {
+		t.Fatalf("creation headline:\n%s", out)
+	}
+
+	r = swapTxResult()
+	r.Logs = nil
+	r.Value = "0.5"
+	r.FunctionCall = &jarviscommon.FunctionCall{Destination: r.To, Data: nil}
+	out = render(t, r, util.LayoutInfo, hashHex)
+	if !strings.HasPrefix(out, "✓ done   transfer 0.5 ETH to contract  →  Uniswap V2 Router") {
+		t.Fatalf("empty calldata headline:\n%s", out)
+	}
+	if strings.Contains(out, "Call ") || strings.Contains(out, "not decoded") {
+		t.Fatalf("empty calldata must not render a Call section:\n%s", out)
+	}
+}
+
+func TestUndecodedEventsAreCountedAndShownRaw(t *testing.T) {
+	r := swapTxResult()
+	r.Logs = append(r.Logs, jarviscommon.LogResult{
+		Address: addr(pairHex, ""),
+		Topics: []jarviscommon.TopicResult{
+			{Name: "topic0", Value: jarviscommon.Value{Raw: "0x" + strings.Repeat("ab", 32), Kind: jarviscommon.DisplayRaw}},
+		},
+		Data: []jarviscommon.ParamResult{{Name: "data", Type: "bytes", Values: []jarviscommon.Value{{Raw: "0x" + strings.Repeat("00", 64), Kind: jarviscommon.DisplayRaw}}}},
+	})
+	out := render(t, r, util.LayoutInfo, hashHex)
+	if !strings.Contains(out, "Events (4)") {
+		t.Fatalf("undecoded logs must count:\n%s", out)
+	}
+	if !strings.Contains(out, "4. <undecoded>  0x0d4a…1852 (unknown)   topic0 0xabab") {
+		t.Fatalf("raw event line missing:\n%s", out)
+	}
+	if !strings.Contains(out, "1 event(s) shown raw") {
+		t.Fatalf("raw-event note missing:\n%s", out)
+	}
+}
+
+func TestTransfersUseTopicPositionsForDaiStyleNames(t *testing.T) {
+	r := swapTxResult()
+	r.FunctionCall = nil
+	me := addr(meHex, "me")
+	router := addr(routerHex, "Uniswap V2 Router")
+	r.Logs = []jarviscommon.LogResult{{
+		Name:    "Approval",
+		Address: addr(wethHex, "WETH token"),
+		Topics: []jarviscommon.TopicResult{
+			{Name: "src", Value: addrValue(me.Address, me.Desc)},
+			{Name: "guy", Value: addrValue(router.Address, router.Desc)},
+		},
+		Data: []jarviscommon.ParamResult{scalar("wad", "uint256", tokenValue("5000000000000000000", "WETH", 18))},
+	}}
+	out := render(t, r, util.LayoutInfo, hashHex)
+	if !strings.Contains(out, "5 WETH   me (0x9642…5D4E) approves  Uniswap V2 Router (0x7a25…488D)") {
+		t.Fatalf("dai-style approval parties missing:\n%s", out)
+	}
+}

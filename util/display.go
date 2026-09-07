@@ -118,18 +118,19 @@ func buildLogDisplay(log jarviscommon.LogResult) LogDisplay {
 
 func buildTxDisplay(result *jarviscommon.TxResult) *TxDisplay {
 	d := &TxDisplay{
-		Status:      result.Status,
-		From:        styledParamAddress(result.From),
-		To:          StyledAddress(result.To),
-		Value:       result.Value,
-		TxType:      result.TxType,
-		Error:       result.Error,
-		Nonce:       result.Nonce,
-		GasPrice:    result.GasPrice,
-		GasLimit:    result.GasLimit,
-		GasUsed:     result.GasUsed,
-		GasCost:     result.GasCost,
-		BlockNumber: result.BlockNumber,
+		Status:       result.Status,
+		From:         styledParamAddress(result.From),
+		To:           StyledAddress(result.To),
+		Value:        result.Value,
+		TxType:       result.TxType,
+		RevertReason: result.RevertReason,
+		Error:        result.Error,
+		Nonce:        result.Nonce,
+		GasPrice:     result.GasPrice,
+		GasLimit:     result.GasLimit,
+		GasUsed:      result.GasUsed,
+		GasCost:      result.GasCost,
+		BlockNumber:  result.BlockNumber,
 	}
 	if result.TxType == "" || result.TxType == "normal" {
 		return d
@@ -163,19 +164,31 @@ func buildTransfers(logs []jarviscommon.LogResult) []TransferDisplay {
 			continue
 		}
 		td := TransferDisplay{Amount: amount, Unlimited: unlimited, Token: transferToken(l, args)}
+		// Parties are looked up by the usual names first and by topic
+		// position otherwise: DAI/WETH-style ABIs call them src/guy/wad, and
+		// any ERC-20 puts (from, to) / (owner, spender) in topics 1 and 2.
+		party := func(idx int, names ...string) ui.StyledText {
+			if v := transferParty(args, names...); v.Text != "" {
+				return v
+			}
+			if idx < len(l.Topics) {
+				return styledValue(l.Topics[idx].Value)
+			}
+			return ui.StyledText{}
+		}
 		switch l.Name {
 		case "Transfer":
 			td.Kind = "transfer"
-			td.From, td.To = transferParty(args, "from", "src", "_from"), transferParty(args, "to", "dst", "_to")
+			td.From, td.To = party(0, "from", "src", "_from"), party(1, "to", "dst", "_to")
 		case "Approval":
 			td.Kind = "approval"
-			td.From, td.To = transferParty(args, "owner", "_owner"), transferParty(args, "spender", "_spender")
+			td.From, td.To = party(0, "owner", "src", "_owner"), party(1, "spender", "guy", "_spender")
 		case "Deposit":
 			td.Kind = "deposit"
-			td.To = transferParty(args, "dst", "to", "user", "account")
+			td.To = party(0, "dst", "to", "user", "account")
 		case "Withdrawal":
 			td.Kind = "withdrawal"
-			td.From = transferParty(args, "src", "from", "user", "account")
+			td.From = party(0, "src", "from", "user", "account")
 		default:
 			continue
 		}
@@ -374,7 +387,7 @@ func printAllLogs(u ui.UI, logs []LogDisplay) {
 
 	groups := make([][][]ui.TableCell, len(logs))
 	for i, d := range logs {
-		eventLabel := fmt.Sprintf("%d. %s", i+1, d.Name)
+		eventLabel := fmt.Sprintf("%d. %s", i+1, eventName(d))
 		paramRows := logSimpleRows(d)
 		if len(paramRows) == 0 {
 			groups[i] = [][]ui.TableCell{{ui.TC(eventLabel), ui.TC(""), ui.TC("")}}

@@ -69,17 +69,20 @@ func GweiToWei(n float64) *big.Int {
 	return FloatToBigInt(n, 9)
 }
 
+// FloatStringToBig converts a human decimal string such as "0.001" into the
+// integer amount with the given number of decimals. Arithmetic is exact
+// (big.Rat), so "0.001" with 6 decimals is 1000, never 999. Digits beyond the
+// token's precision are truncated; "_" and "," are accepted as digit
+// separators.
 func FloatStringToBig(value string, decimal uint64) (*big.Int, error) {
-	f, success := new(big.Float).SetString(value)
-	if !success {
-		return nil, fmt.Errorf("couldn't parse string to big int")
+	cleaned := strings.NewReplacer("_", "", ",", "").Replace(strings.TrimSpace(value))
+	r, ok := new(big.Rat).SetString(cleaned)
+	if !ok || cleaned == "" {
+		return nil, fmt.Errorf("couldn't parse %q as a decimal number", value)
 	}
-	power := new(big.Float).SetInt(new(big.Int).Exp(
-		big.NewInt(10), big.NewInt(int64(decimal)), nil,
-	))
-	f.Mul(f, power)
-	res, _ := f.Int(nil)
-	return res, nil
+	power := new(big.Int).Exp(big.NewInt(10), big.NewInt(int64(decimal)), nil)
+	r.Mul(r, new(big.Rat).SetInt(power))
+	return new(big.Int).Quo(r.Num(), r.Denom()), nil
 }
 
 func BigToFloatString(value *big.Int, decimal uint64) string {

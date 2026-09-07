@@ -372,8 +372,11 @@ func AnalyzeAndPrint(
 		return nil
 	}
 
+	// A contract creation has no destination to classify or fetch an ABI
+	// for; the analyzer reports it from the receipt.
 	if txinfo.Tx.To() == nil {
-		return nil
+		result := analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, false)
+		return DisplayTxResult(u, result, network, layout, tx)
 	}
 	contractAddress := txinfo.Tx.To().Hex()
 
@@ -383,21 +386,30 @@ func AnalyzeAndPrint(
 		return nil
 	}
 
-	var result *jarviscommon.TxResult
-
+	lookup := GetABI
 	if isContract {
 		if a == nil {
+			// An unavailable ABI (unverified contract, explorer outage) must
+			// not hide the transaction: the analyzer falls back to the ERC-20
+			// ABI and reports what it could not decode. Remember the failure
+			// so the analyzer doesn't repeat the lookup for the same address.
 			a, err = ConfigToABI(contractAddress, forceERC20ABI, customABI, network)
 			if err != nil {
-				u.Error("Couldn't get abi for %s: %s", contractAddress, err)
-				return nil
+				a = nil
+				abiErr := err
+				lookup = func(addr string, n networks.Network) (*abi.ABI, error) {
+					if strings.EqualFold(addr, contractAddress) {
+						return nil, abiErr
+					}
+					return GetABI(addr, n)
+				}
 			}
 		}
-		customABIs[strings.ToLower(txinfo.Tx.To().Hex())] = a
-		result = analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, true)
-	} else {
-		result = analyzer.AnalyzeOffline(&txinfo, GetABI, nil, false)
+		if a != nil {
+			customABIs[strings.ToLower(txinfo.Tx.To().Hex())] = a
+		}
 	}
+	result := analyzer.AnalyzeOffline(&txinfo, lookup, customABIs, isContract)
 
 	return DisplayTxResult(u, result, network, layout, tx)
 }
