@@ -356,52 +356,19 @@ func buildTxContextForBatch(
 	return tc, nil
 }
 
-// printSafeBatchSummary renders a per-ref outcome list followed by a
-// totals line, mirroring printBatchSummary for classic msig.
-func printSafeBatchSummary(results []safeBatchResult) {
-	appUI.Section("Batch Approve Summary")
-	approved, executed, skipped, failed := 0, 0, 0, 0
-	for i, r := range results {
-		safeLabel := ""
-		if r.safeAddress != "" {
-			safeLabel = fmt.Sprintf(" safe %s", r.safeAddress)
-		}
-		switch r.status {
-		case "approved":
-			approved++
-			appUI.Success("  %d. [%s]%s — approved", i+1, r.network, safeLabel)
-		case "executed":
-			executed++
-			appUI.Success("  %d. [%s]%s — approved + executed", i+1, r.network, safeLabel)
-		case "skipped":
-			skipped++
-			appUI.Warn("  %d. [%s]%s — skipped: %s", i+1, r.network, safeLabel, r.reason)
-		case "failed":
-			failed++
-			appUI.Error("  %d. [%s]%s — failed: %s", i+1, r.network, safeLabel, r.reason)
-		}
-		if r.safeTxHash != "" {
-			appUI.Info("       safeTxHash %s", r.safeTxHash)
-		}
-		if r.execTxHash != "" {
-			appUI.Info("       exec tx    %s", r.execTxHash)
-		}
+// safeResultDetail is the one-line detail shown next to a Safe outcome: the
+// reason for skips/failures, the exec tx hash when it executed, otherwise the
+// safeTxHash that was approved.
+func safeResultDetail(r safeBatchResult) string {
+	switch {
+	case r.reason != "":
+		return r.reason
+	case r.execTxHash != "":
+		return "exec tx " + r.execTxHash
+	case r.safeTxHash != "":
+		return "safeTxHash " + r.safeTxHash
 	}
-	parts := []string{}
-	if approved > 0 {
-		parts = append(parts, fmt.Sprintf("%d approved", approved))
-	}
-	if executed > 0 {
-		parts = append(parts, fmt.Sprintf("%d executed", executed))
-	}
-	if skipped > 0 {
-		parts = append(parts, fmt.Sprintf("%d skipped", skipped))
-	}
-	if failed > 0 {
-		parts = append(parts, fmt.Sprintf("%d failed", failed))
-	}
-	appUI.Info("")
-	appUI.Info("Total: %d transactions (%s)", len(results), strings.Join(parts, ", "))
+	return ""
 }
 
 // jsonSafeBatchResult and jsonSafeBatchSummary mirror the classic-msig

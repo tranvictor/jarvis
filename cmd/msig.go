@@ -21,6 +21,7 @@ import (
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/reader"
 )
@@ -467,82 +468,68 @@ type batchResult struct {
 	history       *msigTxHistory
 }
 
-func printBatchSummary(results []batchResult) {
-	appUI.Section("Batch Approve Summary")
-	approved, broadcasted, skipped, failed := 0, 0, 0, 0
-	for i, r := range results {
-		msigLabel := ""
+// classicResultDetail is the one-line detail shown next to a Classic
+// outcome: the reason for skips/failures, the confirm tx hash otherwise.
+func classicResultDetail(r batchResult) string {
+	if r.reason != "" {
+		return r.reason
+	}
+	if r.confirmTxHash != "" {
+		return "confirm tx " + r.confirmTxHash
+	}
+	return ""
+}
+
+// printBatchApproveSummary renders the closing table for a bapprove run:
+// one row per item in plan order (Safe first, then Classic) and the totals.
+// With --degen the Classic confirmation history is listed under the table.
+func printBatchApproveSummary(safeResults []safeBatchResult, classic []batchResult, tally batchTally) {
+	rows := make([][]ui.TableCell, 0, len(safeResults)+len(classic))
+	n := 0
+	for _, r := range safeResults {
+		n++
+		rows = append(rows, []ui.TableCell{
+			ui.TC(fmt.Sprintf("%d", n)), ui.TC("Safe"), ui.TC(r.network), ui.TC(r.safeAddress),
+			resultCell(r.status), ui.TC(safeResultDetail(r)),
+		})
+	}
+	for _, r := range classic {
+		n++
+		target := r.initTxHash
 		if r.msigTxID != "" {
-			msigLabel = fmt.Sprintf(" (msig #%s)", r.msigTxID)
+			target = "msig #" + r.msigTxID
 		}
+		rows = append(rows, []ui.TableCell{
+			ui.TC(fmt.Sprintf("%d", n)), ui.TC("Classic"), ui.TC(r.network), ui.TC(target),
+			resultCell(r.status), ui.TC(classicResultDetail(r)),
+		})
+	}
+	printBatchSummaryTable(rows, tally)
 
-		switch r.status {
-		case "approved":
-			approved++
-			appUI.Success("  %d. [%s]%s — approved", i+1, r.network, msigLabel)
-		case "broadcasted":
-			broadcasted++
-			appUI.Success("  %d. [%s]%s — broadcasted (not waiting for mining)", i+1, r.network, msigLabel)
-		case "skipped":
-			skipped++
-			appUI.Warn("  %d. [%s]%s — skipped: %s", i+1, r.network, msigLabel, r.reason)
-		case "failed":
-			failed++
-			appUI.Error("  %d. [%s]%s — failed: %s", i+1, r.network, msigLabel, r.reason)
+	if !config.DegenMode {
+		return
+	}
+	for i, r := range classic {
+		if r.history == nil || len(r.history.confirmations) == 0 {
+			continue
 		}
-
-		if r.history != nil && len(r.history.confirmations) > 0 {
-			for j, c := range r.history.confirmations {
-				tag := "confirm"
-				if j == 0 {
-					tag = "init   "
-				}
-				senderName := c.sender
-				if r.networkObj != nil {
-					addr := util.GetJarvisAddress(c.sender, r.networkObj)
-					senderName = appUI.Style(util.StyledAddress(addr))
-				}
-				appUI.Info("       %s tx: %s (by %s)", tag, c.txHash, senderName)
+		appUI.Info("")
+		appUI.Info("%d. %s msig #%s confirmations:", len(safeResults)+i+1, r.network, r.msigTxID)
+		for j, c := range r.history.confirmations {
+			tag := "confirm"
+			if j == 0 {
+				tag = "init   "
 			}
-			if r.confirmTxHash != "" {
-				found := false
-				for _, c := range r.history.confirmations {
-					if strings.EqualFold(c.txHash, r.confirmTxHash) {
-						found = true
-						break
-					}
-				}
-				if !found {
-					appUI.Info("       confirm tx: %s (pending)", r.confirmTxHash)
-				}
+			senderName := c.sender
+			if r.networkObj != nil {
+				senderName = appUI.Style(util.StyledAddress(util.GetJarvisAddress(c.sender, r.networkObj)))
 			}
-			if r.history.executionTxHash != "" {
-				appUI.Info("       exec    tx: %s", r.history.executionTxHash)
-			}
-		} else {
-			if r.initTxHash != "" {
-				appUI.Info("       init tx: %s", r.initTxHash)
-			}
-			if r.confirmTxHash != "" {
-				appUI.Info("       approve tx: %s", r.confirmTxHash)
-			}
+			appUI.Info("   %s tx: %s (by %s)", tag, c.txHash, senderName)
+		}
+		if r.history.executionTxHash != "" {
+			appUI.Info("   exec    tx: %s", r.history.executionTxHash)
 		}
 	}
-	appUI.Info("")
-	parts := []string{}
-	if approved > 0 {
-		parts = append(parts, fmt.Sprintf("%d approved", approved))
-	}
-	if broadcasted > 0 {
-		parts = append(parts, fmt.Sprintf("%d broadcasted", broadcasted))
-	}
-	if skipped > 0 {
-		parts = append(parts, fmt.Sprintf("%d skipped", skipped))
-	}
-	if failed > 0 {
-		parts = append(parts, fmt.Sprintf("%d failed", failed))
-	}
-	appUI.Info("Total: %d transactions (%s)", len(results), strings.Join(parts, ", "))
 }
 
 type jsonConfirmation struct {
@@ -719,248 +706,254 @@ Safe+Classic runs write both arrays into one file.`,
 		for _, sr := range safeRefs {
 			residual = strings.ReplaceAll(residual, sr.original, " ")
 		}
+		networkNames, txs := cmdutil.ScanForTxs(residual)
+		if len(networkNames) == 0 || len(txs) == 0 {
+			networkNames, txs = nil, nil
+		}
+		if len(safeRefs) == 0 && len(txs) == 0 {
+			appUI.Error("No txs passed to the first param. Did nothing.")
+			return
+		}
+
+		plan := make([]string, 0, len(safeRefs)+len(txs))
+		for _, ref := range safeRefs {
+			plan = append(plan, "Safe     "+ref.original)
+		}
+		for i, n := range networkNames {
+			plan = append(plan, fmt.Sprintf("Classic  %s:%s", n, txs[i]))
+		}
+		printBatchPlan("Batch approve", plan)
+
+		tally := batchTally{total: len(plan)}
+		item := 0
+		aborted := false
 
 		// Process the Safe portion of the input first so any auto-execute
 		// flow runs before we start touching Classic broadcasters that may
 		// share a wallet.
 		var safeResults []safeBatchResult
-		if len(safeRefs) > 0 {
-			total := len(safeRefs)
-			safeResults = make([]safeBatchResult, 0, total)
-			appUI.Section(fmt.Sprintf("Batch Approve (Safe): %d transactions", total))
-			for i, ref := range safeRefs {
-				r := safeBatchResult{ref: ref.original}
-				appUI.Info("")
-				appUI.Critical("━━━ Safe [%d/%d] %s ━━━", i+1, total, ref.original)
-				res := approveSafeRef(ref)
-				r.network = res.network
-				r.networkObj = res.networkObj
-				r.safeAddress = res.safeAddress
-				r.safeTxHash = res.safeTxHash
-				r.confirmType = res.confirmType
-				r.execTxHash = res.execTxHash
-				r.status = res.status
-				r.reason = res.reason
+		for _, ref := range safeRefs {
+			item++
+			r := safeBatchResult{ref: ref.original}
+			if aborted {
+				r.status, r.reason = "skipped", "aborted by user"
 				safeResults = append(safeResults, r)
+				tally.add(r.status)
+				continue
 			}
-			printSafeBatchSummary(safeResults)
+			printBatchBanner(item, tally.total, "Safe", ref.original)
+			var res approveSafeRefResult
+			withIndentedUI(func() { res = approveSafeRef(ref) })
+			r.network = res.network
+			r.networkObj = res.networkObj
+			r.safeAddress = res.safeAddress
+			r.safeTxHash = res.safeTxHash
+			r.confirmType = res.confirmType
+			r.execTxHash = res.execTxHash
+			r.status = res.status
+			r.reason = res.reason
+			safeResults = append(safeResults, r)
+			tally.add(r.status)
+			printBatchItemResult(r.status, safeResultDetail(r), tally)
+			if r.status == "failed" && !continueBatchAfterFailure(tally.total-tally.done()) {
+				aborted = true
+			}
 		}
 
-		networkNames, txs := cmdutil.ScanForTxs(residual)
-		if len(networkNames) == 0 || len(txs) == 0 {
-			if len(safeRefs) == 0 {
-				appUI.Error("No txs passed to the first param. Did nothing.")
-			} else {
-				writeBatchApproveJSONIfRequested(safeResults, nil)
-			}
-			return
-		}
-
-		cm := walletarmy.NewWalletManager()
-		a := util.GetGnosisMsigABI()
-
-		total := len(networkNames)
-		results := make([]batchResult, 0, total)
-
-		appUI.Section(fmt.Sprintf("Batch Approve (Classic): %d transactions", total))
-
-		for i, n := range networkNames {
-			txHash := txs[i]
-			r := batchResult{network: n, initTxHash: txHash}
-
-			appUI.Info("")
-			appUI.Critical("━━━ Classic [%d/%d] %s: %s ━━━", i+1, total, n, txHash)
-
-			network, err := jarvisnetworks.GetNetwork(n)
-			if err != nil {
-				appUI.Error("%s network is not supported. Skip.", n)
-				r.status = "skipped"
-				r.reason = "unsupported network"
-				results = append(results, r)
-				continue
-			}
-			r.networkObj = network
-			txinfo, err := cm.Reader(network).TxInfoFromHash(txHash)
-			if err != nil {
-				appUI.Error("Couldn't get tx info from hash: %s. Skip.", err)
-				r.status = "failed"
-				r.reason = fmt.Sprintf("tx info: %s", err)
-				results = append(results, r)
-				continue
-			}
-			if txinfo.Receipt == nil {
-				appUI.Warn("This tx is still pending. Skip.")
-				r.status = "skipped"
-				r.reason = "tx still pending"
-				results = append(results, r)
-				continue
-			}
-			msigHex := txinfo.Tx.To().Hex()
-			txid := util.GnosisMsigTxIDFromLogs(txinfo.Receipt.Logs, msigHex)
-			if txid == nil && txinfo.Tx != nil {
-				txid = util.GnosisMsigTxIDFromCalldata(txinfo.Tx.Data())
-			}
-			if txid == nil {
-				appUI.Warn("This tx is not a Classic Gnosis submit/confirm/revoke/execute tx. Skip.")
-				r.status = "skipped"
-				r.reason = "not a gnosis classic msig tx"
-				results = append(results, r)
-				continue
-			}
-
-			r.msigTxID = txid.String()
-			initBlock := txinfo.Receipt.BlockNumber.Int64()
-
-			multisigContract, err := msig.NewMultisigContract(msigHex, network)
-			if err != nil {
-				appUI.Error("Couldn't interact with the contract: %s. Skip.", err)
-				r.status = "failed"
-				r.reason = fmt.Sprintf("contract: %s", err)
-				results = append(results, r)
-				continue
-			}
-
-			from, err := GetApproverAccountFromMsig(multisigContract)
-			if err != nil {
-				appUI.Error("Couldn't read and get wallet to approve this msig. You might not have any approver wallets.")
-				r.status = "failed"
-				r.reason = "no approver wallet"
-				results = append(results, r)
-				continue
-			}
-
-			_, numConf, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
-			if executed {
-				appUI.Warn("Already executed. Skip.")
-				r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, true, numConf)
-				r.status = "skipped"
-				r.reason = "already executed"
-				results = append(results, r)
-				continue
-			}
-			if confirmed {
-				appUI.Warn("Already confirmed but not executed. Consider executing instead. Skip.")
-				r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, false, numConf)
-				r.status = "skipped"
-				r.reason = "already confirmed"
-				results = append(results, r)
-				continue
-			}
-
-			data, err := a.Pack("confirmTransaction", txid)
-			if err != nil {
-				appUI.Error("Couldn't pack data: %s. Skip.", err)
-				r.status = "failed"
-				r.reason = fmt.Sprintf("pack data: %s", err)
-				results = append(results, r)
-				continue
-			}
-
-			customABIs := map[string]*abi.ABI{
-				strings.ToLower(msigHex): a,
-			}
-
-			txType, err := cmdutil.ValidTxType(cm.Reader(network), network)
-			if err != nil {
-				appUI.Error("Couldn't determine proper tx type: %s. Aborting.", err)
-				r.status = "failed"
-				r.reason = fmt.Sprintf("tx type: %s", err)
-				results = append(results, r)
-				printBatchSummary(results)
-				writeBatchApproveJSONIfRequested(safeResults, results)
-				return
-			}
-
-			if txType == types.LegacyTxType && config.TipGas > 0 {
-				appUI.Warn("Legacy tx — ignoring tip gas parameter.")
-			}
-
-			var confirmHash string
-			minedTx, err := cm.EnsureTxWithHooks(
-				10,
-				5*time.Second,
-				5*time.Second,
-				txType,
-				jarviscommon.HexToAddress(from), jarviscommon.HexToAddress(msigHex),
-				nil,
-				0,
-				2000000,
-				0,
-				0,
-				0,
-				0,
-				data,
-				network,
-				func(tx *types.Transaction, buildError error) error {
-					if buildError != nil {
-						appUI.Error("Couldn't build tx: %s", buildError)
-						return buildError
-					}
-					err = cmdutil.PromptTxConfirmation(
-						appUI,
-						cm.Analyzer(network),
-						util.GetJarvisAddress(from, network),
-						tx,
-						customABIs,
-						network,
-					)
-					if err != nil {
-						appUI.Warn("User skipped. Continue with next tx.")
-						return fmt.Errorf("%w: %w", ErrUserAborted, err)
-					}
-					return nil
-				},
-				func(broadcastedTx *types.Transaction, signError error) error {
-					if signError != nil {
-						return signError
-					}
-					if broadcastedTx != nil {
-						confirmHash = broadcastedTx.Hash().Hex()
-						util.DisplayBroadcastedTx(appUI, broadcastedTx, true, signError, network)
-					}
-					if config.DontWaitToBeMined {
-						return fmt.Errorf("%w: %w", ErrNotWaitingForMining, signError)
-					}
-					return nil
-				},
-				nil,
-				nil,
-			)
-
-			r.confirmTxHash = confirmHash
-			if err != nil {
-				if errors.Is(err, ErrUserAborted) {
-					r.status = "skipped"
-					r.reason = "user aborted"
-				} else if errors.Is(err, ErrNotWaitingForMining) {
-					r.status = "broadcasted"
-					r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, false, numConf)
-				} else {
-					appUI.Error("Failed to broadcast the tx after retries: %s.", err)
-					r.status = "failed"
-					r.reason = fmt.Sprintf("broadcast: %s", err)
+		var results []batchResult
+		if len(txs) > 0 {
+			cm := walletarmy.NewWalletManager()
+			a := util.GetGnosisMsigABI()
+			results = make([]batchResult, 0, len(txs))
+			for i, n := range networkNames {
+				item++
+				r := batchResult{network: n, initTxHash: txs[i]}
+				if aborted {
+					r.status, r.reason = "skipped", "aborted by user"
+					results = append(results, r)
+					tally.add(r.status)
+					continue
 				}
+				printBatchBanner(item, tally.total, "Classic", n+":"+txs[i])
+				withIndentedUI(func() { approveClassicRef(cm, a, &r) })
 				results = append(results, r)
-				continue
+				tally.add(r.status)
+				printBatchItemResult(r.status, classicResultDetail(r), tally)
+				if r.status == "failed" && !continueBatchAfterFailure(tally.total-tally.done()) {
+					aborted = true
+				}
 			}
-
-			r.confirmTxHash = minedTx.Hash().Hex()
-			if !config.DontWaitToBeMined {
-				util.AnalyzeAndPrint(
-					appUI,
-					cm.Reader(network), cm.Analyzer(network),
-					minedTx.Hash().Hex(), network, false, "", a, nil, util.PostSignLayout(config.DegenMode),
-				)
-			}
-
-			r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, true, numConf+1)
-			r.status = "approved"
-			results = append(results, r)
 		}
 
-		printBatchSummary(results)
+		printBatchApproveSummary(safeResults, results, tally)
 		writeBatchApproveJSONIfRequested(safeResults, results)
+		exitForBatch(tally)
 	},
+}
+
+// approveClassicRef runs the approve flow for one Gnosis Classic init tx and
+// fills r with the outcome. It never returns early without setting r.status.
+func approveClassicRef(cm *walletarmy.WalletManager, a *abi.ABI, r *batchResult) {
+	network, err := jarvisnetworks.GetNetwork(r.network)
+	if err != nil {
+		appUI.Error("%s network is not supported. Skip.", r.network)
+		r.status, r.reason = "skipped", "unsupported network"
+		return
+	}
+	r.networkObj = network
+	txHash := r.initTxHash
+	txinfo, err := cm.Reader(network).TxInfoFromHash(txHash)
+	if err != nil {
+		appUI.Error("Couldn't get tx info from hash: %s. Skip.", err)
+		r.status, r.reason = "failed", fmt.Sprintf("tx info: %s", err)
+		return
+	}
+	if txinfo.Receipt == nil {
+		appUI.Warn("This tx is still pending. Skip.")
+		r.status, r.reason = "skipped", "tx still pending"
+		return
+	}
+	msigHex := txinfo.Tx.To().Hex()
+	txid := util.GnosisMsigTxIDFromLogs(txinfo.Receipt.Logs, msigHex)
+	if txid == nil && txinfo.Tx != nil {
+		txid = util.GnosisMsigTxIDFromCalldata(txinfo.Tx.Data())
+	}
+	if txid == nil {
+		appUI.Warn("This tx is not a Classic Gnosis submit/confirm/revoke/execute tx. Skip.")
+		r.status, r.reason = "skipped", "not a gnosis classic msig tx"
+		return
+	}
+
+	r.msigTxID = txid.String()
+	initBlock := txinfo.Receipt.BlockNumber.Int64()
+
+	multisigContract, err := msig.NewMultisigContract(msigHex, network)
+	if err != nil {
+		appUI.Error("Couldn't interact with the contract: %s. Skip.", err)
+		r.status, r.reason = "failed", fmt.Sprintf("contract: %s", err)
+		return
+	}
+
+	from, err := GetApproverAccountFromMsig(multisigContract)
+	if err != nil {
+		appUI.Error("Couldn't read and get wallet to approve this msig. You might not have any approver wallets.")
+		r.status, r.reason = "failed", "no approver wallet"
+		return
+	}
+
+	_, numConf, confirmed, executed := cmdutil.AnalyzeAndShowMsigTxInfo(appUI, multisigContract, txid, network, cmdutil.DefaultABIResolver{}, cm.Analyzer(network))
+	if executed {
+		appUI.Warn("Already executed. Skip.")
+		r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, true, numConf)
+		r.status, r.reason = "skipped", "already executed"
+		return
+	}
+	if confirmed {
+		appUI.Warn("Already confirmed but not executed. Consider executing instead. Skip.")
+		r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, false, numConf)
+		r.status, r.reason = "skipped", "already confirmed"
+		return
+	}
+
+	data, err := a.Pack("confirmTransaction", txid)
+	if err != nil {
+		appUI.Error("Couldn't pack data: %s. Skip.", err)
+		r.status, r.reason = "failed", fmt.Sprintf("pack data: %s", err)
+		return
+	}
+
+	customABIs := map[string]*abi.ABI{
+		strings.ToLower(msigHex): a,
+	}
+
+	txType, err := cmdutil.ValidTxType(cm.Reader(network), network)
+	if err != nil {
+		appUI.Error("Couldn't determine proper tx type: %s.", err)
+		r.status, r.reason = "failed", fmt.Sprintf("tx type: %s", err)
+		return
+	}
+
+	if txType == types.LegacyTxType && config.TipGas > 0 {
+		appUI.Warn("Legacy tx — ignoring tip gas parameter.")
+	}
+
+	var confirmHash string
+	minedTx, err := cm.EnsureTxWithHooks(
+		10,
+		5*time.Second,
+		5*time.Second,
+		txType,
+		jarviscommon.HexToAddress(from), jarviscommon.HexToAddress(msigHex),
+		nil,
+		0,
+		2000000,
+		0,
+		0,
+		0,
+		0,
+		data,
+		network,
+		func(tx *types.Transaction, buildError error) error {
+			if buildError != nil {
+				appUI.Error("Couldn't build tx: %s", buildError)
+				return buildError
+			}
+			err = cmdutil.PromptTxConfirmation(
+				appUI,
+				cm.Analyzer(network),
+				util.GetJarvisAddress(from, network),
+				tx,
+				customABIs,
+				network,
+			)
+			if err != nil {
+				return fmt.Errorf("%w: %w", ErrUserAborted, err)
+			}
+			return nil
+		},
+		func(broadcastedTx *types.Transaction, signError error) error {
+			if signError != nil {
+				return signError
+			}
+			if broadcastedTx != nil {
+				confirmHash = broadcastedTx.Hash().Hex()
+				util.DisplayBroadcastedTx(appUI, broadcastedTx, true, signError, network)
+			}
+			if config.DontWaitToBeMined {
+				return fmt.Errorf("%w: %w", ErrNotWaitingForMining, signError)
+			}
+			return nil
+		},
+		nil,
+		nil,
+	)
+
+	r.confirmTxHash = confirmHash
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrUserAborted):
+			r.status, r.reason = "skipped", "user aborted"
+		case errors.Is(err, ErrNotWaitingForMining):
+			r.status = "broadcasted"
+			r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, false, numConf)
+		default:
+			appUI.Error("Failed to broadcast the tx after retries: %s.", err)
+			r.status, r.reason = "failed", fmt.Sprintf("broadcast: %s", err)
+		}
+		return
+	}
+
+	r.confirmTxHash = minedTx.Hash().Hex()
+	if !config.DontWaitToBeMined {
+		util.AnalyzeAndPrint(
+			appUI,
+			cm.Reader(network), cm.Analyzer(network),
+			minedTx.Hash().Hex(), network, false, "", a, nil, util.PostSignLayout(config.DegenMode),
+		)
+	}
+
+	r.history = queryMsigTxHistory(cm.Reader(network), a, msigHex, txid, initBlock, network, true, numConf+1)
+	r.status = "approved"
 }
 
 var newMsigCmd = &cobra.Command{
