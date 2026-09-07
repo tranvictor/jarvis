@@ -9,6 +9,8 @@ import (
 	"path"
 
 	"github.com/ethereum/go-ethereum/common"
+
+	jarviscommon "github.com/tranvictor/jarvis/common"
 )
 
 type DefaultAddressDatabase struct {
@@ -16,7 +18,17 @@ type DefaultAddressDatabase struct {
 }
 
 func (self *DefaultAddressDatabase) Register(addr string, name string) {
-	self.Data[common.HexToAddress(addr)] = name
+	// HexToAddress maps invalid or truncated hex (and any non-hex string)
+	// onto address(0). A reversed or typo'd addresses.json entry would
+	// otherwise attach someone's name to the zero address.
+	if !jarviscommon.LooksLikeAddress(addr) {
+		return
+	}
+	a := common.HexToAddress(addr)
+	if a == (common.Address{}) {
+		return
+	}
+	self.Data[a] = name
 }
 
 func registerTokens(db *DefaultAddressDatabase) error {

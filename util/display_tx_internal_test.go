@@ -8,8 +8,9 @@ func TestCompactAddressText(t *testing.T) {
 	const hash = "0x3f9a1c2b4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6e1c2"
 
 	cases := map[string]string{
-		a:                                 a[:6] + "…5D4E",
-		a + " (me)":                       "me (0x9642…5D4E)",
+		a:           a[:6] + "…5D4E",
+		a + " (me)": "me (0x9642…5D4E)",
+		"0x0000000000000000000000000000000000000000 (Quang Le)": "0x0000…0000 (zero address)",
 		a + " (USDC - 6)":                 "USDC (0x9642…5D4E)",
 		a + " (unknown)":                  "0x9642…5D4E",
 		"from " + a + " to " + b:          "from 0x9642…5D4E to 0x7a25…488D",

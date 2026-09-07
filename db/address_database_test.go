@@ -1,6 +1,10 @@
 package db
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
+)
 
 // TestGetAddressMatches_ExactAddressNeverFallsBackToFuzzy reproduces a real
 // bug report: a registered address whose *label* happens to mention another
@@ -94,5 +98,21 @@ func TestGetAddressMatches_FreeTextStillFuzzyMatches(t *testing.T) {
 	results, _ := getAddressMatches("foobar", source, exact)
 	if len(results) != 1 || results[0].Address != addr {
 		t.Fatalf("expected label search to still fuzzy-match, got %+v", results)
+	}
+}
+
+func TestRegisterIgnoresInvalidKeysAndZeroAddress(t *testing.T) {
+	d := &DefaultAddressDatabase{Data: map[common.Address]string{}}
+	d.Register("Quang Le", "should not bind")
+	d.Register("", "empty")
+	d.Register("0x0", "short")
+	d.Register("0x0000000000000000000000000000000000000000", "Quang Le")
+	if _, ok := d.Data[common.Address{}]; ok {
+		t.Fatalf("zero address must not carry an address-book name: %+v", d.Data)
+	}
+	const me = "0x9642b23Ed1E01Df1092B92641051881a322F5D4E"
+	d.Register(me, "me")
+	if d.Data[common.HexToAddress(me)] != "me" {
+		t.Fatal("valid addresses must still register")
 	}
 }

@@ -541,7 +541,7 @@ func (r *EnrichedResolver) Resolve(addr string) jarviscommon.Address {
 // silently leaves the cache untouched in those cases so callers can use it as
 // a "best-effort enrichment" hook without worrying about latency or failure.
 func PrefetchContractName(addr string, network networks.Network) {
-	if addr == "" {
+	if addr == "" || jarviscommon.IsZeroAddress(addr) {
 		return
 	}
 	addrLower := strings.ToLower(addr)
