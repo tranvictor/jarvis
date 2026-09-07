@@ -148,10 +148,6 @@ this and always carries full, untruncated values.
 ✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
          mainnet   from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567
 
-Transfers
-  1,000 USDC    me (0x9642…5D4E)              →  USDC/WETH pair (0x0d4a…1852)
-  0.3121 WETH   USDC/WETH pair (0x0d4a…1852)  →  me (0x9642…5D4E)
-
 Call  swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
   amountIn      1,000,000,000  uint256
   amountOutMin  311,200,000,000,000,000  uint256
@@ -171,18 +167,15 @@ Events (3)
 
 - The headline is status + what was called + where. The muted second line
   holds the numbers you rarely need (network, gas, nonce, block).
-- **Transfers** is derived from the `Transfer` / `Approval` / `Deposit` /
-  `Withdrawal` logs so asset movement is visible without reading the
-  events. Rows are columns (`amount   from  →  to`); approvals read
-  `from  approves  spender` with `UNLIMITED <token>` in the amount column.
-  Standard token events decode even when the emitting contract is
-  unverified.
 - Time-named parameters (`deadline`, `expiry`, `validUntil`, …) show the
   date and distance instead of raw seconds; `-x` keeps both.
-- With four or more transfers a **Net effect** block comes first: one line
-  per address with its net change per token, sender first, so a swap that
-  hops through three pools still reads as "−1,000 USDC, +0.3121 WETH". The
-  transfer list is capped at eight lines in the compact view.
+- With four or more token movements a **Net effect** block comes first: one
+  line per address with its net change per token, sender first, so a swap
+  that hops through three pools still reads as "−1,000 USDC, +0.3121 WETH".
+  The per-hop list is not printed; **Events** at the bottom has every
+  `Transfer` / `Approval` / `Deposit` / `Withdrawal`, including standard
+  token events from unverified contracts. `--json-output` still includes
+  a `transfers` array.
 - Unknown addresses are shown as bare short hex; `(zero address)` marks
   mints and burns. Integers get thousands separators and token amounts are
   rounded to four decimals (four significant digits below 1). `--degen` and
@@ -239,7 +232,7 @@ progress and the list of confirmers; approving then collapses the inner
 
 After signing, a live status line replaces the silent wait
 (`⠋ in mempool, waiting to be mined…  0:12`), and once mined jarvis prints
-the same headline + Transfers + Events view as `info` so you can see what
+the same headline + Net effect + Events view as `info` so you can see what
 actually happened. The same status line is used while jarvis waits for a
 Ledger to be plugged in and unlocked.
 

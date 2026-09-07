@@ -112,9 +112,6 @@ func TestInfoLayoutOrdersByImportance(t *testing.T) {
 	want := []string{
 		"✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)",
 		"         mainnet   from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567",
-		"Transfers",
-		"  1,000 USDC    me (0x9642…5D4E)              →  USDC/WETH pair (0x0d4a…1852)",
-		"  0.3121 WETH   USDC/WETH pair (0x0d4a…1852)  →  me (0x9642…5D4E)",
 		"Call  swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)",
 		"  amountIn      1,000,000,000  uint256",
 		"  path          [2 items]  address[]",
@@ -136,6 +133,9 @@ func TestInfoLayoutOrdersByImportance(t *testing.T) {
 			t.Fatalf("%q appears out of order in output:\n%s", w, out)
 		}
 		pos = idx
+	}
+	if strings.Contains(out, "\nTransfers\n") {
+		t.Fatalf("compact layout must not print a Transfers list:\n%s", out)
 	}
 	if strings.Contains(out, "│") || strings.Contains(out, "╭") {
 		t.Fatalf("compact layout must not draw table borders:\n%s", out)
@@ -214,8 +214,11 @@ func TestRevertedHeadlineAndPostSignLayout(t *testing.T) {
 	if strings.Contains(post, "Call  ") {
 		t.Fatalf("successful post-sign layout must not repeat the call:\n%s", post)
 	}
-	if !strings.Contains(post, "Transfers") || !strings.Contains(post, "Events (3)") {
-		t.Fatalf("post-sign layout should keep transfers and events:\n%s", post)
+	if strings.Contains(post, "\nTransfers\n") {
+		t.Fatalf("post-sign layout must not print a Transfers list:\n%s", post)
+	}
+	if !strings.Contains(post, "Events (3)") {
+		t.Fatalf("post-sign layout should keep events:\n%s", post)
 	}
 	if strings.Count(post, "✓ done") != 1 {
 		t.Fatalf("post-sign layout should not repeat the headline as footer:\n%s", post)
@@ -265,8 +268,8 @@ func TestUnlimitedApprovalIsFlagged(t *testing.T) {
 	if len(d.Transfers) != 1 || d.Transfers[0].Kind != "approval" || !d.Transfers[0].Unlimited {
 		t.Fatalf("expected one unlimited approval, got %+v", d.Transfers)
 	}
-	if !rec.HasMessage("UNLIMITED USDC") || !rec.HasMessage("approves") {
-		t.Fatalf("expected UNLIMITED marker, got %v", rec.Entries())
+	if !rec.HasMessage("Approval") || !rec.HasMessage("spender") {
+		t.Fatalf("expected the Approval event, got %v", rec.Entries())
 	}
 }
 
@@ -401,9 +404,19 @@ func TestTransfersUseTopicPositionsForDaiStyleNames(t *testing.T) {
 		},
 		Data: []jarviscommon.ParamResult{scalar("wad", "uint256", tokenValue("5000000000000000000", "WETH", 18))},
 	}}
-	out := render(t, r, util.LayoutInfo, hashHex)
-	if !strings.Contains(out, "5 WETH   me (0x9642…5D4E)  approves  Uniswap V2 Router (0x7a25…488D)") {
-		t.Fatalf("dai-style approval parties missing:\n%s", out)
+	rec := ui.NewRecordingUI()
+	d := util.DisplayTxResult(rec, r, networks.EthereumMainnet, util.LayoutInfo, hashHex)
+	if len(d.Transfers) != 1 || d.Transfers[0].Kind != "approval" {
+		t.Fatalf("expected one approval transfer, got %+v", d.Transfers)
+	}
+	if !strings.Contains(d.Transfers[0].From.Text, meHex) || !strings.Contains(d.Transfers[0].To.Text, routerHex) {
+		t.Fatalf("dai-style src/guy topics should fill from/to: %+v", d.Transfers[0])
+	}
+	if rec.HasMessage("Transfers") {
+		t.Fatal("must not print a Transfers subsection")
+	}
+	if !rec.HasMessage("Approval") || !rec.HasMessage("guy") {
+		t.Fatalf("events should still show the dai-style approval, got %v", rec.Entries())
 	}
 }
 
@@ -422,43 +435,6 @@ func TestTimestampParamsShowTheDate(t *testing.T) {
 	echo := util.ParamValueLines(ui.NewRecordingUI(), util.NewParamDisplay(scalar("deadline", "uint256", intValue("1725600000"))))
 	if len(echo) != 1 || !strings.HasPrefix(echo[0], "2024-09-06 05:20:00 UTC, ") || !strings.HasSuffix(echo[0], " ago") {
 		t.Fatalf("echo should be the date with a relative hint, got %q", echo)
-	}
-}
-
-func TestTransferRowsAlignAcrossKinds(t *testing.T) {
-	me := addr(meHex, "me")
-	router := addr(routerHex, "Uniswap V2 Router")
-	pair := addr(pairHex, "USDC/WETH pair")
-	weth := addr(wethHex, "WETH token")
-	r := swapTxResult()
-	r.FunctionCall = nil
-	r.Logs = []jarviscommon.LogResult{
-		transferLog(usdcHex, "USDC", 6, me, router, "1000000000"),
-		{Name: "Approval", Address: weth,
-			Topics: []jarviscommon.TopicResult{
-				{Name: "owner", Value: addrValue(me.Address, me.Desc)},
-				{Name: "spender", Value: addrValue(router.Address, router.Desc)},
-			},
-			Data: []jarviscommon.ParamResult{scalar("value", "uint256", tokenValue(
-				"115792089237316195423570985008687907853269984665640564039457584007913129639935", "WETH", 18))}},
-		{Name: "Deposit", Address: weth,
-			Topics: []jarviscommon.TopicResult{{Name: "dst", Value: addrValue(router.Address, router.Desc)}},
-			Data:   []jarviscommon.ParamResult{scalar("wad", "uint256", tokenValue("5000000000000000000", "WETH", 18))}},
-		{Name: "Withdrawal", Address: weth,
-			Topics: []jarviscommon.TopicResult{{Name: "src", Value: addrValue(pair.Address, pair.Desc)}},
-			Data:   []jarviscommon.ParamResult{scalar("wad", "uint256", tokenValue("1234500000000000000", "WETH", 18))}},
-	}
-	out := render(t, r, util.LayoutInfo, hashHex)
-	want := []string{
-		"  1,000 USDC       me (0x9642…5D4E)              →         Uniswap V2 Router (0x7a25…488D)",
-		"  UNLIMITED WETH   me (0x9642…5D4E)              approves  Uniswap V2 Router (0x7a25…488D)",
-		"  5 WETH           deposit                       →         Uniswap V2 Router (0x7a25…488D)",
-		"  1.2345 WETH      USDC/WETH pair (0x0d4a…1852)  →         withdrawal",
-	}
-	for _, w := range want {
-		if !strings.Contains(out, w) {
-			t.Fatalf("missing aligned row %q in:\n%s", w, out)
-		}
 	}
 }
 
@@ -497,36 +473,14 @@ func TestNetEffectSummarisesManyTransfers(t *testing.T) {
 	if !strings.Contains(out, "Net effect\n  me (0x9642…5D4E)               -1,000 USDC   +0.3121 WETH\n") {
 		t.Fatalf("net effect block:\n%s", out)
 	}
-	if strings.Index(out, "Net effect") > strings.Index(out, "Transfers") {
-		t.Fatalf("net effect should precede the transfer list:\n%s", out)
+	if strings.Contains(out, "\nTransfers\n") {
+		t.Fatalf("net effect txs must not also print a Transfers list:\n%s", out)
 	}
 
 	r.Logs = r.Logs[:3]
 	d = util.DisplayTxResult(ui.NewRecordingUI(), r, networks.EthereumMainnet, util.LayoutInfo, hashHex)
 	if d.NetEffect != nil {
 		t.Fatalf("three transfers need no summary: %+v", d.NetEffect)
-	}
-}
-
-func TestCompactTransfersAreCapped(t *testing.T) {
-	me := addr(meHex, "me")
-	pair := addr(pairHex, "USDC/WETH pair")
-	r := swapTxResult()
-	r.FunctionCall = nil
-	r.Logs = nil
-	for i := 0; i < 11; i++ {
-		r.Logs = append(r.Logs, transferLog(usdcHex, "USDC", 6, me, pair, "1000000"))
-	}
-	out := render(t, r, util.LayoutInfo, hashHex)
-	if !strings.Contains(out, "Transfers (11)") || strings.Count(out, "1 USDC   me") != 8 {
-		t.Fatalf("compact layout should list 8 of 11 transfers:\n%s", out)
-	}
-	if !strings.Contains(out, "… 3 more (-x lists all)") {
-		t.Fatalf("hidden count missing:\n%s", out)
-	}
-	full := render(t, r, util.LayoutInfoFull, hashHex)
-	if strings.Count(full, "1 USDC   ") != 11 || strings.Contains(full, "more (-x") {
-		t.Fatalf("full layout must list every transfer:\n%s", full)
 	}
 }
 
@@ -546,9 +500,8 @@ func TestInfoLayoutPrintsClearSignBeforeCall(t *testing.T) {
 	if cs < 0 || call < 0 || cs > call {
 		t.Fatalf("clear-sign panel must sit above the ABI call:\n%s", out)
 	}
-	transfers := strings.Index(out, "Transfers")
-	if transfers < 0 || transfers > cs {
-		t.Fatalf("clear-sign panel must sit after transfers:\n%s", out)
+	if strings.Contains(out, "\nTransfers\n") {
+		t.Fatalf("info must not print a Transfers list:\n%s", out)
 	}
 }
 

@@ -129,7 +129,7 @@ type UI interface {
 	Section(title string)
 
 	// Subsection writes a bold heading preceded by a blank line, with no
-	// rule. Use it for the blocks inside a Section (e.g. "Transfers",
+	// rule. Use it for the blocks inside a Section (e.g. "Net effect",
 	// "Events (4)") so they stand out without adding visual weight.
 	Subsection(title string)
 
