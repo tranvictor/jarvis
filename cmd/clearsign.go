@@ -31,14 +31,14 @@ var clearsignDisableContract string
 
 // clearsignCmd groups the subcommands that operate on the local
 // ERC-7730 descriptor registry. The registry is the source of truth
-// for the clear-signed view shown at sign time by `jarvis send`,
-// `jarvis msig` and `jarvis wc`.
+// for the clear-signed view shown by `jarvis info` and at sign time
+// by `jarvis send`, `jarvis msig` and `jarvis wc`.
 var clearsignCmd = &cobra.Command{
 	Use:   "clearsign",
 	Short: "Manage ERC-7730 clear-signing descriptors used by jarvis",
 	Long: `clearsign manages the on-disk ERC-7730 registry that powers the
-green-bordered "Clear Signed" panel jarvis shows before every
-transaction or typed-data signature.
+green-bordered "Clear Signed" panel jarvis shows on jarvis info
+and before every transaction or typed-data signature.
 
 Descriptors live under ~/.jarvis/erc7730/:
   registry/  — mirror of github.com/ethereum/clear-signing-erc7730-registry

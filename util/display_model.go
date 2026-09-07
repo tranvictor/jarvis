@@ -118,4 +118,9 @@ type TxDisplay struct {
 	// replay could recover one.
 	RevertReason string `json:"revert_reason,omitempty"`
 	Error        string `json:"error,omitempty"`
+
+	// ClearSign renders the ERC-7730 view when a descriptor matched. It is
+	// a callback so this package does not import the erc7730 engine
+	// (that package already imports util). Omitted from JSON.
+	ClearSign func(ui.UI) `json:"-"`
 }

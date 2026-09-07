@@ -547,12 +547,35 @@ func renderContractClearSign(
 	network jarvisnetworks.Network,
 	customABIs map[string]*abi.ABI,
 ) {
+	if tx == nil || tx.To() == nil || fc == nil {
+		return
+	}
+	RenderContractClearSign(u, network, tx.To().Hex(), tx.Value(), tx.Data(), fc.Params, customABIs)
+}
+
+// RenderContractClearSign asks the shared ERC-7730 engine for a
+// ClearSignedView of this call and, when one is available, emits it
+// inside a green-bordered box. Returns false when no descriptor
+// applies or the engine errors — callers treat that as "print
+// nothing extra".
+func RenderContractClearSign(
+	u ui.UI,
+	network jarvisnetworks.Network,
+	to string,
+	value *big.Int,
+	data []byte,
+	params []jarviscommon.ParamResult,
+	customABIs map[string]*abi.ABI,
+) bool {
+	if to == "" || len(data) < 4 {
+		return false
+	}
 	var contractABI *abi.ABI
 	if customABIs != nil {
-		contractABI = customABIs[strings.ToLower(tx.To().Hex())]
+		contractABI = customABIs[strings.ToLower(to)]
 	}
 	if contractABI == nil {
-		if a, err := util.GetABI(tx.To().Hex(), network); err == nil {
+		if a, err := util.GetABI(to, network); err == nil {
 			contractABI = a
 		}
 	}
@@ -560,14 +583,59 @@ func renderContractClearSign(
 	view, err := engine.ContractView(
 		context.Background(),
 		network.GetChainID(),
-		tx.To().Hex(),
-		tx.Value(),
-		tx.Data(),
-		fc.Params,
+		to,
+		value,
+		data,
+		params,
 		contractABI,
 	)
 	if err != nil || view == nil {
-		return
+		return false
 	}
 	erc7730.Render(u, view)
+	return true
+}
+
+// InfoClearSign returns an AnalyzeAndPrint hook that attaches the
+// ERC-7730 panel to a TxDisplay. printTxDisplay invokes it above the
+// ABI call on info layouts; PostSign skips it because the signing
+// card already showed the same panel.
+func InfoClearSign(network jarvisnetworks.Network) func(*util.TxDisplay, *jarviscommon.TxResult, map[string]*abi.ABI) {
+	return func(d *util.TxDisplay, result *jarviscommon.TxResult, abis map[string]*abi.ABI) {
+		if d == nil || result == nil || result.FunctionCall == nil {
+			return
+		}
+		fc := result.FunctionCall
+		d.ClearSign = func(u ui.UI) {
+			RenderInfoClearSign(u, network, fc, abis)
+		}
+	}
+}
+
+// RenderInfoClearSign walks the analysed call tree and prints an
+// ERC-7730 panel for every matching call (top-level, then inner
+// MultiSend / Safe execTransaction destinations). Fail-closed: no
+// match prints nothing.
+func RenderInfoClearSign(
+	u ui.UI,
+	network jarvisnetworks.Network,
+	fc *jarviscommon.FunctionCall,
+	customABIs map[string]*abi.ABI,
+) {
+	forEachFunctionCall(fc, func(call *jarviscommon.FunctionCall) {
+		if call.Method == "" {
+			return
+		}
+		RenderContractClearSign(u, network, call.Destination.Address, call.Value, call.Data, call.Params, customABIs)
+	})
+}
+
+func forEachFunctionCall(fc *jarviscommon.FunctionCall, fn func(*jarviscommon.FunctionCall)) {
+	if fc == nil {
+		return
+	}
+	fn(fc)
+	for _, inner := range fc.DecodedFunctionCalls {
+		forEachFunctionCall(inner, fn)
+	}
 }

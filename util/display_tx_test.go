@@ -528,3 +528,53 @@ func TestCompactTransfersAreCapped(t *testing.T) {
 		t.Fatalf("full layout must list every transfer:\n%s", full)
 	}
 }
+
+func TestInfoLayoutPrintsClearSignBeforeCall(t *testing.T) {
+	var buf bytes.Buffer
+	u := ui.NewTerminalUIWithWriter(&buf, false)
+	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex,
+		func(d *util.TxDisplay, result *jarviscommon.TxResult) {
+			if result == nil || result.FunctionCall == nil || result.FunctionCall.Method == "" {
+				t.Fatal("prepare should see the analysed call")
+			}
+			d.ClearSign = func(cu ui.UI) { cu.Info("CLEAR-SIGN-MARKER") }
+		})
+	out := buf.String()
+	cs := strings.Index(out, "CLEAR-SIGN-MARKER")
+	call := strings.Index(out, "Call  swapExactTokensForTokens")
+	if cs < 0 || call < 0 || cs > call {
+		t.Fatalf("clear-sign panel must sit above the ABI call:\n%s", out)
+	}
+	transfers := strings.Index(out, "Transfers")
+	if transfers < 0 || transfers > cs {
+		t.Fatalf("clear-sign panel must sit after transfers:\n%s", out)
+	}
+}
+
+func TestPostSignLayoutSkipsClearSign(t *testing.T) {
+	var buf bytes.Buffer
+	u := ui.NewTerminalUIWithWriter(&buf, false)
+	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutPostSign, hashHex,
+		func(d *util.TxDisplay, _ *jarviscommon.TxResult) {
+			d.ClearSign = func(cu ui.UI) { cu.Info("CLEAR-SIGN-MARKER") }
+		})
+	if strings.Contains(buf.String(), "CLEAR-SIGN-MARKER") {
+		t.Fatalf("post-sign must not reprint the clear-sign panel:\n%s", buf.String())
+	}
+}
+
+func TestTxDisplayJSONOmitsClearSign(t *testing.T) {
+	var buf bytes.Buffer
+	u := ui.NewTerminalUIWithWriter(&buf, false)
+	d := util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex,
+		func(d *util.TxDisplay, _ *jarviscommon.TxResult) {
+			d.ClearSign = func(ui.UI) {}
+		})
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), "ClearSign") {
+		t.Fatalf("JSON must omit the ClearSign callback: %s", raw)
+	}
+}

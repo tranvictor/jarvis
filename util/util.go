@@ -361,6 +361,7 @@ func AnalyzeAndPrint(
 	a *abi.ABI,
 	customABIs map[string]*abi.ABI,
 	layout TxLayout,
+	after ...func(*TxDisplay, *jarviscommon.TxResult, map[string]*abi.ABI),
 ) *TxDisplay {
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
@@ -376,7 +377,7 @@ func AnalyzeAndPrint(
 	// for; the analyzer reports it from the receipt.
 	if txinfo.Tx.To() == nil {
 		result := analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, false)
-		return DisplayTxResult(u, result, network, layout, tx)
+		return displayTxResultAfter(u, result, network, layout, tx, customABIs, after)
 	}
 	contractAddress := txinfo.Tx.To().Hex()
 
@@ -411,7 +412,23 @@ func AnalyzeAndPrint(
 	}
 	result := analyzer.AnalyzeOffline(&txinfo, lookup, customABIs, isContract)
 
-	return DisplayTxResult(u, result, network, layout, tx)
+	return displayTxResultAfter(u, result, network, layout, tx, customABIs, after)
+}
+
+func displayTxResultAfter(
+	u ui.UI,
+	result *jarviscommon.TxResult,
+	network networks.Network,
+	layout TxLayout,
+	tx string,
+	customABIs map[string]*abi.ABI,
+	after []func(*TxDisplay, *jarviscommon.TxResult, map[string]*abi.ABI),
+) *TxDisplay {
+	return DisplayTxResultWith(u, result, network, layout, tx, func(d *TxDisplay, result *jarviscommon.TxResult) {
+		for _, fn := range after {
+			fn(d, result, customABIs)
+		}
+	})
 }
 
 func EthTxMonitor(network networks.Network) (*monitor.TxMonitor, error) {

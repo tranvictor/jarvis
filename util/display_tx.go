@@ -206,8 +206,9 @@ func (p txPrinter) headline(d *TxDisplay, network networks.Network) string {
 }
 
 // printTxDisplay renders d according to layout. The order is by importance:
-// what happened (headline), what moved (transfers), what was called, what was
-// emitted, and the headline again so the last line on screen is the summary.
+// what happened (headline), what moved (transfers), the ERC-7730 clear-signed
+// reading when a descriptor matched, what was called, what was emitted, and
+// the headline again so the last line on screen is the summary.
 func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network, layout TxLayout) {
 	p := txPrinter{u: u, layout: layout, compact: layout != LayoutInfoFull, width: ui.TerminalWidth()}
 
@@ -243,6 +244,14 @@ func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network, layout TxLa
 	emptyCall := d.FunctionCall != nil && d.FunctionCall.Method == "" &&
 		(d.FunctionCall.Data == "" || d.FunctionCall.Data == "0x") && len(d.FunctionCall.InnerCalls) == 0
 	showCall := d.FunctionCall != nil && !emptyCall && (layout != LayoutPostSign || d.Status == "reverted")
+	// Post-sign already showed the panel on the signing card. Info layouts
+	// print it above the ABI call so the operator gets the same reading
+	// without signing. Leading Info("") matches Subsection spacing; a
+	// no-op callback then looks the same as today's transfers → call gap.
+	if layout != LayoutPostSign && d.ClearSign != nil {
+		u.Info("")
+		d.ClearSign(u)
+	}
 	if showCall {
 		p.printCall(d.FunctionCall)
 		printed = true
