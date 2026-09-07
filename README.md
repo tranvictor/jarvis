@@ -149,7 +149,7 @@ this and always carries full, untruncated values.
          mainnet   from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567
 
 Transfers
-  1,000 USDC    me (0x9642…5D4E)  →  USDC/WETH pair (0x0d4a…1852)
+  1,000 USDC    me (0x9642…5D4E)              →  USDC/WETH pair (0x0d4a…1852)
   0.3121 WETH   USDC/WETH pair (0x0d4a…1852)  →  me (0x9642…5D4E)
 
 Call  swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
@@ -159,7 +159,7 @@ Call  swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
   ├─ USDC (0xA0b8…eB48)
   └─ WETH (0xC02a…6Cc2)
   to            me (0x9642…5D4E)  address
-  deadline      1,725,600,000  uint256
+  deadline      2024-09-06 05:20:00 UTC, 2 years ago  uint256
 
 Events (3)
   1. Transfer  USDC token (0xA0b8…eB48)   from me (0x9642…5D4E)  to USDC/WETH pair (0x0d4a…1852)  value 1,000 USDC
@@ -173,8 +173,12 @@ Events (3)
   holds the numbers you rarely need (network, gas, nonce, block).
 - **Transfers** is derived from the `Transfer` / `Approval` / `Deposit` /
   `Withdrawal` logs so asset movement is visible without reading the
-  events. Unlimited approvals are marked `UNLIMITED`. Standard token events
-  decode even when the emitting contract is unverified.
+  events. Rows are columns (`amount   from  →  to`); approvals read
+  `from  approves  spender` with `UNLIMITED <token>` in the amount column.
+  Standard token events decode even when the emitting contract is
+  unverified.
+- Time-named parameters (`deadline`, `expiry`, `validUntil`, …) show the
+  date and distance instead of raw seconds; `-x` keeps both.
 - With four or more transfers a **Net effect** block comes first: one line
   per address with its net change per token, sender first, so a swap that
   hops through three pools still reads as "−1,000 USDC, +0.3121 WETH". The

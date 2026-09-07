@@ -23,6 +23,8 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -41,76 +43,70 @@ var appUI ui.UI = ui.NewTerminalUI()
 var rootCmd = &cobra.Command{
 	Use:   "jarvis",
 	Short: "Assist you to read ethereum contract and do ethereum tx easily",
-	Long: fmt.Sprintf(`Jarvis is a command line tool to assist ethereum dapp operators to do their
-daily tasks such as reading smart contracts and doing operational transactions.
+	Long: fmt.Sprintf(`Jarvis is a command line tool for people who operate Ethereum contracts:
+it reads transactions and contracts, builds and signs transactions from
+keystores, Ledger and Trezor, and drives Gnosis Safe / classic multisigs.
 
-Jarvis supports you on different ends:
+  jarvis info <tx hash>          what a transaction did, decoded
+  jarvis send                    move ETH or tokens from a wallet or a Safe
+  jarvis contract read|tx        call or write any verified contract
+  jarvis msig                    propose, approve and execute multisig txs
+  jarvis wallet / addr           the keys you sign with, the names you trust
 
-	1. It manages your ethereum accounts so you dont have to
-	remember which address is with which kind of key like keystores,
-	trezor, ledger...
+Networks (pick one with -k/--network):
+%s
+"jarvis network list" shows chain IDs and RPC nodes; "jarvis node --help"
+adds or tests nodes. Nodes live in ~/.jarvis/nodes/<network>.json and can be
+overridden with the network's node env var (e.g. ETHEREUM_MAINNET_NODE).
 
-	2. It manages a book of addresses so you will not forget one, easily
-	look them up and will show you address information to improve tx's
-	verbosity.
-
-	3. It helps you to read smart contract and do transactions with
-	intuitive command line interface.
-
-By default, Jarvis uses the following nodes to support different chains: %s
-You can override the node for a network via env var: %s
-To add, remove, test, or share custom RPC nodes run: jarvis node --help
-Node configurations are stored per-network in ~/.jarvis/nodes/<network>.json.
-
-Jarvis also utilizes chain explorers like Etherscan, Bscscan and Tomoscan in order to look
-up additional informations such as contract ABI, recommended gas price..etc. By default,
-Jarvis uses default API keys. You can also specify your API keys (recommended to make
-Jarvis more stable) by setting the following env vars: %s
-
-Note: Jarvis will only check if the env vars are not empty and take the env vars blindly,
-it will not check if it is a valid url or not, the error will pop up during its command
-execution instead.
+Block-explorer API keys (set your own for reliable ABI lookups):
+%s
 
 For more information or support, reach me at https://github.com/tranvictor.`,
-		SupportedNetworkAndNodesHelpString(),
-		SupportedNetworkAndNodeVariableHelpString(),
-		SupportedNetworkAndBlockExplorerVariableHelpString(),
+		wrapList(strings.Split(networks.SupportedNetworkNamesHelp(), ", "), "  ", 76),
+		wrapList(blockExplorerKeyVariables(), "  ", 76),
 	),
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	//	Run: func(cmd *cobra.Command, args []string) { },
 }
 
-func SupportedNetworkAndNodesHelpString() string {
-	result := "\n"
-	for i, n := range networks.GetSupportedNetworks() {
-		result += fmt.Sprintf("  %d. For %s:\n", i+1, n.GetName())
-		for nodeName, url := range n.GetDefaultNodes() {
-			result += fmt.Sprintf("    %s: %s\n", nodeName, url)
+// wrapList joins items with ", " into lines no wider than width, each
+// prefixed with indent.
+func wrapList(items []string, indent string, width int) string {
+	var lines []string
+	cur := ""
+	for _, it := range items {
+		switch {
+		case cur == "":
+			cur = indent + it
+		case len(cur)+2+len(it) > width:
+			lines = append(lines, cur+",")
+			cur = indent + it
+		default:
+			cur += ", " + it
 		}
 	}
-	return result
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	return strings.Join(lines, "\n")
 }
 
-func SupportedNetworkAndNodeVariableHelpString() string {
-	result := "\n"
-	for i, n := range networks.GetSupportedNetworks() {
-		result += fmt.Sprintf("  %d. For %s: %s\n", i+1, n.GetName(), n.GetNodeVariableName())
+// blockExplorerKeyVariables lists each explorer API-key env var once.
+func blockExplorerKeyVariables() []string {
+	seen := map[string]bool{}
+	names := []string{}
+	for _, n := range networks.GetSupportedNetworks() {
+		v := n.GetBlockExplorerAPIKeyVariableName()
+		if v == "" || seen[v] {
+			continue
+		}
+		seen[v] = true
+		names = append(names, v)
 	}
-	return result
-}
-
-func SupportedNetworkAndBlockExplorerVariableHelpString() string {
-	result := "\n"
-	for i, n := range networks.GetSupportedNetworks() {
-		result += fmt.Sprintf(
-			"  %d. For %s: %s\n",
-			i+1,
-			n.GetBlockExplorerAPIURL(),
-			n.GetBlockExplorerAPIKeyVariableName(),
-		)
-	}
-	return result
+	sort.Strings(names)
+	return names
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -126,8 +122,8 @@ func Execute() {
 		"k",
 		networks.EthereumMainnet.GetName(),
 		fmt.Sprintf(
-			"ethereum network. Valid values: %s. If the network is not supported, we stop.",
-			networks.GetSupportedNetworkNames(),
+			"network to operate on: %s",
+			networks.SupportedNetworkNamesHelp(),
 		),
 	)
 
