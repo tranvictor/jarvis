@@ -101,13 +101,13 @@ func handleHW(hw HW, t string) {
 			accDesc = page[choice]
 		}
 
-		des := cmdutil.PromptInput(appUI, "Please enter description of this wallet, it will be used to search your wallet by keywords")
+		des := cmdutil.PromptInput(appUI, "Please enter a description — used later to find this wallet by keyword")
 		accDesc.Desc = des
 		if err = accounts.StoreAccountRecord(*accDesc); err != nil {
 			appUI.Error("Couldn't store your wallet info: %s. Abort.", err)
 		} else {
 			appUI.Success("Created ~/.jarvis/%s.json to store the wallet info.", accDesc.Address)
-			appUI.Info("Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list")
+			appUI.Info("Added. Check the list with: jarvis wallet list")
 		}
 		return
 	}

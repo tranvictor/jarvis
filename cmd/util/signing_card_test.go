@@ -333,6 +333,24 @@ func TestShowSigningCardClassicCollapseNote(t *testing.T) {
 	}
 }
 
+func TestShowSigningCardClassicProposalOmitsTxID(t *testing.T) {
+	rec := ui.NewRecordingUI()
+	ShowSigningCard(rec, &SigningCard{
+		Kind: "Classic multisig transaction",
+		To:   util.StyledAddress(cardAddr(cardUSDC, "USDC")),
+		Classic: &ClassicCardFields{
+			Multisig:  util.StyledAddress(cardAddr(cardMe, "Treasury")),
+			Threshold: 2,
+		},
+	})
+	if rec.HasMessage("Tx ID:") {
+		t.Fatalf("proposal card must not invent a tx id: %v", rec.Entries())
+	}
+	if !rec.HasMessage("Classic multisig transaction") || !rec.HasMessage("Multisig: "+cardMe+" (Treasury)") {
+		t.Fatalf("proposal card missing: %v", rec.Entries())
+	}
+}
+
 func TestSigningCardShowsWalletKind(t *testing.T) {
 	rec := ui.NewRecordingUI()
 	ShowSigningCard(rec, &SigningCard{

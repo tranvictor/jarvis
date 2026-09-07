@@ -74,7 +74,7 @@ var txCmd = &cobra.Command{
 
 func init() {
 	txCmd.PersistentFlags().BoolVarP(&config.ForceERC20ABI, "erc20-abi", "e", false, "Use ERC20 ABI where possible.")
-	txCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", "Custom abi. It can be either an address, a path to an abi file or an url to an abi. If it is an address, the abi of that address from etherscan will be queried. This param only takes effect if erc20-abi param is not true.")
+	txCmd.PersistentFlags().StringVarP(&config.CustomABI, "abi", "c", "", customABIFlagHelp)
 	txCmd.PersistentFlags().StringVarP(&config.JSONOutputFile, "json-output", "o", "", "write the analysed transaction display to a JSON file")
 
 	rootCmd.AddCommand(txCmd)
