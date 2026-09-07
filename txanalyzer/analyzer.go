@@ -175,6 +175,17 @@ func (ta *TxAnalyzer) ParamAsJarvisParamResult(name string, t abi.Type, value in
 	return ta.paramAsJarvisParamResult(name, t, value, nil)
 }
 
+// ParamAsJarvisParamResultFor is ParamAsJarvisParamResult with the token
+// context of contract: when contract is an ERC-20, integer values are
+// annotated with its decimals and symbol so "1000000" echoes as "1 USDC".
+func (ta *TxAnalyzer) ParamAsJarvisParamResultFor(contract string, name string, t abi.Type, value interface{}) ParamResult {
+	var hint *ERC20Info
+	if contract != "" {
+		hint = ta.ctx.ERC20InfoFor(contract)
+	}
+	return ta.paramAsJarvisParamResult(name, t, value, hint)
+}
+
 // rawTopics turns a log's topics into unnamed TopicResults, topic0 first, for
 // logs that no available ABI describes.
 func rawTopics(l *types.Log) []TopicResult {

@@ -22,6 +22,10 @@ type SigningCard struct {
 	Network string
 
 	Signer ui.StyledText
+	// Wallet is the signing device or key kind ("ledger", "trezor",
+	// "keystore"); shown muted next to the signer so a hardware prompt is
+	// expected rather than a surprise.
+	Wallet string
 	To     ui.StyledText // empty Text for contract creation; see CreateAddress
 	// CreateAddress is the predicted address when the tx deploys a contract.
 	CreateAddress string
@@ -77,6 +81,7 @@ func ShowSigningCard(u ui.UI, c *SigningCard) {
 		c.ClearSign(u)
 	}
 
+	body := c.ClearSign != nil || c.Call != nil || c.RawData != ""
 	switch {
 	case c.Call != nil && c.CollapseCall:
 		u.Subsection(fmt.Sprintf("Call  %s  →  %s   %s",
@@ -92,6 +97,9 @@ func ShowSigningCard(u ui.UI, c *SigningCard) {
 	label := func(s string) ui.TableCell { return ui.TCS(s, ui.SeverityMuted) }
 	rows := [][2]ui.TableCell{}
 	signer := c.Signer.Text
+	if c.Wallet != "" {
+		signer += "   " + c.Wallet
+	}
 	if c.Network != "" {
 		signer += "   " + c.Network
 	}
@@ -141,7 +149,9 @@ func ShowSigningCard(u ui.UI, c *SigningCard) {
 			), ui.SeverityMuted)})
 		}
 	}
-	u.Info("")
+	if body {
+		u.Info("")
+	}
 	u.KeyValueCells(rows)
 
 	if c.Safe != nil && (len(c.Safe.Signatures) > 0 || c.Safe.Threshold > 0) {
@@ -205,6 +215,10 @@ type WarningInput struct {
 	Call         *jarviscommon.FunctionCall
 	DelegateCall bool
 	MultiSend    bool
+	// SignerBalance and MaxCost enable the insufficient-funds warning; either
+	// nil skips it. MaxCost is value + gasLimit × max fee.
+	SignerBalance *big.Int
+	MaxCost       *big.Int
 }
 
 // approvalMethods maps ERC-20/721/1155 approval selectors to the parameter
@@ -228,6 +242,11 @@ func SigningWarnings(in WarningInput) []string {
 	if in.Value != nil && in.Value.Sign() > 0 && in.ToIsContract {
 		out = append(out, fmt.Sprintf("sends %s %s into a contract",
 			jarviscommon.BigToFloatString(in.Value, 18), in.NativeSymbol))
+	}
+	if in.SignerBalance != nil && in.MaxCost != nil && in.SignerBalance.Cmp(in.MaxCost) < 0 {
+		out = append(out, fmt.Sprintf("balance %s %s does not cover value + max gas (%s %s); the tx would be rejected",
+			jarviscommon.CompactAmount(jarviscommon.BigToFloatString(in.SignerBalance, 18)), in.NativeSymbol,
+			jarviscommon.CompactAmount(jarviscommon.BigToFloatString(in.MaxCost, 18)), in.NativeSymbol))
 	}
 	if in.DelegateCall {
 		if in.MultiSend {
@@ -295,18 +314,65 @@ func isMaxUint(raw string) bool {
 	return ok
 }
 
-// FormatGasLine renders the fee parameters of a tx in one line:
-// "max 20.0000 gwei, tip 1.5000 gwei · 85123 gas · ≈ 0.00170246 ETH".
+// FormatGasLine renders the fee parameters of a tx in one line, cost first:
+// "≈ 0.00170246 ETH   (85,123 gas × max 20 gwei, tip 1.5 gwei)".
 func FormatGasLine(legacy bool, gasPrice, feeCap, tipCap *big.Int, gasLimit uint64, symbol string) string {
 	price := feeCap
 	if legacy {
 		price = gasPrice
 	}
-	cost := jarviscommon.BigToFloat(new(big.Int).Mul(new(big.Int).SetUint64(gasLimit), price), 18)
+	cost := jarviscommon.BigToFloat(MaxGasCost(price, gasLimit), 18)
+	gas := jarviscommon.GroupDigits(fmt.Sprintf("%d", gasLimit))
 	if legacy {
-		return fmt.Sprintf("%.4f gwei · %d gas · ≈ %.8f %s",
-			jarviscommon.BigToFloat(gasPrice, 9), gasLimit, cost, symbol)
+		return fmt.Sprintf("≈ %.8f %s   (%s gas × %s gwei)", cost, symbol, gas, gweiText(gasPrice))
 	}
-	return fmt.Sprintf("max %.4f gwei, tip %.4f gwei · %d gas · ≈ %.8f %s",
-		jarviscommon.BigToFloat(feeCap, 9), jarviscommon.BigToFloat(tipCap, 9), gasLimit, cost, symbol)
+	return fmt.Sprintf("≈ %.8f %s   (%s gas × max %s gwei, tip %s gwei)",
+		cost, symbol, gas, gweiText(feeCap), gweiText(tipCap))
+}
+
+// MaxGasCost is gasLimit × price: the most the fee can come to.
+func MaxGasCost(price *big.Int, gasLimit uint64) *big.Int {
+	if price == nil {
+		return new(big.Int)
+	}
+	return new(big.Int).Mul(new(big.Int).SetUint64(gasLimit), price)
+}
+
+// gweiText renders a wei amount in gwei with up to four decimals and no
+// trailing zeros: 20 → "20", 1.5 → "1.5", 0.01234 → "0.0123".
+func gweiText(wei *big.Int) string {
+	s := fmt.Sprintf("%.4f", jarviscommon.BigToFloat(wei, 9))
+	s = strings.TrimRight(s, "0")
+	return strings.TrimSuffix(s, ".")
+}
+
+// ExplainEstimateGasError turns the multi-node error from a failed gas
+// estimation into one sentence the operator can act on. Nodes disagree on
+// wording, so the classification is by keyword; anything unrecognised is
+// reported as the first node's message.
+func ExplainEstimateGasError(err error, from string, balance *big.Int, symbol string) string {
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+	switch {
+	case strings.Contains(lower, "insufficient funds") || strings.Contains(lower, "outoffunds") || strings.Contains(lower, "out of funds"):
+		have := "no"
+		if balance != nil {
+			have = jarviscommon.BigToFloatString(balance, 18)
+		}
+		return fmt.Sprintf("Gas estimation failed: %s holds %s %s, not enough for the value plus gas. Fund the wallet or lower the amount.",
+			from, have, symbol)
+	case strings.Contains(lower, "execution reverted") || strings.Contains(lower, "revert"):
+		reason := ""
+		if i := strings.Index(lower, "revert"); i >= 0 {
+			rest := strings.TrimSpace(msg[i+len("revert"):])
+			rest = strings.TrimPrefix(strings.TrimPrefix(rest, "ed"), ":")
+			if line := strings.SplitN(strings.TrimSpace(rest), "\n", 2)[0]; line != "" {
+				reason = " (" + line + ")"
+			}
+		}
+		return "Gas estimation failed: the call reverts against the current chain state" + reason +
+			". The transaction would fail if sent; check the parameters or pass -g <gas limit> to skip estimation."
+	}
+	first := strings.SplitN(strings.TrimPrefix(msg, "couldn't read from any nodes: "), "\n", 2)[0]
+	return "Gas estimation failed: " + first
 }

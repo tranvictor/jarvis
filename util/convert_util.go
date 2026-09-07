@@ -26,11 +26,20 @@ func ConvertToBig(str string, network jarvisnetworks.Network) (*big.Int, error) 
 		if strings.HasPrefix(str, "0x") {
 			return hexutil.DecodeBig(str)
 		}
-		resultBig, ok := big.NewInt(0).SetString(str, 10)
-		if !ok {
-			return nil, fmt.Errorf("can't convert %s to big int", str)
+		resultBig, ok := big.NewInt(0).SetString(strings.ReplaceAll(str, ",", ""), 10)
+		if ok {
+			return resultBig, nil
 		}
-		return resultBig, nil
+		// "1e6" and "1_000_000" are integers written the way people write
+		// them; a fractional value without a token is ambiguous and rejected.
+		if r, ok := new(big.Rat).SetString(strings.ReplaceAll(str, "_", "")); ok {
+			if r.IsInt() {
+				return r.Num(), nil
+			}
+			return nil, fmt.Errorf("%s has a fractional part but no token: write it as raw units or as \"%s %s\" / \"%s <TOKEN>\"",
+				str, str, network.GetNativeTokenSymbol(), str)
+		}
+		return nil, fmt.Errorf("can't convert %s to big int", str)
 	}
 	// Two-token form: "1.5 KNC" or "1.5 ETH".
 	floatStr := parts[0]

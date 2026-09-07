@@ -945,7 +945,9 @@ func runNewSafe(cmd *cobra.Command, args []string) {
 		appUI, tc.FromAcc, tx, customABIs,
 		tc.Reader, tc.Analyzer, safe.GetProxyFactoryABI(), tc.Broadcaster,
 	); err != nil && !broadcasted {
-		appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
+		if !errors.Is(err, cmdutil.ErrUserCancelled) {
+			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
+		}
 		return
 	}
 

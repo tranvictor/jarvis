@@ -259,7 +259,11 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	if gasLimit == 0 {
 		gasLimit, err = reader.EstimateExactGas(tc.From, tc.To, 0, tc.Value, data)
 		if err != nil {
-			u.Error("Couldn't estimate gas limit: %s", err)
+			var bal *big.Int
+			if b, berr := reader.GetBalance(tc.From); berr == nil {
+				bal = b
+			}
+			u.Error("%s", ExplainEstimateGasError(err, tc.From, bal, config.Network().GetNativeTokenSymbol()))
 			return
 		}
 	}
@@ -282,7 +286,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 		return
 	}
 
-	if broadcasted, err := SignAndBroadcast(u, tc.FromAcc, tx, nil, reader, analyzer, a, bc); err != nil && !broadcasted {
+	if broadcasted, err := SignAndBroadcast(u, tc.FromAcc, tx, nil, reader, analyzer, a, bc); err != nil && !broadcasted && !errors.Is(err, ErrUserCancelled) {
 		u.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 	}
 }
@@ -304,8 +308,14 @@ func SignAndBroadcast(
 	a *abi.ABI,
 	bc TxBroadcaster,
 ) (bool, error) {
+	note := SigningNote{WalletName: fromAcc.Desc, WalletKind: fromAcc.Kind}
+	if reader != nil {
+		if bal, err := reader.GetBalance(fromAcc.Address); err == nil {
+			note.SignerBalance = bal
+		}
+	}
+	mergeSigningNote(note)
 	if err := PromptTxConfirmation(u, analyzer, util.GetJarvisAddress(fromAcc.Address, config.Network()), tx, customABIs, config.Network()); err != nil {
-		u.Error("Aborted!")
 		return false, err
 	}
 

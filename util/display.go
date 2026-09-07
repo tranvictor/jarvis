@@ -20,6 +20,9 @@ import (
 // Warn (yellow) because sending a call somewhere the address book has never
 // seen is the one address-level fact worth the reader's attention.
 func StyledAddress(addr jarviscommon.Address) ui.StyledText {
+	// The token's decimal count is analyzer bookkeeping, not something the
+	// signer needs to read next to the destination.
+	addr.Decimal = 0
 	text := jarviscommon.PlainAddress(addr)
 	if !jarviscommon.IsKnownAddress(addr) {
 		return ui.StyledText{Text: text, Severity: ui.SeverityWarn}
