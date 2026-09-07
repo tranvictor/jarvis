@@ -58,6 +58,57 @@ type txPrinter struct {
 	u       ui.UI
 	layout  TxLayout
 	compact bool // shorten addresses / hex, collapse long arrays
+	// expandAll keeps every array element visible even in compact mode; used
+	// when echoing user input, where hiding elements would hide typos.
+	expandAll bool
+}
+
+// NewParamDisplay builds the view-model for one decoded parameter without
+// printing it.
+func NewParamDisplay(param jarviscommon.ParamResult) ParamDisplay {
+	return buildParamDisplay(param)
+}
+
+// ParamValueLines renders the value of a decoded parameter for echoing back
+// what jarvis understood from user input. The first line is the value itself
+// (or an item count for tuples/arrays); following lines expand the structure
+// as a tree. Addresses are shortened name-first, nothing is collapsed.
+func ParamValueLines(u ui.UI, d ParamDisplay) []string {
+	p := txPrinter{u: u, compact: true, expandAll: true}
+	return p.valueTree(d)
+}
+
+// valueTree is paramTree without the leading name/type: the caller has
+// already labelled the parameter.
+func (p txPrinter) valueTree(d ParamDisplay) []string {
+	switch {
+	case d.Values != nil && len(d.Values) == 1:
+		return []string{p.text(d.Values[0])}
+	case d.Values != nil:
+		var kids [][]string
+		for _, v := range d.Values {
+			kids = append(kids, []string{p.text(v)})
+		}
+		return append([]string{p.muted(fmt.Sprintf("[%d items]", len(d.Values)))}, children(kids)...)
+	case len(d.Tuples) == 1:
+		return append([]string{p.muted("tuple")}, children(p.fieldLines(d.Tuples[0].Fields))...)
+	case d.Tuples != nil:
+		var kids [][]string
+		for i, t := range d.Tuples {
+			kid := []string{p.muted(fmt.Sprintf("[%d]", i))}
+			kid = append(kid, children(p.fieldLines(t.Fields))...)
+			kids = append(kids, kid)
+		}
+		return append([]string{p.muted(fmt.Sprintf("[%d items]", len(d.Tuples)))}, children(kids)...)
+	case d.Arrays != nil:
+		var kids [][]string
+		for _, elem := range d.Arrays {
+			kids = append(kids, p.valueTree(elem))
+		}
+		return append([]string{p.muted(fmt.Sprintf("[%d items]", len(d.Arrays)))}, children(kids)...)
+	}
+	// An empty array/slice has no Values, Tuples or Arrays at all.
+	return []string{p.muted("[0 items]")}
 }
 
 func (p txPrinter) text(st ui.StyledText) string {
@@ -346,7 +397,7 @@ func children(lines [][]string) []string {
 }
 
 func (p txPrinter) paramTree(d ParamDisplay, nameWidth int) []string {
-	collapse := func(n int) bool { return p.compact && n > collapseAbove }
+	collapse := func(n int) bool { return p.compact && !p.expandAll && n > collapseAbove }
 	summary := func(n int) string {
 		s := p.muted(fmt.Sprintf("[%d items]", n))
 		if collapse(n) {
@@ -398,7 +449,7 @@ func (p txPrinter) paramTree(d ParamDisplay, nameWidth int) []string {
 		}
 		return append(lines, children(kids)...)
 	}
-	return nil
+	return []string{p.row(d.Name, nameWidth, p.muted("[0 items]"), d.Type)}
 }
 
 func (p txPrinter) fieldLines(fields []ParamDisplay) [][]string {

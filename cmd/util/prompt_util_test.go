@@ -6,7 +6,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 
+	"github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/ui"
+	"github.com/tranvictor/jarvis/util/addrbook"
 )
 
 // SafeProxy verified ABI: constructor + fallback only. This is what
@@ -77,5 +80,115 @@ func TestPromptMethodPrefillIndex(t *testing.T) {
 	}
 	if name != "getOwners" || method.Name != "getOwners" {
 		t.Fatalf("got method %q, want getOwners", name)
+	}
+}
+
+const doStuffABIJSON = `[{"inputs":[
+	{"internalType":"address","name":"to","type":"address"},
+	{"internalType":"uint256","name":"amount","type":"uint256"},
+	{"internalType":"address[]","name":"spenders","type":"address[]"}
+],"name":"doStuff","outputs":[],"stateMutability":"nonpayable","type":"function"}]`
+
+func TestPromptFunctionCallDataEchoesCompactForm(t *testing.T) {
+	const (
+		contract = "0x1234567890123456789012345678901234567890"
+		vitalik  = "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045"
+		alice    = "0xaaaa000000000000000000000000000000001111"
+		bob      = "0xbbbb000000000000000000000000000000002222"
+	)
+	resolver := addrbook.Map{strings.ToLower(vitalik): "Vitalik Buterin", strings.ToLower(alice): "alice"}
+	analyzer := txanalyzer.NewGenericAnalyzerWithContext(
+		txanalyzer.NewAnalysisContextWithResolver(nil, networks.EthereumMainnet, resolver),
+	)
+
+	rec := ui.NewRecordingUI(
+		"1",                    // method index
+		"not-an-address",       // invalid answer for `to`
+		vitalik,                // valid answer for `to`
+		"1500",                 // amount
+		"["+alice+", "+bob+"]", // spenders
+	)
+	method, params, err := PromptFunctionCallData(
+		rec, analyzer, contract, 0, nil, false, "write",
+		mustABI(t, doStuffABIJSON), nil, networks.EthereumMainnet,
+	)
+	if err != nil {
+		t.Fatalf("PromptFunctionCallData: %v", err)
+	}
+	if method.Name != "doStuff" || len(params) != 3 {
+		t.Fatalf("got method %q with %d params", method.Name, len(params))
+	}
+
+	var got []string
+	for _, e := range rec.Entries() {
+		if e.Method == "Ask" || e.Method == "Choose" {
+			continue
+		}
+		got = append(got, e.Method+": "+e.Value)
+	}
+	want := []string{
+		"Info: write functions:",
+		"Info: 1. doStuff",
+		"Info: Please choose method index [1, 1]",
+		"Info: doStuff  →  0x1234567890123456789012345678901234567890",
+		"Info: 1. to  address",
+		"Error: ✗ ",
+		"Info: 1. to  address", // label repeats so the retry prompt is labelled
+		"Rewrite:   → Vitalik Buterin (0xd8dA…6045)",
+		"Info: 2. amount  uint256",
+		"Rewrite:   → 1500",
+		"Info: 3. spenders  address[]",
+		// The bracketed answer is longer than foldableInputLen, so it is not
+		// folded into the "> answer" row.
+		"Info:   → [2 items]",
+		"Info:     ├─ alice (0xaAaA…1111)",
+		"Info:     └─ 0xBbbb…2222 (unknown)",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("entry count %d != %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
+	}
+	for i := range want {
+		if !strings.HasPrefix(got[i], want[i]) {
+			t.Fatalf("entry %d: got %q, want prefix %q\nall:\n%s", i, got[i], want[i], strings.Join(got, "\n"))
+		}
+	}
+	if rec.HasMessage("You entered") || rec.HasMessage("Parameter | Value") {
+		t.Fatalf("compact echo must replace the old table: %v", rec.Entries())
+	}
+}
+
+func TestPromptFunctionCallDataPrefillDoesNotFold(t *testing.T) {
+	const contract = "0x1234567890123456789012345678901234567890"
+	analyzer := txanalyzer.NewGenericAnalyzerWithContext(
+		txanalyzer.NewAnalysisContextWithResolver(nil, networks.EthereumMainnet, addrbook.Map{}),
+	)
+	rec := ui.NewRecordingUI("42")
+	_, params, err := PromptFunctionCallData(
+		rec, analyzer, contract, 1,
+		[]string{"0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "?", "[]"}, true, "write",
+		mustABI(t, doStuffABIJSON), nil, networks.EthereumMainnet,
+	)
+	if err != nil {
+		t.Fatalf("PromptFunctionCallData: %v", err)
+	}
+	if len(params) != 3 {
+		t.Fatalf("expected 3 params, got %d", len(params))
+	}
+	var rewrites, infos []string
+	for _, e := range rec.Entries() {
+		switch e.Method {
+		case "Rewrite":
+			rewrites = append(rewrites, e.Value)
+		case "Info":
+			infos = append(infos, e.Value)
+		}
+	}
+	// Only the interactively answered slot ("?") had a "> answer" row to fold.
+	if len(rewrites) != 1 || rewrites[0] != "  → 42" {
+		t.Fatalf("expected exactly one folded echo for the prompted slot, got %v", rewrites)
+	}
+	joined := strings.Join(infos, "\n")
+	if !strings.Contains(joined, "  → 0xd8dA…6045 (unknown)") || !strings.Contains(joined, "  → [0 items]") {
+		t.Fatalf("prefilled slots should be echoed as plain lines:\n%s", joined)
 	}
 }

@@ -89,48 +89,53 @@ func PromptParam(
 	prefill string,
 	network jarvisnetworks.Network,
 ) (any, error) {
-	t := input.Type
-	switch t.T {
-	case abi.SliceTy, abi.ArrayTy:
-		return PromptArray(u, input, prefill, network)
-	default:
-		return PromptNonArray(u, input, prefill, network)
+	raw := prefill
+	if raw == "" {
+		raw = u.Ask(nil)
 	}
+	return ConvertParamInput(input, raw, network)
 }
 
-// PromptArray prompts for an array-typed ABI parameter and delegates all
-// element parsing and typed-slice construction to ConvertParamStrToArray,
-// which uses abi.Type.GetType() via reflect to produce the exact slice type
-// go-ethereum's ABI encoder expects.
-func PromptArray(u ui.UI, input abi.Argument, prefill string, network jarvisnetworks.Network) (interface{}, error) {
-	var inpStr string
-	if prefill == "" {
-		inpStr = u.Ask(nil)
-	} else {
-		inpStr = prefill
-	}
-	inpStr = strings.TrimSpace(inpStr)
-	inpStr, err := util.InterpretInput(inpStr, network)
-	if err != nil {
-		return nil, err
-	}
-	return util.ConvertParamStrToArray(input.Name, input.Type, inpStr, network)
-}
-
-// PromptNonArray prompts for a scalar ABI parameter value.
-func PromptNonArray(u ui.UI, input abi.Argument, prefill string, network jarvisnetworks.Network) (interface{}, error) {
-	var inpStr string
-	if prefill == "" {
-		inpStr = u.Ask(nil)
-	} else {
-		inpStr = prefill
-	}
-	inpStr = strings.TrimSpace(inpStr)
-	inpStr, err := util.InterpretInput(inpStr, network)
+// ConvertParamInput turns one line of user input into the typed value the ABI
+// encoder expects for input. Arrays and tuples are entered as a single
+// bracketed line ("[a, b]", "(a, b)") and delegated to ConvertParamStrToArray,
+// which uses abi.Type.GetType() via reflect to build the exact slice type.
+func ConvertParamInput(input abi.Argument, raw string, network jarvisnetworks.Network) (any, error) {
+	inpStr, err := util.InterpretInput(strings.TrimSpace(raw), network)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't interpret input: %w", err)
 	}
-	return util.ConvertParamStrToType(input.Name, input.Type, inpStr, network)
+	switch input.Type.T {
+	case abi.SliceTy, abi.ArrayTy:
+		return util.ConvertParamStrToArray(input.Name, input.Type, inpStr, network)
+	default:
+		return util.ConvertParamStrToType(input.Name, input.Type, inpStr, network)
+	}
+}
+
+// foldableInputLen is the longest typed answer we fold into the "→" line on a
+// TTY. RewriteLastLine can only clear one physical row, so an answer that may
+// have wrapped is left in place rather than risk leaving fragments behind.
+const foldableInputLen = 60
+
+// echoParam shows what jarvis understood from the user's answer. The first
+// line replaces the raw "> answer" row on a TTY (when it is short enough to be
+// sure it occupied one row); nested values follow as an indented tree.
+func echoParam(u ui.UI, analyzer util.TxAnalyzer, input abi.Argument, value any, raw string, fold bool) {
+	d := util.NewParamDisplay(analyzer.ParamAsJarvisParamResult(input.Name, input.Type, value))
+	lines := util.ParamValueLines(u, d)
+	if len(lines) == 0 {
+		return
+	}
+	first := "  → " + lines[0]
+	if fold && len(raw) <= foldableInputLen {
+		u.RewriteLastLine(first)
+	} else {
+		u.Info("%s", first)
+	}
+	for _, l := range lines[1:] {
+		u.Info("    %s", l)
+	}
 }
 
 // PromptTxConfirmation displays a transaction summary and asks the user to
@@ -278,48 +283,43 @@ func PromptFunctionCallData(
 		return nil, nil, err
 	}
 
+	contract := util.StyledAddress(util.GetJarvisAddress(contractAddress, network))
 	if method.Type == abi.Constructor {
-		u.Info("Creating new contract at %s", contractAddress)
+		u.Info("%s  →  new contract at %s", u.Style(ui.StyledText{Text: methodName, Severity: ui.SeverityCritical}), contractAddress)
 	} else {
-		u.Info("Contract: %s", jarviscommon.VerboseAddress(util.GetJarvisAddress(contractAddress, network)))
+		u.Info("%s  →  %s", u.Style(ui.StyledText{Text: methodName, Severity: ui.SeverityCritical}), u.Style(contract))
 	}
-	u.Info("Method: %s", methodName)
 
 	inputs := method.Inputs
 	if prefillMode && len(inputs) != len(prefills) {
 		return nil, nil, fmt.Errorf("you must specify enough params in prefilled mode")
 	}
 
-	u.Info("Input:")
 	paramUI := u.Indent()
 	params = []any{}
-	pi := 0
-	for {
-		if pi >= len(inputs) {
-			break
-		}
+	for pi := 0; pi < len(inputs); {
 		input := inputs[pi]
+		paramUI.Info("%d. %s  %s", pi+1, input.Name,
+			paramUI.Style(ui.StyledText{Text: input.Type.String(), Severity: ui.SeverityMuted}))
 
-		paramUI.Info("%d. %s (%s)", pi+1, input.Name, input.Type.String())
-
-		var inputParam any
-		if !prefillMode || prefills[pi] == "?" {
-			inputParam, err = PromptParam(paramUI, true, input, "", network)
-			if err != nil {
-				paramUI.Error("your input is not valid: %s", err)
-				continue
-			}
+		interactive := !prefillMode || prefills[pi] == "?"
+		raw := ""
+		if interactive {
+			raw = paramUI.Ask(nil)
 		} else {
-			inputParam, err = PromptParam(paramUI, false, input, prefills[pi], network)
-			if err != nil {
-				paramUI.Error("your input is not valid: %s", err)
+			raw = prefills[pi]
+		}
+
+		inputParam, err := ConvertParamInput(input, raw, network)
+		if err != nil {
+			paramUI.Error("✗ %s", err)
+			if !interactive {
 				return nil, nil, fmt.Errorf("your input is not valid: %w", err)
 			}
+			continue
 		}
 
-		paramUI.Info("You entered:")
-		util.DisplayParam(paramUI.Indent(), analyzer.ParamAsJarvisParamResult(input.Name, input.Type, inputParam))
-
+		echoParam(paramUI, analyzer, input, inputParam, raw, interactive)
 		params = append(params, inputParam)
 		pi++
 	}
