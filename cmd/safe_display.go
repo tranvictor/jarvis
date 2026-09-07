@@ -133,7 +133,7 @@ func buildSafeSigningCard(
 }
 
 // decodeSafeCalldata runs the analyzer over the SafeTx payload. It mirrors
-// cmd/util.AnalyzeAndShowMsigTxInfo: fetch the destination ABI through the
+// cmd/util.decodeClassicCalldata: fetch the destination ABI through the
 // resolver (honoring --custom-abi and --erc20) and let the analyzer decode
 // recursively. Returns nil when no analyzer is available or no ABI could be
 // found for a non-MultiSend destination.

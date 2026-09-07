@@ -153,6 +153,9 @@ type SigningNote struct {
 	// ExecutesSafeTxHash marks the tx as the execTransaction of a Safe tx the
 	// user has just reviewed, so the card links to it and collapses the call.
 	ExecutesSafeTxHash string
+	// CollapseCallNote, when set, collapses the next EOA card's call with this
+	// muted suffix (the inner Classic/Safe tx was just shown).
+	CollapseCallNote string
 	// WalletName and WalletKind describe the signing account; the name fills
 	// in for an address-book entry when there is none, the kind is shown
 	// next to the signer.
@@ -174,6 +177,9 @@ func mergeSigningNote(n SigningNote) {
 	}
 	if nextSigningNote.ExecutesSafeTxHash == "" {
 		nextSigningNote.ExecutesSafeTxHash = n.ExecutesSafeTxHash
+	}
+	if nextSigningNote.CollapseCallNote == "" {
+		nextSigningNote.CollapseCallNote = n.CollapseCallNote
 	}
 	if nextSigningNote.WalletName == "" {
 		nextSigningNote.WalletName = n.WalletName
@@ -321,6 +327,10 @@ func buildEOASigningCard(
 		// Safe params were already shown on the Safe card; only the EOA facts
 		// remain on this one.
 		card.Safe.Operation, card.Safe.SafeNonce, card.Safe.SafeTxHash = "", "", ""
+	}
+	if note != nil && note.CollapseCallNote != "" {
+		card.CollapseCall = true
+		card.CollapseNote = note.CollapseCallNote
 	}
 
 	card.Warnings = SigningWarnings(warn)

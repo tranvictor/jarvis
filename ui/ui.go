@@ -214,6 +214,6 @@ type UI interface {
 
 	// Writer returns an io.Writer that prepends the current indentation
 	// to every line. Use this when calling functions that take io.Writer
-	// directly (e.g. capturing output into a buffer for a bordered box).
+	// directly.
 	Writer() io.Writer
 }

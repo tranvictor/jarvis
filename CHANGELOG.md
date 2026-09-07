@@ -123,12 +123,21 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   once instead of aliases as separate entries.
 - `jarvis wallet add` offers the wallet kinds as a numbered menu with their
   derivation path or what will be asked next, instead of asking you to type
-  one of five words.
+  one of five words. Hardware-wallet address paging uses the same numbered
+  menu (`next page` / `previous page` / `custom derivation path`) instead of
+  typed keywords mixed with 0-based indices.
 - `jarvis wallet list` is a table (Address / Kind / Description);
   `jarvis addr` / `whois` drop the dashed rule and the `(Unknown)` label;
   `jarvis network list` is a table of names, chain IDs and RPC **hosts**
   (never the full URL, so default Infura keys stay off the screen);
   `jarvis msig chains list` uses the same table primitive.
+- Classic `msig info` / `approve` use the same signing card as Safe (decoded
+  call, Multisig / Tx ID / Status / Signed by) instead of the old bordered
+  box; the following EOA confirm/revoke/execute card collapses the inner
+  call. Classic `msig summary` lists only the pending queue (id, destination,
+  value, sigs, status) rather than every historical tx id. Confirmation and
+  execution log scans use the same `Spinner` as other waits instead of a
+  raw `\r` percentage.
 - `jarvis version` leads with `jarvis <version>` and the GitHub URL, then
   the existing Kyber contact lines.
 - `--from` help points at `jarvis wallet list` (there is no `jarvis acc`);
