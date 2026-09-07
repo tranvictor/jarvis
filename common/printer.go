@@ -32,26 +32,70 @@ func MaxUintLabel(value string) (string, bool) {
 	return label, ok
 }
 
+// ReadableNumber renders a big integer as "raw (grouped)" where grouped has
+// thousands separators: "1000000000 (1,000,000,000)". Well-known max-uint
+// sentinels render as their label. Short numbers are returned as is.
 func ReadableNumber(value string) string {
 	if label, ok := MaxUintLabel(value); ok {
 		return label
 	}
-	if len(value) <= 4 {
+	if len(strings.TrimPrefix(value, "-")) <= 4 {
 		return value
 	}
+	return fmt.Sprintf("%s (%s)", value, GroupDigits(value))
+}
 
-	digits := []string{}
-	for i := range value {
-		digits = append([]string{string(value[len(value)-1-i])}, digits...)
-		if (i+1)%3 == 0 && i < len(value)-1 {
-			if (i+1)%9 == 0 {
-				digits = append([]string{"‸"}, digits...)
-			} else {
-				digits = append([]string{"￺"}, digits...)
-			}
+// GroupDigits inserts thousands separators into the integer part of a
+// decimal number string: "1234567.891" → "1,234,567.891". Non-numeric input
+// is returned unchanged.
+func GroupDigits(value string) string {
+	sign := ""
+	if strings.HasPrefix(value, "-") {
+		sign, value = "-", value[1:]
+	}
+	intPart, frac := value, ""
+	if i := strings.IndexByte(value, '.'); i >= 0 {
+		intPart, frac = value[:i], value[i:]
+	}
+	for _, c := range intPart {
+		if c < '0' || c > '9' {
+			return sign + intPart + frac
 		}
 	}
-	return fmt.Sprintf("%s (%s)", value, strings.Join(digits, ""))
+	var b strings.Builder
+	for i, c := range intPart {
+		if i > 0 && (len(intPart)-i)%3 == 0 {
+			b.WriteByte(',')
+		}
+		b.WriteRune(c)
+	}
+	return sign + b.String() + frac
+}
+
+// CompactAmount shortens a human token amount for dense read-only views:
+// thousands separators on the integer part and the fraction truncated to four
+// decimals (or four significant digits when the integer part is zero).
+// Precision is for the signing card and JSON; this is for scanning.
+func CompactAmount(human string) string {
+	intPart, frac := human, ""
+	if i := strings.IndexByte(human, '.'); i >= 0 {
+		intPart, frac = human[:i], human[i+1:]
+	}
+	if frac == "" {
+		return GroupDigits(intPart)
+	}
+	keep := 4
+	if strings.Trim(intPart, "-0") == "" {
+		keep = len(frac) - len(strings.TrimLeft(frac, "0")) + 4
+	}
+	if len(frac) > keep {
+		frac = frac[:keep]
+	}
+	frac = strings.TrimRight(frac, "0")
+	if frac == "" {
+		return GroupDigits(intPart)
+	}
+	return GroupDigits(intPart) + "." + frac
 }
 
 // PlainAddress formats an Address as a plain string with no ANSI color codes.
@@ -100,10 +144,22 @@ func NameFirst(addr Address, full bool) string {
 	if !full {
 		hex = ShortAddress(hex)
 	}
+	if IsZeroAddress(addr.Address) {
+		return hex + " (zero address)"
+	}
 	if !IsKnownAddress(addr) {
-		return hex + " (unknown)"
+		return hex
 	}
 	return fmt.Sprintf("%s (%s)", addr.Desc, hex)
+}
+
+// IsZeroAddress reports whether hex is 0x0000…0000, the conventional mint /
+// burn counterparty and "no address" sentinel.
+func IsZeroAddress(hex string) bool {
+	if !strings.HasPrefix(hex, "0x") || len(hex) != 42 {
+		return false
+	}
+	return strings.Trim(hex[2:], "0") == ""
 }
 
 // VerboseAddress formats an Address for terminal display. The description is

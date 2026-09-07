@@ -450,7 +450,9 @@ func (self *TxAnalyzer) analyzeMethodCall(
 	if err != nil {
 		return "", []ParamResult{}, err
 	}
-	method = m.Name
+	// RawName is the Solidity name; Name carries go-ethereum's overload
+	// suffix ("execute0"), which means nothing to the operator.
+	method = m.RawName
 	ps, err := m.Inputs.UnpackValues(data[4:])
 	if err != nil {
 		return method, []ParamResult{}, err

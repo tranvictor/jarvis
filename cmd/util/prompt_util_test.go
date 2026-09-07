@@ -142,7 +142,7 @@ func TestPromptFunctionCallDataEchoesCompactForm(t *testing.T) {
 		// folded into the "> answer" row.
 		"Info:   → [2 items]",
 		"Info:     ├─ alice (0xaAaA…1111)",
-		"Info:     └─ 0xBbbb…2222 (unknown)",
+		"Info:     └─ 0xBbbb…2222",
 	}
 	if len(got) != len(want) {
 		t.Fatalf("entry count %d != %d:\n%s", len(got), len(want), strings.Join(got, "\n"))
@@ -188,7 +188,7 @@ func TestPromptFunctionCallDataPrefillDoesNotFold(t *testing.T) {
 		t.Fatalf("expected exactly one folded echo for the prompted slot, got %v", rewrites)
 	}
 	joined := strings.Join(infos, "\n")
-	if !strings.Contains(joined, "  → 0xd8dA…6045 (unknown)") || !strings.Contains(joined, "  → [0 items]") {
+	if !strings.Contains(joined, "  → 0xd8dA…6045") || !strings.Contains(joined, "  → [0 items]") {
 		t.Fatalf("prefilled slots should be echoed as plain lines:\n%s", joined)
 	}
 }
