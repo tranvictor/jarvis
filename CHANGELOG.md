@@ -129,7 +129,8 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   `jarvis network list` is a table of names, chain IDs and RPC **hosts**
   (never the full URL, so default Infura keys stay off the screen);
   `jarvis msig chains list` uses the same table primitive.
-- `jarvis version` is two lines (`jarvis <version>` + the GitHub URL).
+- `jarvis version` leads with `jarvis <version>` and the GitHub URL, then
+  the existing Kyber contact lines.
 - `--from` help points at `jarvis wallet list` (there is no `jarvis acc`);
   `--gasprice` no longer mentions ethgasstation.info; `info --json-output`
   describes this command; `-x/--degen` says what it expands.

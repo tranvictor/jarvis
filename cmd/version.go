@@ -12,6 +12,8 @@ var versionCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		appUI.Info("jarvis %s", VERSION)
 		appUI.Info("https://github.com/tranvictor/jarvis")
+		appUI.Info("Contact: @tranvictor on Telegram or victor@kyber.network")
+		appUI.Info("At Kyber, our objective is to grow as a respected team in crypto world")
 	},
 }
 
