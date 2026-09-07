@@ -558,7 +558,7 @@ func TestInfoLayoutRendersClearSignedBoxAboveCall(t *testing.T) {
 	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex,
 		func(d *util.TxDisplay, _ *jarviscommon.TxResult) {
 			d.ClearSign = func(cu ui.UI) {
-				erc7730.Render(cu, &erc7730.ClearSignedView{
+				erc7730.RenderInfo(cu, &erc7730.ClearSignedView{
 					InterpolatedIntent: "Swap 1,000 USDC for WETH",
 					Owner:              "Uniswap",
 					ContractName:       "Uniswap V2 Router",
@@ -583,6 +583,9 @@ func TestInfoLayoutRendersClearSignedBoxAboveCall(t *testing.T) {
 	}
 	if strings.Index(out, "Clear Signed") > strings.Index(out, "Call  swapExactTokensForTokens") {
 		t.Fatalf("clear-signed box must sit above the ABI call:\n%s", out)
+	}
+	if strings.Contains(out, "hardware wallet") {
+		t.Fatalf("info must not tell the operator to compare a hardware wallet screen:\n%s", out)
 	}
 }
 

@@ -7,9 +7,12 @@ import (
 	"github.com/tranvictor/jarvis/ui"
 )
 
+const signingHint = "Compare with your hardware wallet screen before approving."
+
 // Render writes view inside a green-bordered BoxedSection followed by
 // a green-bordered fields table — the standard jarvis "clear signed"
-// presentation. Callers wrap their existing per-tx printing with a
+// presentation for a signing review, including the hardware-wallet
+// comparison hint. Callers wrap their existing per-tx printing with a
 // Render() call when the engine returns a non-nil view.
 //
 // Render is a no-op when view is nil so call sites can write:
@@ -18,6 +21,17 @@ import (
 //	    erc7730.Render(u, v)
 //	}
 func Render(u ui.UI, view *ClearSignedView) {
+	render(u, view, true)
+}
+
+// RenderInfo is Render without the hardware-wallet comparison hint.
+// jarvis info is looking at a tx, not asking the operator to approve
+// one, so that line does not belong there.
+func RenderInfo(u ui.UI, view *ClearSignedView) {
+	render(u, view, false)
+}
+
+func render(u ui.UI, view *ClearSignedView, signing bool) {
 	if view == nil {
 		return
 	}
@@ -45,7 +59,9 @@ func Render(u ui.UI, view *ClearSignedView) {
 		}
 		c.Info("")
 		c.Info(provenanceLine(view))
-		c.Info("Compare with your hardware wallet screen before approving.")
+		if signing {
+			c.Info(signingHint)
+		}
 		if view.Warning != "" {
 			c.Warn(view.Warning)
 		}

@@ -196,8 +196,8 @@ Events (3)
   their raw topics so the event count is always complete.
 - When an ERC-7730 descriptor matches the call (or an inner MultiSend / Safe
   call), a green **Clear Signed** panel is printed above the ABI **Call**
-  tree — the same view shown at sign time. No match leaves the output
-  unchanged.
+  tree — the same fields shown at sign time, without the hardware-wallet
+  comparison hint. No match leaves the output unchanged.
 
 ### Signing screen
 
