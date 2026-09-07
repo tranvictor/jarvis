@@ -321,8 +321,8 @@ func TestUndecodedCallShowsContractAndData(t *testing.T) {
 	joined := strings.Join(all, "\n")
 
 	for _, want := range []string{
-		"0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
-		"Method ID | 0xdeadbeef",
+		"↳ <undecoded>  →  0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+		"selector 0xdeadbeef   36 bytes",
 		"Raw calldata (36 bytes):",
 		"0xdeadbeef00000000000000000000000000000000000000000000000000000000",
 		"no method with id: 0xdeadbeef",

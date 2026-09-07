@@ -3,17 +3,16 @@ package util
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	ethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
-	"github.com/tranvictor/jarvis/config"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	"github.com/tranvictor/jarvis/ui"
@@ -138,7 +137,22 @@ func echoParam(u ui.UI, analyzer util.TxAnalyzer, input abi.Argument, value any,
 	}
 }
 
-// PromptTxConfirmation displays a transaction summary and asks the user to
+// nextSigningNote carries context from a caller that knows what the next EOA
+// transaction is for (e.g. runSafeExecute) into PromptTxConfirmation, which
+// only sees the raw transaction. It is consumed by the next confirmation.
+var nextSigningNote *SigningNote
+
+// SigningNote annotates the next EOA signing card.
+type SigningNote struct {
+	// ExecutesSafeTxHash marks the tx as the execTransaction of a Safe tx the
+	// user has just reviewed, so the card links to it and collapses the call.
+	ExecutesSafeTxHash string
+}
+
+// SetNextSigningNote attaches a note to the next PromptTxConfirmation call.
+func SetNextSigningNote(n SigningNote) { nextSigningNote = &n }
+
+// PromptTxConfirmation displays the signing card for tx and asks the user to
 // confirm before signing. Returns an error if the user aborts.
 func PromptTxConfirmation(
 	u ui.UI,
@@ -148,15 +162,110 @@ func PromptTxConfirmation(
 	customABIs map[string]*abi.ABI,
 	network jarvisnetworks.Network,
 ) error {
-	u.Section("Confirm tx data before signing")
-	if err := showTxInfoToConfirm(u, analyzer, from, tx, customABIs, network); err != nil {
+	note := nextSigningNote
+	nextSigningNote = nil
+	card, err := buildEOASigningCard(u, analyzer, from, tx, customABIs, network, note)
+	if err != nil {
 		u.Error("%s", err)
 		return err
 	}
-	if !config.YesToAllPrompt && !u.Confirm("Confirm?", true) {
+	if !ConfirmSigningCard(u, card) {
 		return fmt.Errorf("user aborted")
 	}
 	return nil
+}
+
+// buildEOASigningCard assembles the SigningCard for a raw EOA transaction:
+// resolves the destination, decodes the calldata when it targets a contract,
+// and derives the warnings.
+func buildEOASigningCard(
+	u ui.UI,
+	analyzer util.TxAnalyzer,
+	from jarviscommon.Address,
+	tx *types.Transaction,
+	customABIs map[string]*abi.ABI,
+	network jarvisnetworks.Network,
+	note *SigningNote,
+) (*SigningCard, error) {
+	symbol := network.GetNativeTokenSymbol()
+	card := &SigningCard{
+		Kind:    "EOA transaction",
+		Network: network.GetName(),
+		Signer:  util.StyledAddress(from),
+		Nonce:   fmt.Sprintf("%d", tx.Nonce()),
+		Gas: FormatGasLine(tx.Type() == types.LegacyTxType,
+			tx.GasPrice(), tx.GasFeeCap(), tx.GasTipCap(), tx.Gas(), symbol),
+	}
+	if tx.Value().Sign() > 0 {
+		card.Value = jarviscommon.BigToFloatString(tx.Value(), network.GetNativeTokenDecimal()) + " " + symbol
+	}
+
+	if tx.To() == nil {
+		card.CreateAddress = crypto.CreateAddress(jarviscommon.HexToAddress(from.Address), tx.Nonce()).Hex()
+		if len(tx.Data()) > 0 {
+			card.RawData = "0x" + ethcommon.Bytes2Hex(tx.Data())
+		}
+		card.Prompt = fmt.Sprintf("Sign and broadcast contract creation (%s)?", gasCostOnly(card.Gas))
+		return card, nil
+	}
+
+	toHex := tx.To().Hex()
+	if isERC20, _ := util.IsERC20(toHex, network); isERC20 {
+		// Warm the caches so the analyzer below annotates token amounts.
+		util.GetERC20Symbol(toHex, network)
+		util.GetERC20Decimal(toHex, network)
+	}
+	to := util.GetJarvisAddress(toHex, network)
+	card.To = util.StyledAddress(to)
+
+	isContract, err := util.IsContract(toHex, network)
+	if err != nil {
+		return nil, err
+	}
+	warn := WarningInput{
+		To: to, ToIsContract: isContract, Value: tx.Value(), NativeSymbol: symbol,
+		HasData: len(tx.Data()) > 0,
+	}
+
+	var fc *jarviscommon.FunctionCall
+	if isContract && len(tx.Data()) > 0 {
+		fc = analyzer.AnalyzeFunctionCallRecursively(util.GetABI, tx.Value(), toHex, tx.Data(), customABIs)
+		warn.Call = fc
+		if fc != nil {
+			card.Call = util.NewFunctionCallDisplay(fc)
+		}
+		// ERC-7730 clear-signing layer: when a descriptor matches the
+		// destination contract, the curated view is rendered above the raw
+		// ABI decode so the operator can scan the intent at a glance and
+		// still cross-check against the full breakdown. Failures fall through
+		// silently — we never make the review worse than today.
+		if fc != nil && fc.Method != "" {
+			card.ClearSign = func(cu ui.UI) { renderContractClearSign(cu, tx, fc, network, customABIs) }
+		}
+	} else if len(tx.Data()) > 0 {
+		card.RawData = "0x" + ethcommon.Bytes2Hex(tx.Data())
+	}
+
+	if note != nil && note.ExecutesSafeTxHash != "" {
+		card.Kind = "Safe execution"
+		card.CollapseCall = card.Call != nil && card.Call.Method == "execTransaction"
+		card.Safe = &SafeCardFields{Executes: note.ExecutesSafeTxHash}
+		// Safe params were already shown on the Safe card; only the EOA facts
+		// remain on this one.
+		card.Safe.Operation, card.Safe.SafeNonce, card.Safe.SafeTxHash = "", "", ""
+	}
+
+	card.Warnings = SigningWarnings(warn)
+	card.Prompt = fmt.Sprintf("Sign and broadcast (%s)?", gasCostOnly(card.Gas))
+	return card, nil
+}
+
+// gasCostOnly extracts the "≈ 0.0017 ETH" tail of a FormatGasLine string.
+func gasCostOnly(gas string) string {
+	if i := strings.LastIndex(gas, "≈"); i >= 0 {
+		return gas[i:]
+	}
+	return gas
 }
 
 // PromptTxData guides the user through selecting a method and filling its
@@ -324,96 +433,6 @@ func PromptFunctionCallData(
 		pi++
 	}
 	return method, params, nil
-}
-
-// showTxInfoToConfirm writes the transaction summary (from, to, value, gas,
-// decoded function call) to the UI for the user to review before signing.
-func showTxInfoToConfirm(
-	u ui.UI,
-	analyzer util.TxAnalyzer,
-	from jarviscommon.Address,
-	tx *types.Transaction,
-	customABIs map[string]*abi.ABI,
-	network jarvisnetworks.Network,
-) error {
-	fromStyled := util.StyledAddress(from)
-	u.Critical("From  : %s", u.Style(fromStyled))
-
-	if tx.To() != nil {
-		toHex := tx.To().Hex()
-		if isERC20, _ := util.IsERC20(toHex, network); isERC20 {
-			util.GetERC20Symbol(toHex, network)
-			util.GetERC20Decimal(toHex, network)
-		}
-		toStyled := util.StyledAddress(util.GetJarvisAddress(toHex, network))
-		u.Critical("To    : %s", u.Style(toStyled))
-	} else {
-		cAddr := crypto.CreateAddress(
-			jarviscommon.HexToAddress(from.Address),
-			tx.Nonce(),
-		).Hex()
-		u.Critical("To    : create contract at %s", cAddr)
-	}
-
-	if tx.Value().Sign() > 0 {
-		sendingETH := jarviscommon.BigToFloatString(tx.Value(), network.GetNativeTokenDecimal())
-		u.Critical("Value : %s %s", sendingETH, network.GetNativeTokenSymbol())
-	}
-
-	gasCost := jarviscommon.BigToFloat(
-		big.NewInt(0).Mul(big.NewInt(int64(tx.Gas())), tx.GasPrice()),
-		18,
-	)
-	switch tx.Type() {
-	case types.LegacyTxType:
-		u.Critical("Nonce : %d", tx.Nonce())
-		u.Critical("Gas   : %.4f gwei (%d gas = %.8f %s)",
-			jarviscommon.BigToFloat(tx.GasPrice(), 9),
-			tx.Gas(), gasCost, network.GetNativeTokenSymbol(),
-		)
-	case types.DynamicFeeTxType:
-		u.Critical("Nonce : %d", tx.Nonce())
-		u.Critical("Gas   : Max %.4f gwei, Tip %.4f gwei (%d gas = %.8f %s)",
-			jarviscommon.BigToFloat(tx.GasFeeCap(), 9),
-			jarviscommon.BigToFloat(tx.GasTipCap(), 9),
-			tx.Gas(), gasCost, network.GetNativeTokenSymbol(),
-		)
-	}
-
-	if tx.To() == nil {
-		return nil
-	}
-
-	isContract, err := util.IsContract(tx.To().Hex(), network)
-	if err != nil {
-		return err
-	}
-	if !isContract {
-		return nil
-	}
-
-	fc := analyzer.AnalyzeFunctionCallRecursively(
-		util.GetABI,
-		tx.Value(),
-		tx.To().Hex(),
-		tx.Data(),
-		customABIs,
-	)
-
-	// ERC-7730 clear-signing layer: when a descriptor matches the
-	// destination contract, render the curated green-bordered view
-	// above the raw ABI decode so the operator can scan the intent
-	// at a glance and still cross-check against the full breakdown.
-	// Failures (descriptor not found, registry miss, formatter
-	// error) silently fall through to the existing display — we
-	// never make the review worse than today.
-	if fc != nil && fc.Method != "" {
-		renderContractClearSign(u, tx, fc, network, customABIs)
-	}
-
-	util.DisplayFunctionCall(u, fc)
-	u.Info("")
-	return nil
 }
 
 // renderContractClearSign asks the shared ERC-7730 engine for a

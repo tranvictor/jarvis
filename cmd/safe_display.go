@@ -13,6 +13,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/safe"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
 
@@ -39,79 +40,111 @@ func showSafeInfo(s *safe.SafeContract) {
 	}
 }
 
-// showSafeTxToConfirm displays the parameters of a SafeTx in a way that
-// matches Safe wallet UIs (so users can sanity-check side-by-side) AND
-// decodes the calldata into a human-readable function call using jarvis's
-// standard analyzer pipeline — exactly the way `jarvis msig` shows pending
-// classic-multisig transactions. Pass tc so we can reach the network reader,
-// analyzer, and ABI resolver; pass nil to fall back to a raw-hex display.
-func showSafeTxToConfirm(stx *safe.SafeTx, hash [32]byte, tc *cmdutil.TxContext) {
-	showSafeTxToConfirmWithABIs(stx, hash, tc, nil)
+// safeCardOptions are the per-flow choices when building a Safe signing card.
+type safeCardOptions struct {
+	kind      string // "Safe proposal", "Safe approval", "Safe execution", "Safe transaction"
+	extraABIs map[string]*abi.ABI
+	sigs      []safe.OwnerSig // owners that already signed; rendered under the card
+	threshold uint64          // 0 = unknown; otherwise "n of m required"
+	signer    string          // EOA that will sign, if any
+	prompt    string
 }
 
-// showSafeTxToConfirmWithABIs is showSafeTxToConfirm plus a set of extra ABIs
-// keyed by lowercased address. Batch proposals need it: the calls inside a
+// showSafeTxToConfirm displays a SafeTx as a read-only card (no prompt).
+// Pass tc so we can reach the network reader, analyzer, and ABI resolver;
+// pass nil to fall back to a raw-hex display.
+func showSafeTxToConfirm(stx *safe.SafeTx, hash [32]byte, tc *cmdutil.TxContext) {
+	cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(stx, hash, tc, safeCardOptions{kind: "Safe transaction"}))
+}
+
+// buildSafeSigningCard assembles the SigningCard for a SafeTx: the SafeTx
+// parameters in the order Safe wallet UIs show them (so users can sanity-check
+// side by side), the calldata decoded through jarvis's analyzer pipeline, and
+// the derived warnings. extraABIs matter for batches: the calls inside a
 // MultiSend payload frequently target contracts the block explorer can't give
 // an ABI for, and jarvis already knows their signatures because it just
 // encoded them from the tx builder batch.
-func showSafeTxToConfirmWithABIs(
+func buildSafeSigningCard(
 	stx *safe.SafeTx,
 	hash [32]byte,
 	tc *cmdutil.TxContext,
-	extraABIs map[string]*abi.ABI,
-) {
-	appUI.Section("Safe transaction details")
-
+	opt safeCardOptions,
+) *cmdutil.SigningCard {
+	network := config.Network()
 	// util.GetJarvisAddress runs through util.NewEnrichedResolver, which
-	// transparently fetches verified contract names (and follows
-	// proxies) from the block explorer on first miss — no manual
-	// PrefetchContractName plumbing required here or in the analyzer
-	// pipeline below.
-	toJarvis := util.GetJarvisAddress(stx.To.Hex(), config.Network())
-	appUI.Critical("To             : %s", appUI.Style(util.StyledAddress(toJarvis)))
+	// transparently fetches verified contract names (and follows proxies)
+	// from the block explorer on first miss.
+	toJarvis := util.GetJarvisAddress(stx.To.Hex(), network)
+	isMultiSend := jarviscommon.IsMultiSendCallData(stx.Data)
 
+	card := &cmdutil.SigningCard{
+		Kind:    opt.kind,
+		Network: network.GetName(),
+		To:      util.StyledAddress(toJarvis),
+		Prompt:  opt.prompt,
+		Safe: &cmdutil.SafeCardFields{
+			Operation:      operationLabel(stx.Operation),
+			DelegateCall:   stx.Operation == safe.OpDelegateCall,
+			MultiSend:      isMultiSend,
+			SafeNonce:      stx.Nonce.String(),
+			SafeTxHash:     "0x" + ethcommon.Bytes2Hex(hash[:]),
+			SafeTxGas:      stx.SafeTxGas.String(),
+			BaseGas:        stx.BaseGas.String(),
+			GasPrice:       stx.GasPrice.String(),
+			GasToken:       stx.GasToken.Hex(),
+			RefundReceiver: stx.RefundReceiver.Hex(),
+			Threshold:      opt.threshold,
+		},
+	}
+	if opt.signer != "" {
+		card.Signer = util.StyledAddress(util.GetJarvisAddress(opt.signer, network))
+	}
 	if stx.Value != nil && stx.Value.Sign() > 0 {
-		appUI.Critical("Value          : %f %s (%s wei)",
-			jarviscommon.BigToFloat(stx.Value, config.Network().GetNativeTokenDecimal()),
-			config.Network().GetNativeTokenSymbol(),
-			stx.Value.String(),
-		)
-	} else {
-		appUI.Critical("Value          : 0")
+		card.Value = fmt.Sprintf("%s %s (%s wei)",
+			jarviscommon.BigToFloatString(stx.Value, network.GetNativeTokenDecimal()),
+			network.GetNativeTokenSymbol(), stx.Value.String())
 	}
-	appUI.Critical("Operation      : %s", operationLabel(stx.Operation))
-	if stx.Operation == safe.OpDelegateCall && jarviscommon.IsMultiSendCallData(stx.Data) {
-		// The DANGEROUS label above stays: a delegatecall really does run
-		// foreign code in the Safe's context. This adds the missing why, so a
-		// reviewing owner can tell a routine batch from an actual red flag.
-		appUI.Critical("                 ^ this is a MultiSend batch; every call it makes is listed below")
-	}
-	appUI.Critical("Nonce (Safe)   : %s", stx.Nonce.String())
-	appUI.Critical("safeTxGas      : %s", stx.SafeTxGas.String())
-	appUI.Critical("baseGas        : %s", stx.BaseGas.String())
-	appUI.Critical("gasPrice       : %s", stx.GasPrice.String())
-	appUI.Critical("gasToken       : %s", stx.GasToken.Hex())
-	appUI.Critical("refundReceiver : %s", stx.RefundReceiver.Hex())
-	appUI.Critical("safeTxHash     : 0x%s", ethcommon.Bytes2Hex(hash[:]))
-
-	if len(stx.Data) == 0 {
-		appUI.Critical("Data           : (empty)")
-		return
+	for _, sig := range opt.sigs {
+		card.Safe.Signatures = append(card.Safe.Signatures, signerLine(sig))
 	}
 
-	// Decoded calldata block. We mirror cmd/util.AnalyzeAndShowMsigTxInfo:
-	// fetch the destination ABI through the resolver (honoring --custom-abi
-	// and --erc20), then hand off to util.AnalyzeMethodCallAndPrint which
-	// prints the function name + decoded params with token-aware formatting.
+	warn := cmdutil.WarningInput{
+		To:           toJarvis,
+		Value:        stx.Value,
+		NativeSymbol: network.GetNativeTokenSymbol(),
+		HasData:      len(stx.Data) > 0,
+		DelegateCall: stx.Operation == safe.OpDelegateCall,
+		MultiSend:    isMultiSend,
+	}
+	if len(stx.Data) > 0 {
+		if isContract, err := util.IsContract(stx.To.Hex(), network); err == nil {
+			warn.ToIsContract = isContract
+		}
+		fc := decodeSafeCalldata(stx, tc, opt.extraABIs)
+		if fc != nil {
+			warn.Call = fc
+			card.Call = util.NewFunctionCallDisplay(fc)
+		} else {
+			card.RawData = "0x" + ethcommon.Bytes2Hex(stx.Data)
+		}
+	}
+	card.Warnings = cmdutil.SigningWarnings(warn)
+	return card
+}
+
+// decodeSafeCalldata runs the analyzer over the SafeTx payload. It mirrors
+// cmd/util.AnalyzeAndShowMsigTxInfo: fetch the destination ABI through the
+// resolver (honoring --custom-abi and --erc20) and let the analyzer decode
+// recursively. Returns nil when no analyzer is available or no ABI could be
+// found for a non-MultiSend destination.
+func decodeSafeCalldata(stx *safe.SafeTx, tc *cmdutil.TxContext, extraABIs map[string]*abi.ABI) *jarviscommon.FunctionCall {
 	if tc == nil || tc.Resolver == nil || tc.Analyzer == nil {
-		appUI.Critical("Data (%d bytes): 0x%s", len(stx.Data), ethcommon.Bytes2Hex(stx.Data))
-		return
+		return nil
 	}
 	customABIs := map[string]*abi.ABI{}
 	for addr, a := range extraABIs {
 		customABIs[strings.ToLower(addr)] = a
 	}
-
 	destAbi, err := tc.Resolver.ConfigToABI(
 		stx.To.Hex(), config.ForceERC20ABI, config.CustomABI, config.Network(),
 	)
@@ -119,24 +152,28 @@ func showSafeTxToConfirmWithABIs(
 		// MultiSend / MultiSendCallOnly is unverified on many explorers, so a
 		// failure here is expected for batches and must not abort the decode:
 		// the analyzer has a built-in multiSend ABI to fall back on.
-		appUI.Warn("Couldn't resolve ABI of destination %s: %s", stx.To.Hex(), err)
 		if len(customABIs) == 0 && !jarviscommon.IsMultiSendCallData(stx.Data) {
-			appUI.Critical("Data (%d bytes): 0x%s", len(stx.Data), ethcommon.Bytes2Hex(stx.Data))
-			return
+			return nil
 		}
 	} else if _, taken := customABIs[strings.ToLower(stx.To.Hex())]; !taken {
 		customABIs[strings.ToLower(stx.To.Hex())] = destAbi
 	}
-
-	util.AnalyzeMethodCallAndPrint(
-		appUI,
-		tc.Analyzer,
-		stx.Value,
-		stx.To.Hex(),
-		stx.Data,
-		customABIs,
-		config.Network(),
+	return tc.Analyzer.AnalyzeFunctionCallRecursively(
+		util.GetABI, stx.Value, stx.To.Hex(), stx.Data, customABIs,
 	)
+}
+
+// signerLine renders one owner signature, tagged "[on-chain]" when it was an
+// approveHash rather than an off-chain signature.
+func signerLine(s safe.OwnerSig) ui.StyledText {
+	jarvisAddr := util.GetJarvisAddress(s.Owner.Hex(), config.Network())
+	tag := "[off-chain]"
+	if safe.IsOnChainApproval(s.Sig) {
+		tag = "[on-chain] "
+	}
+	st := util.StyledAddress(jarvisAddr)
+	st.Text = tag + " " + st.Text
+	return st
 }
 
 // showSafeSigners renders the list of owners that have already signed,
@@ -165,7 +202,7 @@ func operationLabel(op safe.Operation) string {
 	case safe.OpCall:
 		return "CALL (0)"
 	case safe.OpDelegateCall:
-		return "DELEGATECALL (1) — DANGEROUS"
+		return "DELEGATECALL (1)"
 	default:
 		return fmt.Sprintf("UNKNOWN (%d)", op)
 	}

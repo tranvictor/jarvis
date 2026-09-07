@@ -350,97 +350,6 @@ func printRawCalldata(u ui.UI, data string) {
 	}
 }
 
-// printUndecodedCall renders a call jarvis couldn't decode. Showing the
-// destination, the selector and the raw calldata is what lets an operator tell
-// *which* contract is missing an ABI (and inspect the payload by hand) instead
-// of staring at a bare decode error — which matters most for one entry of a
-// multisig batch, where the failing contract is otherwise invisible.
-func printUndecodedCall(u ui.UI, d *FunctionCallDisplay, nested bool) {
-	var rows [][]ui.TableCell
-	if nested {
-		// The arrow label already carries the destination; don't repeat it.
-		u.Error("↳ <undecoded call>  [%s]", u.Style(d.Destination))
-		u = u.Indent()
-	} else {
-		u.Section("Function call: <undecoded>")
-		rows = append(rows, []ui.TableCell{ui.TC("Contract"), tableCell(d.Destination)})
-	}
-
-	if d.Value != "" {
-		rows = append(rows, []ui.TableCell{ui.TC("Value"), ui.TC(d.Value)})
-	}
-	if len(d.Data) >= 10 {
-		rows = append(rows, []ui.TableCell{ui.TC("Method ID"), ui.TC(d.Data[:10])})
-	}
-	if d.Error != "" {
-		rows = append(
-			rows,
-			[]ui.TableCell{ui.TC("Error"), ui.TCS(d.Error, ui.SeverityError)},
-		)
-	}
-	if len(rows) > 0 {
-		u.PrintTable(&ui.Table{Groups: [][][]ui.TableCell{rows}})
-	}
-	if d.Data != "" {
-		printRawCalldata(u, d.Data)
-	}
-
-	for _, inner := range d.InnerCalls {
-		printFunctionCallDisplay(u.Indent(), inner, true)
-	}
-}
-
-func printFunctionCallDisplay(u ui.UI, d *FunctionCallDisplay, nested bool) {
-	if d.Method == "" {
-		printUndecodedCall(u, d, nested)
-		return
-	}
-
-	if nested {
-		// Inner calls are visually subordinate — a simple arrow label, no Section.
-		u.Info("↳ %s  [%s]", d.Method, u.Style(d.Destination))
-		if d.Error != "" {
-			u.Indent().Error("%s", d.Error)
-		}
-		printParamList(u.Indent(), d.Params)
-		for _, inner := range d.InnerCalls {
-			printFunctionCallDisplay(u.Indent(), inner, true)
-		}
-		return
-	}
-
-	u.Section(fmt.Sprintf("Function call: %s", d.Method))
-
-	// Build a single TableWithGroups: contract metadata (group 0) + params (group 1).
-	metaGroup := [][]ui.TableCell{{ui.TC("Contract"), tableCell(d.Destination)}}
-	if d.Value != "" {
-		metaGroup = append(metaGroup, []ui.TableCell{ui.TC("Value"), ui.TC(d.Value)})
-	}
-	// A method can resolve while its arguments fail to unpack; say so instead of
-	// showing a name over an empty parameter list.
-	if d.Error != "" {
-		metaGroup = append(
-			metaGroup,
-			[]ui.TableCell{ui.TC("Error"), ui.TCS(d.Error, ui.SeverityError)},
-		)
-	}
-
-	var paramGroup [][]ui.TableCell
-	for _, p := range d.Params {
-		paramGroup = append(paramGroup, flattenParamRows(p, "")...)
-	}
-
-	if len(paramGroup) > 0 {
-		u.PrintTable(&ui.Table{Groups: [][][]ui.TableCell{metaGroup, paramGroup}})
-	} else {
-		u.PrintTable(&ui.Table{Groups: [][][]ui.TableCell{metaGroup}})
-	}
-
-	for _, inner := range d.InnerCalls {
-		printFunctionCallDisplay(u.Indent(), inner, true)
-	}
-}
-
 // logSimpleRows returns all simple [param, value] rows for a single log,
 // used when building the combined all-logs table.
 func logSimpleRows(d LogDisplay) [][]ui.TableCell {
@@ -511,11 +420,24 @@ func DisplayParams(u ui.UI, params []jarviscommon.ParamResult) []ParamDisplay {
 }
 
 // DisplayFunctionCall builds the human-readable view-model for a decoded
-// function call (and any recursively decoded inner calls) and writes it to u.
+// function call (and any recursively decoded inner calls) and writes it to u
+// as an indented tree with full addresses and nothing collapsed — the form
+// used wherever the reader is about to sign what they see.
 func DisplayFunctionCall(u ui.UI, fc *jarviscommon.FunctionCall) *FunctionCallDisplay {
 	d := buildFunctionCallDisplay(fc, false)
-	printFunctionCallDisplay(u, d, false)
+	PrintFunctionCall(u, d)
 	return d
+}
+
+// NewFunctionCallDisplay builds the view-model for a decoded call without
+// printing it.
+func NewFunctionCallDisplay(fc *jarviscommon.FunctionCall) *FunctionCallDisplay {
+	return buildFunctionCallDisplay(fc, false)
+}
+
+// PrintFunctionCall renders an already-built call view-model in full detail.
+func PrintFunctionCall(u ui.UI, d *FunctionCallDisplay) {
+	txPrinter{u: u, layout: LayoutInfoFull, compact: false}.printCall(d)
 }
 
 // DisplayTxResult builds the human-readable view-model for an analyzed

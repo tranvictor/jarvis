@@ -691,9 +691,11 @@ func sendFromSafe(
 		Analyzer: analyzer,
 		Resolver: resolver,
 	}
-	showSafeTxToConfirm(stx, hash, &tcView)
-
-	if !config.YesToAllPrompt && !appUI.Confirm("Sign and submit this Safe transaction?", true) {
+	card := buildSafeSigningCard(stx, hash, &tcView, safeCardOptions{
+		kind:   "Safe proposal",
+		prompt: "Sign and submit this Safe proposal (off-chain, no gas)?",
+	})
+	if !cmdutil.ConfirmSigningCard(appUI, card) {
 		appUI.Warn("Aborted by user.")
 		return
 	}
