@@ -35,12 +35,15 @@ var (
 	groupedInteger  = regexp.MustCompile(`\b(-?\d{5,}) \((-?[\d,]+)\)`)
 	tokenAmount     = regexp.MustCompile(`\b(\d+) \((-?\d+(?:\.\d+)?)( [^\s()]+)?\)`)
 	unlimitedAmount = regexp.MustCompile(`\b(\d+) \((uint\d+\.max(?: \(∞\))?), all ([^\s()]+)\)`)
+	timestampValue  = regexp.MustCompile(`\b(\d{9,10}) \((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC, [^)]+)\)`)
 )
 
 // compactNumberText rewrites every "raw (readable)" integer and token amount
 // in text into its readable form only: "1000000000 (1,000,000,000)" becomes
-// "1,000,000,000" and "1000000 (1 USDC)" becomes "1 USDC".
+// "1,000,000,000", "1000000 (1 USDC)" becomes "1 USDC" and a timestamp
+// becomes its date.
 func compactNumberText(text string) string {
+	text = timestampValue.ReplaceAllString(text, "$2")
 	text = unlimitedAmount.ReplaceAllString(text, "$2 $3")
 	text = groupedInteger.ReplaceAllString(text, "$2")
 	return tokenAmount.ReplaceAllStringFunc(text, func(m string) string {
@@ -135,17 +138,21 @@ func (p txPrinter) valueTree(d ParamDisplay) []string {
 }
 
 func (p txPrinter) text(st ui.StyledText) string {
-	t := st.Text
 	sev := st.Severity
-	if p.compact {
-		t = compactHex(compactNumberText(compactAddressText(t)))
-		// Green for "in the address book" earns its keep on the signing
-		// card; in a dense read-only view it just competes with the status.
-		if sev == ui.SeveritySuccess {
-			sev = ui.SeverityInfo
-		}
+	// Green for "in the address book" earns its keep on the signing card; in
+	// a dense read-only view it just competes with the status.
+	if p.compact && sev == ui.SeveritySuccess {
+		sev = ui.SeverityInfo
 	}
-	return p.u.Style(ui.StyledText{Text: t, Severity: sev})
+	return p.u.Style(ui.StyledText{Text: p.plainText(st), Severity: sev})
+}
+
+// plainText is text without the colour: what the row will measure as.
+func (p txPrinter) plainText(st ui.StyledText) string {
+	if p.compact {
+		return compactHex(compactNumberText(compactAddressText(st.Text)))
+	}
+	return st.Text
 }
 
 func (p txPrinter) muted(s string) string {
@@ -381,37 +388,57 @@ func (p txPrinter) printTransfers(ts []TransferDisplay) {
 	}
 	plain := func(t TransferDisplay) string {
 		if t.Unlimited {
-			return compactAddressText(t.Token.Text)
+			return "UNLIMITED " + p.plainText(t.Token)
 		}
-		return amountText(t) + " " + compactAddressText(t.Token.Text)
+		return amountText(t) + " " + p.plainText(t.Token)
 	}
+	// Every row is "amount   from  verb  to" with each column padded to the
+	// widest entry so the arrows and destinations line up. Deposits and
+	// withdrawals name the mechanism in place of the missing party; approvals
+	// swap the arrow for a verb, and an unlimited allowance is flagged in the
+	// amount column where the eye already is.
+	type cell struct{ plain, styled string }
+	fromCell := func(t TransferDisplay) cell {
+		if t.Kind == "deposit" {
+			return cell{"deposit", p.muted("deposit")}
+		}
+		return cell{p.plainText(t.From), p.text(t.From)}
+	}
+	toCell := func(t TransferDisplay) cell {
+		if t.Kind == "withdrawal" {
+			return cell{"withdrawal", p.muted("withdrawal")}
+		}
+		return cell{p.plainText(t.To), p.text(t.To)}
+	}
+	verbCell := func(t TransferDisplay) cell {
+		if t.Kind == "approval" {
+			return cell{"approves", "approves"}
+		}
+		return cell{"→", "→"}
+	}
+	fromWidth, verbWidth := 0, 0
 	for _, t := range ts {
 		if w := ui.VisibleWidth(plain(t)); w > amountWidth {
 			amountWidth = w
+		}
+		if w := ui.VisibleWidth(fromCell(t).plain); w > fromWidth {
+			fromWidth = w
+		}
+		if w := ui.VisibleWidth(verbCell(t).plain); w > verbWidth {
+			verbWidth = w
 		}
 	}
 	for _, t := range ts {
 		amount := amountText(t) + " " + p.text(t.Token)
 		if t.Unlimited {
-			amount = p.text(t.Token)
+			amount = p.u.Style(ui.StyledText{Text: plain(t), Severity: ui.SeverityWarn})
 		}
-		pad := strings.Repeat(" ", amountWidth-ui.VisibleWidth(plain(t)))
-		var line string
-		switch t.Kind {
-		case "approval":
-			verb := "approves"
-			if t.Unlimited {
-				verb = p.u.Style(ui.StyledText{Text: "approves UNLIMITED", Severity: ui.SeverityWarn})
-			}
-			line = fmt.Sprintf("%s%s   %s %s  %s", amount, pad, p.text(t.From), verb, p.text(t.To))
-		case "deposit":
-			line = fmt.Sprintf("%s%s   → %s  %s", amount, pad, p.text(t.To), p.muted("(deposit)"))
-		case "withdrawal":
-			line = fmt.Sprintf("%s%s   %s →  %s", amount, pad, p.text(t.From), p.muted("(withdrawal)"))
-		default:
-			line = fmt.Sprintf("%s%s   %s  →  %s", amount, pad, p.text(t.From), p.text(t.To))
-		}
-		p.u.Indent().Info("%s", line)
+		from, verb, to := fromCell(t), verbCell(t), toCell(t)
+		p.u.Indent().Info("%s%s   %s%s  %s%s  %s",
+			amount, strings.Repeat(" ", amountWidth-ui.VisibleWidth(plain(t))),
+			from.styled, strings.Repeat(" ", fromWidth-ui.VisibleWidth(from.plain)),
+			verb.styled, strings.Repeat(" ", verbWidth-ui.VisibleWidth(verb.plain)),
+			to.styled)
 	}
 	if hidden > 0 {
 		p.u.Indent().Info("%s", p.muted(fmt.Sprintf("… %d more (-x lists all)", hidden)))

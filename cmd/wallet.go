@@ -204,20 +204,36 @@ var addWalletCmd = &cobra.Command{
 	Use:   "add",
 	Short: "Add a wallet to jarvis",
 	Run: func(cmd *cobra.Command, args []string) {
-		keyType := cmdutil.PromptInput(appUI, "Enter key type (enter either trezor, ledger, ledger-live, keystore or privatekey):")
-		switch keyType {
+		kind := walletKinds[appUI.Choose("What kind of wallet is it?", walletKindLabels())]
+		switch kind.key {
 		case "trezor":
 			handleTrezor()
 		case "ledger", "ledger-live":
-			handleLedger(keyType)
+			handleLedger(kind.key)
 		case "keystore":
 			handleAddKeystore()
 		case "privatekey":
 			handleAddPrivateKey()
-		default:
-			appUI.Error("Key: %s is not supported. Abort.", keyType)
 		}
 	},
+}
+
+// walletKinds are the wallet sources "wallet add" can import, in the order
+// they are offered. The hint says what the user will be asked for next.
+var walletKinds = []struct{ key, hint string }{
+	{"ledger", "Ledger, legacy derivation (m/44'/60'/0'/N)"},
+	{"ledger-live", "Ledger Live derivation (m/44'/60'/N'/0/0)"},
+	{"trezor", "Trezor (m/44'/60'/0'/0/N)"},
+	{"keystore", "keystore file — the path to an existing encrypted JSON keystore"},
+	{"privatekey", "private key — pasted once and stored as an encrypted keystore"},
+}
+
+func walletKindLabels() []string {
+	labels := make([]string, len(walletKinds))
+	for i, k := range walletKinds {
+		labels[i] = fmt.Sprintf("%-12s %s", k.key, k.hint)
+	}
+	return labels
 }
 
 var listWalletCmd = &cobra.Command{

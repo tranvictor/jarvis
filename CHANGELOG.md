@@ -37,6 +37,16 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - Overloaded methods show their Solidity name (`execute`, not `execute0`).
 - The `Network:` header and the bare hash echo are gone; the network sits on
   the details line.
+- Transfer rows are laid out in columns (`amount   from  →  to`) so arrows
+  and destinations line up; approvals read `from  approves  spender` with
+  `UNLIMITED <token>` in the amount column, deposits/withdrawals name the
+  mechanism in place of the missing party.
+- Time-named integer parameters (`deadline`, `expiry`, `validUntil`,
+  `unlockTime`, …) holding a plausible unix time show the date and how far
+  away it is: `2026-09-07 03:30:00 UTC, in 30 min`. The compact view shows
+  the date alone; `--degen` keeps the raw seconds. The same applies to the
+  echo of a typed parameter, so a stale deadline shows as "… ago" before
+  signing.
 
 ### Interactive parameter entry
 
@@ -103,6 +113,17 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   - `--confirm-once` — Safe refs only: review every signing card first,
     confirm once, then sign all of them. Broadcasts (on-chain `approveHash`,
     threshold auto-execution, Classic confirmations) still confirm per item.
+
+### Help and wallets
+
+- `jarvis --help` is a one-screen overview: the five commands you reach for,
+  a wrapped alphabetical list of networks with aliases in parentheses
+  (`mainnet (ethereum)`, `matic (polygon)`), where nodes live, and each
+  block-explorer API-key variable once. `-k/--network` lists every network
+  once instead of aliases as separate entries.
+- `jarvis wallet add` offers the wallet kinds as a numbered menu with their
+  derivation path or what will be asked next, instead of asking you to type
+  one of five words.
 
 ### Internal
 

@@ -2,10 +2,82 @@ package common
 
 import (
 	"fmt"
+	"math/big"
 	"strings"
+	"time"
 
 	"github.com/tranvictor/jarvis/config"
 )
+
+// now is time.Now, swappable in tests so relative timestamps are stable.
+var now = time.Now
+
+// Unix seconds between 2000-01-01 and 2100-01-01: the range in which a
+// uint256 in a time-named parameter is taken to be a timestamp rather than a
+// count or a sentinel.
+const (
+	minPlausibleUnix = 946684800
+	maxPlausibleUnix = 4102444800
+)
+
+// IsTimestampName reports whether a parameter name conventionally carries a
+// unix timestamp: deadline, expiry/expiration, validUntil/After/Before,
+// startTime/endTime/unlockTime, timestamp, notBefore/notAfter.
+func IsTimestampName(name string) bool {
+	n := strings.ToLower(strings.ReplaceAll(name, "_", ""))
+	for _, key := range []string{"deadline", "expir", "timestamp", "validuntil", "validafter",
+		"validbefore", "validfrom", "validto", "notbefore", "notafter", "expiry"} {
+		if strings.Contains(n, key) {
+			return true
+		}
+	}
+	return strings.HasSuffix(n, "time") && n != "time"
+}
+
+// TimestampLabel renders raw, a decimal integer from a time-named parameter,
+// as "2026-09-07 03:16:40 UTC, in 20 min". ok is false when raw is not a
+// plausible unix-seconds value (a count, zero, a max-uint sentinel).
+func TimestampLabel(name, raw string) (label string, ok bool) {
+	if !IsTimestampName(name) {
+		return "", false
+	}
+	n, isInt := new(big.Int).SetString(raw, 10)
+	if !isInt || !n.IsInt64() {
+		return "", false
+	}
+	secs := n.Int64()
+	if secs < minPlausibleUnix || secs > maxPlausibleUnix {
+		return "", false
+	}
+	at := time.Unix(secs, 0).UTC()
+	return at.Format("2006-01-02 15:04:05 UTC") + ", " + relativeTime(at.Sub(now())), true
+}
+
+// relativeTime renders a duration as "in 20 min" / "3 days ago" with one
+// coarse unit; precision beyond that is noise next to the absolute date.
+func relativeTime(d time.Duration) string {
+	future := d >= 0
+	if !future {
+		d = -d
+	}
+	var amount string
+	switch {
+	case d < time.Minute:
+		amount = fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		amount = fmt.Sprintf("%d min", int(d.Minutes()))
+	case d < 48*time.Hour:
+		amount = fmt.Sprintf("%d h", int(d.Hours()))
+	case d < 2*365*24*time.Hour:
+		amount = fmt.Sprintf("%d days", int(d.Hours()/24))
+	default:
+		amount = fmt.Sprintf("%d years", int(d.Hours()/24/365))
+	}
+	if future {
+		return "in " + amount
+	}
+	return amount + " ago"
+}
 
 // uintMaxSentinels maps decimal representations of common uintN.max values
 // to their canonical "infinity" label. Smart contracts widely use these as
