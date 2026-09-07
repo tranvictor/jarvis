@@ -27,7 +27,12 @@ type TxAnalyzer struct {
 func (self *TxAnalyzer) setBasicTxInfo(txinfo TxInfo, result *TxResult) {
 	result.From = self.ctx.GetJarvisAddress(txinfo.Tx.Extra.From.Hex())
 	result.Value = BigToFloatString(txinfo.Tx.Value(), self.ctx.Network.GetNativeTokenDecimal())
-	result.To = self.ctx.GetJarvisAddress(txinfo.Tx.To().Hex())
+	if to := txinfo.Tx.To(); to != nil {
+		result.To = self.ctx.GetJarvisAddress(to.Hex())
+	} else if txinfo.Receipt != nil {
+		// Contract creation: the receipt carries the deployed address.
+		result.To = self.ctx.GetJarvisAddress(txinfo.Receipt.ContractAddress.Hex())
+	}
 	result.Nonce = fmt.Sprintf("%d", txinfo.Tx.Nonce())
 	result.GasPrice = fmt.Sprintf("%.4f", BigToFloat(txinfo.Tx.GasPrice(), 9))
 	result.GasLimit = fmt.Sprintf("%d", txinfo.Tx.Gas())
@@ -170,6 +175,19 @@ func (ta *TxAnalyzer) ParamAsJarvisParamResult(name string, t abi.Type, value in
 	return ta.paramAsJarvisParamResult(name, t, value, nil)
 }
 
+// rawTopics turns a log's topics into unnamed TopicResults, topic0 first, for
+// logs that no available ABI describes.
+func rawTopics(l *types.Log) []TopicResult {
+	out := make([]TopicResult, 0, len(l.Topics))
+	for i, t := range l.Topics {
+		out = append(out, TopicResult{
+			Name:  fmt.Sprintf("topic%d", i),
+			Value: Value{Raw: t.Hex(), Kind: DisplayRaw},
+		})
+	}
+	return out
+}
+
 func findEventById(a *abi.ABI, topic []byte) (*abi.Event, error) {
 	for _, event := range a.Events {
 		if bytes.Equal(event.ID.Bytes(), topic) {
@@ -279,6 +297,11 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 		fc.Destination.Decimal = int64(hint.Decimal)
 	}
 
+	if len(data) == 0 {
+		// A plain value transfer into a contract (receive/fallback): there is
+		// no calldata to decode and nothing to report as an error.
+		return fc
+	}
 	fc.Method, fc.Params, err = self.analyzeMethodCall(a, data, hint)
 	if err != nil {
 		// Keep the underlying reason: "no method with id: 0x..." tells the
@@ -491,12 +514,31 @@ func (self *TxAnalyzer) AnalyzeLog(
 		}
 		a, err = lookupABI(l.Address.Hex(), self.ctx.Network)
 		if err != nil {
-			return logResult, fmt.Errorf("getting abi for %s failed: %s", l.Address.Hex(), err)
+			a = nil
 		}
 	}
-	event, err := findEventById(a, l.Topics[0].Bytes())
-	if err != nil {
-		return logResult, err
+	var event *abi.Event
+	if a != nil {
+		event, _ = findEventById(a, l.Topics[0].Bytes())
+	}
+	// Standard token events decode the same on every contract, so an
+	// unverified token still contributes to Transfers. The ERC-721 variant is
+	// picked by topic count (token id is a third indexed argument).
+	if event == nil {
+		event, _ = findEventById(GetWellKnownEventsABI(len(l.Topics) == 4), l.Topics[0].Bytes())
+	}
+	if event == nil {
+		// Keep the log in the result so the event count stays honest; the
+		// display layer renders it from the raw topics.
+		logResult.Topics = rawTopics(l)
+		if len(l.Data) > 0 {
+			logResult.Data = append(logResult.Data, ParamResult{
+				Name:   "data",
+				Type:   "bytes",
+				Values: []Value{{Raw: hexutil.Encode(l.Data), Kind: DisplayRaw}},
+			})
+		}
+		return logResult, nil
 	}
 	logResult.Name = event.Name
 
@@ -557,7 +599,18 @@ func (self *TxAnalyzer) analyzeContractTx(
 		txinfo.Tx.To().Hex(),
 		txinfo.Tx.Data(),
 		customABIs)
+	self.analyzeLogs(txinfo, lookupABI, customABIs, result)
+}
 
+func (self *TxAnalyzer) analyzeLogs(
+	txinfo TxInfo,
+	lookupABI ABIDatabase,
+	customABIs map[string]*abi.ABI,
+	result *TxResult,
+) {
+	if txinfo.Receipt == nil {
+		return
+	}
 	for _, l := range txinfo.Receipt.Logs {
 		logResult, err := self.AnalyzeLog(lookupABI, customABIs, l)
 		if err != nil {
@@ -583,9 +636,16 @@ func (self *TxAnalyzer) AnalyzeOffline(
 	result.Status = txinfo.Status
 	if txinfo.Status == "done" || txinfo.Status == "reverted" {
 		self.setBasicTxInfo(*txinfo, result)
-		if !isContract {
+		if txinfo.Status == "reverted" {
+			result.RevertReason = self.revertReason(txinfo, lookupABI, customABIs)
+		}
+		switch {
+		case txinfo.Tx.To() == nil:
+			result.TxType = "contract creation"
+			self.analyzeLogs(*txinfo, lookupABI, customABIs, result)
+		case !isContract:
 			result.TxType = "normal"
-		} else {
+		default:
 			result.TxType = "contract call"
 			self.analyzeContractTx(*txinfo, lookupABI, customABIs, result)
 
@@ -617,4 +677,96 @@ func NewGenericAnalyzer(r reader.Reader, network Network) *TxAnalyzer {
 //	analyzer := txanalyzer.NewGenericAnalyzerWithContext(ctx)
 func NewGenericAnalyzerWithContext(ctx *AnalysisContext) *TxAnalyzer {
 	return &TxAnalyzer{ctx: ctx}
+}
+
+// revertReplayer is implemented by readers that can replay a mined tx to
+// recover its revert payload (see reader.EthReader.RevertData).
+type revertReplayer interface {
+	RevertData(txinfo TxInfo) ([]byte, error)
+}
+
+// revertReason replays a reverted tx and decodes the payload. Any failure
+// yields "" — the reason is a convenience, never a requirement.
+func (self *TxAnalyzer) revertReason(txinfo *TxInfo, lookupABI ABIDatabase, customABIs map[string]*abi.ABI) string {
+	rp, ok := self.ctx.reader.(revertReplayer)
+	if !ok || txinfo.Tx == nil || txinfo.Tx.To() == nil {
+		return ""
+	}
+	data, err := rp.RevertData(*txinfo)
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	var a *abi.ABI
+	if sel := hexutil.Encode(data[:min(4, len(data))]); sel != errorStringSelector && sel != panicSelector {
+		to := txinfo.Tx.To().Hex()
+		a = customABIs[strings.ToLower(to)]
+		if a == nil && lookupABI != nil {
+			a, _ = lookupABI(to, self.ctx.Network)
+		}
+	}
+	return DecodeRevertData(data, a)
+}
+
+const (
+	errorStringSelector = "0x08c379a0" // Error(string)
+	panicSelector       = "0x4e487b71" // Panic(uint256)
+)
+
+var panicCodes = map[uint64]string{
+	0x00: "generic compiler panic",
+	0x01: "assert failed",
+	0x11: "arithmetic overflow or underflow",
+	0x12: "division or modulo by zero",
+	0x21: "invalid enum value",
+	0x22: "corrupted storage byte array",
+	0x31: "pop on empty array",
+	0x32: "array index out of bounds",
+	0x41: "out of memory",
+	0x51: "call to uninitialised function pointer",
+}
+
+// DecodeRevertData renders a revert payload for humans: Error(string) as the
+// quoted message, Panic(uint256) as its meaning, a custom error by name when a
+// carries its definition, and the bare selector otherwise.
+func DecodeRevertData(data []byte, a *abi.ABI) string {
+	if len(data) < 4 {
+		if len(data) == 0 {
+			return ""
+		}
+		return fmt.Sprintf("revert data %s", hexutil.Encode(data))
+	}
+	selector, payload := data[:4], data[4:]
+	stringT, _ := abi.NewType("string", "", nil)
+	uintT, _ := abi.NewType("uint256", "", nil)
+	switch hexutil.Encode(selector) {
+	case errorStringSelector:
+		if vals, err := (abi.Arguments{{Type: stringT}}).Unpack(payload); err == nil && len(vals) == 1 {
+			return fmt.Sprintf("%q", vals[0])
+		}
+	case panicSelector:
+		if vals, err := (abi.Arguments{{Type: uintT}}).Unpack(payload); err == nil && len(vals) == 1 {
+			code := vals[0].(*big.Int).Uint64()
+			if msg, ok := panicCodes[code]; ok {
+				return fmt.Sprintf("panic 0x%02x: %s", code, msg)
+			}
+			return fmt.Sprintf("panic 0x%02x", code)
+		}
+	}
+	if a != nil {
+		for _, e := range a.Errors {
+			if !bytes.Equal(e.ID.Bytes()[:4], selector) {
+				continue
+			}
+			vals, err := e.Inputs.Unpack(payload)
+			if err != nil {
+				return e.Name + "(…)"
+			}
+			parts := make([]string, len(vals))
+			for i, v := range vals {
+				parts[i] = fmt.Sprintf("%v", v)
+			}
+			return fmt.Sprintf("%s(%s)", e.Name, strings.Join(parts, ", "))
+		}
+	}
+	return fmt.Sprintf("custom error %s", hexutil.Encode(selector))
 }

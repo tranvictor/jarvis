@@ -131,6 +131,9 @@ type TxResult struct {
 	BlockNumber string
 	Timestamp   string
 	TxType      string
+	// RevertReason is the decoded revert payload of a reverted tx, recovered
+	// by replaying the call; empty when unknown.
+	RevertReason string
 
 	FunctionCall *FunctionCall
 	Logs         []LogResult

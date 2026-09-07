@@ -148,8 +148,12 @@ func (p txPrinter) intent(d *TxDisplay, network networks.Network) string {
 	switch {
 	case d.TxType == "normal":
 		return "transfer " + d.Value + " " + network.GetNativeTokenSymbol()
+	case d.TxType == "contract creation":
+		return "deploy contract"
 	case d.FunctionCall == nil:
 		return "contract call"
+	case d.FunctionCall.Method == "" && (d.FunctionCall.Data == "" || d.FunctionCall.Data == "0x"):
+		return "transfer " + d.Value + " " + network.GetNativeTokenSymbol() + " to contract"
 	case d.FunctionCall.Method == "":
 		return "<undecoded call>"
 	default:
@@ -178,7 +182,11 @@ func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network, layout TxLa
 	}
 
 	u.Info("%s", p.headline(d, network))
-	u.Info("%s", p.muted(strings.Repeat(" ", ui.VisibleWidth(statusText(d.Status).Text)+3)+p.details(d, network)))
+	indent := strings.Repeat(" ", ui.VisibleWidth(statusText(d.Status).Text)+3)
+	u.Info("%s", p.muted(indent+p.details(d, network)))
+	if d.RevertReason != "" {
+		u.Info("%s%s", indent, p.u.Style(ui.StyledText{Text: "reason  " + d.RevertReason, Severity: ui.SeverityError}))
+	}
 
 	if layout == LayoutInfoFull {
 		p.printCard(d, network)
@@ -192,7 +200,9 @@ func printTxDisplay(u ui.UI, d *TxDisplay, network networks.Network, layout TxLa
 		p.printTransfers(d.Transfers)
 		printed = true
 	}
-	showCall := d.FunctionCall != nil && (layout != LayoutPostSign || d.Status == "reverted")
+	emptyCall := d.FunctionCall != nil && d.FunctionCall.Method == "" &&
+		(d.FunctionCall.Data == "" || d.FunctionCall.Data == "0x") && len(d.FunctionCall.InnerCalls) == 0
+	showCall := d.FunctionCall != nil && !emptyCall && (layout != LayoutPostSign || d.Status == "reverted")
 	if showCall {
 		p.printCall(d.FunctionCall)
 		printed = true
@@ -330,7 +340,7 @@ func (p txPrinter) printCallBody(u ui.UI, d *FunctionCallDisplay) {
 		u.Info("%s %s", p.muted("value"), d.Value)
 	}
 	if d.Error != "" {
-		u.Error("%s", d.Error)
+		u.Warn("! %s", friendlyDecodeError(d.Error))
 	}
 	if d.Method == "" && d.Data != "" {
 		selector := d.Data
@@ -467,11 +477,18 @@ func (p txPrinter) fieldLines(fields []ParamDisplay) [][]string {
 }
 
 // printEvents renders one line per event: "N. Name  emitter   arg value  arg value".
+// undecodedEventLabel stands in for the name of a log no ABI describes.
+const undecodedEventLabel = "<undecoded>"
+
 func (p txPrinter) printEvents(logs []LogDisplay) {
 	p.u.Subsection(fmt.Sprintf("Events (%d)", len(logs)))
 	nameWidth := 0
+	undecoded := 0
 	for _, l := range logs {
-		if w := ui.VisibleWidth(l.Name); w > nameWidth {
+		if l.Name == "" {
+			undecoded++
+		}
+		if w := ui.VisibleWidth(eventName(l)); w > nameWidth {
 			nameWidth = w
 		}
 	}
@@ -483,12 +500,44 @@ func (p txPrinter) printEvents(logs []LogDisplay) {
 		for _, prm := range l.Data {
 			args = append(args, p.muted(prm.Name)+" "+p.paramInline(prm))
 		}
-		name := l.Name + strings.Repeat(" ", nameWidth-ui.VisibleWidth(l.Name))
-		line := fmt.Sprintf("%d. %s  %s", i+1, p.bold(name), p.text(l.Address))
+		plain := eventName(l)
+		name := plain + strings.Repeat(" ", nameWidth-ui.VisibleWidth(plain))
+		if l.Name == "" {
+			name = p.muted(name)
+		} else {
+			name = p.bold(name)
+		}
+		line := fmt.Sprintf("%d. %s  %s", i+1, name, p.text(l.Address))
 		if len(args) > 0 {
 			line += "   " + strings.Join(args, "  ")
 		}
 		p.u.Indent().Info("%s", line)
+	}
+	if undecoded > 0 {
+		p.u.Indent().Info("%s", p.muted(fmt.Sprintf(
+			"%d event(s) shown raw: the emitting contract has no ABI available (unverified or explorer unreachable)", undecoded)))
+	}
+}
+
+func eventName(l LogDisplay) string {
+	if l.Name == "" {
+		return undecodedEventLabel
+	}
+	return l.Name
+}
+
+// friendlyDecodeError rewrites the analyzer's calldata error into a sentence
+// that says what it means for the operator, keeping the technical cause.
+func friendlyDecodeError(err string) string {
+	cause := strings.TrimPrefix(err, "couldn't decode calldata: ")
+	switch {
+	case strings.Contains(cause, "no method with id"):
+		sel := cause[strings.LastIndex(cause, " ")+1:]
+		return fmt.Sprintf("calldata not decoded: no available ABI covers selector %s (contract unverified or ABI mismatch)", sel)
+	case strings.HasPrefix(cause, "abi:"):
+		return "calldata not decoded: it does not match the contract ABI (" + strings.TrimSpace(strings.TrimPrefix(cause, "abi:")) + ")"
+	default:
+		return "calldata not decoded: " + cause
 	}
 }
 

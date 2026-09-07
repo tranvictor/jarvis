@@ -103,5 +103,8 @@ type TxDisplay struct {
 	FunctionCall *FunctionCallDisplay `json:"function_call,omitempty"`
 	Transfers    []TransferDisplay    `json:"transfers,omitempty"`
 	Logs         []LogDisplay         `json:"logs,omitempty"`
-	Error        string               `json:"error,omitempty"`
+	// RevertReason is the decoded revert payload of a reverted tx, when the
+	// replay could recover one.
+	RevertReason string `json:"revert_reason,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
