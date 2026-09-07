@@ -49,7 +49,13 @@ func ResolveSendTransfer(resolver ABIResolver, value, to string) (SendTransfer, 
 
 	dest, _, err := resolver.GetMatchingAddress(to)
 	if err != nil {
-		return SendTransfer{}, fmt.Errorf("%w: %s", ErrSendDestNotFound, to)
+		// A literal address is a valid destination even when the book has
+		// never seen it; the signing card will flag it as unknown.
+		if addrs := jarvisutil.ScanForAddresses(to); len(addrs) == 1 {
+			dest = addrs[0]
+		} else {
+			return SendTransfer{}, fmt.Errorf("%w: %s", ErrSendDestNotFound, to)
+		}
 	}
 
 	return SendTransfer{

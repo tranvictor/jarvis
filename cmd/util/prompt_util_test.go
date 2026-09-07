@@ -133,6 +133,7 @@ func TestPromptFunctionCallDataEchoesCompactForm(t *testing.T) {
 		"Info: doStuff  →  0x1234567890123456789012345678901234567890",
 		"Info: 1. to  address",
 		"Error: ✗ ",
+		"Info: accepted: 0x address or an address-book name",
 		"Info: 1. to  address", // label repeats so the retry prompt is labelled
 		"Rewrite:   → Vitalik Buterin (0xd8dA…6045)",
 		"Info: 2. amount  uint256",

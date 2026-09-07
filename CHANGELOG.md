@@ -59,6 +59,27 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - Prompts say what will happen and what it costs, e.g.
   `Sign and broadcast (≈ 0.0017 ETH)?` /
   `Sign and submit this Safe proposal (off-chain, no gas)?`.
+- `Sign with` shows the wallet's own name when the address book has none,
+  plus the wallet kind (`ledger`, `trezor`, `keystore`) so a hardware prompt
+  is expected. Addresses are always EIP-55 checksummed; the token decimal
+  count no longer leaks into `Send to`.
+- Gas reads cost-first: `≈ 0.0017 ETH   (85,123 gas × max 20 gwei, tip 1.5
+  gwei)`.
+- New warning when the signer's balance does not cover value + max gas.
+- Declining the prompt prints `Cancelled — nothing was signed or sent.` and
+  exits quietly instead of "Failed to proceed after signing".
+- Gas-estimation failures are explained (insufficient funds with the
+  wallet's balance, reverting call) instead of dumping every node's error.
+- `send --to 0x…` accepts a literal address that is not in the address
+  book; `send -g <limit>` no longer drops the amount. EIP-7702 delegated
+  EOAs are not treated as contracts.
+
+### Interactive parameter entry (continued)
+
+- Integer parameters of an ERC-20 call echo with the token amount
+  (`1000000 (1 USDC)`); a rejected answer is followed by the accepted
+  input forms for that type. Integers accept `1e6`, `1_000_000` and
+  `1,000,000`; a bare fraction is rejected with a hint to add the token.
 
 ### Waiting and results
 

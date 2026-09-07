@@ -13,4 +13,7 @@ type TxAnalyzer interface {
 	AnalyzeMethodCall(a *abi.ABI, data []byte) (method string, params []jarviscommon.ParamResult, err error)
 	AnalyzeOffline(txinfo *jarviscommon.TxInfo, lookupABI jarviscommon.ABIDatabase, customABIs map[string]*abi.ABI, isContract bool) *jarviscommon.TxResult
 	ParamAsJarvisParamResult(name string, t abi.Type, value interface{}) jarviscommon.ParamResult
+	// ParamAsJarvisParamResultFor annotates integer values with the token
+	// context of contract when it is an ERC-20.
+	ParamAsJarvisParamResultFor(contract string, name string, t abi.Type, value interface{}) jarviscommon.ParamResult
 }

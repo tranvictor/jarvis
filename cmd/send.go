@@ -64,7 +64,9 @@ func handleMsigSend(
 		if errors.Is(err, cmdutil.ErrWalletUnlock) {
 			os.Exit(126)
 		}
-		appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
+		if !errors.Is(err, cmdutil.ErrUserCancelled) {
+			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
+		}
 	}
 }
 
@@ -126,7 +128,9 @@ func handleSend(
 		if errors.Is(err, cmdutil.ErrWalletUnlock) {
 			os.Exit(126)
 		}
-		appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
+		if !errors.Is(err, cmdutil.ErrUserCancelled) {
+			appUI.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
+		}
 	}
 }
 
@@ -319,7 +323,7 @@ func sendFromMsig(reader utilreader.Reader, analyzer util.TxAnalyzer, resolver c
 			gasLimit, err = reader.EstimateGas(fromAddr, msigContractAddr, gasPrice+config.ExtraGasPrice, 0, txdata)
 		}
 		if err != nil {
-			appUI.Error("Couldn't estimate gas: %s", err)
+			appUI.Error("%s", cmdutil.ExplainEstimateGasError(err, fromAddr, balanceOrNil(reader, fromAddr), config.Network().GetNativeTokenSymbol()))
 			return
 		}
 	}
@@ -444,61 +448,69 @@ exact addresses start with 0x.`,
 			}
 		}
 
+		// The amount is resolved whether or not the gas limit was given
+		// explicitly: an operator passing -g must never end up sending 0.
 		var amountWei *big.Int
 		gasLimit := config.GasLimit
-		if gasLimit == 0 {
-			if tokenAddrLocal == util.ETH_ADDR {
-				if amountStr == "ALL" {
-					gasLimit, err = reader.EstimateExactGas(fromAddr, toAddr, 0, big.NewInt(1), cmdutil.StringParamToBytes(data))
-					if err != nil {
-						appUI.Error("Getting estimated gas for the tx failed: %s", err)
-						return
-					}
-					extraGasLimit = 0 // exact gas for ALL; no extra needed
-
-					gasCost := big.NewInt(0).Mul(
-						big.NewInt(int64(gasLimit)),
-						jarviscommon.FloatToBigInt(gasPrice+config.ExtraGasPrice, 9),
-					)
-					amountWei, err = cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
-						TokenAddr:      tokenAddrLocal,
-						AmountStr:      amountStr,
-						Holder:         fromAddr,
-						NativeDecimals: config.Network().GetNativeTokenDecimal(),
-						SubtractGas:    gasCost,
-					})
-					if err != nil {
-						appUI.Error("%s", sendAmountUserErrorEOA(err, tokenAddrLocal))
-						return
-					}
-				} else {
-					amountWei, err = cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
-						TokenAddr:      tokenAddrLocal,
-						AmountStr:      amountStr,
-						Holder:         fromAddr,
-						NativeDecimals: config.Network().GetNativeTokenDecimal(),
-					})
-					if err != nil {
-						appUI.Error("%s", sendAmountUserErrorEOA(err, tokenAddrLocal))
-						return
-					}
-					gasLimit, err = reader.EstimateExactGas(fromAddr, toAddr, 0, amountWei, cmdutil.StringParamToBytes(data))
-					if err != nil {
-						appUI.Error("Getting estimated gas for the tx failed: %s", err)
-						return
-					}
-				}
-			} else {
-				amountWei, err = cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
-					TokenAddr:      tokenAddrLocal,
-					AmountStr:      amountStr,
-					Holder:         fromAddr,
-					NativeDecimals: config.Network().GetNativeTokenDecimal(),
-				})
+		estimate := gasLimit == 0
+		explain := func(err error) {
+			appUI.Error("%s", cmdutil.ExplainEstimateGasError(err, fromAddr, balanceOrNil(reader, fromAddr), config.Network().GetNativeTokenSymbol()))
+		}
+		switch {
+		case tokenAddrLocal == util.ETH_ADDR && amountStr == "ALL":
+			if estimate {
+				gasLimit, err = reader.EstimateExactGas(fromAddr, toAddr, 0, big.NewInt(1), cmdutil.StringParamToBytes(data))
 				if err != nil {
-					appUI.Error("%s", sendAmountUserErrorEOA(err, tokenAddrLocal))
+					explain(err)
 					return
 				}
+				extraGasLimit = 0 // exact gas for ALL; no extra needed
+			}
+			gasCost := big.NewInt(0).Mul(
+				big.NewInt(int64(gasLimit+extraGasLimit)),
+				jarviscommon.FloatToBigInt(gasPrice+config.ExtraGasPrice, 9),
+			)
+			amountWei, err = cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
+				TokenAddr:      tokenAddrLocal,
+				AmountStr:      amountStr,
+				Holder:         fromAddr,
+				NativeDecimals: config.Network().GetNativeTokenDecimal(),
+				SubtractGas:    gasCost,
+			})
+			if err != nil {
+				appUI.Error("%s", sendAmountUserErrorEOA(err, tokenAddrLocal))
+				return
+			}
+		case tokenAddrLocal == util.ETH_ADDR:
+			amountWei, err = cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
+				TokenAddr:      tokenAddrLocal,
+				AmountStr:      amountStr,
+				Holder:         fromAddr,
+				NativeDecimals: config.Network().GetNativeTokenDecimal(),
+			})
+			if err != nil {
+				appUI.Error("%s", sendAmountUserErrorEOA(err, tokenAddrLocal))
+				return
+			}
+			if estimate {
+				gasLimit, err = reader.EstimateExactGas(fromAddr, toAddr, 0, amountWei, cmdutil.StringParamToBytes(data))
+				if err != nil {
+					explain(err)
+					return
+				}
+			}
+		default:
+			amountWei, err = cmdutil.ResolveSendAmountWei(reader, cmdutil.AmountWeiOpts{
+				TokenAddr:      tokenAddrLocal,
+				AmountStr:      amountStr,
+				Holder:         fromAddr,
+				NativeDecimals: config.Network().GetNativeTokenDecimal(),
+			})
+			if err != nil {
+				appUI.Error("%s", sendAmountUserErrorEOA(err, tokenAddrLocal))
+				return
+			}
+			if estimate {
 				innerData, err := jarviscommon.PackERC20Data("transfer", jarviscommon.HexToAddress(toAddr), amountWei)
 				if err != nil {
 					appUI.Error("Couldn't pack data: %s", err)
@@ -506,7 +518,7 @@ exact addresses start with 0x.`,
 				}
 				gasLimit, err = reader.EstimateGas(fromAddr, tokenAddrLocal, gasPrice+config.ExtraGasPrice, 0, innerData)
 				if err != nil {
-					appUI.Error("Couldn't estimate gas limit: %s", err)
+					explain(err)
 					return
 				}
 			}
@@ -745,4 +757,19 @@ func init() {
 	sendCmd.MarkFlagRequired("amount")
 
 	rootCmd.AddCommand(sendCmd)
+}
+
+// balanceOrNil fetches the native balance for error messages; nil when the
+// lookup fails so the message degrades to "no balance information".
+func balanceOrNil(reader interface {
+	GetBalance(address string) (*big.Int, error)
+}, addr string) *big.Int {
+	if reader == nil {
+		return nil
+	}
+	bal, err := reader.GetBalance(addr)
+	if err != nil {
+		return nil
+	}
+	return bal
 }
