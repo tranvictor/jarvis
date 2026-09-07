@@ -13,6 +13,7 @@ import (
 	"github.com/tranvictor/jarvis/accounts"
 	"github.com/tranvictor/jarvis/accounts/types"
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
+	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util/account/ledgereum"
 	"github.com/tranvictor/jarvis/util/account/trezoreum"
 )
@@ -183,19 +184,19 @@ func handleAddKeystoreGivenPath(keystorePath string) error {
 	}
 	accDesc.Address = address
 	appUI.Info("This keystore is with %s", address)
-	des := cmdutil.PromptInput(appUI, "Please enter description of this wallet, I will look at it to get the wallet for you later based on your search keywords")
+	des := cmdutil.PromptInput(appUI, "Please enter a description — used later to find this wallet by keyword")
 	accDesc.Desc = des
 	if err = accounts.StoreAccountRecord(*accDesc); err != nil {
-		appUI.Error("I couldn't store your wallet info: %s. Abort.", err)
+		appUI.Error("Couldn't store your wallet info: %s. Abort.", err)
 		return err
 	}
-	appUI.Success("I created ~/.jarvis/%s.json to store the keystore info. That file contains the path of your keystore file so please don't move your keystore file later.", address)
-	appUI.Info("Your wallet is added successfully. You can check your list of wallets using the following command:\n> jarvis wallet list")
+	appUI.Success("Created ~/.jarvis/%s.json. Keep the keystore file where it is; that record stores its path.", address)
+	appUI.Info("Added. Check the list with: jarvis wallet list")
 	return nil
 }
 
 func handleAddKeystore() {
-	appUI.Warn("Keystore is convenient but not so safe. I recommend you to use it only for unimportant frequent tasks.")
+	appUI.Warn("A keystore is convenient but less safe than a hardware wallet; keep it for low-value frequent tasks.")
 	keystorePath := cmdutil.PromptFilePath(appUI, "Please enter the path to your keystore file")
 	handleAddKeystoreGivenPath(keystorePath)
 }
@@ -239,11 +240,12 @@ func walletKindLabels() []string {
 var listWalletCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Show all of your wallets",
-	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		accs := accounts.GetAccounts()
-		appUI.Info("You have %d wallets:", len(accs))
-
+		if len(accs) == 0 {
+			appUI.Warn("No wallets yet. Add one with: jarvis wallet add")
+			return
+		}
 		type accountInfo struct {
 			addr string
 			acc  types.AccDesc
@@ -255,10 +257,12 @@ var listWalletCmd = &cobra.Command{
 		sort.Slice(accountList, func(i, j int) bool {
 			return accountList[i].acc.Desc < accountList[j].acc.Desc
 		})
-		for index, item := range accountList {
-			appUI.Info("%d. %s: %s (%s)", index+1, item.addr, item.acc.Kind, item.acc.Desc)
+		rows := make([][]string, 0, len(accountList))
+		for _, item := range accountList {
+			rows = append(rows, []string{item.addr, item.acc.Kind, item.acc.Desc})
 		}
-		appUI.Info("\nIf you want to add more wallets to the list, use following command:\n> jarvis wallet add")
+		appUI.Table([]string{"Address", "Kind", "Description"}, rows)
+		appUI.Info("%s", appUI.Style(ui.StyledText{Text: "jarvis wallet add — register another", Severity: ui.SeverityMuted}))
 	},
 }
 

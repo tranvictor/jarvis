@@ -123,7 +123,7 @@ func TestFillSigningTxParamsLegacyIgnoresTip(t *testing.T) {
 	if tc.TxType != types.LegacyTxType || tc.TipGas != 0 {
 		t.Fatalf("type=%d tip=%v, want legacy with tip ignored", tc.TxType, tc.TipGas)
 	}
-	if !rec.HasMessage("ignore tip gas") {
+	if !rec.HasMessage("ignoring --tipgas") {
 		t.Fatal("expected a warning that tip gas is ignored")
 	}
 }

@@ -436,7 +436,7 @@ exact addresses start with 0x.`,
 
 		tipGas := 0.0
 		if txType == types.LegacyTxType && config.TipGas > 0 {
-			appUI.Warn("We are doing legacy tx hence we ignore tip gas parameter.")
+			appUI.Warn("Legacy tx: ignoring --tipgas (EIP-1559 tips apply only to type-2 txs).")
 		} else if txType == types.DynamicFeeTxType {
 			tipGas = config.TipGas
 			if tipGas == 0 {
@@ -597,15 +597,6 @@ func sendFromSafe(
 	bc cmdutil.TxBroadcaster,
 	safeContract *safe.SafeContract,
 ) {
-	appUI.Section("Safe info")
-	appUI.Info("Safe address : %s", safeContract.Address)
-	if v, err := safeContract.Version(); err == nil {
-		appUI.Info("Safe version : %s", v)
-	}
-	if t, err := safeContract.Threshold(); err == nil {
-		appUI.Info("Threshold    : %d", t)
-	}
-
 	owners, err := safeContract.Owners()
 	if err != nil {
 		appUI.Error("getting safe owners failed: %s", err)
@@ -683,7 +674,6 @@ func sendFromSafe(
 		appUI.Error("Couldn't determine the next safe nonce: %s", err)
 		return
 	}
-	appUI.Info("SafeTx nonce: %d", safeNonce)
 
 	domainSep, err := safeContract.DomainSeparator()
 	if err != nil {
@@ -708,7 +698,7 @@ func sendFromSafe(
 		prompt: "Sign and submit this Safe proposal (off-chain, no gas)?",
 	})
 	if !cmdutil.ConfirmSigningCard(appUI, card) {
-		appUI.Warn("Aborted by user.")
+		cmdutil.WarnCancelled(appUI)
 		return
 	}
 

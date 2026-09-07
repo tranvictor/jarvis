@@ -26,58 +26,11 @@ var composeDataContractCmd = &cobra.Command{
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return cmdutil.CommonFunctionCallPreprocess(appUI, cmd, args)
 	},
-	Long: `
-Param rules:
-	All params are passed to this command as strings and will be treated
-	with the following seperated groups:
-	1. Array params
-		An array param must be wrapped with [ ], spaces around the string
-		will be trimmed. In side [ ], each element must separated by ","
-		character. Each element will be parsed with the "type conversion"
-		rule which is explained in the later section.
-	2. Non array params
-		A non array param will be passed as string, spaces around the
-		string will be trimmed. Each element will be parsed with the
-		"type conversion" rule which is explained in the later section.
-
-	Type conversion rules:
-	1. string
-		string element must be wrapped by " ". The content inside " " will
-		then be used as the string param.
-
-	2. int, uint
-		int and uint element can be in base 10 or 16. If it is in base 16,
-		it must begin with 0x.
-
-		further more, you can put an erc20 token symbol behind (after
-		exactly 1 space) the number, Jarvis will convert it to the big
-		number according to the token's decimal. In this case, the
-		number can be float.
-
-		For example:
-		8.8 KNC => 8800000000000000000 (17 zeroes).
-		10.5 KNC token => 10500000000000000000.
-
-	3. bool
-		bool element must be either "true" or "false" ( without quotes), all
-		other alternative boolean value string are invalid. Eg. T, F, True,
-		False, nil are invalid.
-
-	4. address
-		address element can be either hex address or a string without " ".
-		If it is a string, Jarvis will look it up in the address book
-		and take the most relevant address.
-
-	5. hash
-		hash element must be represented in hex form without quotes.
-
-	6. bytes
-		bytes element must be represented in hex form without quotes. If
-		0x is provided, it will be interpreted as empty bytes array.
-
-	7. fixed length bytes
-		Not supported yet
-	`,
+	Long: `Encode calldata for a verified contract method. Parameters are
+collected interactively (or via --prefills). Integers accept hex, raw
+units, or an amount with a token ("0.5 ETH", "1000 USDC"); addresses
+accept hex or an address-book name; arrays are comma-separated in
+brackets: [a, b, c].`,
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
 
@@ -123,7 +76,6 @@ var txContractCmd = &cobra.Command{
 	Use:              "tx [tx hashes]",
 	Aliases:          []string{"write"},
 	Short:            "do transaction to interact with smart contracts",
-	Long:             ` `,
 	TraverseChildren: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return cmdutil.CommonTxPreprocess(appUI, cmd, args)
@@ -212,12 +164,11 @@ func handleReadOneFunctionOnContract(r readerPkg.Reader, analyzer util.TxAnalyze
 	}
 
 	appUI.Info("Output:")
-	var result []util.ParamDisplay
+	var results []jarviscommon.ParamResult
 	for i, output := range method.Outputs {
-		oneOutputParamResult := analyzer.ParamAsJarvisParamResult(output.Name, output.Type, ps[i])
-		result = append(result, util.DisplayParam(appUI, oneOutputParamResult))
+		results = append(results, analyzer.ParamAsJarvisParamResult(output.Name, output.Type, ps[i]))
 	}
-	return result, nil
+	return util.DisplayParams(appUI, results), nil
 }
 
 type contractReadResultJSON struct {
@@ -247,7 +198,6 @@ func (b *batchcontractReadResultJSON) Write(filepath string) {
 var readContractCmd = &cobra.Command{
 	Use:              "read",
 	Short:            "read smart contracts (faster than etherscan)",
-	Long:             ` `,
 	TraverseChildren: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		return cmdutil.CommonFunctionCallPreprocess(appUI, cmd, args)
@@ -292,7 +242,7 @@ var readContractCmd = &cobra.Command{
 						Result: result,
 					})
 				}
-				appUI.Info("---------------------------------------------------")
+				appUI.Info("")
 			}
 		} else {
 			resultJSON := contractReadResultJSON{

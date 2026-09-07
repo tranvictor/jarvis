@@ -5,13 +5,13 @@ import (
 
 	"github.com/spf13/cobra"
 
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/util"
 )
 
 var addressCmd = &cobra.Command{
 	Use:   "addr",
 	Short: "Find at max 10 matching addresses",
-	Long:  ``,
 	Run: func(cmd *cobra.Command, args []string) {
 		para := strings.Join(args, " ")
 		// GetMatchingAddresses's third return is match scores, not an
@@ -21,13 +21,11 @@ var addressCmd = &cobra.Command{
 		// slice is non-nil.
 		addrs, names, _ := util.GetMatchingAddresses(para)
 		if len(addrs) == 0 {
-			appUI.Warn("No matching addresses found for \"%s\"", para)
+			appUI.Warn("No matching addresses found for %q", para)
 			return
 		}
-		appUI.Info("Found %d matching address(es):", len(addrs))
-		appUI.Info("-----------------------")
 		for i, addr := range addrs {
-			appUI.Info("%d. %s (%s)", i+1, addr, names[i])
+			appUI.Info("%d. %s", i+1, jarviscommon.NameFirst(jarviscommon.Address{Address: addr, Desc: names[i]}, true))
 		}
 	},
 }
