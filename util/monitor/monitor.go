@@ -15,12 +15,26 @@ func NewGenericTxMonitor(r *reader.EthReader) *TxMonitor {
 	return &TxMonitor{r}
 }
 
-func (tm TxMonitor) periodicCheck(tx string, info chan common.TxInfo, interval time.Duration) {
+// periodicCheck polls the tx until it reaches a final state and sends that
+// state on info. When status is non-nil, every intermediate state change
+// ("pending" once the tx is seen in the mempool) is sent there too, and the
+// final state is sent on it as well before it is closed.
+func (tm TxMonitor) periodicCheck(tx string, info chan common.TxInfo, status chan string, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	startTime := time.Now()
 	isOnNode := false
 	var notFoundSince time.Time
+
+	finish := func(result common.TxInfo) {
+		if status != nil {
+			status <- result.Status
+			close(status)
+		}
+		if info != nil {
+			info <- result
+		}
+	}
 
 	for {
 		t := <-ticker.C
@@ -36,53 +50,49 @@ func (tm TxMonitor) periodicCheck(tx string, info chan common.TxInfo, interval t
 					notFoundSince = t
 				}
 				if t.Sub(notFoundSince) > 1*time.Minute {
-					info <- common.TxInfo{
-						Status:  "lost",
-						Tx:      tx,
-						Receipt: receipt,
-					}
+					finish(common.TxInfo{Status: "lost", Tx: tx, Receipt: receipt})
 					return
 				}
 			} else if t.Sub(startTime) > 3*time.Minute {
-				info <- common.TxInfo{
-					Status:  "lost",
-					Tx:      tx,
-					Receipt: receipt,
-				}
+				finish(common.TxInfo{Status: "lost", Tx: tx, Receipt: receipt})
 				return
 			}
 			continue
 		case "pending":
+			if !isOnNode && status != nil {
+				status <- "pending"
+			}
 			isOnNode = true
 			notFoundSince = time.Time{} // reset if tx reappears in mempool
 			continue
 		case "reverted":
-			info <- common.TxInfo{
-				Status:  "reverted",
-				Tx:      tx,
-				Receipt: receipt,
-			}
+			finish(common.TxInfo{Status: "reverted", Tx: tx, Receipt: receipt})
 			return
 		case "done":
-			info <- common.TxInfo{
-				Status:  "done",
-				Tx:      tx,
-				Receipt: receipt,
-			}
+			finish(common.TxInfo{Status: "done", Tx: tx, Receipt: receipt})
 			return
 		}
 	}
 }
 
+// MakeStatusChannel returns a channel that receives "pending" when the tx is
+// first seen in the mempool, then exactly one final status ("done",
+// "reverted" or "lost"), after which the channel is closed.
+func (tm TxMonitor) MakeStatusChannel(tx string) <-chan string {
+	status := make(chan string, 2)
+	go tm.periodicCheck(tx, nil, status, 5*time.Second)
+	return status
+}
+
 func (tm TxMonitor) MakeWaitChannel(tx string) <-chan common.TxInfo {
 	result := make(chan common.TxInfo)
-	go tm.periodicCheck(tx, result, 5*time.Second)
+	go tm.periodicCheck(tx, result, nil, 5*time.Second)
 	return result
 }
 
 func (tm TxMonitor) MakeWaitChannelWithInterval(tx string, interval time.Duration) <-chan common.TxInfo {
 	result := make(chan common.TxInfo)
-	go tm.periodicCheck(tx, result, interval)
+	go tm.periodicCheck(tx, result, nil, interval)
 	return result
 }
 

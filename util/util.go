@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -261,10 +262,50 @@ func DisplayBroadcastedTx(u ui.UI, t *types.Transaction, broadcasted bool, err e
 		u.Error("%s", err)
 		u.Info("Check each URL with your chain id (e.g. cast chain-id --rpc-url <url>). Remove or fix nodes that return the wrong chain.")
 	} else {
-		u.Critical("BROADCASTED TX: %s:%s", network.GetName(), t.Hash().Hex())
+		u.Success("✓ broadcast  %s  %s", network.GetName(), t.Hash().Hex())
 	}
 }
 
+// WaitForTx blocks until the tx is mined, reverted or lost, showing a live
+// status line that tracks what the monitor sees (not yet in mempool → in
+// mempool → outcome). It returns the final status.
+func WaitForTx(u ui.UI, mo *monitor.TxMonitor, hash string) string {
+	return waitForStatuses(u, mo.MakeStatusChannel(hash))
+}
+
+// waitForStatuses drives the status line from a monitor status channel.
+func waitForStatuses(u ui.UI, statuses <-chan string) string {
+	progress := u.Spinner("waiting for the tx to show up in the mempool…")
+	for st := range statuses {
+		switch st {
+		case "pending":
+			progress.Update("in mempool, waiting to be mined…")
+		case "done":
+			progress.Stop(ui.StyledText{
+				Text:     fmt.Sprintf("✓ mined after %s", progress.Elapsed().Round(time.Second)),
+				Severity: ui.SeveritySuccess,
+			})
+			return st
+		case "reverted":
+			progress.Stop(ui.StyledText{
+				Text:     fmt.Sprintf("✗ reverted after %s", progress.Elapsed().Round(time.Second)),
+				Severity: ui.SeverityError,
+			})
+			return st
+		case "lost":
+			progress.Stop(ui.StyledText{
+				Text:     fmt.Sprintf("✗ dropped from the mempool after %s", progress.Elapsed().Round(time.Second)),
+				Severity: ui.SeverityError,
+			})
+			return st
+		}
+	}
+	progress.Stop(ui.StyledText{Text: "✗ stopped waiting", Severity: ui.SeverityError})
+	return "unknown"
+}
+
+// DisplayWaitAnalyze reports the broadcast result and, when it succeeded,
+// waits for the tx to be mined and prints the outcome using layout.
 func DisplayWaitAnalyze(
 	u ui.UI,
 	reader reader.Reader,
@@ -278,26 +319,20 @@ func DisplayWaitAnalyze(
 	layout TxLayout,
 ) {
 	DisplayBroadcastedTx(u, t, broadcasted, err, network)
-	if broadcasted {
-		mo, err := EthTxMonitor(network)
-		if err != nil {
-			u.Error("Couldn't monitor the tx: %s", err)
-			return
-		}
-		mo.BlockingWait(t.Hash().Hex())
-		AnalyzeAndPrint(
-			u,
-			reader,
-			analyzer,
-			t.Hash().Hex(),
-			network,
-			false,
-			"",
-			a,
-			customABIs,
-			layout,
-		)
+	if !broadcasted {
+		return
 	}
+	mo, err := EthTxMonitor(network)
+	if err != nil {
+		u.Error("Couldn't monitor the tx: %s", err)
+		return
+	}
+	hash := t.Hash().Hex()
+	if WaitForTx(u, mo, hash) == "lost" {
+		u.Info("Check the hash later with: jarvis info %s", hash)
+		return
+	}
+	AnalyzeAndPrint(u, reader, analyzer, hash, network, false, "", a, customABIs, layout)
 }
 
 func AnalyzeMethodCallAndPrint(

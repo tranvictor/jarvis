@@ -461,3 +461,12 @@ func InfoLayout(degen bool) TxLayout {
 	}
 	return LayoutInfo
 }
+
+// PostSignLayout is the layout for a tx the user just signed: the delta view
+// by default, everything with --degen.
+func PostSignLayout(degen bool) TxLayout {
+	if degen {
+		return LayoutInfoFull
+	}
+	return LayoutPostSign
+}
