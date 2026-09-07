@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json"
 	"io"
+	"time"
 )
 
 // Severity classifies the visual weight of a piece of inline text, mirroring
@@ -16,7 +17,40 @@ const (
 	SeverityWarn                     // yellow — uncertain / needs attention
 	SeverityError                    // red    — unknown / negative
 	SeverityCritical                 // bold   — must-review before action
+	SeverityMuted                    // faint  — metadata that should recede (types, indices, hints)
 )
+
+// Progress is a live status line started by [UI.Spinner]. On a terminal it is
+// an animated spinner with the elapsed time appended; elsewhere it degrades to
+// one plain line per distinct message so logs stay readable.
+type Progress interface {
+	// Update replaces the message shown next to the spinner.
+	Update(msg string)
+	// Elapsed returns the time since the spinner was started.
+	Elapsed() time.Duration
+	// Stop clears the spinner and prints final as the line that stays in the
+	// transcript. Pass an empty Text to print nothing.
+	Stop(final StyledText)
+}
+
+// TreeBranch returns the glyph that introduces a nested item: "└─ " for the
+// last sibling, "├─ " otherwise.
+func TreeBranch(last bool) string {
+	if last {
+		return "└─ "
+	}
+	return "├─ "
+}
+
+// TreeGuide returns the continuation prefix placed under a TreeBranch for the
+// lines that belong to the same item: "   " after a last sibling, "│  "
+// otherwise, so vertical guides line up with the branch glyphs.
+func TreeGuide(last bool) string {
+	if last {
+		return "   "
+	}
+	return "│  "
+}
 
 // StyledText pairs a plain string with a Severity annotation.
 //
@@ -94,6 +128,16 @@ type UI interface {
 	// Example: "===== Confirm tx data before signing ====="
 	Section(title string)
 
+	// Subsection writes a bold heading preceded by a blank line, with no
+	// rule. Use it for the blocks inside a Section (e.g. "Transfers",
+	// "Events (4)") so they stand out without adding visual weight.
+	Subsection(title string)
+
+	// RewriteLastLine replaces the previous line of output with line. On a
+	// terminal this moves the cursor up and clears the line; elsewhere it
+	// simply writes line so transcripts and tests stay linear.
+	RewriteLastLine(line string)
+
 	// BoxedSection renders the output emitted by body inside a rounded
 	// rectangular box whose border colour reflects severity. The optional
 	// title is injected into the top border ("╭─ <title> ─...─╮") so the
@@ -115,6 +159,10 @@ type UI interface {
 	// Use for compact metadata like Status/From/To/Value or gas details.
 	KeyValue(rows [][2]string)
 
+	// KeyValueCells is KeyValue with per-cell severity so labels can recede
+	// (SeverityMuted) while values carry colour.
+	KeyValueCells(rows [][2]TableCell)
+
 	// Table renders a full bordered table with a header row followed by data
 	// rows. Use when there are 3+ columns or the data is inherently tabular
 	// (e.g. a decoded parameter list).
@@ -131,15 +179,16 @@ type UI interface {
 	// Use this instead of Table when cells need per-cell colour (e.g. node status).
 	PrintTable(t *Table)
 
-	// Spinner starts an animated spinner with the given message and returns a
-	// stop function. Call the stop function (or defer it) to clear the spinner
-	// once the work is done:
+	// Spinner starts a live status line with the given message and returns a
+	// Progress handle to update it and eventually stop it:
 	//
-	//   stop := u.Spinner("Fetching transaction...")
-	//   defer stop()
+	//   p := u.Spinner("Fetching transaction...")
+	//   p.Update("Decoding calldata...")
+	//   p.Stop(StyledText{Text: "✓ done", Severity: SeveritySuccess})
 	//
-	// In RecordingUI and non-terminal contexts the stop function is a no-op.
-	Spinner(msg string) func()
+	// On a terminal this animates and shows elapsed time; on non-terminal
+	// outputs each distinct message is printed once as a plain line.
+	Spinner(msg string) Progress
 
 	// Interpret writes what Jarvis understood from the user's last input.
 	// Always shown immediately after Ask, indented and prefixed with "→".
