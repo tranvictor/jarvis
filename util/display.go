@@ -168,8 +168,9 @@ func buildTxDisplay(result *jarviscommon.TxResult, network networks.Network) *Tx
 	return d
 }
 
-// buildTransfers derives asset movements from the well-known token events so
-// the reader gets "what moved" without scanning the event table.
+// buildTransfers derives asset movements from the well-known token events.
+// The terminal no longer lists them hop-by-hop (Events already does); they
+// still feed Net effect and --json-output.
 func buildTransfers(logs []jarviscommon.LogResult) []TransferDisplay {
 	var out []TransferDisplay
 	for _, l := range logs {
@@ -221,7 +222,7 @@ func buildTransfers(logs []jarviscommon.LogResult) []TransferDisplay {
 }
 
 // netEffectMinTransfers is the transfer count from which a per-address net
-// summary is worth printing; below it the list itself is the summary.
+// summary is worth printing; below it the event list itself is the summary.
 const netEffectMinTransfers = 4
 
 // netEffectMaxRows caps the summary so it stays a summary.
