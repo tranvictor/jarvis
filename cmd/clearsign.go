@@ -60,12 +60,12 @@ mirror. Existing user-added descriptors under local/ are untouched.
 Network access is required.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		reg := erc7730.SharedRegistry()
-		stop := appUI.Spinner("Fetching ERC-7730 registry...")
+		progress := appUI.Spinner("Fetching ERC-7730 registry...")
 		ctx := context.Background()
 		count, err := reg.SyncRegistry(ctx, erc7730.SyncOptions{
 			OnProgress: func(stage string, n int) {},
 		})
-		stop()
+		progress.Stop(ui.StyledText{})
 		if err != nil {
 			appUI.Error("clearsign update failed: %s", err)
 			os.Exit(1)

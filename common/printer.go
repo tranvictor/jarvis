@@ -70,6 +70,42 @@ func PlainAddress(addr Address) string {
 	return addr.Address
 }
 
+// IsKnownAddress reports whether addr carries a usable description from the
+// address book / token list. "unknown" is what the analyzer fills in when no
+// entry matched, so it counts as not known.
+func IsKnownAddress(addr Address) bool {
+	return addr.Desc != "" && addr.Desc != "unknown"
+}
+
+// ShortAddress abbreviates a hex address to its first four and last four hex
+// digits ("0x9642…5D4E"). Anything too short to abbreviate is returned as is.
+// Never use this on a signing screen: lookalike-address attacks rely on the
+// middle of the address being invisible.
+func ShortAddress(hex string) string {
+	if len(hex) <= 13 {
+		return hex
+	}
+	return hex[:6] + "…" + hex[len(hex)-4:]
+}
+
+// NameFirst formats an address for dense, read-only views. Known addresses
+// lead with their name and put the hex in parentheses; unknown ones lead with
+// the hex followed by "(unknown)". full selects the complete hex over the
+// ShortAddress form.
+func NameFirst(addr Address, full bool) string {
+	if addr.Address == "" {
+		return ""
+	}
+	hex := addr.Address
+	if !full {
+		hex = ShortAddress(hex)
+	}
+	if !IsKnownAddress(addr) {
+		return hex + " (unknown)"
+	}
+	return fmt.Sprintf("%s (%s)", addr.Desc, hex)
+}
+
 // VerboseAddress formats an Address for terminal display. The description is
 // wrapped in ANSI color via NameWithColor. Do NOT use the output as data
 // (e.g. JSON) — use PlainAddress for that.

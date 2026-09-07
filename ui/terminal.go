@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/briandowns/spinner"
@@ -17,9 +18,9 @@ import (
 )
 
 const (
-	indentUnit  = "  "   // 2 spaces per indent level
-	sectionWidth = 50    // total character width for Section separators
-	promptPrefix = "> "  // shown on the input line before the cursor
+	indentUnit      = "  " // 2 spaces per indent level
+	sectionWidth    = 50   // total character width for Section separators
+	promptPrefix    = "> " // shown on the input line before the cursor
 	interpretPrefix = "→ " // shown after Ask to display what Jarvis understood
 )
 
@@ -31,16 +32,31 @@ type TerminalUI struct {
 	out         io.Writer
 	in          *bufio.Reader
 	au          aurora.Aurora
+	// tty is true only when out is an interactive terminal. It gates cursor
+	// movement and animation; colours are gated separately through au so a
+	// caller can force colours into a buffer without enabling animation.
+	tty bool
 }
 
 // NewTerminalUI creates a TerminalUI that writes to os.Stdout and reads from
 // os.Stdin. Colours are enabled automatically when stdout is a real terminal.
 func NewTerminalUI() *TerminalUI {
-	colorsEnabled := term.IsTerminal(int(os.Stdout.Fd()))
+	isTTY := term.IsTerminal(int(os.Stdout.Fd()))
 	return &TerminalUI{
 		out: os.Stdout,
 		in:  bufio.NewReader(os.Stdin),
-		au:  aurora.NewAurora(colorsEnabled),
+		au:  aurora.NewAurora(isTTY),
+		tty: isTTY,
+	}
+}
+
+func (u *TerminalUI) child(indentLevel int, out io.Writer, tty bool) *TerminalUI {
+	return &TerminalUI{
+		indentLevel: indentLevel,
+		out:         out,
+		in:          u.in,
+		au:          u.au,
+		tty:         tty,
 	}
 }
 
@@ -63,6 +79,8 @@ func (u *TerminalUI) Style(t StyledText) string {
 		return u.au.Red(t.Text).String()
 	case SeverityCritical:
 		return u.au.Bold(t.Text).String()
+	case SeverityMuted:
+		return u.au.Faint(t.Text).String()
 	default: // SeverityInfo
 		return t.Text
 	}
@@ -106,8 +124,25 @@ func (u *TerminalUI) Section(title string) {
 	}
 	left := bars / 2
 	right := bars - left
-	line := strings.Repeat("=", left) + titled + strings.Repeat("=", right)
+	// The title carries the weight; the rule is there to be skimmed past.
+	line := u.au.Faint(strings.Repeat("=", left)).String() +
+		u.au.Bold(titled).String() +
+		u.au.Faint(strings.Repeat("=", right)).String()
 	fmt.Fprintf(u.out, "\n%s%s\n\n", u.prefix(), line)
+}
+
+// Subsection prints a bold heading after a blank line.
+func (u *TerminalUI) Subsection(title string) {
+	fmt.Fprintf(u.out, "\n%s%s\n", u.prefix(), u.au.Bold(title).String())
+}
+
+// RewriteLastLine moves the cursor up one line, clears it and writes line
+// there. Off-TTY it degrades to a plain writeLine.
+func (u *TerminalUI) RewriteLastLine(line string) {
+	if u.tty {
+		fmt.Fprint(u.out, "\x1b[1A\x1b[2K")
+	}
+	u.writeLine(line)
 }
 
 // BoxedSection renders body inside a rounded coloured-border box.
@@ -119,13 +154,8 @@ func (u *TerminalUI) Section(title string) {
 // writer with this UI's indent prefix preserved.
 func (u *TerminalUI) BoxedSection(severity Severity, title string, body func(UI)) {
 	var buf bytes.Buffer
-	inner := &TerminalUI{
-		indentLevel: 0,
-		out:         &buf,
-		in:          u.in,
-		au:          u.au,
-	}
-	body(inner)
+	// The buffer is not a terminal: no cursor movement or animation inside.
+	body(u.child(0, &buf, false))
 	writeBoxed(u.out, u.prefix(), severity, title, buf.String())
 }
 
@@ -203,18 +233,31 @@ func (u *TerminalUI) Choose(prompt string, options []string) int {
 // The label column is right-padded to the width of the longest label so all
 // values line up, making metadata blocks easy to scan at a glance.
 func (u *TerminalUI) KeyValue(rows [][2]string) {
+	cells := make([][2]TableCell, len(rows))
+	for i, r := range rows {
+		cells[i] = [2]TableCell{TC(r[0]), TC(r[1])}
+	}
+	u.KeyValueCells(cells)
+}
+
+// KeyValueCells renders an aligned 2-column block with per-cell colour.
+// Padding is computed on visible width so styled labels still line up.
+func (u *TerminalUI) KeyValueCells(rows [][2]TableCell) {
 	if len(rows) == 0 {
 		return
 	}
 	maxLabel := 0
 	for _, r := range rows {
-		if len(r[0]) > maxLabel {
-			maxLabel = len(r[0])
+		if w := runeLen(r[0].Text); w > maxLabel {
+			maxLabel = w
 		}
 	}
 	p := u.prefix()
 	for _, r := range rows {
-		fmt.Fprintf(u.out, "%s%-*s  %s\n", p, maxLabel, r[0], r[1])
+		label := u.Style(StyledText{Text: r[0].Text, Severity: r[0].Severity})
+		pad := strings.Repeat(" ", maxLabel-runeLen(r[0].Text))
+		value := u.Style(StyledText{Text: r[1].Text, Severity: r[1].Severity})
+		fmt.Fprintf(u.out, "%s%s%s  %s\n", p, label, pad, value)
 	}
 }
 
@@ -254,35 +297,101 @@ func (u *TerminalUI) PrintTable(t *Table) {
 	})
 }
 
-// Spinner starts an animated spinner with msg and returns a stop function.
-// The stop function clears the spinner line. On non-terminal outputs the
-// spinner is a no-op and only the message is printed once.
-func (u *TerminalUI) Spinner(msg string) func() {
-	if !term.IsTerminal(int(os.Stdout.Fd())) {
-		fmt.Fprintf(u.out, "%s%s\n", u.prefix(), msg)
-		return func() {}
+// Spinner starts a live status line. On a terminal it animates and appends
+// the elapsed time (m:ss), refreshing once a second; otherwise each distinct
+// message is printed once as a plain line so piped output stays readable.
+func (u *TerminalUI) Spinner(msg string) Progress {
+	p := &terminalProgress{u: u, start: time.Now(), msg: msg}
+	if !u.tty {
+		u.writeLine(msg)
+		return p
 	}
-	s := spinner.New(spinner.CharSets[14], 80*time.Millisecond, spinner.WithWriter(u.out))
-	s.Suffix = " " + msg
-	s.Start()
-	return func() {
-		s.Stop()
-		// briandowns/spinner clears the line with \r but no trailing \n,
-		// so we emit one to ensure the next output starts on a fresh line.
-		fmt.Fprintf(u.out, "\n")
+	p.s = spinner.New(spinner.CharSets[14], 80*time.Millisecond, spinner.WithWriter(u.out))
+	p.s.Prefix = u.prefix()
+	p.s.Suffix = p.suffix()
+	p.s.Start()
+	p.done = make(chan struct{})
+	go p.tick()
+	return p
+}
+
+type terminalProgress struct {
+	u     *TerminalUI
+	s     *spinner.Spinner // nil off-TTY
+	start time.Time
+	mu    sync.Mutex
+	msg   string
+	done  chan struct{}
+	once  sync.Once
+}
+
+func formatElapsed(d time.Duration) string {
+	secs := int(d.Seconds())
+	return fmt.Sprintf("%d:%02d", secs/60, secs%60)
+}
+
+func (p *terminalProgress) suffix() string {
+	return " " + p.msg + "  " + p.u.au.Faint(formatElapsed(time.Since(p.start))).String()
+}
+
+func (p *terminalProgress) refresh() {
+	p.s.Lock()
+	p.s.Suffix = p.suffix()
+	p.s.Unlock()
+}
+
+func (p *terminalProgress) tick() {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-p.done:
+			return
+		case <-t.C:
+			p.mu.Lock()
+			p.refresh()
+			p.mu.Unlock()
+		}
 	}
+}
+
+func (p *terminalProgress) Update(msg string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if msg == p.msg {
+		return
+	}
+	p.msg = msg
+	if p.s == nil {
+		p.u.writeLine(msg)
+		return
+	}
+	p.refresh()
+}
+
+func (p *terminalProgress) Elapsed() time.Duration {
+	return time.Since(p.start)
+}
+
+func (p *terminalProgress) Stop(final StyledText) {
+	p.once.Do(func() {
+		if p.s != nil {
+			close(p.done)
+			// briandowns/spinner clears the line with \r but no trailing \n,
+			// so the final line (or the next output) starts on the same row.
+			p.s.Stop()
+		}
+		if final.Text != "" {
+			p.u.writeLine(p.u.Style(final))
+		}
+	})
 }
 
 // Indent returns a child UI at one deeper indent level.
 // The child shares the underlying writer and reader with the parent, so
 // input sequencing and output ordering are preserved across nested scopes.
 func (u *TerminalUI) Indent() UI {
-	return &TerminalUI{
-		indentLevel: u.indentLevel + 1,
-		out:         u.out,
-		in:          u.in,
-		au:          u.au,
-	}
+	return u.child(u.indentLevel+1, u.out, u.tty)
 }
 
 // Writer returns an io.Writer that automatically prepends the current
