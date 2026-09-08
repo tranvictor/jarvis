@@ -59,6 +59,11 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - One signing card for EOA transactions, Safe proposals/approvals/executions
   and WalletConnect requests: decoded call first, then Sign with / Send to /
   Gas / nonce directly above the prompt.
+- Type-2 gas tip: `eth_maxPriorityFeePerGas` is often ~0 on Ethereum even
+  when max fee looks high. Jarvis now takes the best node oracle, the tip
+  implied by `eth_gasPrice − baseFee`, and a 1 gwei floor (0.01 gwei on
+  cheap L2s), so a high max fee is actually offered to miners. `-s` still
+  overrides.
 - Classic inner txs and Safe approvals/proposals render in a rounded box;
   the EOA confirm/execute that follows is a quiet heading so the two are
   not the same visual weight.

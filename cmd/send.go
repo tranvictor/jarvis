@@ -343,12 +343,26 @@ func sendFromMsig(reader utilreader.Reader, analyzer util.TxAnalyzer, resolver c
 		return
 	}
 
+	tipGas := 0.0
+	if txType == types.LegacyTxType && config.TipGas > 0 {
+		appUI.Warn("Legacy tx: ignoring --tipgas (EIP-1559 tips apply only to type-2 txs).")
+	} else if txType == types.DynamicFeeTxType {
+		tipGas = config.TipGas
+		if tipGas == 0 {
+			tipGas, err = reader.GetSuggestedGasTipCap()
+			if err != nil {
+				appUI.Error("Couldn't estimate recommended gas price: %s", err)
+				return
+			}
+		}
+	}
+
 	sp := sendTxParams{
 		txType:   txType,
 		nonce:    nonce,
 		gasLimit: gasLimit + config.ExtraGasLimit,
 		gasPrice: gasPrice + config.ExtraGasPrice,
-		tipGas:   config.TipGas + config.ExtraTipGas,
+		tipGas:   tipGas + config.ExtraTipGas,
 	}
 	handleMsigSend(sp, fromAcc, msigContractAddr, txdata, reader, analyzer, bc)
 }
