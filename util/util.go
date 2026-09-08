@@ -750,16 +750,7 @@ func ConfigToABI(
 	if customABI != "" {
 		return ReadCustomABI(address, customABI, network)
 	}
-	a, err := GetABI(address, network)
-	if err != nil {
-		return a, err
-	}
-
-	implABI, followed, err := followProxyImplementation(address, a, network)
-	if followed {
-		return implABI, err
-	}
-	return a, nil
+	return GetABI(address, network)
 }
 
 // isMethodlessABI reports whether a has no callable functions. Gnosis Safe
@@ -818,8 +809,8 @@ func followProxyImplementation(
 		return nil, false, nil
 	}
 
-	if impl := explorerImplementation(r, address); impl != "" {
-		implABI, err := GetABI(impl, network)
+	if impl := explorerImplementation(r, address); impl != "" && !sameAddress(impl, address) {
+		implABI, err := fetchABI(impl, network)
 		if err == nil && !isMethodlessABI(implABI) {
 			return implABI, true, nil
 		}
@@ -837,7 +828,7 @@ func followProxyImplementation(
 		return nil, false, nil
 	}
 
-	implABI, err := GetABI(impl.Hex(), network)
+	implABI, err := fetchABI(impl.Hex(), network)
 	if err != nil || isMethodlessABI(implABI) {
 		if classicProxy {
 			fmt.Printf("getting abi for implementation %s of %s failed: %s\n", impl.Hex(), address, err)
@@ -959,6 +950,22 @@ func IsGnosisMsigCallData(data []byte) bool {
 }
 
 func GetABI(addr string, network networks.Network) (*abi.ABI, error) {
+	a, err := fetchABI(addr, network)
+	if err != nil {
+		return a, err
+	}
+	implABI, followed, err := followProxyImplementation(addr, a, network)
+	if followed {
+		return implABI, err
+	}
+	return a, nil
+}
+
+// fetchABI returns the ABI the explorer published for addr, without
+// following a proxy implementation. GetABI wraps this with followProxyImplementation
+// so callers decoding calldata see withdraw/deposit on a WETH proxy, not the
+// methodless TransparentUpgradeableProxy ABI.
+func fetchABI(addr string, network networks.Network) (*abi.ABI, error) {
 	abiStr, err := GetABIString(addr, network)
 	if err != nil {
 		return nil, err
@@ -969,13 +976,15 @@ func GetABI(addr string, network networks.Network) (*abi.ABI, error) {
 		return result, nil
 	}
 
-	// now abiStr is an invalid abi string
-	// try bypassing the cache and query again
 	abiStr, err = GetABIStringBypassCache(addr, network)
 	if err != nil {
 		return nil, err
 	}
 	return GetABIFromString(abiStr)
+}
+
+func sameAddress(a, b string) bool {
+	return strings.EqualFold(strings.TrimSpace(a), strings.TrimSpace(b))
 }
 
 func IsProxyABI(a *abi.ABI) bool {

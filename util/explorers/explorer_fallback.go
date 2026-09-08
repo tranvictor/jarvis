@@ -146,6 +146,32 @@ func abiFieldToString(raw json.RawMessage) (string, bool) {
 	return "", false
 }
 
+func implementationFromBody(body []byte) string {
+	info, ok := parseJSONContractInfo(body)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(info.Implementation)
+}
+
+// abiJSONHasFunctions reports whether an ABI JSON array contains any
+// function entries. Transparent proxies verify as constructor + events +
+// fallback, so a methodless ABI next to an `implementation` field should
+// be replaced by the implementation ABI.
+func abiJSONHasFunctions(abiStr string) bool {
+	var arr []map[string]any
+	if json.Unmarshal([]byte(abiStr), &arr) != nil {
+		return true
+	}
+	for _, item := range arr {
+		t, _ := item["type"].(string)
+		if strings.EqualFold(t, "function") {
+			return true
+		}
+	}
+	return false
+}
+
 type etherscanContractParse struct {
 	info ContractInfo
 	ok   bool

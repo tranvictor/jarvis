@@ -77,6 +77,59 @@ func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {
 	}
 }
 
+func TestGetABIStringFollowsMethodlessProxyImplementation(t *testing.T) {
+	const (
+		proxy = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+		impl  = "0xc6b81b429797e0f555440b70cd99e032d7ae947e"
+	)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case strings.EqualFold(strings.TrimPrefix(r.URL.Path, "/api/contracts/"), proxy):
+			io.WriteString(w, `{
+				"name":"TransparentUpgradeableProxy",
+				"isVerified":true,
+				"proxyType":"eip1967",
+				"implementation":"0xc6b81b429797e0f555440b70cd99e032d7ae947e",
+				"abi":[
+					{"type":"constructor","inputs":[]},
+					{"anonymous":false,"inputs":[{"indexed":true,"name":"implementation","type":"address"}],"name":"Upgraded","type":"event"},
+					{"type":"fallback","stateMutability":"payable"}
+				]
+			}`)
+		case strings.EqualFold(strings.TrimPrefix(r.URL.Path, "/api/contracts/"), impl):
+			io.WriteString(w, `{
+				"name":"aeWETH",
+				"isVerified":true,
+				"abi":[
+					{"type":"function","name":"deposit","inputs":[],"outputs":[],"stateMutability":"payable"},
+					{"type":"function","name":"withdraw","inputs":[{"name":"wad","type":"uint256"}],"outputs":[],"stateMutability":"nonpayable"}
+				]
+			}`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	ee := NewEtherscanLikeExplorer(srv.URL, "", 4663)
+	got, err := ee.GetABIString(proxy)
+	if err != nil {
+		t.Fatalf("GetABIString: %v", err)
+	}
+	if !strings.Contains(got, `"withdraw"`) || !strings.Contains(got, `"deposit"`) {
+		t.Fatalf("proxy ABI lookup must return the implementation ABI, got %s", got)
+	}
+	if strings.Contains(got, `"Upgraded"`) {
+		t.Fatalf("must not keep the methodless proxy ABI: %s", got)
+	}
+}
+
 func TestGetABIStringFallsBackToBlockscoutV2(t *testing.T) {
 	const addr = "0x0000000000000000000000000000000000000001"
 	mux := http.NewServeMux()
