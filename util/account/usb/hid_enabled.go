@@ -53,6 +53,7 @@ import (
 	"errors"
 	"runtime"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -202,6 +203,39 @@ func (dev *hidDevice) Read(b []byte) (int, error) {
 			return 0, ErrDeviceClosed
 		}
 		// Device not closed, some other error occurred
+		message := C.hid_error(device)
+		if message == nil {
+			return 0, errors.New("hidapi: unknown failure")
+		}
+		failure, _ := wcharTToString(message)
+		return 0, errors.New("hidapi: " + failure)
+	}
+	return read, nil
+}
+
+// ReadTimeout is Read with a deadline. Returns (0, nil) if no report arrives
+// before timeout. Used to drain stale HID input after a previous session.
+func (dev *hidDevice) ReadTimeout(b []byte, timeout time.Duration) (int, error) {
+	if len(b) == 0 {
+		return 0, nil
+	}
+	dev.lock.Lock()
+	device := dev.device
+	dev.lock.Unlock()
+
+	if device == nil {
+		return 0, ErrDeviceClosed
+	}
+	ms := C.int(timeout / time.Millisecond)
+	read := int(C.hid_read_timeout(device, (*C.uchar)(&b[0]), C.size_t(len(b)), ms))
+	if read == -1 {
+		dev.lock.Lock()
+		device = dev.device
+		dev.lock.Unlock()
+
+		if device == nil {
+			return 0, ErrDeviceClosed
+		}
 		message := C.hid_error(device)
 		if message == nil {
 			return 0, errors.New("hidapi: unknown failure")

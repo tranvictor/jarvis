@@ -1,10 +1,14 @@
 package trezoreum
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
+	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -43,7 +47,20 @@ func (self *TrezorSigner) SignTx(
 	if err := self.ensureUnlocked(); err != nil {
 		return common.Address{}, tx, err
 	}
-	return self.trezor.Sign(self.path, tx, chainId)
+	var (
+		addr   common.Address
+		signed *types.Transaction
+	)
+	err := self.runWithAbort(func() error {
+		var err error
+		addr, signed, err = self.trezor.Sign(self.path, tx, chainId)
+		return err
+	})
+	if err != nil {
+		self.afterSignError()
+		return common.Address{}, tx, err
+	}
+	return addr, signed, nil
 }
 
 // ensureUnlocked unlocks the device on first use. If the device is
@@ -167,11 +184,17 @@ func (self *TrezorSigner) SignTypedDataHash(
 		common.Bytes2Hex(domainSeparator[:]),
 		common.Bytes2Hex(structHash[:]),
 	)
-	sig, err := self.trezor.SignTypedHash(self.path, domainSeparator, structHash)
+	var sig []byte
+	err := self.runWithAbort(func() error {
+		var err error
+		sig, err = self.trezor.SignTypedHash(self.path, domainSeparator, structHash)
+		return err
+	})
 	if err == nil {
 		return sig, nil
 	}
 	if !shouldFallBackToPersonalSign(err) {
+		self.afterSignError()
 		return nil, err
 	}
 	fmt.Printf(
@@ -180,8 +203,13 @@ func (self *TrezorSigner) SignTypedDataHash(
 	)
 
 	digest := jarviscommon.EIP712Digest(domainSeparator, structHash)
-	sig, err = self.trezor.SignPersonalMessage(self.path, digest[:])
+	err = self.runWithAbort(func() error {
+		var err error
+		sig, err = self.trezor.SignPersonalMessage(self.path, digest[:])
+		return err
+	})
 	if err != nil {
+		self.afterSignError()
 		return nil, err
 	}
 	if len(sig) != 65 {
@@ -198,7 +226,17 @@ func (self *TrezorSigner) SignTypedDataV4(td *apitypes.TypedData) ([]byte, error
 		return nil, err
 	}
 	fmt.Printf("Asking Trezor to sign EIP-712 typed data (%s)...\n", td.PrimaryType)
-	return self.trezor.SignTypedData(self.path, td)
+	var sig []byte
+	err := self.runWithAbort(func() error {
+		var err error
+		sig, err = self.trezor.SignTypedData(self.path, td)
+		return err
+	})
+	if err != nil {
+		self.afterSignError()
+		return nil, err
+	}
+	return sig, nil
 }
 
 // SignPersonalMessage signs message with the EIP-191 personal_sign
@@ -212,14 +250,24 @@ func (self *TrezorSigner) SignPersonalMessage(message []byte) ([]byte, error) {
 	if err := self.ensureUnlocked(); err != nil {
 		return nil, err
 	}
-	return self.trezor.SignPersonalMessage(self.path, message)
+	var sig []byte
+	err := self.runWithAbort(func() error {
+		var err error
+		sig, err = self.trezor.SignPersonalMessage(self.path, message)
+		return err
+	})
+	if err != nil {
+		self.afterSignError()
+		return nil, err
+	}
+	return sig, nil
 }
 
 // shouldFallBackToPersonalSign returns true when the failure indicates the
 // firmware does not implement EthereumSignTypedHash, rather than a user
 // rejection or a transport error.
 func shouldFallBackToPersonalSign(err error) bool {
-	if err == nil {
+	if err == nil || errors.Is(err, ErrCancelled) {
 		return false
 	}
 	msg := strings.ToLower(err.Error())
@@ -235,6 +283,52 @@ func shouldFallBackToPersonalSign(err error) bool {
 		}
 	}
 	return false
+}
+
+// runWithAbort runs fn while listening for Ctrl-C. Trezor protocol has no
+// reply after ButtonAck until the user confirms or rejects; without a Cancel
+// the USB read blocks forever and the device stays in the signing workflow,
+// so the next attempt never shows a prompt.
+func (self *TrezorSigner) runWithAbort(fn func() error) error {
+	done := make(chan error, 1)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigs)
+
+	go func() { done <- fn() }()
+
+	select {
+	case err := <-done:
+		return err
+	case <-sigs:
+		self.trezor.Abort()
+		select {
+		case err := <-done:
+			if err == nil {
+				return ErrCancelled
+			}
+			if errors.Is(err, ErrCancelled) {
+				return err
+			}
+			return fmt.Errorf("%w: %v", ErrCancelled, err)
+		case <-time.After(2 * time.Second):
+			_ = self.trezor.Close()
+			select {
+			case err := <-done:
+				if errors.Is(err, ErrCancelled) {
+					return err
+				}
+				return fmt.Errorf("%w: %v", ErrCancelled, err)
+			case <-time.After(2 * time.Second):
+				return fmt.Errorf("%w: Trezor did not respond after cancel", ErrCancelled)
+			}
+		}
+	}
+}
+
+func (self *TrezorSigner) afterSignError() {
+	self.deviceUnlocked = false
+	self.trezor.ResetAfterFailure()
 }
 
 func NewTrezorSigner(path string, address string) (*TrezorSigner, error) {
