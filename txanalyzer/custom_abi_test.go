@@ -165,3 +165,43 @@ func TestAnalyzeFallsBackToGnosisMsigABIWhenProxyABIHasNoMethods(t *testing.T) {
 		t.Fatalf("method = %q, want confirmTransaction, err %q", fc.Method, fc.Error)
 	}
 }
+
+func TestAnalyzeFallsBackToWETHWhenExplorerHasNoABI(t *testing.T) {
+	target := "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+	// Classic bapprove on Robinhood: WETH withdraw that used to dump raw
+	// bytes because the ERC-20 fallback has no 0x2e1a7d4d selector.
+	data := ethcommon.FromHex("0x2e1a7d4d00000000000000000000000000000000000000000000000049f167f874d62fc2")
+	wantWad := new(big.Int).SetBytes(data[4:])
+
+	fc := pureAnalyzer().AnalyzeFunctionCallRecursively(
+		noABIFound, big.NewInt(0), target, data, nil,
+	)
+	if fc.Error != "" {
+		t.Fatalf("unexpected error: %s", fc.Error)
+	}
+	if fc.Method != "withdraw" {
+		t.Fatalf("method = %q, want withdraw via WETH fallback", fc.Method)
+	}
+	if len(fc.Params) != 1 || fc.Params[0].Values[0].Raw != wantWad.String() {
+		t.Fatalf("wad not decoded: %+v (want %s)", fc.Params, wantWad)
+	}
+}
+
+func TestAnalyzeMethodlessCustomABIFallsBackToWETH(t *testing.T) {
+	target := "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+	data, err := jarviscommon.GetWETHABI().Pack("withdraw", big.NewInt(1_000_000_000_000_000_000))
+	if err != nil {
+		t.Fatalf("pack: %s", err)
+	}
+	proxy := abiFromJSON(t, `[{"anonymous":false,"inputs":[{"indexed":true,"name":"implementation","type":"address"}],"name":"Upgraded","type":"event"}]`)
+	fc := pureAnalyzer().AnalyzeFunctionCallRecursively(
+		noABIFound, big.NewInt(0), target, data,
+		map[string]*abi.ABI{strings.ToLower(target): proxy},
+	)
+	if fc.Error != "" {
+		t.Fatalf("unexpected error: %s", fc.Error)
+	}
+	if fc.Method != "withdraw" {
+		t.Fatalf("method = %q, want withdraw via WETH fallback", fc.Method)
+	}
+}

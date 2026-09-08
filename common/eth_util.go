@@ -12,6 +12,21 @@ func GetERC20ABI() *abi.ABI {
 	return &result
 }
 
+func GetWETHABI() *abi.ABI {
+	result, _ := abi.JSON(strings.NewReader(wethabi))
+	return &result
+}
+
+// IsWETHCallData reports whether data's selector is a wrap/unwrap method
+// on the built-in WETH ABI (deposit, withdraw, depositTo, withdrawTo).
+func IsWETHCallData(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	_, err := GetWETHABI().MethodById(data[:4])
+	return err == nil
+}
+
 func GetMultiSendABI() *abi.ABI {
 	result, _ := abi.JSON(strings.NewReader(multisendabi))
 	return &result

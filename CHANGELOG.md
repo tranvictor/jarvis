@@ -75,6 +75,11 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   (and the other built-in Classic methods) even when the explorer ABI is
   missing or is a methodless proxy. The following signing card used to dump
   raw bytes for the wallet you were already operating on.
+- Classic `msig bapprove` / Safe cards decode WETH wrap methods (`withdraw`,
+  `deposit`, `depositTo`, `withdrawTo`) when the explorer ABI is missing or
+  is a methodless proxy. Those selectors are not on the ERC-20 fallback, so
+  wrapped-native tokens (Robinhood WETH, …) used to dump raw bytes with a
+  "no ABI" warning even when the address book already named the destination.
 - Native ETH sends to an EOA and ERC-20 `transfer` / `transferFrom` open as
   `Send  1.5 ETH  →  Alice` / `Send  1,000 USDC  →  Alice` rather than a
   generic Call header. Safe cards label that EOA destination `Recipient`.

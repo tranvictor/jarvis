@@ -304,6 +304,12 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 	if util.IsGnosisMsigCallData(data) && !abiHasSelector(a, data[:4]) {
 		a = util.GetGnosisMsigABI()
 	}
+	// Wrapped-native tokens (WETH) are often unverified proxies. deposit /
+	// withdraw are not on the ERC-20 ABI, so without this the operator sees
+	// raw bytes even when the address book already named the destination.
+	if IsWETHCallData(data) && !abiHasSelector(a, data[:4]) {
+		a = GetWETHABI()
+	}
 
 	// Look up ERC20 context for the destination so that integer params
 	// (token amounts) can be annotated with decimal and symbol.
@@ -462,6 +468,11 @@ func (self *TxAnalyzer) analyzeMethodCall(
 	if err != nil {
 		// Unknown selector — fall back to the standard ERC20 ABI.
 		a = GetERC20ABI()
+		m, err = a.MethodById(data)
+	}
+	if err != nil {
+		// Wrap/unwrap is not on ERC-20; try the built-in WETH ABI next.
+		a = GetWETHABI()
 		m, err = a.MethodById(data)
 	}
 	if err != nil {
