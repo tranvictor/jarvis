@@ -56,14 +56,21 @@ func buildSafeSigningCard(
 ) *cmdutil.SigningCard {
 	var resolver cmdutil.ABIResolver
 	var analyzer util.TxAnalyzer
+	safeAddr := ""
 	if tc != nil {
 		resolver = tc.Resolver
 		analyzer = tc.Analyzer
+		if tc.Safe != nil && tc.Safe.Address != "" {
+			safeAddr = tc.Safe.Address
+		} else {
+			safeAddr = tc.To
+		}
 	}
 	return cmdutil.BuildSafeSigningCard(stx, hash, config.Network(), resolver, analyzer, cmdutil.SafeCardOptions{
 		Kind:      opt.kind,
 		Prompt:    opt.prompt,
 		Signer:    opt.signer,
+		SafeAddr:  safeAddr,
 		ExtraABIs: opt.extraABIs,
 		Sigs:      opt.sigs,
 		Threshold: opt.threshold,

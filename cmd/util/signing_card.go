@@ -61,9 +61,12 @@ type SigningCard struct {
 
 // SafeCardFields are the SafeTx parameters that have no EOA equivalent.
 type SafeCardFields struct {
-	Operation      string // "CALL" or "DELEGATECALL"
-	DelegateCall   bool
-	MultiSend      bool
+	Operation    string // "CALL" or "DELEGATECALL"
+	DelegateCall bool
+	MultiSend    bool
+	// Address is the Safe itself. Shown as the "Safe" row and used as the
+	// payer on Send headlines (ERC-20 transfer / native value).
+	Address        ui.StyledText
 	SafeNonce      string
 	SafeTxHash     string
 	SafeTxGas      string
@@ -108,6 +111,19 @@ func isMultisigOp(c *SigningCard) bool {
 	}
 }
 
+func signingCardPayer(c *SigningCard) ui.StyledText {
+	if c == nil {
+		return ui.StyledText{}
+	}
+	if c.Classic != nil && c.Classic.Multisig.Text != "" {
+		return c.Classic.Multisig
+	}
+	if c.Safe != nil && c.Safe.Address.Text != "" {
+		return c.Safe.Address
+	}
+	return ui.StyledText{}
+}
+
 // ShowSigningCard prints the card. Order is chosen so that what the reader
 // must verify sits directly above the prompt: the call first, then the
 // summary block, then the warnings.
@@ -135,6 +151,10 @@ func ShowSigningCard(u ui.UI, c *SigningCard) {
 func renderSigningCardBody(u ui.UI, c *SigningCard) {
 	if c.ClearSign != nil {
 		c.ClearSign(u)
+	}
+
+	if from := signingCardPayer(c); from.Text != "" {
+		util.AnnotatePaymentFrom(c.Call, from)
 	}
 
 	body := c.ClearSign != nil || c.Call != nil || c.RawData != ""
@@ -195,6 +215,9 @@ func renderSigningCardBody(u ui.UI, c *SigningCard) {
 		rows = append(rows, [2]ui.TableCell{label("Nonce"), ui.TC(c.Nonce)})
 	}
 	if s := c.Safe; s != nil {
+		if s.Address.Text != "" {
+			rows = append(rows, [2]ui.TableCell{label("Safe"), ui.TCS(s.Address.Text, s.Address.Severity)})
+		}
 		op := ui.TC(s.Operation)
 		if s.DelegateCall {
 			op = ui.TCS(s.Operation, ui.SeverityWarn)

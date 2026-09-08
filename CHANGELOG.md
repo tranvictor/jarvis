@@ -86,6 +86,9 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - Native ETH sends to an EOA and ERC-20 `transfer` / `transferFrom` open as
   `Send  1.5 ETH  →  Alice` / `Send  1,000 USDC  →  Alice` rather than a
   generic Call header. Safe cards label that EOA destination `Recipient`.
+  On a Classic or Safe card the wallet is named on that line:
+  `Send  42,229 MON  from  Treasury  →  Alice`. The card also has a
+  Multisig / Safe row with the full address.
 - Safe cards list the Safe, operation, nonce, `safeTxHash` and collected
   signatures; the EOA card for a Safe execution collapses the inner call
   since it was just shown.

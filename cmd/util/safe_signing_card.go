@@ -20,6 +20,7 @@ type SafeCardOptions struct {
 	Kind      string // "Safe proposal", "Safe approval", "Safe execution", "Safe transaction"
 	Prompt    string
 	Signer    string // EOA that will sign, if any
+	SafeAddr  string // the Safe wallet; shown on the card and as Send ... from
 	ExtraABIs map[string]*abi.ABI
 	Sigs      []safe.OwnerSig
 	Threshold uint64 // 0 = unknown; otherwise "n of m required"
@@ -60,6 +61,9 @@ func BuildSafeSigningCard(
 	}
 	if opt.Signer != "" {
 		card.Signer = util.StyledAddress(util.GetJarvisAddress(opt.Signer, network))
+	}
+	if opt.SafeAddr != "" {
+		card.Safe.Address = util.StyledAddress(util.GetJarvisAddress(opt.SafeAddr, network))
 	}
 	if stx.Value != nil && stx.Value.Sign() > 0 {
 		card.Value = jarviscommon.BigToFloatString(stx.Value, network.GetNativeTokenDecimal()) +
