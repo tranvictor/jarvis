@@ -391,7 +391,7 @@ func signSafeRef(p *preparedSafeRef, preConfirmed bool) approveSafeRefResult {
 		// and approved+executed outcomes in the summary here because
 		// runSafeApproveOnChain doesn't report that back — the user
 		// can still see what happened in the stream above.
-		if !config.YesToAllPrompt && !appUI.Confirm("Broadcast approveHash on-chain?", true) {
+		if !config.YesToAllPrompt && !appUI.Confirm(cmdutil.AnnotateBatch("Broadcast approveHash on-chain?"), true) {
 			res.status = "skipped"
 			res.reason = "user aborted"
 			return res
@@ -402,7 +402,7 @@ func signSafeRef(p *preparedSafeRef, preConfirmed bool) approveSafeRefResult {
 		return res
 	}
 
-	if !preConfirmed && !config.YesToAllPrompt && !appUI.Confirm("Sign approval (off-chain, no gas)?", true) {
+	if !preConfirmed && !config.YesToAllPrompt && !appUI.Confirm(cmdutil.AnnotateBatch("Sign approval (off-chain, no gas)?"), true) {
 		res.status = "skipped"
 		res.reason = "user aborted"
 		return res
@@ -443,7 +443,7 @@ func signSafeRef(p *preparedSafeRef, preConfirmed bool) approveSafeRefResult {
 		return res
 	}
 
-	if !config.YesToAllPrompt && !appUI.Confirm("Threshold met — broadcast execTransaction now?", true) {
+	if !config.YesToAllPrompt && !appUI.Confirm(cmdutil.AnnotateBatch("Threshold met — broadcast execTransaction now?"), true) {
 		appUI.Info("Skipping execution. Run later with `jarvis msig execute ...`.")
 		return res
 	}

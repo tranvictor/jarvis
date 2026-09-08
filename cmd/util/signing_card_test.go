@@ -447,3 +447,32 @@ func TestSigningCardShowsWalletKind(t *testing.T) {
 		t.Fatalf("wallet kind missing from signer line: %v", rec.Entries())
 	}
 }
+
+func TestShowSigningCardBatchMark(t *testing.T) {
+	t.Cleanup(ClearBatchItem)
+	SetBatchItem(12, 87)
+	rec := ui.NewRecordingUI("y")
+	card := &SigningCard{
+		Kind:   "EOA transaction",
+		Prompt: "Sign and broadcast (≈ 0.0017 ETH)?",
+	}
+	if !ConfirmSigningCard(rec, card) {
+		t.Fatal("scripted y should confirm")
+	}
+	if !rec.HasMessage("[12/87] EOA transaction") {
+		t.Fatalf("section must carry [i/n]: %v", rec.Entries())
+	}
+	if !rec.HasMessage("[12/87] Sign and broadcast (≈ 0.0017 ETH)?") {
+		t.Fatalf("prompt must carry [i/n]: %v", rec.Entries())
+	}
+
+	ClearBatchItem()
+	rec = ui.NewRecordingUI()
+	ShowSigningCard(rec, &SigningCard{Kind: "EOA transaction"})
+	if rec.HasMessage("[12/87] EOA transaction") {
+		t.Fatalf("cleared mark must not leak: %v", rec.Entries())
+	}
+	if !rec.HasMessage("EOA transaction") {
+		t.Fatalf("single-tx card title lost: %v", rec.Entries())
+	}
+}

@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"bytes"
 	"strings"
 	"testing"
 
+	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/ui"
 )
@@ -38,6 +40,7 @@ func TestBatchTallyString(t *testing.T) {
 func TestBatchPlanBannerAndResultLines(t *testing.T) {
 	rec := ui.NewRecordingUI()
 	swapAppUI(t, rec)
+	t.Cleanup(cmdutil.ClearBatchItem)
 
 	printBatchPlan("Batch approve", []string{"Safe     eth:0xsafe:0xhash", "Classic  mainnet:0xinit"})
 	tally := batchTally{total: 2}
@@ -45,6 +48,7 @@ func TestBatchPlanBannerAndResultLines(t *testing.T) {
 	withIndentedUI(func() { appUI.Info("inner") })
 	tally.add("approved")
 	printBatchItemResult("approved", "safeTxHash 0xhash", tally)
+	printBatchBanner(2, 2, "Classic", "mainnet:0xinit")
 	tally.add("failed")
 	printBatchItemResult("failed", "sign safeTxHash: rejected", tally)
 
@@ -56,14 +60,88 @@ func TestBatchPlanBannerAndResultLines(t *testing.T) {
 		"Section: Batch approve: 2 transaction(s)",
 		"Info: 1. Safe     eth:0xsafe:0xhash",
 		"Info: 2. Classic  mainnet:0xinit",
-		"Info: ",
-		"Info: [1/2] Safe  eth:0xsafe:0xhash",
+		"Section: [1/2] Safe  eth:0xsafe:0xhash",
 		"Info: inner",
-		"Info: ✓ approved  safeTxHash 0xhash   (1 ok · 1 left)",
-		"Info: ✗ failed  sign safeTxHash: rejected   (1 ok · 1 failed)",
+		"Info: ✓ [1/2] approved  safeTxHash 0xhash   (1 ok · 1 left)",
+		"Section: [2/2] Classic  mainnet:0xinit",
+		"Info: ✗ [2/2] failed  sign safeTxHash: rejected   (1 ok · 1 failed)",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("got:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestBatchBannerStampsSigningCardsAndPrompts(t *testing.T) {
+	rec := ui.NewRecordingUI("y")
+	swapAppUI(t, rec)
+	t.Cleanup(cmdutil.ClearBatchItem)
+
+	tally := batchTally{total: 87, ok: 11}
+	printBatchBanner(12, 87, "Classic", "mainnet:0xinit")
+	withIndentedUI(func() {
+		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "Classic multisig transaction"})
+		if !cmdutil.ConfirmSigningCard(appUI, &cmdutil.SigningCard{
+			Kind:   "EOA transaction",
+			Prompt: "Sign and broadcast (≈ 0.0017 ETH)?",
+		}) {
+			t.Fatal("scripted y should confirm")
+		}
+	})
+	tally.add("approved")
+	printBatchItemResult("approved", "confirm tx 0xabc", tally)
+
+	joined := ""
+	for _, e := range rec.Entries() {
+		joined += e.Method + ": " + e.Value + "\n"
+	}
+	for _, w := range []string{
+		"Section: [12/87] Classic  mainnet:0xinit",
+		"Section: [12/87] Classic multisig transaction",
+		"Section: [12/87] EOA transaction",
+		"Confirm: [12/87] Sign and broadcast (≈ 0.0017 ETH)?",
+		"Info: ✓ [12/87] approved  confirm tx 0xabc   (12 ok · 75 left)",
+	} {
+		if !strings.Contains(joined, w) {
+			t.Fatalf("missing %q in:\n%s", w, joined)
+		}
+	}
+}
+
+func TestBatchScanRendersIndexedSections(t *testing.T) {
+	var buf bytes.Buffer
+	term := ui.NewTerminalUIWithWriter(&buf, false)
+	prev := appUI
+	appUI = term
+	t.Cleanup(func() { appUI = prev })
+	t.Cleanup(cmdutil.ClearBatchItem)
+
+	printBatchPlan("Batch approve", []string{"Safe     eth:0xSafe:0xhash", "Classic  mainnet:0xinit"})
+	printBatchBanner(1, 2, "Safe", "eth:0xSafe:0xhash")
+	withIndentedUI(func() {
+		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "Safe approval"})
+	})
+	printBatchItemResult("approved", "safeTxHash 0xhash", batchTally{total: 2, ok: 1})
+	printBatchBanner(2, 2, "Classic", "mainnet:0xinit")
+	withIndentedUI(func() {
+		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "Classic multisig transaction"})
+		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "EOA transaction"})
+	})
+	printBatchItemResult("approved", "confirm tx 0xabc", batchTally{total: 2, ok: 2})
+
+	out := buf.String()
+	for _, w := range []string{
+		"[1/2] Safe  eth:0xSafe:0xhash",
+		"[1/2] Safe approval",
+		"✓ [1/2] approved",
+		"[2/2] Classic  mainnet:0xinit",
+		"[2/2] Classic multisig transaction",
+		"[2/2] EOA transaction",
+		"✓ [2/2] approved",
+		"=====",
+	} {
+		if !strings.Contains(out, w) {
+			t.Fatalf("missing %q in:\n%s", w, out)
+		}
 	}
 }
 
@@ -154,6 +232,7 @@ func TestApproveSafeRefsConfirmOnceReviewsThenSigns(t *testing.T) {
 	signed := fakeSafeRefs(t)
 	rec := ui.NewRecordingUI("y", "")
 	swapAppUI(t, rec)
+	t.Cleanup(cmdutil.ClearBatchItem)
 
 	tally := batchTally{total: 4}
 	results, item, aborted := approveSafeRefsConfirmOnce(safeRefInputs("a", "bad", "reject", "d"), &tally)
@@ -184,7 +263,7 @@ func TestApproveSafeRefsConfirmOnceReviewsThenSigns(t *testing.T) {
 	if confirmAt < 0 {
 		t.Fatalf("single confirm missing:\n%s", joined)
 	}
-	for _, s := range []string{"card for a", "card for reject", "card for d", "fetch pending tx: 404", "✗ failed  fetch pending tx: 404"} {
+	for _, s := range []string{"card for a", "card for reject", "card for d", "fetch pending tx: 404", "✗ [2/4] failed  fetch pending tx: 404"} {
 		at := strings.Index(joined, s)
 		if at < 0 || at > confirmAt {
 			t.Fatalf("%q should appear before the confirm:\n%s", s, joined)
@@ -206,6 +285,7 @@ func TestApproveSafeRefsConfirmOnceDeclineSkipsAll(t *testing.T) {
 	signed := fakeSafeRefs(t)
 	rec := ui.NewRecordingUI("n")
 	swapAppUI(t, rec)
+	t.Cleanup(cmdutil.ClearBatchItem)
 
 	tally := batchTally{total: 2}
 	results, _, aborted := approveSafeRefsConfirmOnce(safeRefInputs("a", "b"), &tally)
@@ -233,6 +313,7 @@ func TestApproveSafeRefsConfirmOnceYesSkipsPrompt(t *testing.T) {
 	signed := fakeSafeRefs(t)
 	rec := ui.NewRecordingUI()
 	swapAppUI(t, rec)
+	t.Cleanup(cmdutil.ClearBatchItem)
 
 	tally := batchTally{total: 1}
 	approveSafeRefsConfirmOnce(safeRefInputs("a"), &tally)

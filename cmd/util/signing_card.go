@@ -94,7 +94,7 @@ type ClassicCardFields struct {
 // must verify sits directly above the prompt: the call first, then the
 // summary block, then the warnings.
 func ShowSigningCard(u ui.UI, c *SigningCard) {
-	u.Section(c.Kind)
+	u.Section(AnnotateBatch(c.Kind))
 
 	if c.ClearSign != nil {
 		c.ClearSign(u)
@@ -237,7 +237,7 @@ func ConfirmSigningCard(u ui.UI, c *SigningCard) bool {
 	if config.YesToAllPrompt {
 		return true
 	}
-	return u.Confirm(c.Prompt, true)
+	return u.Confirm(AnnotateBatch(c.Prompt), true)
 }
 
 // printHexBlock writes hex data wrapped to 32-byte words with the byte count

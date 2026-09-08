@@ -268,8 +268,9 @@ Ledger to be plugged in and unlocked.
 ### Batch runs
 
 `jarvis msig bapprove` shows the plan before asking anything, then works
-through the list with one indented block per item and a one-line result
-that stays in the transcript:
+through the list with one indented block per item. Every signing card, Y/n
+prompt and result line repeats `[i/n]`, so you can search or scroll a
+50-item transcript and still know which transaction you are looking at:
 
 ```
 =============== Batch approve: 3 transaction(s) ===============
@@ -277,18 +278,23 @@ that stays in the transcript:
 2. Safe     bsc:0xSafe…:0xhash…
 3. Classic  mainnet:0xinit…
 
-[1/3] Safe  eth:0xSafe…:0xhash…
-  ... signing card, prompt, spinner ...
-✓ approved  safeTxHash 0x…   (1 ok · 2 left)
+=============== [1/3] Safe  eth:0xSafe…:0xhash… ===============
+  =============== [1/3] Safe approval ===============
+  ... signing card ...
+  [1/3] Sign approval (off-chain, no gas)? [Y/n]
+✓ [1/3] approved  safeTxHash 0x…   (1 ok · 2 left)
 
-[2/3] Safe  bsc:0xSafe…:0xhash…
+=============== [2/3] Safe  bsc:0xSafe…:0xhash… ===============
   ...
-✗ failed  unlock wallet: ledger not connected   (1 ok · 1 failed · 1 left)
+✗ [2/3] failed  unlock wallet: ledger not connected   (1 ok · 1 failed · 1 left)
 Continue with the remaining 1 transaction(s)? [Y/n]
 
-[3/3] Classic  mainnet:0xinit…
+=============== [3/3] Classic  mainnet:0xinit… ===============
+  =============== [3/3] Classic multisig transaction ===============
   ...
-✓ approved  confirm tx 0x…   (2 ok · 1 failed)
+  =============== [3/3] EOA transaction ===============
+  [3/3] Sign and broadcast (≈ 0.0017 ETH)? [Y/n]
+✓ [3/3] approved  confirm tx 0x…   (2 ok · 1 failed)
 
 ===================== Batch summary =====================
 ┌───┬─────────┬─────────┬──────────┬──────────┬───────────────────────┐

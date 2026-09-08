@@ -109,8 +109,10 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 
 ### Batch approvals (`jarvis msig bapprove`)
 
-- Plan printed before the first prompt; each item runs under a `[i/n]`
-  banner with everything indented; one-line result with a running tally.
+- Plan printed before the first prompt; each item is a `===== [i/n] … =====`
+  section so it matches the weight of the signing cards inside it. Those cards,
+  their Y/n prompts, and the one-line result all repeat `[i/n]`, so a 50-item
+  transcript stays scannable after the banner has scrolled off.
 - After a failed item jarvis asks whether to continue; declining records the
   rest as skipped.
 - Unified summary table for Safe and Classic items, totals line, and exit
