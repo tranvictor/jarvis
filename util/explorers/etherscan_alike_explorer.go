@@ -149,10 +149,19 @@ func isRateLimited(msg string) bool {
 }
 
 func (ee *EtherscanLikeExplorer) GetABIString(address string) (string, error) {
+	return ee.getABIString(address, 0)
+}
+
+func (ee *EtherscanLikeExplorer) getABIString(address string, depth int) (string, error) {
 	var lastErr error
 	for _, u := range ee.abiURLs(address) {
-		result, err := ee.getABIStringWithRetry(u)
+		result, impl, err := ee.getABIStringWithRetry(u)
 		if err == nil {
+			if depth < 2 && impl != "" && !strings.EqualFold(impl, address) && !abiJSONHasFunctions(result) {
+				if implABI, implErr := ee.getABIString(impl, depth+1); implErr == nil && abiJSONHasFunctions(implABI) {
+					return implABI, nil
+				}
+			}
 			return result, nil
 		}
 		lastErr = err
@@ -163,36 +172,36 @@ func (ee *EtherscanLikeExplorer) GetABIString(address string) (string, error) {
 	return "", lastErr
 }
 
-func (ee *EtherscanLikeExplorer) getABIStringWithRetry(u string) (string, error) {
+func (ee *EtherscanLikeExplorer) getABIStringWithRetry(u string) (string, string, error) {
 	var lastErr error
 	for attempt := 0; attempt < abiFetchAttempts; attempt++ {
 		if attempt > 0 {
 			time.Sleep(abiRetryDelay)
 		}
-		result, retry, err := ee.getABIStringOnce(u)
+		result, impl, retry, err := ee.getABIStringOnce(u)
 		if err == nil {
-			return result, nil
+			return result, impl, nil
 		}
 		lastErr = err
 		if !retry {
-			return "", err
+			return "", "", err
 		}
 	}
-	return "", lastErr
+	return "", "", lastErr
 }
 
 // getABIStringOnce performs one ABI request. retry is true only for
 // transient failures (rate limiting, transport errors).
-func (ee *EtherscanLikeExplorer) getABIStringOnce(u string) (result string, retry bool, err error) {
+func (ee *EtherscanLikeExplorer) getABIStringOnce(u string) (result, impl string, retry bool, err error) {
 	status, body, err := ee.get(u)
 	if err != nil {
-		return "", true, err
+		return "", "", true, err
 	}
 	if status == http.StatusTooManyRequests || isRateLimited(string(body)) {
-		return "", true, fmt.Errorf("%s: %s", ee.label(), strings.TrimSpace(string(body)))
+		return "", "", true, fmt.Errorf("%s: %s", ee.label(), strings.TrimSpace(string(body)))
 	}
 	if abiStr, ok := parseABIFromBody(body); ok {
-		return abiStr, false, nil
+		return abiStr, implementationFromBody(body), false, nil
 	}
 	abiresp := abiresponse{}
 	if json.Unmarshal(body, &abiresp) == nil && abiresp.Status != "" && abiresp.Status != "1" {
@@ -200,12 +209,12 @@ func (ee *EtherscanLikeExplorer) getABIStringOnce(u string) (result string, retr
 		if msg == "" {
 			msg = abiresp.Message
 		}
-		return "", isRateLimited(msg), fmt.Errorf("%s: %s", ee.label(), msg)
+		return "", "", isRateLimited(msg), fmt.Errorf("%s: %s", ee.label(), msg)
 	}
 	if status >= 400 {
-		return "", false, fmt.Errorf("%s: HTTP %d", ee.label(), status)
+		return "", "", false, fmt.Errorf("%s: HTTP %d", ee.label(), status)
 	}
-	return "", false, fmt.Errorf("%s: unexpected response", ee.label())
+	return "", "", false, fmt.Errorf("%s: unexpected response", ee.label())
 }
 
 // redactURLError strips the request URL (and with it the API key) out of

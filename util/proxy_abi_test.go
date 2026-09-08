@@ -1,10 +1,15 @@
 package util
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+
+	"github.com/tranvictor/jarvis/networks"
 )
 
 const safeProxyABIJSON = `[{"inputs":[{"internalType":"address","name":"_singleton","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"stateMutability":"payable","type":"fallback"}]`
@@ -61,5 +66,57 @@ func TestFollowProxyImplementationSkipsNormalABI(t *testing.T) {
 	}
 	if followed || impl != nil {
 		t.Fatal("non-proxy ABIs must not trigger implementation lookup")
+	}
+}
+
+func TestGetABIFollowsExplorerReportedImplementation(t *testing.T) {
+	const (
+		proxy = "0xa11ce00000000000000000000000000000000001"
+		impl  = "0xa11ce00000000000000000000000000000000002"
+	)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		addr := strings.TrimPrefix(r.URL.Path, "/api/contracts/")
+		switch {
+		case strings.EqualFold(addr, proxy):
+			io.WriteString(w, `{
+				"name":"TransparentUpgradeableProxy",
+				"isVerified":true,
+				"proxyType":"eip1967",
+				"implementation":"0xa11ce00000000000000000000000000000000002",
+				"abi":[{"type":"fallback","stateMutability":"payable"},{"anonymous":false,"inputs":[],"name":"Upgraded","type":"event"}]
+			}`)
+		case strings.EqualFold(addr, impl):
+			io.WriteString(w, `{
+				"name":"aeWETH",
+				"isVerified":true,
+				"abi":[{"type":"function","name":"withdraw","inputs":[{"name":"wad","type":"uint256"}],"outputs":[],"stateMutability":"nonpayable"}]
+			}`)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	n := networks.NewGenericEtherscanNetwork(networks.GenericEtherscanNetworkConfig{
+		Name:                "proxy-follow-abi-test",
+		ChainID:             4663,
+		NativeTokenSymbol:   "ETH",
+		NativeTokenDecimal:  18,
+		BlockTime:           2,
+		DefaultNodes:        map[string]string{"dummy": "http://127.0.0.1:9"},
+		BlockExplorerAPIURL: srv.URL,
+	})
+	a, err := GetABI(proxy, n)
+	if err != nil {
+		t.Fatalf("GetABI: %v", err)
+	}
+	if _, ok := a.Methods["withdraw"]; !ok {
+		t.Fatalf("GetABI on the proxy must return the implementation ABI, methods=%v", a.Methods)
 	}
 }

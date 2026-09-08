@@ -133,8 +133,9 @@ func decodeSafeCalldata(
 	}
 	// Always run the analyzer, even when the explorer ABI lookup failed.
 	// AnalyzeFunctionCallRecursively falls back to the standard ERC-20 ABI
-	// (and MultiSend) so approve/transfer still decode instead of rendering
-	// as raw bytes with a "no ABI" warning.
+	// (and MultiSend) so approve/transfer still decode. Proxy destinations
+	// must already have been followed to their implementation ABI by
+	// GetABI / ConfigToABI; otherwise the methodless proxy ABI is used.
 	return analyzer.AnalyzeFunctionCallRecursively(
 		lookupABI(resolver), stx.Value, stx.To.Hex(), stx.Data, customABIs,
 	)
