@@ -94,14 +94,14 @@ func PromptParam(
 	if raw == "" {
 		raw = u.Ask(nil)
 	}
-	return ConvertParamInput(input, raw, network)
+	return convertParamInput(input, raw, network)
 }
 
-// ConvertParamInput turns one line of user input into the typed value the ABI
+// convertParamInput turns one line of user input into the typed value the ABI
 // encoder expects for input. Arrays and tuples are entered as a single
 // bracketed line ("[a, b]", "(a, b)") and delegated to ConvertParamStrToArray,
 // which uses abi.Type.GetType() via reflect to build the exact slice type.
-func ConvertParamInput(input abi.Argument, raw string, network jarvisnetworks.Network) (any, error) {
+func convertParamInput(input abi.Argument, raw string, network jarvisnetworks.Network) (any, error) {
 	inpStr, err := util.InterpretInput(strings.TrimSpace(raw), network)
 	if err != nil {
 		return nil, fmt.Errorf("couldn't interpret input: %w", err)
@@ -500,7 +500,7 @@ func PromptFunctionCallData(
 			raw = prefills[pi]
 		}
 
-		inputParam, err := ConvertParamInput(input, raw, network)
+		inputParam, err := convertParamInput(input, raw, network)
 		if err != nil {
 			paramUI.Error("✗ %s", err)
 			if hint := inputHint(input.Type, network); hint != "" && interactive {
@@ -623,16 +623,16 @@ func InfoClearSign(network jarvisnetworks.Network) func(*util.TxDisplay, *jarvis
 		}
 		fc := result.FunctionCall
 		d.ClearSign = func(u ui.UI) {
-			RenderInfoClearSign(u, network, fc, abis)
+			renderInfoClearSign(u, network, fc, abis)
 		}
 	}
 }
 
-// RenderInfoClearSign walks the analysed call tree and prints an
+// renderInfoClearSign walks the analysed call tree and prints an
 // ERC-7730 panel for every matching call (top-level, then inner
 // MultiSend / Safe execTransaction destinations). Fail-closed: no
 // match prints nothing.
-func RenderInfoClearSign(
+func renderInfoClearSign(
 	u ui.UI,
 	network jarvisnetworks.Network,
 	fc *jarviscommon.FunctionCall,

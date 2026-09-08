@@ -7,7 +7,7 @@ func TestCanonicalRPCURL(t *testing.T) {
 		in, want string
 	}{
 		{"", ""},
-		{"  rpc-mainnet.monadinfra.com/rpc/KEY  ", "https://rpc-mainnet.monadinfra.com/rpc/KEY"},
+		{"  rpc.example.com/rpc/KEY  ", "https://rpc.example.com/rpc/KEY"},
 		{"rpc.example.com", "https://rpc.example.com"},
 		{"rpc.example.com:443/path", "https://rpc.example.com:443/path"},
 		{"https://rpc.example.com/path", "https://rpc.example.com/path"},

@@ -92,8 +92,8 @@ func TestPartialCustomABIKeepsErrorWhenLookupFails(t *testing.T) {
 }
 
 func TestAnalyzeFallsBackToERC20WhenExplorerHasNoABI(t *testing.T) {
-	target := "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
-	spender := ethcommon.HexToAddress("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
+	target := "0xa11ce00000000000000000000000000000000001"
+	spender := ethcommon.HexToAddress("0xa11ce00000000000000000000000000000000002")
 	data, err := jarviscommon.GetERC20ABI().Pack("approve", spender, big.NewInt(1))
 	if err != nil {
 		t.Fatalf("pack: %s", err)
@@ -111,8 +111,8 @@ func TestAnalyzeFallsBackToERC20WhenExplorerHasNoABI(t *testing.T) {
 }
 
 func TestAnalyzeMethodlessCustomABIFallsBackToERC20(t *testing.T) {
-	target := "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
-	spender := ethcommon.HexToAddress("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
+	target := "0xa11ce00000000000000000000000000000000001"
+	spender := ethcommon.HexToAddress("0xa11ce00000000000000000000000000000000002")
 	data, err := jarviscommon.GetERC20ABI().Pack("approve", spender, big.NewInt(1))
 	if err != nil {
 		t.Fatalf("pack: %s", err)

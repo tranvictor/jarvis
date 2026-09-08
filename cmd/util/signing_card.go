@@ -5,8 +5,11 @@ import (
 	"math/big"
 	"strings"
 
+	ethcommon "github.com/ethereum/go-ethereum/common"
+
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
+	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -174,7 +177,7 @@ func renderSigningCardBody(u ui.UI, c *SigningCard) {
 		printHexBlock(u.Indent(), c.RawData)
 	}
 
-	label := func(s string) ui.TableCell { return ui.TCS(s, ui.SeverityMuted) }
+	label := ui.MutedCell
 	rows := [][2]ui.TableCell{}
 	signer := c.Signer.Text
 	if c.Wallet != "" {
@@ -305,18 +308,57 @@ func ConfirmSigningCard(u ui.UI, c *SigningCard) bool {
 func printHexBlock(u ui.UI, data string) {
 	body := strings.TrimPrefix(data, "0x")
 	u.Info("%d bytes", len(body)/2)
-	const width = 64
-	for i := 0; i < len(body); i += width {
-		end := i + width
-		if end > len(body) {
-			end = len(body)
-		}
-		prefix := "  "
-		if i == 0 {
-			prefix = "0x"
-		}
-		u.Info("%s%s", prefix, body[i:end])
+	util.PrintWrappedHex(u, data)
+}
+
+// fillDestinationWarn sets contract/ERC-20 flags and warms token caches so
+// later decode and warning text can name the token.
+func fillDestinationWarn(warn *WarningInput, to string, network jarvisnetworks.Network) {
+	if isContract, err := util.IsContract(to, network); err == nil {
+		warn.ToIsContract = isContract
 	}
+	if isERC20, err := util.IsERC20(to, network); err == nil && isERC20 {
+		warn.ToIsERC20 = true
+		util.GetERC20Symbol(to, network)
+		util.GetERC20Decimal(to, network)
+	}
+}
+
+// attachMultisigInnerCall puts the decoded inner call (or raw hex, or a
+// native Send) on a Classic/Safe card. requireMethod is true for Classic so
+// a decode without a method name still shows hex; Safe shows any non-nil
+// FunctionCall.
+func attachMultisigInnerCall(
+	card *SigningCard,
+	warn *WarningInput,
+	toJarvis jarviscommon.Address,
+	value *big.Int,
+	data []byte,
+	fc *jarviscommon.FunctionCall,
+	network jarvisnetworks.Network,
+	requireMethod bool,
+) {
+	warn.Call = fc
+	if len(data) > 0 {
+		ok := fc != nil
+		if requireMethod && ok {
+			ok = fc.Method != ""
+		}
+		if ok {
+			card.Call = util.NewFunctionCallDisplay(fc, network)
+		} else {
+			card.RawData = "0x" + ethcommon.Bytes2Hex(data)
+		}
+	} else if value != nil && value.Sign() > 0 {
+		card.Call = util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{
+			Destination: toJarvis,
+			Value:       value,
+		}, network)
+		if !warn.ToIsContract {
+			card.ToLabel = "Recipient"
+		}
+	}
+	card.Warnings = SigningWarnings(*warn)
 }
 
 // WarningInput is what SigningWarnings looks at. It is deliberately a plain

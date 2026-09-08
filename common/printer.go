@@ -20,10 +20,10 @@ const (
 	maxPlausibleUnix = 4102444800
 )
 
-// IsTimestampName reports whether a parameter name conventionally carries a
+// isTimestampName reports whether a parameter name conventionally carries a
 // unix timestamp: deadline, expiry/expiration, validUntil/After/Before,
 // startTime/endTime/unlockTime, timestamp, notBefore/notAfter.
-func IsTimestampName(name string) bool {
+func isTimestampName(name string) bool {
 	n := strings.ToLower(strings.ReplaceAll(name, "_", ""))
 	for _, key := range []string{"deadline", "expir", "timestamp", "validuntil", "validafter",
 		"validbefore", "validfrom", "validto", "notbefore", "notafter", "expiry"} {
@@ -38,7 +38,7 @@ func IsTimestampName(name string) bool {
 // as "2026-09-07 03:16:40 UTC, in 20 min". ok is false when raw is not a
 // plausible unix-seconds value (a count, zero, a max-uint sentinel).
 func TimestampLabel(name, raw string) (label string, ok bool) {
-	if !IsTimestampName(name) {
+	if !isTimestampName(name) {
 		return "", false
 	}
 	n, isInt := new(big.Int).SetString(raw, 10)

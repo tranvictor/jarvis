@@ -2,25 +2,14 @@ package util
 
 import (
 	"math/big"
-	"strings"
-
-	"github.com/ethereum/go-ethereum/accounts/abi"
-	ethcommon "github.com/ethereum/go-ethereum/common"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
-	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/msig"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
 
-// decodeClassicCalldata runs the analyzer over a Classic msig inner call.
-// It mirrors decodeSafeCalldata: fetch the destination ABI through the
-// resolver (honoring --custom-abi and --erc20) and let the analyzer decode
-// recursively, including the ERC-20 fallback when the explorer ABI is
-// missing. Proxy contracts are followed to their implementation ABI by
-// GetABI / ConfigToABI. Returns nil when there is no analyzer or no data.
 func decodeClassicCalldata(
 	to string,
 	value *big.Int,
@@ -29,16 +18,7 @@ func decodeClassicCalldata(
 	resolver ABIResolver,
 	analyzer util.TxAnalyzer,
 ) *jarviscommon.FunctionCall {
-	if analyzer == nil || len(data) == 0 {
-		return nil
-	}
-	customABIs := map[string]*abi.ABI{}
-	if resolver != nil {
-		if destAbi, err := resolver.ConfigToABI(to, config.ForceERC20ABI, config.CustomABI, network); err == nil {
-			customABIs[strings.ToLower(to)] = destAbi
-		}
-	}
-	return analyzer.AnalyzeFunctionCallRecursively(lookupABI(resolver), value, to, data, customABIs)
+	return decodeSigningCalldata(to, value, data, network, resolver, analyzer, nil)
 }
 
 func buildClassicMsigCard(
@@ -84,30 +64,8 @@ func buildClassicMsigCard(
 		HasData:        len(data) > 0,
 		Call:           fc,
 	}
-	if isContract, err := util.IsContract(to, network); err == nil {
-		warn.ToIsContract = isContract
-	}
-	if isERC20, err := util.IsERC20(to, network); err == nil && isERC20 {
-		warn.ToIsERC20 = true
-		util.GetERC20Symbol(to, network)
-		util.GetERC20Decimal(to, network)
-	}
-	if len(data) > 0 {
-		if fc != nil && fc.Method != "" {
-			card.Call = util.NewFunctionCallDisplay(fc, network)
-		} else {
-			card.RawData = "0x" + ethcommon.Bytes2Hex(data)
-		}
-	} else if value != nil && value.Sign() > 0 {
-		card.Call = util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{
-			Destination: toJarvis,
-			Value:       value,
-		}, network)
-		if !warn.ToIsContract {
-			card.ToLabel = "Recipient"
-		}
-	}
-	card.Warnings = SigningWarnings(warn)
+	fillDestinationWarn(&warn, to, network)
+	attachMultisigInnerCall(card, &warn, toJarvis, value, data, fc, network, true)
 	return card
 }
 

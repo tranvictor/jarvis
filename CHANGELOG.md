@@ -210,3 +210,7 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - Transaction rendering is split into a `TxDisplay` view-model
   (`util/display_model.go`) and layout-driven renderers
   (`util/display_tx.go`, `LayoutInfo` / `LayoutInfoFull` / `LayoutPostSign`).
+- Classic and Safe inner-call decode share `decodeSigningCalldata`; hex
+  wrapping and muted table labels are shared helpers. Unused print wrappers
+  (`AnalyzeMethodCallAndPrint`, `DisplayParam`, `DisplayFunctionCall`) and
+  the phase plan doc were removed.

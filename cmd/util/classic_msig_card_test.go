@@ -65,8 +65,8 @@ func TestDecodeClassicCalldataUsesImplementationABI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	weth := "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
-	data := ethcommon.FromHex("0x2e1a7d4d00000000000000000000000000000000000000000000000049f167f874d62fc2")
+	target := "0xa11ce00000000000000000000000000000000001"
+	data := ethcommon.FromHex("0x2e1a7d4d0000000000000000000000000000000000000000000000000000000000000001")
 	implABI, err := abi.JSON(strings.NewReader(withdrawABIJSON))
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestDecodeClassicCalldataUsesImplementationABI(t *testing.T) {
 	analyzer := txanalyzer.NewGenericAnalyzerWithContext(
 		txanalyzer.NewAnalysisContextWithResolver(nil, network, addrbook.Map{}),
 	)
-	fc := decodeClassicCalldata(weth, big.NewInt(0), data, network, followedABIResolver{a: &implABI}, analyzer)
+	fc := decodeSigningCalldata(target, big.NewInt(0), data, network, followedABIResolver{a: &implABI}, analyzer, nil)
 	if fc == nil {
 		t.Fatal("expected analyzer fallback, got nil call")
 	}
@@ -84,7 +84,7 @@ func TestDecodeClassicCalldataUsesImplementationABI(t *testing.T) {
 	}
 
 	warns := SigningWarnings(WarningInput{
-		To:      jarviscommon.Address{Address: weth, Desc: "RobinHood's WETH"},
+		To:      jarviscommon.Address{Address: target, Desc: "Token"},
 		HasData: true,
 		Call:    fc,
 	})

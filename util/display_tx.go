@@ -305,7 +305,7 @@ func (p txPrinter) details(d *TxDisplay, network networks.Network) string {
 
 // printCard is the full key/value summary shown with -x.
 func (p txPrinter) printCard(d *TxDisplay, network networks.Network) {
-	label := func(s string) ui.TableCell { return ui.TCS(s, ui.SeverityMuted) }
+	label := ui.MutedCell
 	rows := [][2]ui.TableCell{}
 	if d.Hash != "" {
 		rows = append(rows, [2]ui.TableCell{label("Hash"), ui.TC(d.Hash)})
