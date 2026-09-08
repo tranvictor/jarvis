@@ -21,6 +21,15 @@ func cardAddr(hex, desc string) jarviscommon.Address {
 	return jarviscommon.Address{Address: hex, Desc: desc}
 }
 
+func hasEntry(rec *ui.RecordingUI, method, value string) bool {
+	for _, e := range rec.Entries() {
+		if e.Method == method && e.Value == value {
+			return true
+		}
+	}
+	return false
+}
+
 func addrParam(name, hex, desc string) jarviscommon.ParamResult {
 	a := cardAddr(hex, desc)
 	return jarviscommon.ParamResult{Name: name, Type: "address", Values: []jarviscommon.Value{
@@ -214,6 +223,12 @@ func TestShowSigningCardSafeFieldsAndCollapse(t *testing.T) {
 		Warnings: SigningWarnings(WarningInput{To: cardAddr(cardRouter, "MultiSendCallOnly"), DelegateCall: true, MultiSend: true}),
 	}
 	ShowSigningCard(rec, card)
+	if !hasEntry(rec, "BoxedSection", "Safe approval") {
+		t.Fatalf("Safe approval must be boxed: %v", rec.Entries())
+	}
+	if hasEntry(rec, "Section", "Safe approval") {
+		t.Fatalf("Safe approval must not also use a Section rule: %v", rec.Entries())
+	}
 	for _, w := range []string{
 		"Safe calls: " + cardRouter + " (MultiSendCallOnly)",
 		"Operation: DELEGATECALL (1)",
@@ -236,6 +251,12 @@ func TestShowSigningCardSafeFieldsAndCollapse(t *testing.T) {
 		Safe:         &SafeCardFields{Executes: "0xabc"},
 	}
 	ShowSigningCard(rec, exec)
+	if hasEntry(rec, "Section", "Safe execution") || hasEntry(rec, "BoxedSection", "Safe execution") {
+		t.Fatalf("Safe execution wrapper must be a quiet heading, not a section or box: %v", rec.Entries())
+	}
+	if !hasEntry(rec, "Subsection", "Safe execution") {
+		t.Fatalf("Safe execution wrapper heading missing: %v", rec.Entries())
+	}
 	if !rec.HasMessage("Call  execTransaction  →  " + cardRouter + " (Safe)   (Safe transaction shown above)") {
 		t.Fatalf("collapsed call header missing: %v", rec.Entries())
 	}
@@ -318,6 +339,12 @@ func TestShowSigningCardClassicFields(t *testing.T) {
 			Signatures:    []ui.StyledText{util.StyledAddress(cardAddr(cardMe, "me"))},
 		},
 	})
+	if !hasEntry(rec, "BoxedSection", "Classic multisig transaction") {
+		t.Fatalf("Classic inner tx must be boxed: %v", rec.Entries())
+	}
+	if hasEntry(rec, "Section", "Classic multisig transaction") {
+		t.Fatalf("Classic inner tx must not use a Section rule: %v", rec.Entries())
+	}
 	for _, w := range []string{
 		"Classic multisig transaction",
 		"Send  1000  →  " + cardMe + " (me)",
@@ -351,6 +378,12 @@ func TestShowSigningCardClassicCollapseNote(t *testing.T) {
 	})
 	if !rec.HasMessage("Call  confirmTransaction  →  " + cardMe + " (Treasury)   (Classic transaction shown above)") {
 		t.Fatalf("collapsed Classic note missing: %v", rec.Entries())
+	}
+	if hasEntry(rec, "Section", "EOA transaction") || hasEntry(rec, "BoxedSection", "EOA transaction") {
+		t.Fatalf("EOA confirm wrapper must be a quiet heading: %v", rec.Entries())
+	}
+	if !hasEntry(rec, "Subsection", "EOA transaction") {
+		t.Fatalf("EOA confirm wrapper heading missing: %v", rec.Entries())
 	}
 	if rec.HasMessage("transactionId  42") {
 		t.Fatalf("collapsed call must not print params: %v", rec.Entries())

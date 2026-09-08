@@ -81,8 +81,10 @@ func TestBatchBannerStampsSigningCardsAndPrompts(t *testing.T) {
 	withIndentedUI(func() {
 		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "Classic multisig transaction"})
 		if !cmdutil.ConfirmSigningCard(appUI, &cmdutil.SigningCard{
-			Kind:   "EOA transaction",
-			Prompt: "Sign and broadcast (≈ 0.0017 ETH)?",
+			Kind:         "EOA transaction",
+			CollapseCall: true,
+			CollapseNote: "(Classic transaction shown above)",
+			Prompt:       "Sign and broadcast (≈ 0.0017 ETH)?",
 		}) {
 			t.Fatal("scripted y should confirm")
 		}
@@ -96,8 +98,8 @@ func TestBatchBannerStampsSigningCardsAndPrompts(t *testing.T) {
 	}
 	for _, w := range []string{
 		"Section: [12/87] Classic  mainnet:0xinit",
-		"Section: [12/87] Classic multisig transaction",
-		"Section: [12/87] EOA transaction",
+		"BoxedSection: [12/87] Classic multisig transaction",
+		"Subsection: [12/87] EOA transaction",
 		"Confirm: [12/87] Sign and broadcast (≈ 0.0017 ETH)?",
 		"Info: ✓ [12/87] approved  confirm tx 0xabc   (12 ok · 75 left)",
 	} {
@@ -124,7 +126,11 @@ func TestBatchScanRendersIndexedSections(t *testing.T) {
 	printBatchBanner(2, 2, "Classic", "mainnet:0xinit")
 	withIndentedUI(func() {
 		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "Classic multisig transaction"})
-		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "EOA transaction"})
+		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{
+			Kind:         "EOA transaction",
+			CollapseCall: true,
+			CollapseNote: "(Classic transaction shown above)",
+		})
 	})
 	printBatchItemResult("approved", "confirm tx 0xabc", batchTally{total: 2, ok: 2})
 
@@ -132,6 +138,7 @@ func TestBatchScanRendersIndexedSections(t *testing.T) {
 	for _, w := range []string{
 		"[1/2] Safe  eth:0xSafe:0xhash",
 		"[1/2] Safe approval",
+		"╭─",
 		"✓ [1/2] approved",
 		"[2/2] Classic  mainnet:0xinit",
 		"[2/2] Classic multisig transaction",
@@ -142,6 +149,21 @@ func TestBatchScanRendersIndexedSections(t *testing.T) {
 		if !strings.Contains(out, w) {
 			t.Fatalf("missing %q in:\n%s", w, out)
 		}
+	}
+	if strings.Count(out, "╭─") < 2 {
+		t.Fatalf("each multisig op should be a rounded box:\n%s", out)
+	}
+	// The EOA wrapper is a heading, not a second equals-rule competing with the item banner.
+	eoaIdx := strings.Index(out, "[2/2] EOA transaction")
+	if eoaIdx < 0 {
+		t.Fatal("EOA wrapper title missing")
+	}
+	window := out[eoaIdx:]
+	if i := strings.Index(window, "\n"); i > 0 {
+		window = window[:i]
+	}
+	if strings.Contains(window, "=====") || strings.Contains(window, "╭") {
+		t.Fatalf("EOA wrapper must stay a quiet heading, got %q", window)
 	}
 }
 

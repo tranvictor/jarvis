@@ -90,12 +90,49 @@ type ClassicCardFields struct {
 	Signatures    []ui.StyledText
 }
 
+// isMultisigOp is true for the inner Classic/Safe transaction the operator
+// is reviewing. Those cards are boxed so they stand apart from the EOA
+// confirm/execute wrapper that often follows.
+func isMultisigOp(c *SigningCard) bool {
+	if c == nil {
+		return false
+	}
+	if c.Classic != nil {
+		return true
+	}
+	switch c.Kind {
+	case "Classic multisig transaction", "Safe approval", "Safe proposal", "Safe transaction":
+		return true
+	default:
+		return false
+	}
+}
+
 // ShowSigningCard prints the card. Order is chosen so that what the reader
 // must verify sits directly above the prompt: the call first, then the
 // summary block, then the warnings.
+//
+// Multisig operations (Classic inner tx, Safe approval/proposal) render
+// inside a rounded box so they are the thing the eye hits when a new
+// batch item appears. The following EOA confirm/execute card stays a
+// plain heading — same [i/n] stamp, no second equals-rule or box.
 func ShowSigningCard(u ui.UI, c *SigningCard) {
-	u.Section(AnnotateBatch(c.Kind))
+	title := AnnotateBatch(c.Kind)
+	switch {
+	case isMultisigOp(c):
+		u.BoxedSection(ui.SeverityCritical, title, func(inner ui.UI) {
+			renderSigningCardBody(inner, c)
+		})
+	case c.CollapseCall:
+		u.Subsection(title)
+		renderSigningCardBody(u, c)
+	default:
+		u.Section(title)
+		renderSigningCardBody(u, c)
+	}
+}
 
+func renderSigningCardBody(u ui.UI, c *SigningCard) {
 	if c.ClearSign != nil {
 		c.ClearSign(u)
 	}

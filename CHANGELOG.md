@@ -59,6 +59,9 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 - One signing card for EOA transactions, Safe proposals/approvals/executions
   and WalletConnect requests: decoded call first, then Sign with / Send to /
   Gas / nonce directly above the prompt.
+- Classic inner txs and Safe approvals/proposals render in a rounded box;
+  the EOA confirm/execute that follows is a quiet heading so the two are
+  not the same visual weight.
 - Derived warnings printed as `!` lines right before the prompt: destination
   not in the address book, native value into a contract, native value attached
   to an ERC-20 call, undecodable calldata, unlimited ERC-20 approval,
@@ -110,9 +113,11 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 ### Batch approvals (`jarvis msig bapprove`)
 
 - Plan printed before the first prompt; each item is a `===== [i/n] … =====`
-  section so it matches the weight of the signing cards inside it. Those cards,
-  their Y/n prompts, and the one-line result all repeat `[i/n]`, so a 50-item
-  transcript stays scannable after the banner has scrolled off.
+  section. The Classic/Safe operation itself is a rounded box
+  (`╭─ [i/n] Classic multisig transaction ─╮`) so it is the thing the eye
+  hits when the next tx appears; the following EOA confirm/execute card is
+  a quiet heading, not a second equals-rule. Cards, Y/n prompts, and the
+  one-line result all repeat `[i/n]`.
 - After a failed item jarvis asks whether to continue; declining records the
   rest as skipped.
 - Unified summary table for Safe and Classic items, totals line, and exit
@@ -140,9 +145,9 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   `jarvis network list` is a table of names, chain IDs and RPC **hosts**
   (never the full URL, so default Infura keys stay off the screen);
   `jarvis msig chains list` uses the same table primitive.
-- Classic `msig info` / `approve` use the same signing card as Safe (decoded
-  call, Multisig / Tx ID / Status / Signed by) instead of the old bordered
-  box; the following EOA confirm/revoke/execute card collapses the inner
+- Classic `msig info` / `approve` show the inner call in a rounded box
+  (Multisig / Tx ID / Status / Signed by); the following EOA
+  confirm/revoke/execute card is a quiet heading that collapses the inner
   call. Classic `msig summary` lists only the pending queue (id, destination,
   value, sigs, status) rather than every historical tx id. Confirmation and
   execution log scans use the same `Spinner` as other waits instead of a
