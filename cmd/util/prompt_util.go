@@ -303,22 +303,20 @@ func buildEOASigningCard(
 	}
 
 	var fc *jarviscommon.FunctionCall
-	if isContract && len(tx.Data()) > 0 {
+	if len(tx.Data()) > 0 {
+		// Decode even when eth_getCode didn't flag a contract: Classic msig
+		// approve is confirmTransaction to the wallet, and a failed code
+		// lookup used to dump the raw 36 bytes instead of the built-in ABI.
 		fc = analyzer.AnalyzeFunctionCallRecursively(util.GetABI, tx.Value(), toHex, tx.Data(), customABIs)
 		warn.Call = fc
-		if fc != nil {
+		if fc != nil && (fc.Method != "" || isContract) {
 			card.Call = util.NewFunctionCallDisplay(fc, network)
+			if fc.Method != "" {
+				card.ClearSign = func(cu ui.UI) { renderContractClearSign(cu, tx, fc, network, customABIs) }
+			}
+		} else {
+			card.RawData = "0x" + ethcommon.Bytes2Hex(tx.Data())
 		}
-		// ERC-7730 clear-signing layer: when a descriptor matches the
-		// destination contract, the curated view is rendered above the raw
-		// ABI decode so the operator can scan the intent at a glance and
-		// still cross-check against the full breakdown. Failures fall through
-		// silently — we never make the review worse than today.
-		if fc != nil && fc.Method != "" {
-			card.ClearSign = func(cu ui.UI) { renderContractClearSign(cu, tx, fc, network, customABIs) }
-		}
-	} else if len(tx.Data()) > 0 {
-		card.RawData = "0x" + ethcommon.Bytes2Hex(tx.Data())
 	} else if tx.Value().Sign() > 0 {
 		card.Call = util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{
 			Destination: to, Value: tx.Value(),

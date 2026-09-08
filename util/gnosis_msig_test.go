@@ -77,3 +77,29 @@ func TestGnosisMsigTxIDFromCalldataConfirm(t *testing.T) {
 		t.Fatal("expected nil for unknown selector")
 	}
 }
+
+func TestIsGnosisMsigCallData(t *testing.T) {
+	data, err := GetGnosisMsigABI().Pack("confirmTransaction", big.NewInt(6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !IsGnosisMsigCallData(data) {
+		t.Fatal("confirmTransaction should match the built-in Classic ABI")
+	}
+	submit, err := GetGnosisMsigABI().Pack("executeTransaction", big.NewInt(6))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !IsGnosisMsigCallData(submit) {
+		t.Fatal("executeTransaction should match")
+	}
+	if !IsGnosisMsigCallData(data[:4]) {
+		t.Fatal("the 4-byte selector alone should match")
+	}
+	if IsGnosisMsigCallData([]byte{0x01, 0x02, 0x03, 0x04}) {
+		t.Fatal("unknown selector must not match")
+	}
+	if IsGnosisMsigCallData(nil) {
+		t.Fatal("empty data must not match")
+	}
+}

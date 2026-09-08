@@ -298,6 +298,12 @@ func (self *TxAnalyzer) analyzeFunctionCallRecursively(
 	if IsMultiSendCallData(data) && !abiHasSelector(a, data[:4]) {
 		a = GetMultiSendABI()
 	}
+	// Classic Gnosis wallets are often unverified proxies. Jarvis already
+	// packed confirmTransaction with the built-in ABI; without this the
+	// following EOA signing card would render as raw bytes.
+	if util.IsGnosisMsigCallData(data) && !abiHasSelector(a, data[:4]) {
+		a = util.GetGnosisMsigABI()
+	}
 
 	// Look up ERC20 context for the destination so that integer params
 	// (token amounts) can be annotated with decimal and symbol.
