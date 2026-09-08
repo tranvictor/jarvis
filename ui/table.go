@@ -24,6 +24,9 @@ func TC(text string) TableCell { return TableCell{Text: text} }
 // TCS constructs a TableCell with an explicit Severity for colour rendering.
 func TCS(text string, s Severity) TableCell { return TableCell{Text: text, Severity: s} }
 
+// MutedCell is a dim label cell for key/value rows.
+func MutedCell(text string) TableCell { return TCS(text, SeverityMuted) }
+
 // Table is a bordered text table.
 //
 // Data can be specified in one of two ways (Groups takes precedence):

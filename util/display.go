@@ -450,19 +450,22 @@ const rawCalldataWidth = 64
 func printRawCalldata(u ui.UI, data string) {
 	body := strings.TrimPrefix(data, "0x")
 	u.Info("Raw calldata (%d bytes):", len(body)/2)
-	uu := u.Indent()
+	PrintWrappedHex(u.Indent(), data)
+}
+
+// PrintWrappedHex writes hex as 32-byte words, "0x" on the first line only.
+func PrintWrappedHex(u ui.UI, data string) {
+	body := strings.TrimPrefix(data, "0x")
 	for i := 0; i < len(body); i += rawCalldataWidth {
 		end := i + rawCalldataWidth
 		if end > len(body) {
 			end = len(body)
 		}
-		// "0x" on the first line only, continuation lines padded by two so the
-		// hex columns still line up (and a copy-paste still reads as one blob).
 		prefix := "  "
 		if i == 0 {
 			prefix = "0x"
 		}
-		uu.Info("%s%s", prefix, body[i:end])
+		u.Info("%s%s", prefix, body[i:end])
 	}
 }
 
@@ -514,14 +517,6 @@ func printAllLogs(u ui.UI, logs []LogDisplay) {
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-// DisplayParam builds the human-readable view-model for a single decoded ABI
-// parameter and writes it to u via u.Style for correct terminal coloring.
-func DisplayParam(u ui.UI, param jarviscommon.ParamResult) ParamDisplay {
-	d := buildParamDisplay(param)
-	printParamList(u, []ParamDisplay{d})
-	return d
-}
-
 // DisplayParams builds view-models for a slice of ABI parameters and renders
 // them as aligned name/value/type lines with tuples and arrays expanded as a
 // tree — the same form as a function-call body.
@@ -532,16 +527,6 @@ func DisplayParams(u ui.UI, params []jarviscommon.ParamResult) []ParamDisplay {
 	}
 	printParamList(u, displays)
 	return displays
-}
-
-// DisplayFunctionCall builds the human-readable view-model for a decoded
-// function call (and any recursively decoded inner calls) and writes it to u
-// as an indented tree with full addresses and nothing collapsed — the form
-// used wherever the reader is about to sign what they see.
-func DisplayFunctionCall(u ui.UI, fc *jarviscommon.FunctionCall, network networks.Network) *FunctionCallDisplay {
-	d := buildFunctionCallDisplay(fc, false, network)
-	PrintFunctionCall(u, d)
-	return d
 }
 
 // NewFunctionCallDisplay builds the view-model for a decoded call without
