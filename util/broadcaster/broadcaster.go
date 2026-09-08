@@ -3,7 +3,6 @@ package broadcaster
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
@@ -134,13 +133,13 @@ func NewGenericBroadcaster(nodes map[string]string) *Broadcaster {
 	clients := map[string]*rpc.Client{}
 	urls := make(map[string]string, len(nodes))
 	for name, c := range nodes {
+		c = common.CanonicalRPCURL(c)
 		urls[name] = c
 		client, err := rpc.Dial(c)
 		if err != nil {
-			log.Printf("Couldn't connect to: %s - %v", c, err)
-		} else {
-			clients[name] = client
+			continue
 		}
+		clients[name] = client
 	}
 	return &Broadcaster{
 		clients: clients,

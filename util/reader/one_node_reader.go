@@ -32,7 +32,7 @@ type OneNodeReader struct {
 func NewOneNodeReader(name, url string) *OneNodeReader {
 	return &OneNodeReader{
 		nodeName:   name,
-		nodeURL:    url,
+		nodeURL:    jarviscommon.CanonicalRPCURL(url),
 		client:     nil,
 		ethClient:  nil,
 		gethClient: nil,
