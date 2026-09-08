@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/util/reader"
 )
@@ -81,11 +82,11 @@ func SaveNodeConfig(networkName string, cfg NodeConfig) error {
 }
 
 func normalizeRPCURL(u string) string {
-	return strings.TrimRight(strings.TrimSpace(u), "/")
+	return strings.TrimRight(jarviscommon.CanonicalRPCURL(strings.TrimSpace(u)), "/")
 }
 
 // FindNodeNameByURL returns the configured name whose RPC URL matches url
-// (trailing slashes and surrounding space ignored).
+// (trailing slashes, surrounding space and a missing http(s) scheme ignored).
 func FindNodeNameByURL(nodes map[string]string, url string) (string, bool) {
 	want := normalizeRPCURL(url)
 	if want == "" {
@@ -140,19 +141,19 @@ func GetNodes(network jarvisnetworks.Network) (map[string]string, error) {
 
 	nodes := make(map[string]string, len(cfg.Nodes))
 	for k, v := range cfg.Nodes {
-		nodes[k] = v
+		nodes[k] = jarviscommon.CanonicalRPCURL(v)
 	}
 	if cfg.UseDefaults {
 		for k, v := range network.GetDefaultNodes() {
 			if _, exists := nodes[k]; !exists {
-				nodes[k] = v
+				nodes[k] = jarviscommon.CanonicalRPCURL(v)
 			}
 		}
 	}
 
 	// Env-var override is always applied on top.
 	if envNode := strings.TrimSpace(os.Getenv(network.GetNodeVariableName())); envNode != "" {
-		nodes["custom-node"] = envNode
+		nodes["custom-node"] = jarviscommon.CanonicalRPCURL(envNode)
 	}
 
 	return nodes, nil
