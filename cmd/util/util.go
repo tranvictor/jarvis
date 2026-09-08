@@ -24,6 +24,7 @@ import (
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/util/account/trezoreum"
 	utilreader "github.com/tranvictor/jarvis/util/reader"
 )
 
@@ -227,6 +228,10 @@ func SignAndBroadcast(
 
 	signedAddr, signedTx, err := account.SignTx(tx, big.NewInt(int64(config.Network().GetChainID())))
 	if err != nil {
+		if errors.Is(err, trezoreum.ErrCancelled) {
+			WarnCancelled(u)
+			return false, ErrUserCancelled
+		}
 		return false, fmt.Errorf("couldn't sign tx: %w", err)
 	}
 	if signedAddr.Cmp(jarviscommon.HexToAddress(fromAcc.Address)) != 0 {

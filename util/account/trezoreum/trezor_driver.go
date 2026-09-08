@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
+	"sync"
 
 	"github.com/golang/protobuf/proto"
 
@@ -27,14 +29,21 @@ var ErrTrezorPINNeeded = errors.New("trezor: pin needed")
 // ErrTrezorPassphraseNeeded is returned if opening the trezor requires a passphrase
 var ErrTrezorPassphraseNeeded = errors.New("trezor: passphrase needed")
 
+// ErrCancelled is returned when the operator rejects the request on the Trezor
+// or aborts Jarvis with Ctrl-C while the device is waiting for a button.
+var ErrCancelled = errors.New("cancelled on Trezor")
+
 // errTrezorReplyInvalidHeader is the error message returned by a Trezor data exchange
 // if the device replies with a mismatching header. This usually means the device
 // is in browser mode.
 var errTrezorReplyInvalidHeader = errors.New("trezor: invalid reply header")
 
+var errTrezorDeviceClosed = errors.New("trezor: device closed")
+
 // trezorDriver implements the communication with a Trezor hardware wallet.
 type TrezorDriver struct {
-	device io.ReadWriter // USB device connection to communicate through
+	device  io.ReadWriter // USB device connection to communicate through
+	writeMu sync.Mutex    // serializes HID writes so Abort can run during a Read
 }
 
 // newTrezorDriver creates a new instance of a Trezor USB protocol driver.
@@ -46,97 +55,48 @@ func (self *TrezorDriver) SetDevice(device io.ReadWriter) {
 	self.device = device
 }
 
-func (self *TrezorDriver) Exchange(req proto.Message, results ...proto.Message) (int, error) {
-	// fmt.Printf(
-	// 	"trezor exchange:\n    req(%s)\n",
-	// 	trezor.Name(trezor.Type(req)),
-	// )
-	// fmt.Printf("    expected: ")
-	// for _, r := range results {
-	// 	fmt.Printf("%s, ", trezor.Name(trezor.Type(r)))
-	// }
-	// fmt.Printf("\n")
+// Abort sends a Cancel message without waiting for a reply. The in-flight
+// Exchange Read is expected to pick up the Failure the device sends back.
+// Safe to call from another goroutine while Exchange is blocked on Read.
+func (self *TrezorDriver) Abort() {
+	if self.device == nil {
+		return
+	}
+	_ = self.writeMessage(&trezor.Cancel{})
+}
 
-	// Construct the original message payload to chunk up
-	data, err := proto.Marshal(req)
+func (self *TrezorDriver) Exchange(req proto.Message, results ...proto.Message) (int, error) {
+	return self.exchange(req, true, results...)
+}
+
+func (self *TrezorDriver) exchange(req proto.Message, announceButton bool, results ...proto.Message) (int, error) {
+	if self.device == nil {
+		return 0, errTrezorDeviceClosed
+	}
+	if err := self.writeMessage(req); err != nil {
+		return 0, err
+	}
+
+	kind, reply, err := self.readMessage()
 	if err != nil {
 		return 0, err
 	}
-	payload := make([]byte, 8+len(data))
-	copy(payload, []byte{0x23, 0x23})
-	binary.BigEndian.PutUint16(payload[2:], trezor.Type(req))
-	binary.BigEndian.PutUint32(payload[4:], uint32(len(data)))
-	copy(payload[8:], data)
 
-	// Stream all the chunks to the device
-	chunk := make([]byte, 64)
-	chunk[0] = 0x3f // Report ID magic number
-
-	for len(payload) > 0 {
-		// Construct the new message to stream, padding with zeroes if needed
-		if len(payload) > 63 {
-			copy(chunk[1:], payload[:63])
-			payload = payload[63:]
-		} else {
-			copy(chunk[1:], payload)
-			copy(chunk[1+len(payload):], make([]byte, 63-len(payload)))
-			payload = nil
-		}
-		// Send over to the device
-		if _, err := self.device.Write(chunk); err != nil {
-			return 0, err
-		}
-	}
-	// Stream the reply back from the wallet in 64 byte chunks
-	var (
-		kind  uint16
-		reply []byte
-	)
-	for {
-		// Read the next chunk from the Trezor wallet
-		if _, err := io.ReadFull(self.device, chunk); err != nil {
-			return 0, err
-		}
-
-		// Make sure the transport header matches
-		if chunk[0] != 0x3f || (len(reply) == 0 && (chunk[1] != 0x23 || chunk[2] != 0x23)) {
-			return 0, errTrezorReplyInvalidHeader
-		}
-		// If it's the first chunk, retrieve the reply message type and total message length
-		var payload []byte
-
-		if len(reply) == 0 {
-			kind = binary.BigEndian.Uint16(chunk[3:5])
-			reply = make([]byte, 0, int(binary.BigEndian.Uint32(chunk[5:9])))
-			payload = chunk[9:]
-		} else {
-			payload = chunk[1:]
-		}
-		// Append to the reply and stop when filled up
-		if left := cap(reply) - len(reply); left > len(payload) {
-			reply = append(reply, payload...)
-		} else {
-			reply = append(reply, payload[:left]...)
-			break
-		}
-	}
-	// fmt.Printf("    got: %s\n", trezor.Name(kind))
-
-	// Try to parse the reply into the requested reply message
 	if kind == uint16(trezor.MessageType_MessageType_Failure) {
-		// Trezor returned a failure, extract and return the message
 		failure := new(trezor.Failure)
 		if err := proto.Unmarshal(reply, failure); err != nil {
 			return 0, err
 		}
-		return 0, errors.New("trezor: " + failure.GetMessage())
+		return 0, failureError(failure)
 	}
 	if kind == uint16(trezor.MessageType_MessageType_ButtonRequest) {
-		// Trezor is waiting for user confirmation, ack and wait for the next message
-		return self.Exchange(&trezor.ButtonAck{}, results...)
+		if announceButton {
+			fmt.Printf("Confirm or reject on your Trezor…\n")
+		}
+		return self.exchange(&trezor.ButtonAck{}, false, results...)
 	}
 	if kind == uint16(trezor.MessageType_MessageType_Deprecated_PassphraseStateRequest) {
-		return self.Exchange(&trezor.Deprecated_PassphraseStateAck{}, results...)
+		return self.exchange(&trezor.Deprecated_PassphraseStateAck{}, announceButton, results...)
 	}
 	for i, res := range results {
 		if trezor.Type(res) == kind {
@@ -149,4 +109,109 @@ func (self *TrezorDriver) Exchange(req proto.Message, results ...proto.Message) 
 	}
 
 	return 0, fmt.Errorf("trezor: expected reply types %s, got %s", expected, trezor.Name(kind))
+}
+
+func (self *TrezorDriver) writeMessage(req proto.Message) error {
+	if self.device == nil {
+		return errTrezorDeviceClosed
+	}
+	data, err := proto.Marshal(req)
+	if err != nil {
+		return err
+	}
+	payload := make([]byte, 8+len(data))
+	copy(payload, []byte{0x23, 0x23})
+	binary.BigEndian.PutUint16(payload[2:], trezor.Type(req))
+	binary.BigEndian.PutUint32(payload[4:], uint32(len(data)))
+	copy(payload[8:], data)
+
+	self.writeMu.Lock()
+	defer self.writeMu.Unlock()
+
+	chunk := make([]byte, 64)
+	chunk[0] = 0x3f
+	for len(payload) > 0 {
+		if len(payload) > 63 {
+			copy(chunk[1:], payload[:63])
+			payload = payload[63:]
+		} else {
+			copy(chunk[1:], payload)
+			copy(chunk[1+len(payload):], make([]byte, 63-len(payload)))
+			payload = nil
+		}
+		if _, err := self.device.Write(chunk); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (self *TrezorDriver) readMessage() (uint16, []byte, error) {
+	if self.device == nil {
+		return 0, nil, errTrezorDeviceClosed
+	}
+	chunk := make([]byte, 64)
+	var (
+		kind  uint16
+		reply []byte
+	)
+	for {
+		if err := self.readReport(chunk); err != nil {
+			return 0, nil, err
+		}
+		if chunk[0] != 0x3f || (len(reply) == 0 && (chunk[1] != 0x23 || chunk[2] != 0x23)) {
+			return 0, nil, errTrezorReplyInvalidHeader
+		}
+		var payload []byte
+		if len(reply) == 0 {
+			kind = binary.BigEndian.Uint16(chunk[3:5])
+			reply = make([]byte, 0, int(binary.BigEndian.Uint32(chunk[5:9])))
+			payload = chunk[9:]
+		} else {
+			payload = chunk[1:]
+		}
+		if left := cap(reply) - len(reply); left > len(payload) {
+			reply = append(reply, payload...)
+		} else {
+			reply = append(reply, payload[:left]...)
+			break
+		}
+	}
+	return kind, reply, nil
+}
+
+func (self *TrezorDriver) readReport(chunk []byte) error {
+	n, err := self.device.Read(chunk)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return io.ErrUnexpectedEOF
+	}
+	if n < len(chunk) {
+		for i := n; i < len(chunk); i++ {
+			chunk[i] = 0
+		}
+	}
+	return nil
+}
+
+func failureError(failure *trezor.Failure) error {
+	msg := failure.GetMessage()
+	code := failure.GetCode()
+	cancelled := code == trezor.Failure_Failure_ActionCancelled ||
+		code == trezor.Failure_Failure_PinCancelled
+	if !cancelled && msg != "" {
+		cancelled = strings.Contains(strings.ToLower(msg), "cancel")
+	}
+	if cancelled {
+		if msg == "" {
+			msg = "cancelled"
+		}
+		return fmt.Errorf("%w (%s)", ErrCancelled, msg)
+	}
+	if msg == "" {
+		msg = code.String()
+	}
+	return errors.New("trezor: " + msg)
 }

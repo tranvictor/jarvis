@@ -60,4 +60,15 @@ type Bridge interface {
 		path accounts.DerivationPath,
 		message []byte,
 	) ([]byte, error)
+
+	// Abort sends Cancel without waiting for a reply, so an in-flight
+	// sign can be interrupted (Ctrl-C) while blocked on a button wait.
+	Abort()
+
+	// Close releases the USB handle. The next Unlock/Init reopens it.
+	Close() error
+
+	// ResetAfterFailure best-effort Cancels any leftover workflow and
+	// closes the USB handle so the next sign starts from Initialize.
+	ResetAfterFailure()
 }

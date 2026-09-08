@@ -77,6 +77,7 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -278,24 +279,53 @@ func (dev *rawDevice) Close() error {
 
 // Write sends a binary blob to a low level USB device.
 func (dev *rawDevice) Write(b []byte) (int, error) {
-	dev.lock.Lock()
-	defer dev.lock.Unlock()
-
-	var transferred C.int
-	if err := fromRawErrno(C.libusb_interrupt_transfer(dev.handle, (C.uchar)(*dev.rawWriter), (*C.uchar)(&b[0]), (C.int)(len(b)), &transferred, (C.uint)(0))); err != nil {
-		return 0, fmt.Errorf("failed to write to device: %v", err)
-	}
-	return int(transferred), nil
+	return dev.interrupt(*dev.rawWriter, b, 0)
 }
 
 // Read retrieves a binary blob from a low level USB device.
 func (dev *rawDevice) Read(b []byte) (int, error) {
+	return dev.interrupt(*dev.rawReader, b, 0)
+}
+
+// ReadTimeout is Read with a deadline. A libusb timeout returns (0, nil).
+func (dev *rawDevice) ReadTimeout(b []byte, timeout time.Duration) (int, error) {
+	ms := uint(timeout / time.Millisecond)
+	if ms == 0 {
+		ms = 1
+	}
+	n, err := dev.interrupt(*dev.rawReader, b, ms)
+	if err == errTimeout {
+		return 0, nil
+	}
+	return n, err
+}
+
+// interrupt performs a USB interrupt transfer without holding lock for the
+// duration of the I/O, so a concurrent Close/Abort can unblock a stuck Read.
+func (dev *rawDevice) interrupt(endpoint uint8, b []byte, timeoutMs uint) (int, error) {
+	if len(b) == 0 {
+		return 0, nil
+	}
 	dev.lock.Lock()
-	defer dev.lock.Unlock()
+	handle := dev.handle
+	dev.lock.Unlock()
+	if handle == nil {
+		return 0, ErrDeviceClosed
+	}
 
 	var transferred C.int
-	if err := fromRawErrno(C.libusb_interrupt_transfer(dev.handle, (C.uchar)(*dev.rawReader), (*C.uchar)(&b[0]), (C.int)(len(b)), &transferred, (C.uint)(0))); err != nil {
-		return 0, fmt.Errorf("failed to read from device: %v", err)
+	if err := fromRawErrno(C.libusb_interrupt_transfer(
+		handle,
+		(C.uchar)(endpoint),
+		(*C.uchar)(&b[0]),
+		(C.int)(len(b)),
+		&transferred,
+		(C.uint)(timeoutMs),
+	)); err != nil {
+		if err == errTimeout {
+			return 0, err
+		}
+		return 0, fmt.Errorf("failed to transfer to device: %v", err)
 	}
 	return int(transferred), nil
 }

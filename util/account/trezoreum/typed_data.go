@@ -100,7 +100,10 @@ func (self *Trezoreum) SignTypedData(
 }
 
 func (self *Trezoreum) tryCancelSigning() {
-	_, _ = self.trezorExchange(
+	if self.core == nil || self.core.device == nil {
+		return
+	}
+	_, _ = self.core.Exchange(
 		&trezor.Cancel{},
 		new(trezor.Success),
 		new(trezor.Failure),

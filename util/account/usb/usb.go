@@ -16,7 +16,10 @@
 // Package usb provide interfaces for generic USB devices.
 package usb
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 // ErrDeviceClosed is returned for operations where the device closed before or
 // during the execution.
@@ -65,4 +68,10 @@ type Device interface {
 	// Read retrieves a binary blob from a USB device. For HID devices read uses
 	// reports, for low level USB read uses interrupt transfers.
 	Read(b []byte) (int, error)
+}
+
+// TimeoutReader is implemented by USB backends that can read with a deadline.
+// A timeout with no data returns n=0 and err=nil.
+type TimeoutReader interface {
+	ReadTimeout(b []byte, timeout time.Duration) (int, error)
 }

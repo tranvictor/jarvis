@@ -3,8 +3,10 @@ package trezoreum
 import (
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -32,6 +34,7 @@ var (
 
 type Trezoreum struct {
 	core         *TrezorDriver
+	dev          usb.Device
 	devmu        sync.Mutex
 	features     *trezor.Features
 	expectedAddr common.Address
@@ -157,6 +160,42 @@ func (self *Trezoreum) rememberFeatures(f *trezor.Features) {
 	}
 }
 
+func (self *Trezoreum) Abort() {
+	self.core.Abort()
+}
+
+func (self *Trezoreum) Close() error {
+	self.closeDevice()
+	return nil
+}
+
+func (self *Trezoreum) ResetAfterFailure() {
+	self.tryCancelSigning()
+	self.closeDevice()
+}
+
+func (self *Trezoreum) closeDevice() {
+	if self.dev != nil {
+		_ = self.dev.Close()
+		self.dev = nil
+	}
+	self.core.SetDevice(nil)
+}
+
+func drainDevice(dev io.ReadWriter) {
+	tr, ok := dev.(usb.TimeoutReader)
+	if !ok || dev == nil {
+		return
+	}
+	buf := make([]byte, 64)
+	for i := 0; i < 32; i++ {
+		n, err := tr.ReadTimeout(buf, 20*time.Millisecond)
+		if n == 0 || err != nil {
+			return
+		}
+	}
+}
+
 func (self *Trezoreum) GetDevice() ([]usb.DeviceInfo, error) {
 	// vendor := VendorIDWithHID
 	// productIDs := ProductIDsWithHID
@@ -197,23 +236,28 @@ func (self *Trezoreum) Init() (*trezor.Features, TrezorState, error) {
 	}
 
 	// assume we only have 1 valid device
+	self.closeDevice()
 	device := devices[0]
 	driver, err := device.Open()
 	if err != nil {
 		return nil, Unexpected, fmt.Errorf("Couldn't open trezor device: %s", err)
 	}
+	self.dev = driver
 	self.core.SetDevice(driver)
+	drainDevice(driver)
 
 	features := &trezor.Features{}
 	success := trezor.Success{}
 	initMsg := trezor.Initialize{SessionId: currentSessionID()}
 	_, err = self.trezorExchange(&initMsg, features, &success)
-	if err != nil && len(initMsg.SessionId) > 0 {
+	if err != nil {
+		drainDevice(driver)
 		forgetDeviceSession()
 		features = &trezor.Features{}
 		_, err = self.trezorExchange(&trezor.Initialize{}, features, &success)
 	}
 	if err != nil {
+		self.closeDevice()
 		return nil, Unexpected, err
 	}
 	self.rememberFeatures(features)
@@ -226,6 +270,7 @@ func (self *Trezoreum) Init() (*trezor.Features, TrezorState, error) {
 		features,
 	)
 	if err != nil {
+		self.closeDevice()
 		return nil, Unexpected, err
 	}
 
@@ -464,13 +509,22 @@ func (self *Trezoreum) Sign(
 	tx *types.Transaction,
 	chainId *big.Int,
 ) (common.Address, *types.Transaction, error) {
+	var (
+		addr   common.Address
+		signed *types.Transaction
+		err    error
+	)
 	if tx.Type() == types.LegacyTxType {
-		return self.SignLegacyTx(path, tx, chainId)
+		addr, signed, err = self.SignLegacyTx(path, tx, chainId)
 	} else if tx.Type() == types.DynamicFeeTxType {
-		return self.SignDynamicFeeTx(path, tx, chainId)
+		addr, signed, err = self.SignDynamicFeeTx(path, tx, chainId)
+	} else {
+		return common.Address{}, nil, fmt.Errorf("not supported type - trezoreum can't sign")
 	}
-
-	return common.Address{}, nil, fmt.Errorf("not supported type - trezoreum can't sign")
+	if err != nil {
+		self.tryCancelSigning()
+	}
+	return addr, signed, err
 }
 
 // SignTypedHash uses EthereumSignTypedHash (added in firmware 2.4.3 / 1.10.5)
@@ -488,6 +542,7 @@ func (self *Trezoreum) SignTypedHash(
 	}
 	resp := new(trezor.EthereumTypedDataSignature)
 	if _, err := self.trezorExchange(req, resp); err != nil {
+		self.tryCancelSigning()
 		return nil, err
 	}
 	if len(resp.Signature) != 65 {
@@ -521,6 +576,7 @@ func (self *Trezoreum) SignPersonalMessage(
 	}
 	resp := new(trezor.EthereumMessageSignature)
 	if _, err := self.trezorExchange(req, resp); err != nil {
+		self.tryCancelSigning()
 		return nil, err
 	}
 	if len(resp.Signature) != 65 {

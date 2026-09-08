@@ -74,7 +74,7 @@ func (self *Account) SignTx(
 ) (common.Address, *types.Transaction, error) {
 	addr, signedTx, err := self.signer.SignTx(tx, chainId)
 	if err != nil {
-		return addr, tx, fmt.Errorf("Couldn't sign the tx: %s", err)
+		return addr, tx, fmt.Errorf("Couldn't sign the tx: %w", err)
 	}
 	return addr, signedTx, nil
 }
