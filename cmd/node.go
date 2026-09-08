@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
@@ -322,7 +323,7 @@ var nodeAddCmd = &cobra.Command{
 	Short: "Add a custom RPC node for a network",
 	Args:  cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
-		networkArg, name, nodeURL := args[0], args[1], args[2]
+		networkArg, name, nodeURL := args[0], args[1], jarviscommon.CanonicalRPCURL(args[2])
 		networkName := canonicalNodeNetworkName(networkArg)
 		if _, err := networks.GetNetwork(networkArg); err != nil {
 			appUI.Warn("Network %q is not in the built-in list, but adding the node anyway.", networkArg)
@@ -562,6 +563,7 @@ var nodeImportCmd = &cobra.Command{
 			}
 			added := 0
 			for name, nodeURL := range e.Nodes {
+				nodeURL = jarviscommon.CanonicalRPCURL(nodeURL)
 				if _, exists := cfg.Nodes[name]; !exists {
 					cfg.Nodes[name] = nodeURL
 					added++

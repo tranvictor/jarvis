@@ -56,6 +56,13 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
 
 ### Signing screen
 
+- RPC URLs without a scheme (`rpc.example.com/path`) are treated as HTTPS,
+  not as a Unix socket. go-ethereum's `rpc.Dial` used to try IPC for any
+  URL missing `://`, which printed a stdlib
+  `Couldn't connect to: … dial unix … no such file or directory` on
+  `msig approve` even when another node succeeded. Localhost stays HTTP;
+  `*.ipc` and absolute paths stay IPC. Failed extra nodes are skipped
+  quietly instead of logging through the stdlib logger.
 - One signing card for EOA transactions, Safe proposals/approvals/executions
   and WalletConnect requests: decoded call first, then Sign with / Send to /
   Gas / nonce directly above the prompt.
