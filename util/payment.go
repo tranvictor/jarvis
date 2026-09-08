@@ -15,7 +15,7 @@ import (
 type PaymentReading struct {
 	Amount string
 	To     ui.StyledText
-	From   ui.StyledText // transferFrom only
+	From   ui.StyledText // transferFrom, or the Safe/Classic wallet on a signing card
 }
 
 func nativePayment(to jarviscommon.Address, value *big.Int, network networks.Network) *PaymentReading {
@@ -110,6 +110,21 @@ func paymentTokenSymbol(v jarviscommon.Value, dest jarviscommon.Address) string 
 		return d
 	}
 	return ""
+}
+
+// AnnotatePaymentFrom fills Payment.From on a send that has no from yet
+// (native value or ERC-20 transfer). transferFrom already names the token
+// holder, so those are left alone. Inner MultiSend entries are walked too.
+func AnnotatePaymentFrom(d *FunctionCallDisplay, from ui.StyledText) {
+	if d == nil || from.Text == "" {
+		return
+	}
+	if d.Payment != nil && d.Payment.From.Text == "" {
+		d.Payment.From = from
+	}
+	for _, inner := range d.InnerCalls {
+		AnnotatePaymentFrom(inner, from)
+	}
 }
 
 func namedAddress(fc *jarviscommon.FunctionCall, names ...string) *jarviscommon.Address {

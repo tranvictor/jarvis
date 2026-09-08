@@ -66,6 +66,12 @@ func TestTokenPaymentTransferFrom(t *testing.T) {
 	if p == nil || p.Amount != "5 USDC" || p.From.Text == "" {
 		t.Fatalf("%+v", p)
 	}
+
+	rec := ui.NewRecordingUI()
+	PrintFunctionCall(rec, NewFunctionCallDisplay(fc, networks.EthereumMainnet))
+	if !rec.HasMessage("Send  5 USDC  from  " + from.Address + " (Router)  →  " + to.Address + " (Alice)") {
+		t.Fatalf("transferFrom headline: %v", rec.Entries())
+	}
 }
 
 func TestNativeInnerCallRendersAsSend(t *testing.T) {
@@ -85,5 +91,38 @@ func TestNativeInnerCallRendersAsSend(t *testing.T) {
 	}
 	if rec.HasMessage("<undecoded>") {
 		t.Fatalf("native send must not look undecoded: %v", rec.Entries())
+	}
+}
+
+func TestAnnotatePaymentFromFillsTransferNotTransferFrom(t *testing.T) {
+	msig := ui.StyledText{Text: "0x1111111111111111111111111111111111111111 (Treasury)"}
+	to := jarviscommon.Address{Address: "0x9642b23Ed1E01Df1092B92641051881a322F5D4E", Desc: "Alice"}
+	holder := jarviscommon.Address{Address: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", Desc: "Router"}
+	transfer := NewFunctionCallDisplay(&jarviscommon.FunctionCall{
+		Destination: jarviscommon.Address{Address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", Desc: "USDC token"},
+		Method:      "transfer",
+		Params: []jarviscommon.ParamResult{
+			{Name: "_to", Type: "address", Values: []jarviscommon.Value{{Kind: jarviscommon.DisplayAddress, Address: &to}}},
+			{Name: "_value", Type: "uint256", Values: []jarviscommon.Value{{Raw: "1000000", Kind: jarviscommon.DisplayToken, Token: &jarviscommon.TokenHint{Decimal: 6, Symbol: "USDC"}}}},
+		},
+	}, networks.EthereumMainnet)
+	AnnotatePaymentFrom(transfer, msig)
+	if transfer.Payment == nil || transfer.Payment.From.Text != msig.Text {
+		t.Fatalf("transfer From = %+v", transfer.Payment)
+	}
+
+	fromCall := NewFunctionCallDisplay(&jarviscommon.FunctionCall{
+		Destination: jarviscommon.Address{Address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", Desc: "USDC", Decimal: 6},
+		Method:      "transferFrom",
+		Params: []jarviscommon.ParamResult{
+			{Name: "from", Type: "address", Values: []jarviscommon.Value{{Kind: jarviscommon.DisplayAddress, Address: &holder}}},
+			{Name: "to", Type: "address", Values: []jarviscommon.Value{{Kind: jarviscommon.DisplayAddress, Address: &to}}},
+			{Name: "amount", Type: "uint256", Values: []jarviscommon.Value{{Raw: "1000000"}}},
+		},
+	}, networks.EthereumMainnet)
+	wantFrom := fromCall.Payment.From.Text
+	AnnotatePaymentFrom(fromCall, msig)
+	if fromCall.Payment.From.Text != wantFrom {
+		t.Fatalf("transferFrom From overwritten: %q", fromCall.Payment.From.Text)
 	}
 }

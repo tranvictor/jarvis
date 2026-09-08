@@ -347,7 +347,7 @@ func TestShowSigningCardClassicFields(t *testing.T) {
 	}
 	for _, w := range []string{
 		"Classic multisig transaction",
-		"Send  1000  →  " + cardMe + " (me)",
+		"Send  1000  from  " + cardMe + " (Treasury)  →  " + cardMe + " (me)",
 		"Calls: " + cardUSDC + " (USDC)",
 		"Multisig: " + cardMe + " (Treasury)",
 		"Tx ID: #42",
@@ -422,11 +422,15 @@ func TestShowSigningCardNativeSendToEOA(t *testing.T) {
 		Value:   "1.5 ETH",
 		Call:    util.NewFunctionCallDisplay(fc, nil),
 		Safe: &SafeCardFields{
+			Address:   util.StyledAddress(cardAddr(cardRouter, "Treasury Safe")),
 			Operation: "CALL (0)", SafeNonce: "3", SafeTxHash: "0xabc",
 		},
 	})
-	if !rec.HasMessage("Send  1.5 ETH  →  " + cardMe + " (Alice)") {
+	if !rec.HasMessage("Send  1.5 ETH  from  " + cardRouter + " (Treasury Safe)  →  " + cardMe + " (Alice)") {
 		t.Fatalf("native send headline missing: %v", rec.Entries())
+	}
+	if !rec.HasMessage("Safe: " + cardRouter + " (Treasury Safe)") {
+		t.Fatalf("Safe address missing: %v", rec.Entries())
 	}
 	if !rec.HasMessage("Recipient: " + cardMe + " (Alice)") {
 		t.Fatalf("EOA send should label the destination Recipient: %v", rec.Entries())
@@ -457,10 +461,16 @@ func TestShowSigningCardERC20TransferHeadline(t *testing.T) {
 		Kind: "Safe approval",
 		To:   util.StyledAddress(cardAddr(cardUSDC, "USDC")),
 		Call: util.NewFunctionCallDisplay(fc, nil),
-		Safe: &SafeCardFields{Operation: "CALL (0)", SafeNonce: "4", SafeTxHash: "0xabc"},
+		Safe: &SafeCardFields{
+			Address:   util.StyledAddress(cardAddr(cardMe, "Treasury")),
+			Operation: "CALL (0)", SafeNonce: "4", SafeTxHash: "0xabc",
+		},
 	})
-	if !rec.HasMessage("Send  1,000 USDC  →  " + alice.Address + " (Alice)") {
+	if !rec.HasMessage("Send  1,000 USDC  from  " + cardMe + " (Treasury)  →  " + alice.Address + " (Alice)") {
 		t.Fatalf("erc20 send headline missing: %v", rec.Entries())
+	}
+	if !rec.HasMessage("Safe: " + cardMe + " (Treasury)") {
+		t.Fatalf("Safe address missing: %v", rec.Entries())
 	}
 	if !rec.HasMessage("Safe calls: " + cardUSDC + " (USDC)") {
 		t.Fatalf("token destination should stay on Safe calls: %v", rec.Entries())
