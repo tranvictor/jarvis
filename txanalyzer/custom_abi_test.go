@@ -10,6 +10,7 @@ import (
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/util"
 )
 
 func abiFromJSON(t *testing.T, json string) *abi.ABI {
@@ -126,5 +127,41 @@ func TestAnalyzeMethodlessCustomABIFallsBackToERC20(t *testing.T) {
 	}
 	if fc.Method != "approve" {
 		t.Fatalf("method = %q, want approve via ERC-20 fallback", fc.Method)
+	}
+}
+
+func TestAnalyzeFallsBackToGnosisMsigABIWhenExplorerHasNoABI(t *testing.T) {
+	msig := "0x48B8419B2Bc0fB63Ee96e3a370e30B200cC2e672"
+	data, err := util.GetGnosisMsigABI().Pack("confirmTransaction", big.NewInt(6))
+	if err != nil {
+		t.Fatalf("pack: %s", err)
+	}
+	fc := pureAnalyzer().AnalyzeFunctionCallRecursively(
+		noABIFound, big.NewInt(0), msig, data, nil,
+	)
+	if fc.Error != "" {
+		t.Fatalf("unexpected error: %s", fc.Error)
+	}
+	if fc.Method != "confirmTransaction" {
+		t.Fatalf("method = %q, want confirmTransaction via Classic ABI fallback", fc.Method)
+	}
+	if len(fc.Params) != 1 || fc.Params[0].Values[0].Raw != "6" {
+		t.Fatalf("transactionId not decoded: %+v", fc.Params)
+	}
+}
+
+func TestAnalyzeFallsBackToGnosisMsigABIWhenProxyABIHasNoMethods(t *testing.T) {
+	msig := "0x48B8419B2Bc0fB63Ee96e3a370e30B200cC2e672"
+	data, err := util.GetGnosisMsigABI().Pack("confirmTransaction", big.NewInt(6))
+	if err != nil {
+		t.Fatalf("pack: %s", err)
+	}
+	proxy := abiFromJSON(t, `[{"inputs":[{"name":"_singleton","type":"address"}],"stateMutability":"nonpayable","type":"constructor"},{"stateMutability":"payable","type":"fallback"}]`)
+	fc := pureAnalyzer().AnalyzeFunctionCallRecursively(
+		noABIFound, big.NewInt(0), msig, data,
+		map[string]*abi.ABI{strings.ToLower(msig): proxy},
+	)
+	if fc.Method != "confirmTransaction" {
+		t.Fatalf("method = %q, want confirmTransaction, err %q", fc.Method, fc.Error)
 	}
 }

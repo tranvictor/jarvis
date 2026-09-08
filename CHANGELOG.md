@@ -63,6 +63,10 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   not in the address book, native value into a contract, native value attached
   to an ERC-20 call, undecodable calldata, unlimited ERC-20 approval,
   `setApprovalForAll`, approval to an unknown spender, Safe `DELEGATECALL`.
+- Classic `msig approve` / revoke / execute EOA cards decode `confirmTransaction`
+  (and the other built-in Classic methods) even when the explorer ABI is
+  missing or is a methodless proxy. The following signing card used to dump
+  raw bytes for the wallet you were already operating on.
 - Native ETH sends to an EOA and ERC-20 `transfer` / `transferFrom` open as
   `Send  1.5 ETH  →  Alice` / `Send  1,000 USDC  →  Alice` rather than a
   generic Call header. Safe cards label that EOA destination `Recipient`.

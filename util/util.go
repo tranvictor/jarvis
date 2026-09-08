@@ -946,6 +946,18 @@ func GnosisMsigTxIDFromCalldata(data []byte) *big.Int {
 	return nil
 }
 
+// IsGnosisMsigCallData reports whether data's selector is a method on the
+// built-in Classic Gnosis multisig ABI (confirmTransaction, submitTransaction,
+// executeTransaction, …). Used so the analyzer can decode those calls when
+// the explorer ABI is missing or is a methodless proxy.
+func IsGnosisMsigCallData(data []byte) bool {
+	if len(data) < 4 {
+		return false
+	}
+	_, err := GetGnosisMsigABI().MethodById(data[:4])
+	return err == nil
+}
+
 func GetABI(addr string, network networks.Network) (*abi.ABI, error) {
 	abiStr, err := GetABIString(addr, network)
 	if err != nil {

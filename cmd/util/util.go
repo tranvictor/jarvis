@@ -28,14 +28,22 @@ import (
 )
 
 // classicMsigABI returns the ABI for packing Gnosis Classic multisig calls.
-// It prefers the verified explorer ABI when available and falls back to the
-// built-in classic ABI when the contract is unverified — same as bapprove.
+// It prefers the verified explorer ABI when that ABI actually describes the
+// Classic methods (confirmTransaction, …) and falls back to the built-in
+// ABI when the contract is unverified or is a methodless proxy.
 func classicMsigABI(resolver ABIResolver, addr string, network jarvisnetworks.Network) *abi.ABI {
-	a, err := resolver.GetABI(addr, network)
-	if err == nil {
-		return a
+	fallback := util.GetGnosisMsigABI()
+	if resolver == nil {
+		return fallback
 	}
-	return util.GetGnosisMsigABI()
+	a, err := resolver.GetABI(addr, network)
+	if err != nil || a == nil {
+		return fallback
+	}
+	if _, ok := a.Methods["confirmTransaction"]; !ok {
+		return fallback
+	}
+	return a
 }
 
 // PostProcessFunc is a callback called with the decoded function call after
@@ -175,7 +183,10 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	}
 
 	SetClassicSigningNote()
-	if broadcasted, err := SignAndBroadcast(u, tc.FromAcc, tx, nil, reader, analyzer, a, bc); err != nil && !broadcasted && !errors.Is(err, ErrUserCancelled) {
+	customABIs := map[string]*abi.ABI{
+		strings.ToLower(tc.To): a,
+	}
+	if broadcasted, err := SignAndBroadcast(u, tc.FromAcc, tx, customABIs, reader, analyzer, a, bc); err != nil && !broadcasted && !errors.Is(err, ErrUserCancelled) {
 		u.Error("Failed to proceed after signing the tx: %s. Aborted.", err)
 	}
 }
