@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/ui"
 )
@@ -67,14 +68,11 @@ func printBatchPlan(title string, items []string) {
 	}
 }
 
-// printBatchBanner opens one item: "[2/5] Safe  <ref>".
+// printBatchBanner opens one item as a Section so it matches the weight
+// of the signing cards inside it, and stamps [i/n] on those cards.
 func printBatchBanner(i, total int, kind, label string) {
-	appUI.Info("")
-	appUI.Info("%s %s  %s",
-		appUI.Style(ui.StyledText{Text: fmt.Sprintf("[%d/%d]", i, total), Severity: ui.SeverityCritical}),
-		appUI.Style(ui.StyledText{Text: kind, Severity: ui.SeverityCritical}),
-		label,
-	)
+	cmdutil.SetBatchItem(i, total)
+	appUI.Section(fmt.Sprintf("[%d/%d] %s  %s", i, total, kind, label))
 }
 
 // printBatchItemResult closes one item with a single line whose colour
@@ -83,11 +81,11 @@ func printBatchItemResult(status, detail string, tally batchTally) {
 	var st ui.StyledText
 	switch status {
 	case "approved", "executed", "broadcasted":
-		st = ui.StyledText{Text: "✓ " + status, Severity: ui.SeveritySuccess}
+		st = ui.StyledText{Text: "✓ " + cmdutil.AnnotateBatch(status), Severity: ui.SeveritySuccess}
 	case "skipped":
-		st = ui.StyledText{Text: "⊘ skipped", Severity: ui.SeverityWarn}
+		st = ui.StyledText{Text: "⊘ " + cmdutil.AnnotateBatch("skipped"), Severity: ui.SeverityWarn}
 	default:
-		st = ui.StyledText{Text: "✗ failed", Severity: ui.SeverityError}
+		st = ui.StyledText{Text: "✗ " + cmdutil.AnnotateBatch("failed"), Severity: ui.SeverityError}
 	}
 	line := appUI.Style(st)
 	if detail != "" {
@@ -120,6 +118,7 @@ func resultCell(status string) ui.TableCell {
 
 // printBatchSummaryTable prints the closing table and the totals line.
 func printBatchSummaryTable(rows [][]ui.TableCell, tally batchTally) {
+	cmdutil.ClearBatchItem()
 	appUI.Section("Batch summary")
 	appUI.PrintTable(&ui.Table{
 		Headers: []string{"#", "Kind", "Network", "Target", "Result", "Detail"},
