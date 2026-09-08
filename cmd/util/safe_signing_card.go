@@ -112,17 +112,26 @@ func decodeSafeCalldata(
 		destAbi, err := resolver.ConfigToABI(
 			stx.To.Hex(), config.ForceERC20ABI, config.CustomABI, network,
 		)
-		if err != nil {
-			if len(customABIs) == 0 && !jarviscommon.IsMultiSendCallData(stx.Data) {
-				return nil
+		if err == nil {
+			if _, taken := customABIs[strings.ToLower(stx.To.Hex())]; !taken {
+				customABIs[strings.ToLower(stx.To.Hex())] = destAbi
 			}
-		} else if _, taken := customABIs[strings.ToLower(stx.To.Hex())]; !taken {
-			customABIs[strings.ToLower(stx.To.Hex())] = destAbi
 		}
 	}
+	// Always run the analyzer, even when the explorer ABI lookup failed.
+	// AnalyzeFunctionCallRecursively falls back to the standard ERC-20 ABI
+	// (and MultiSend) so approve/transfer still decode instead of rendering
+	// as raw bytes with a "no ABI" warning.
 	return analyzer.AnalyzeFunctionCallRecursively(
-		util.GetABI, stx.Value, stx.To.Hex(), stx.Data, customABIs,
+		lookupABI(resolver), stx.Value, stx.To.Hex(), stx.Data, customABIs,
 	)
+}
+
+func lookupABI(resolver ABIResolver) jarviscommon.ABIDatabase {
+	if resolver != nil {
+		return resolver.GetABI
+	}
+	return util.GetABI
 }
 
 func safeSignerLine(s safe.OwnerSig, network jarvisnetworks.Network) ui.StyledText {

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -107,9 +106,18 @@ func (ee *EtherscanLikeExplorer) RecommendedGasPrice() (float64, error) {
 
 func (ee *EtherscanLikeExplorer) GetABIStringAPIURL(address string) string {
 	return fmt.Sprintf(
-		"%s/api?chainid=%d&module=contract&action=getabi&address=%s&apikey=%s",
-		ee.Domain,
+		"%s?chainid=%d&module=contract&action=getabi&address=%s&apikey=%s",
+		ee.apiEndpoint(),
 		ee.ChainID,
+		address,
+		ee.APIKey,
+	)
+}
+
+func (ee *EtherscanLikeExplorer) getABIStringAPIURLNoChainID(address string) string {
+	return fmt.Sprintf(
+		"%s?module=contract&action=getabi&address=%s&apikey=%s",
+		ee.apiEndpoint(),
 		address,
 		ee.APIKey,
 	)
@@ -142,42 +150,62 @@ func isRateLimited(msg string) bool {
 
 func (ee *EtherscanLikeExplorer) GetABIString(address string) (string, error) {
 	var lastErr error
-	for attempt := 0; attempt < abiFetchAttempts; attempt++ {
-		if attempt > 0 {
-			time.Sleep(abiRetryDelay)
-		}
-		result, retry, err := ee.getABIStringOnce(address)
+	for _, u := range ee.abiURLs(address) {
+		result, err := ee.getABIStringWithRetry(u)
 		if err == nil {
 			return result, nil
 		}
 		lastErr = err
-		if !retry {
-			break
+		if isUnverifiedABI(err) {
+			return "", err
 		}
 	}
 	return "", lastErr
 }
 
-// getABIStringOnce performs one getabi request. retry is true only for
-// transient failures (rate limiting, transport errors).
-func (ee *EtherscanLikeExplorer) getABIStringOnce(address string) (result string, retry bool, err error) {
-	resp, err := http.Get(ee.GetABIStringAPIURL(address))
-	if err != nil {
-		return "", true, fmt.Errorf("%s: %w", ee.label(), redactURLError(err))
+func (ee *EtherscanLikeExplorer) getABIStringWithRetry(u string) (string, error) {
+	var lastErr error
+	for attempt := 0; attempt < abiFetchAttempts; attempt++ {
+		if attempt > 0 {
+			time.Sleep(abiRetryDelay)
+		}
+		result, retry, err := ee.getABIStringOnce(u)
+		if err == nil {
+			return result, nil
+		}
+		lastErr = err
+		if !retry {
+			return "", err
+		}
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	return "", lastErr
+}
+
+// getABIStringOnce performs one ABI request. retry is true only for
+// transient failures (rate limiting, transport errors).
+func (ee *EtherscanLikeExplorer) getABIStringOnce(u string) (result string, retry bool, err error) {
+	status, body, err := ee.get(u)
 	if err != nil {
-		return "", true, fmt.Errorf("%s: reading response: %w", ee.label(), err)
+		return "", true, err
+	}
+	if status == http.StatusTooManyRequests || isRateLimited(string(body)) {
+		return "", true, fmt.Errorf("%s: %s", ee.label(), strings.TrimSpace(string(body)))
+	}
+	if abiStr, ok := parseABIFromBody(body); ok {
+		return abiStr, false, nil
 	}
 	abiresp := abiresponse{}
-	if err := json.Unmarshal(body, &abiresp); err != nil {
-		return "", false, fmt.Errorf("%s: unexpected response: %w", ee.label(), err)
+	if json.Unmarshal(body, &abiresp) == nil && abiresp.Status != "" && abiresp.Status != "1" {
+		msg := abiresp.Result
+		if msg == "" {
+			msg = abiresp.Message
+		}
+		return "", isRateLimited(msg), fmt.Errorf("%s: %s", ee.label(), msg)
 	}
-	if abiresp.Status != "1" {
-		return "", isRateLimited(abiresp.Result), fmt.Errorf("%s: %s", ee.label(), abiresp.Result)
+	if status >= 400 {
+		return "", false, fmt.Errorf("%s: HTTP %d", ee.label(), status)
 	}
-	return abiresp.Result, false, nil
+	return "", false, fmt.Errorf("%s: unexpected response", ee.label())
 }
 
 // redactURLError strips the request URL (and with it the API key) out of
@@ -192,9 +220,18 @@ func redactURLError(err error) error {
 
 func (ee *EtherscanLikeExplorer) getSourceCodeAPIURL(address string) string {
 	return fmt.Sprintf(
-		"%s/api?chainid=%d&module=contract&action=getsourcecode&address=%s&apikey=%s",
-		ee.Domain,
+		"%s?chainid=%d&module=contract&action=getsourcecode&address=%s&apikey=%s",
+		ee.apiEndpoint(),
 		ee.ChainID,
+		address,
+		ee.APIKey,
+	)
+}
+
+func (ee *EtherscanLikeExplorer) getSourceCodeAPIURLNoChainID(address string) string {
+	return fmt.Sprintf(
+		"%s?module=contract&action=getsourcecode&address=%s&apikey=%s",
+		ee.apiEndpoint(),
 		address,
 		ee.APIKey,
 	)
@@ -216,33 +253,50 @@ type sourceCodeResponse struct {
 }
 
 func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, error) {
-	resp, err := http.Get(ee.getSourceCodeAPIURL(address))
+	for _, u := range ee.contractInfoURLs(address) {
+		for attempt := 0; attempt < abiFetchAttempts; attempt++ {
+			if attempt > 0 {
+				time.Sleep(abiRetryDelay)
+			}
+			info, kind, err := ee.getContractInfoOnce(u)
+			if kind == fetchOK {
+				return info, nil
+			}
+			if kind == fetchUnverified {
+				// Etherscan returns Status="0" / Message="NOTOK" for unverified
+				// contracts. That's not an error from jarvis's POV — we simply
+				// don't have a name to display.
+				return ContractInfo{}, nil
+			}
+			if kind == fetchRetry {
+				_ = err
+				continue
+			}
+			break
+		}
+	}
+	return ContractInfo{}, nil
+}
+
+func (ee *EtherscanLikeExplorer) getContractInfoOnce(u string) (ContractInfo, fetchKind, error) {
+	status, body, err := ee.get(u)
 	if err != nil {
-		return ContractInfo{}, fmt.Errorf("%s: %w", ee.label(), redactURLError(err))
+		return ContractInfo{}, fetchRetry, err
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ContractInfo{}, fmt.Errorf("%s: reading response: %w", ee.label(), err)
+	if status == http.StatusTooManyRequests || isRateLimited(string(body)) {
+		return ContractInfo{}, fetchRetry, fmt.Errorf("%s: rate limited", ee.label())
 	}
-	var sc sourceCodeResponse
-	if err := json.Unmarshal(body, &sc); err != nil {
-		return ContractInfo{}, fmt.Errorf("unmarshal getsourcecode body: %w", err)
+	if info, ok := parseEtherscanContractInfo(body); ok {
+		if info.ok {
+			return info.info, fetchOK, nil
+		}
+		return ContractInfo{}, fetchUnverified, nil
 	}
-	if sc.Status != "1" || len(sc.Result) == 0 {
-		// Etherscan returns Status="0" / Message="NOTOK" for unverified
-		// contracts. That's not an error from jarvis's POV — we simply
-		// don't have a name to display.
-		return ContractInfo{}, nil
+	if info, ok := parseJSONContractInfo(body); ok {
+		return info, fetchOK, nil
 	}
-	r := sc.Result[0]
-	info := ContractInfo{
-		Name:           r.ContractName,
-		Implementation: r.Implementation,
-		IsProxy:        r.Proxy == "1",
-		// ABI is the literal string "Contract source code not verified" when
-		// the source is missing; treat any other value as verified.
-		IsVerified: r.ABI != "" && r.ABI != "Contract source code not verified",
+	if status >= 400 {
+		return ContractInfo{}, fetchMiss, fmt.Errorf("%s: HTTP %d", ee.label(), status)
 	}
-	return info, nil
+	return ContractInfo{}, fetchMiss, fmt.Errorf("%s: unexpected response", ee.label())
 }

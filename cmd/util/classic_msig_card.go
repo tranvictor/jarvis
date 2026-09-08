@@ -36,7 +36,7 @@ func decodeClassicCalldata(
 			customABIs[strings.ToLower(to)] = destAbi
 		}
 	}
-	return analyzer.AnalyzeFunctionCallRecursively(util.GetABI, value, to, data, customABIs)
+	return analyzer.AnalyzeFunctionCallRecursively(lookupABI(resolver), value, to, data, customABIs)
 }
 
 func buildClassicMsigCard(
