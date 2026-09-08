@@ -109,6 +109,11 @@ func buildFunctionCallDisplay(fc *jarviscommon.FunctionCall, nested bool, networ
 	for _, inner := range fc.DecodedFunctionCalls {
 		d.InnerCalls = append(d.InnerCalls, buildFunctionCallDisplay(inner, true, network))
 	}
+	if p := tokenPayment(fc); p != nil {
+		d.Payment = p
+	} else if fc.Method == "" && len(fc.Data) == 0 {
+		d.Payment = nativePayment(fc.Destination, fc.Value, network)
+	}
 	return d
 }
 

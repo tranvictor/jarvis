@@ -221,8 +221,36 @@ Sign and broadcast (≈ 0.00170246 ETH)? [y/N]
 >
 ```
 
+```
+================ Safe approval =================
+
+Send  1.5 ETH  →  0x9642b23Ed1E01Df1092B92641051881a322F5D4E (Alice)
+
+Sign with    0x9642b23Ed1E01Df1092B92641051881a322F5D4E (me)   ledger   mainnet
+Recipient    0x9642b23Ed1E01Df1092B92641051881a322F5D4E (Alice)
+Value        1.5 ETH
+Operation    CALL (0)
+Safe nonce   17
+safeTxHash   0xabc…
+
+Sign this Safe approval (off-chain, no gas)? [y/N]
+>
+```
+
+An ERC-20 transfer uses the same `Send  amount  →  recipient` line (the
+token contract stays on `Safe calls` / `Send to`). Attaching native value
+to an ERC-20 `transfer` / `approve` / similar call adds:
+
+```
+! attaches 1.5 ETH to an ERC-20 transfer on USDC; the native value goes to the token contract, not the recipient
+```
+
+WETH `deposit` is payable on purpose, so it keeps the ordinary
+`sends 1.5 ETH into a contract` warning instead.
+
 Warnings are emitted for: a destination that is not in your address book,
-native value sent into a contract, calldata jarvis could not decode,
+native value sent into a contract, native value attached to an ERC-20 call,
+calldata jarvis could not decode,
 unlimited ERC-20 approvals, `setApprovalForAll`, approvals to unknown
 spenders, and Safe `DELEGATECALL` operations. Safe cards add the Safe
 address, operation, nonce, `safeTxHash` and the list of collected

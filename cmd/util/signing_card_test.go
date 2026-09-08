@@ -67,6 +67,29 @@ func TestSigningWarningsCoverTheRiskyCases(t *testing.T) {
 			want: []string{"sends 1.5 ETH into a contract"},
 		},
 		{
+			name: "erc20 call with native value",
+			in: WarningInput{
+				To: cardAddr(cardUSDC, "USDC"), ToIsContract: true, ToIsERC20: true,
+				Value: big.NewInt(1500000000000000000), NativeSymbol: "ETH",
+				Call: &jarviscommon.FunctionCall{
+					Destination: cardAddr(cardUSDC, "USDC"), Method: "transfer",
+					Params: []jarviscommon.ParamResult{addrParam("to", cardMe, "me"), uintParam("amount", "1000")},
+				},
+			},
+			want: []string{"attaches 1.5 ETH to an ERC-20 transfer on USDC"},
+		},
+		{
+			name: "weth deposit keeps the generic contract-value warning",
+			in: WarningInput{
+				To: cardAddr(cardUSDC, "WETH"), ToIsContract: true, ToIsERC20: true,
+				Value: big.NewInt(1500000000000000000), NativeSymbol: "ETH",
+				Call: &jarviscommon.FunctionCall{
+					Destination: cardAddr(cardUSDC, "WETH"), Method: "deposit",
+				},
+			},
+			want: []string{"sends 1.5 ETH into a contract"},
+		},
+		{
 			name: "delegatecall multisend",
 			in:   WarningInput{To: cardAddr(cardRouter, "MultiSendCallOnly"), DelegateCall: true, MultiSend: true},
 			want: []string{"DELEGATECALL into MultiSend"},
@@ -297,6 +320,7 @@ func TestShowSigningCardClassicFields(t *testing.T) {
 	})
 	for _, w := range []string{
 		"Classic multisig transaction",
+		"Send  1000  →  " + cardMe + " (me)",
 		"Calls: " + cardUSDC + " (USDC)",
 		"Multisig: " + cardMe + " (Treasury)",
 		"Tx ID: #42",
@@ -348,6 +372,65 @@ func TestShowSigningCardClassicProposalOmitsTxID(t *testing.T) {
 	}
 	if !rec.HasMessage("Classic multisig transaction") || !rec.HasMessage("Multisig: "+cardMe+" (Treasury)") {
 		t.Fatalf("proposal card missing: %v", rec.Entries())
+	}
+}
+
+func TestShowSigningCardNativeSendToEOA(t *testing.T) {
+	rec := ui.NewRecordingUI()
+	fc := &jarviscommon.FunctionCall{
+		Destination: cardAddr(cardMe, "Alice"),
+		Value:       big.NewInt(1_500_000_000_000_000_000),
+	}
+	ShowSigningCard(rec, &SigningCard{
+		Kind:    "Safe approval",
+		Network: "mainnet",
+		To:      util.StyledAddress(cardAddr(cardMe, "Alice")),
+		ToLabel: "Recipient",
+		Value:   "1.5 ETH",
+		Call:    util.NewFunctionCallDisplay(fc, nil),
+		Safe: &SafeCardFields{
+			Operation: "CALL (0)", SafeNonce: "3", SafeTxHash: "0xabc",
+		},
+	})
+	if !rec.HasMessage("Send  1.5 ETH  →  " + cardMe + " (Alice)") {
+		t.Fatalf("native send headline missing: %v", rec.Entries())
+	}
+	if !rec.HasMessage("Recipient: " + cardMe + " (Alice)") {
+		t.Fatalf("EOA send should label the destination Recipient: %v", rec.Entries())
+	}
+	if rec.HasMessage("Safe calls:") {
+		t.Fatalf("EOA send must not look like a contract call: %v", rec.Entries())
+	}
+	if rec.HasMessage("<undecoded>") {
+		t.Fatalf("native send must not look undecoded: %v", rec.Entries())
+	}
+}
+
+func TestShowSigningCardERC20TransferHeadline(t *testing.T) {
+	rec := ui.NewRecordingUI()
+	alice := cardAddr(cardMe, "Alice")
+	amount := jarviscommon.Value{
+		Raw: "1000000000", Kind: jarviscommon.DisplayToken,
+		Token: &jarviscommon.TokenHint{Decimal: 6, Symbol: "USDC"},
+	}
+	fc := &jarviscommon.FunctionCall{
+		Destination: cardAddr(cardUSDC, "USDC token"), Method: "transfer",
+		Params: []jarviscommon.ParamResult{
+			addrParam("_to", cardMe, "Alice"),
+			{Name: "_value", Type: "uint256", Values: []jarviscommon.Value{amount}},
+		},
+	}
+	ShowSigningCard(rec, &SigningCard{
+		Kind: "Safe approval",
+		To:   util.StyledAddress(cardAddr(cardUSDC, "USDC")),
+		Call: util.NewFunctionCallDisplay(fc, nil),
+		Safe: &SafeCardFields{Operation: "CALL (0)", SafeNonce: "4", SafeTxHash: "0xabc"},
+	})
+	if !rec.HasMessage("Send  1,000 USDC  →  " + alice.Address + " (Alice)") {
+		t.Fatalf("erc20 send headline missing: %v", rec.Entries())
+	}
+	if !rec.HasMessage("Safe calls: " + cardUSDC + " (USDC)") {
+		t.Fatalf("token destination should stay on Safe calls: %v", rec.Entries())
 	}
 }
 

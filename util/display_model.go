@@ -50,6 +50,10 @@ type FunctionCallDisplay struct {
 	Data       string                 `json:"data,omitempty"`
 	InnerCalls []*FunctionCallDisplay `json:"inner_calls,omitempty"`
 	Error      string                 `json:"error,omitempty"`
+	// Payment is set for a native send or ERC-20 transfer so the call can
+	// render as "Send 1.5 ETH → Alice" instead of a generic Call header.
+	// Omitted from JSON to keep --json-output stable.
+	Payment *PaymentReading `json:"-"`
 }
 
 // TxLayout selects how much of a TxDisplay is rendered and how densely.
