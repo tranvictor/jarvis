@@ -60,9 +60,12 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   and WalletConnect requests: decoded call first, then Sign with / Send to /
   Gas / nonce directly above the prompt.
 - Derived warnings printed as `!` lines right before the prompt: destination
-  not in the address book, native value into a contract, undecodable
-  calldata, unlimited ERC-20 approval, `setApprovalForAll`, approval to an
-  unknown spender, Safe `DELEGATECALL`.
+  not in the address book, native value into a contract, native value attached
+  to an ERC-20 call, undecodable calldata, unlimited ERC-20 approval,
+  `setApprovalForAll`, approval to an unknown spender, Safe `DELEGATECALL`.
+- Native ETH sends to an EOA and ERC-20 `transfer` / `transferFrom` open as
+  `Send  1.5 ETH  →  Alice` / `Send  1,000 USDC  →  Alice` rather than a
+  generic Call header. Safe cards label that EOA destination `Recipient`.
 - Safe cards list the Safe, operation, nonce, `safeTxHash` and collected
   signatures; the EOA card for a Safe execution collapses the inner call
   since it was just shown.

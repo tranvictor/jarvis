@@ -283,7 +283,8 @@ func buildEOASigningCard(
 	}
 
 	toHex := tx.To().Hex()
-	if isERC20, _ := util.IsERC20(toHex, network); isERC20 {
+	isERC20, _ := util.IsERC20(toHex, network)
+	if isERC20 {
 		// Warm the caches so the analyzer below annotates token amounts.
 		util.GetERC20Symbol(toHex, network)
 		util.GetERC20Decimal(toHex, network)
@@ -296,7 +297,7 @@ func buildEOASigningCard(
 		return nil, err
 	}
 	warn := WarningInput{
-		To: to, ToIsContract: isContract, Value: tx.Value(), NativeSymbol: symbol,
+		To: to, ToIsContract: isContract, ToIsERC20: isERC20, Value: tx.Value(), NativeSymbol: symbol,
 		NativeDecimals: network.GetNativeTokenDecimal(),
 		HasData:        len(tx.Data()) > 0, SignerBalance: balance, MaxCost: maxCost,
 	}
@@ -318,6 +319,10 @@ func buildEOASigningCard(
 		}
 	} else if len(tx.Data()) > 0 {
 		card.RawData = "0x" + ethcommon.Bytes2Hex(tx.Data())
+	} else if tx.Value().Sign() > 0 {
+		card.Call = util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{
+			Destination: to, Value: tx.Value(),
+		}, network)
 	}
 
 	if note != nil && note.ExecutesSafeTxHash != "" {
