@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
@@ -65,7 +66,7 @@ func TestDecodeSafeCalldataFallsBackToERC20WhenExplorerHasNoABI(t *testing.T) {
 	}
 }
 
-func TestDecodeSafeCalldataFallsBackToWETHWithdraw(t *testing.T) {
+func TestDecodeSafeCalldataUsesImplementationABI(t *testing.T) {
 	prevForce := config.ForceERC20ABI
 	prevCustom := config.CustomABI
 	config.ForceERC20ABI = false
@@ -81,6 +82,10 @@ func TestDecodeSafeCalldataFallsBackToWETHWithdraw(t *testing.T) {
 	}
 	weth := ethcommon.HexToAddress("0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73")
 	data := ethcommon.FromHex("0x2e1a7d4d00000000000000000000000000000000000000000000000049f167f874d62fc2")
+	implABI, err := abi.JSON(strings.NewReader(withdrawABIJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	analyzer := txanalyzer.NewGenericAnalyzerWithContext(
 		txanalyzer.NewAnalysisContextWithResolver(nil, network, addrbook.Map{}),
@@ -88,7 +93,7 @@ func TestDecodeSafeCalldataFallsBackToWETHWithdraw(t *testing.T) {
 	fc := decodeSafeCalldata(
 		&safe.SafeTx{To: weth, Value: big.NewInt(0), Data: data},
 		network,
-		stubResolver{},
+		followedABIResolver{a: &implABI},
 		analyzer,
 		nil,
 	)
@@ -106,7 +111,7 @@ func TestDecodeSafeCalldataFallsBackToWETHWithdraw(t *testing.T) {
 	})
 	for _, w := range warns {
 		if strings.Contains(w, "could not be decoded") {
-			t.Fatalf("WETH fallback must not warn about a missing ABI: %q", w)
+			t.Fatalf("followed implementation ABI must not warn about a missing ABI: %q", w)
 		}
 	}
 }

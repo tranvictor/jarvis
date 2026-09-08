@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
@@ -13,6 +14,20 @@ import (
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util/addrbook"
 )
+
+const withdrawABIJSON = `[{"type":"function","name":"withdraw","inputs":[{"name":"wad","type":"uint256"}],"outputs":[],"stateMutability":"nonpayable"}]`
+
+type followedABIResolver struct {
+	stubResolver
+	a *abi.ABI
+}
+
+func (r followedABIResolver) GetABI(string, jarvisnetworks.Network) (*abi.ABI, error) {
+	return r.a, nil
+}
+func (r followedABIResolver) ConfigToABI(string, bool, string, jarvisnetworks.Network) (*abi.ABI, error) {
+	return r.a, nil
+}
 
 func TestClassicSummaryStatus(t *testing.T) {
 	cases := []struct {
@@ -36,7 +51,7 @@ func TestClassicSummaryStatus(t *testing.T) {
 	}
 }
 
-func TestDecodeClassicCalldataFallsBackToWETHWithdraw(t *testing.T) {
+func TestDecodeClassicCalldataUsesImplementationABI(t *testing.T) {
 	prevForce := config.ForceERC20ABI
 	prevCustom := config.CustomABI
 	config.ForceERC20ABI = false
@@ -52,11 +67,15 @@ func TestDecodeClassicCalldataFallsBackToWETHWithdraw(t *testing.T) {
 	}
 	weth := "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
 	data := ethcommon.FromHex("0x2e1a7d4d00000000000000000000000000000000000000000000000049f167f874d62fc2")
+	implABI, err := abi.JSON(strings.NewReader(withdrawABIJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	analyzer := txanalyzer.NewGenericAnalyzerWithContext(
 		txanalyzer.NewAnalysisContextWithResolver(nil, network, addrbook.Map{}),
 	)
-	fc := decodeClassicCalldata(weth, big.NewInt(0), data, network, stubResolver{}, analyzer)
+	fc := decodeClassicCalldata(weth, big.NewInt(0), data, network, followedABIResolver{a: &implABI}, analyzer)
 	if fc == nil {
 		t.Fatal("expected analyzer fallback, got nil call")
 	}
@@ -71,7 +90,7 @@ func TestDecodeClassicCalldataFallsBackToWETHWithdraw(t *testing.T) {
 	})
 	for _, w := range warns {
 		if strings.Contains(w, "could not be decoded") {
-			t.Fatalf("WETH fallback must not warn about a missing ABI: %q", w)
+			t.Fatalf("followed implementation ABI must not warn about a missing ABI: %q", w)
 		}
 	}
 }

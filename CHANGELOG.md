@@ -75,11 +75,14 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   (and the other built-in Classic methods) even when the explorer ABI is
   missing or is a methodless proxy. The following signing card used to dump
   raw bytes for the wallet you were already operating on.
-- Classic `msig bapprove` / Safe cards decode WETH wrap methods (`withdraw`,
-  `deposit`, `depositTo`, `withdrawTo`) when the explorer ABI is missing or
-  is a methodless proxy. Those selectors are not on the ERC-20 fallback, so
-  wrapped-native tokens (Robinhood WETH, …) used to dump raw bytes with a
-  "no ABI" warning even when the address book already named the destination.
+- ABI lookup follows a verified proxy to its implementation. Robinscan (and
+  similar JSON explorers) publish the TransparentUpgradeableProxy ABI
+  (constructor + events + fallback) next to an `implementation` address whose
+  ABI has the methods that actually run. Jarvis used to keep the methodless
+  proxy ABI, so Classic `msig bapprove` dumped raw WETH `withdraw` bytes even
+  though the explorer already named the implementation. GetABI now follows
+  that implementation (from the same JSON, then GetContractInfo, then
+  on-chain slots) instead of special-casing WETH.
 - Native ETH sends to an EOA and ERC-20 `transfer` / `transferFrom` open as
   `Send  1.5 ETH  →  Alice` / `Send  1,000 USDC  →  Alice` rather than a
   generic Call header. Safe cards label that EOA destination `Recipient`.

@@ -18,9 +18,9 @@ import (
 // decodeClassicCalldata runs the analyzer over a Classic msig inner call.
 // It mirrors decodeSafeCalldata: fetch the destination ABI through the
 // resolver (honoring --custom-abi and --erc20) and let the analyzer decode
-// recursively, including the ERC-20 and WETH fallbacks when the explorer
-// ABI is missing or is a methodless proxy. Returns nil when there is no
-// analyzer or no data.
+// recursively, including the ERC-20 fallback when the explorer ABI is
+// missing. Proxy contracts are followed to their implementation ABI by
+// GetABI / ConfigToABI. Returns nil when there is no analyzer or no data.
 func decodeClassicCalldata(
 	to string,
 	value *big.Int,
