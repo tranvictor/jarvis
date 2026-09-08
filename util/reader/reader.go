@@ -697,9 +697,29 @@ type getSuggestedGasResponse struct {
 	Error error
 }
 
-// add 20% tip to miners compared to what returned from the node to improve UX
-// a bit more
+// GetSuggestedGasTipCap returns the type-2 priority fee in gwei.
+//
+// eth_maxPriorityFeePerGas is often ~0 on Ethereum even when maxFee
+// (eth_gasPrice × 1.5) looks high. Miners are paid min(maxFee − baseFee,
+// tip), so a 0 tip sits or is dropped. We take the best node oracle, bump
+// it 20%, then raise it to the implied market tip and a small floor.
 func (er *EthReader) GetSuggestedGasTipCap() (float64, error) {
+	nodeTip, nodeErr := er.nodeSuggestedGasTipCap()
+	maxFee, _ := er.RecommendedGasPrice()
+	baseFee := 0.0
+	if header, err := er.HeaderByNumber(-1); err == nil && header != nil && header.BaseFee != nil {
+		baseFee = jarviscommon.BigToFloat(header.BaseFee, 9)
+	}
+	if nodeErr != nil && maxFee == 0 && baseFee == 0 {
+		return 0, nodeErr
+	}
+	if nodeErr != nil {
+		nodeTip = 0
+	}
+	return EffectiveGasTipGwei(nodeTip, maxFee, baseFee), nil
+}
+
+func (er *EthReader) nodeSuggestedGasTipCap() (float64, error) {
 	resCh := make(chan getSuggestedGasResponse, len(er.nodes))
 	for i := range er.nodes {
 		n := er.nodes[i]
@@ -712,15 +732,30 @@ func (er *EthReader) GetSuggestedGasTipCap() (float64, error) {
 		}()
 	}
 
+	var best *big.Int
 	errs := []error{}
 	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
-		if result.Error == nil {
-			return jarviscommon.BigToFloat(result.Gas, 9) * 1.2, result.Error
+		if result.Error != nil || result.Gas == nil {
+			if result.Error != nil {
+				errs = append(errs, result.Error)
+			}
+			continue
 		}
-		errs = append(errs, result.Error)
+		if best == nil || result.Gas.Cmp(best) > 0 {
+			best = result.Gas
+		}
 	}
-	return 0, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
+	if best == nil {
+		return 0, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
+	}
+	// 20% bump in wei so a 1-wei oracle is not rounded to 0 through gwei float.
+	bumped := new(big.Int).Mul(best, big.NewInt(12))
+	bumped.Div(bumped, big.NewInt(10))
+	if bumped.Sign() == 0 && best.Sign() > 0 {
+		bumped = big.NewInt(1)
+	}
+	return jarviscommon.BigToFloat(bumped, 9), nil
 }
 
 // add 50% to max gas price because the next blocks based price can be increased
@@ -742,7 +777,7 @@ func (er *EthReader) RecommendedGasPrice() (float64, error) {
 	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
 		if result.Error == nil {
-			return jarviscommon.BigToFloat(result.Gas, 9) * 1.5, result.Error
+			return jarviscommon.BigToFloat(result.Gas, 9) * gasPriceHeadroom, result.Error
 		}
 		errs = append(errs, result.Error)
 	}

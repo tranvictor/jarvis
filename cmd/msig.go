@@ -924,6 +924,29 @@ func approveClassicRef(cm *walletarmy.WalletManager, a *abi.ABI, r *batchResult)
 		appUI.Warn("Legacy tx — ignoring tip gas parameter.")
 	}
 
+	gasPrice := config.GasPrice
+	if gasPrice == 0 {
+		gasPrice, err = cm.Reader(network).RecommendedGasPrice()
+		if err != nil {
+			appUI.Error("Couldn't get recommended gas price: %s. Skip.", err)
+			r.status, r.reason = "failed", fmt.Sprintf("gas price: %s", err)
+			return
+		}
+	}
+	tipCap := 0.0
+	if txType == types.DynamicFeeTxType {
+		if config.TipGas > 0 {
+			tipCap = config.TipGas
+		} else {
+			tipCap, err = cm.Reader(network).GetSuggestedGasTipCap()
+			if err != nil {
+				appUI.Error("Couldn't estimate recommended gas tip: %s. Skip.", err)
+				r.status, r.reason = "failed", fmt.Sprintf("gas tip: %s", err)
+				return
+			}
+		}
+	}
+
 	var confirmHash string
 	minedTx, err := cm.EnsureTxWithHooks(
 		10,
@@ -934,10 +957,10 @@ func approveClassicRef(cm *walletarmy.WalletManager, a *abi.ABI, r *batchResult)
 		nil,
 		0,
 		2000000,
-		0,
-		0,
-		0,
-		0,
+		gasPrice,
+		config.ExtraGasPrice,
+		tipCap,
+		config.ExtraTipGas,
 		data,
 		network,
 		func(tx *types.Transaction, buildError error) error {

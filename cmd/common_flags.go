@@ -23,7 +23,7 @@ func AddCommonFlagsToTransactionalCmds(c *cobra.Command) {
 	c.PersistentFlags().
 		Float64VarP(&config.GasPrice, "gasprice", "p", 0, "Gas price in gwei. 0 = suggested by the network's explorer or nodes. The tx uses gasprice + extraprice")
 	c.PersistentFlags().
-		Float64VarP(&config.TipGas, "tipgas", "s", 0, "tip in gwei, will be use in dynamic fee tx, default value get from node.")
+		Float64VarP(&config.TipGas, "tipgas", "s", 0, "tip in gwei for type-2 txs. 0 = node oracle, raised to the implied market tip and a 1 gwei floor on Ethereum so the tx is not stuck with tip 0")
 	c.PersistentFlags().
 		Float64VarP(&config.ExtraGasPrice, "extraprice", "P", 0, "Extra gas price in gwei. The gas price to be used in the tx is gas price + extra gas price")
 	c.PersistentFlags().
