@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 )
 
@@ -84,7 +85,46 @@ func TestPartialCustomABIKeepsErrorWhenLookupFails(t *testing.T) {
 	if !strings.Contains(fc.Error, "no method with id") {
 		t.Errorf("error = %q, want it to name the unknown selector", fc.Error)
 	}
-	if len(fc.Data) != len(data) {
+	if fc.Data == nil || len(fc.Data) != len(data) {
 		t.Errorf("raw calldata not preserved for the undecodable call")
+	}
+}
+
+func TestAnalyzeFallsBackToERC20WhenExplorerHasNoABI(t *testing.T) {
+	target := "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+	spender := ethcommon.HexToAddress("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
+	data, err := jarviscommon.GetERC20ABI().Pack("approve", spender, big.NewInt(1))
+	if err != nil {
+		t.Fatalf("pack: %s", err)
+	}
+
+	fc := pureAnalyzer().AnalyzeFunctionCallRecursively(
+		noABIFound, big.NewInt(0), target, data, nil,
+	)
+	if fc.Error != "" {
+		t.Fatalf("unexpected error: %s", fc.Error)
+	}
+	if fc.Method != "approve" {
+		t.Fatalf("method = %q, want approve via ERC-20 fallback", fc.Method)
+	}
+}
+
+func TestAnalyzeMethodlessCustomABIFallsBackToERC20(t *testing.T) {
+	target := "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+	spender := ethcommon.HexToAddress("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
+	data, err := jarviscommon.GetERC20ABI().Pack("approve", spender, big.NewInt(1))
+	if err != nil {
+		t.Fatalf("pack: %s", err)
+	}
+	proxy := abiFromJSON(t, `[{"anonymous":false,"inputs":[{"indexed":true,"name":"implementation","type":"address"}],"name":"Upgraded","type":"event"}]`)
+	fc := pureAnalyzer().AnalyzeFunctionCallRecursively(
+		noABIFound, big.NewInt(0), target, data,
+		map[string]*abi.ABI{strings.ToLower(target): proxy},
+	)
+	if fc.Error != "" {
+		t.Fatalf("unexpected error: %s", fc.Error)
+	}
+	if fc.Method != "approve" {
+		t.Fatalf("method = %q, want approve via ERC-20 fallback", fc.Method)
 	}
 }
