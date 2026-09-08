@@ -215,6 +215,7 @@ func (g *SafeGateway) promptSafeConfirm(stx *safe.SafeTx, hash [32]byte) error {
 			Kind:      "Safe proposal",
 			Prompt:    "Sign this Safe proposal and submit to the transaction service?",
 			Signer:    g.owner.Address,
+			SafeAddr:  g.addr.Hex(),
 			Threshold: threshold,
 		})
 		if !cmdutil.ConfirmSigningCard(fullUI, card) {

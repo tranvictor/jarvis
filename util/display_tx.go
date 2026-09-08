@@ -392,11 +392,10 @@ func (p txPrinter) paymentTitle(d *FunctionCallDisplay) string {
 	if d == nil || d.Payment == nil {
 		return ""
 	}
-	line := "Send  " + d.Payment.Amount + "  →  " + p.text(d.Payment.To)
 	if d.Payment.From.Text != "" {
-		line += "   from " + p.text(d.Payment.From)
+		return "Send  " + d.Payment.Amount + "  from  " + p.text(d.Payment.From) + "  →  " + p.text(d.Payment.To)
 	}
-	return line
+	return "Send  " + d.Payment.Amount + "  →  " + p.text(d.Payment.To)
 }
 
 func (p txPrinter) printCallBody(u ui.UI, d *FunctionCallDisplay) {
