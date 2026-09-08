@@ -78,16 +78,29 @@ func BuildSafeSigningCard(
 		DelegateCall:   stx.Operation == safe.OpDelegateCall,
 		MultiSend:      isMultiSend,
 	}
+	if isContract, err := util.IsContract(stx.To.Hex(), network); err == nil {
+		warn.ToIsContract = isContract
+	}
+	if isERC20, err := util.IsERC20(stx.To.Hex(), network); err == nil && isERC20 {
+		warn.ToIsERC20 = true
+		util.GetERC20Symbol(stx.To.Hex(), network)
+		util.GetERC20Decimal(stx.To.Hex(), network)
+	}
 	if len(stx.Data) > 0 {
-		if isContract, err := util.IsContract(stx.To.Hex(), network); err == nil {
-			warn.ToIsContract = isContract
-		}
 		fc := decodeSafeCalldata(stx, network, resolver, analyzer, opt.ExtraABIs)
 		if fc != nil {
 			warn.Call = fc
 			card.Call = util.NewFunctionCallDisplay(fc, network)
 		} else {
 			card.RawData = "0x" + ethcommon.Bytes2Hex(stx.Data)
+		}
+	} else if stx.Value != nil && stx.Value.Sign() > 0 {
+		card.Call = util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{
+			Destination: toJarvis,
+			Value:       stx.Value,
+		}, network)
+		if !warn.ToIsContract {
+			card.ToLabel = "Recipient"
 		}
 	}
 	card.Warnings = SigningWarnings(warn)

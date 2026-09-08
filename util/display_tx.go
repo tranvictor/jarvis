@@ -374,16 +374,33 @@ func (p txPrinter) printNetEffect(rows []NetEffectDisplay) {
 // printCall renders the top-level call and its inner calls as an indented
 // tree instead of bordered tables.
 func (p txPrinter) printCall(d *FunctionCallDisplay) {
-	if d.Method == "" {
-		p.u.Subsection("Call  <undecoded>  →  " + p.text(d.Destination))
-	} else {
-		p.u.Subsection("Call  " + d.Method + "  →  " + p.text(d.Destination))
-	}
+	p.u.Subsection(p.callTitle(d))
 	p.printCallBody(p.u.Indent(), d)
 }
 
+func (p txPrinter) callTitle(d *FunctionCallDisplay) string {
+	if line := p.paymentTitle(d); line != "" {
+		return line
+	}
+	if d.Method == "" {
+		return "Call  <undecoded>  →  " + p.text(d.Destination)
+	}
+	return "Call  " + d.Method + "  →  " + p.text(d.Destination)
+}
+
+func (p txPrinter) paymentTitle(d *FunctionCallDisplay) string {
+	if d == nil || d.Payment == nil {
+		return ""
+	}
+	line := "Send  " + d.Payment.Amount + "  →  " + p.text(d.Payment.To)
+	if d.Payment.From.Text != "" {
+		line += "   from " + p.text(d.Payment.From)
+	}
+	return line
+}
+
 func (p txPrinter) printCallBody(u ui.UI, d *FunctionCallDisplay) {
-	if d.Value != "" {
+	if d.Value != "" && d.Payment == nil {
 		u.Info("%s %s", p.muted("value"), d.Value)
 	}
 	if d.Error != "" {
@@ -403,11 +420,15 @@ func (p txPrinter) printCallBody(u ui.UI, d *FunctionCallDisplay) {
 		u.Info("%s", line)
 	}
 	for _, inner := range d.InnerCalls {
-		method := inner.Method
-		if method == "" {
-			method = "<undecoded>"
+		if line := p.paymentTitle(inner); line != "" {
+			u.Info("↳ %s", line)
+		} else {
+			method := inner.Method
+			if method == "" {
+				method = "<undecoded>"
+			}
+			u.Info("↳ %s  →  %s", p.bold(method), p.text(inner.Destination))
 		}
-		u.Info("↳ %s  →  %s", p.bold(method), p.text(inner.Destination))
 		p.printCallBody(u.Indent(), inner)
 	}
 }

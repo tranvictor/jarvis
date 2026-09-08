@@ -82,14 +82,27 @@ func buildClassicMsigCard(
 		HasData:        len(data) > 0,
 		Call:           fc,
 	}
+	if isContract, err := util.IsContract(to, network); err == nil {
+		warn.ToIsContract = isContract
+	}
+	if isERC20, err := util.IsERC20(to, network); err == nil && isERC20 {
+		warn.ToIsERC20 = true
+		util.GetERC20Symbol(to, network)
+		util.GetERC20Decimal(to, network)
+	}
 	if len(data) > 0 {
-		if isContract, err := util.IsContract(to, network); err == nil {
-			warn.ToIsContract = isContract
-		}
 		if fc != nil && fc.Method != "" {
 			card.Call = util.NewFunctionCallDisplay(fc, network)
 		} else {
 			card.RawData = "0x" + ethcommon.Bytes2Hex(data)
+		}
+	} else if value != nil && value.Sign() > 0 {
+		card.Call = util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{
+			Destination: toJarvis,
+			Value:       value,
+		}, network)
+		if !warn.ToIsContract {
+			card.ToLabel = "Recipient"
 		}
 	}
 	card.Warnings = SigningWarnings(warn)

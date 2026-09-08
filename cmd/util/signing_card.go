@@ -27,6 +27,9 @@ type SigningCard struct {
 	// expected rather than a surprise.
 	Wallet string
 	To     ui.StyledText // empty Text for contract creation; see CreateAddress
+	// ToLabel overrides the destination row name ("Send to", "Safe calls",
+	// "Calls"). Native ETH sends to an EOA use "Recipient".
+	ToLabel string
 	// CreateAddress is the predicted address when the tx deploys a contract.
 	CreateAddress string
 	Value         string // "1.5 ETH"; empty hides the row
@@ -133,6 +136,8 @@ func ShowSigningCard(u ui.UI, c *SigningCard) {
 	} else if c.To.Text != "" {
 		toLabel := "Send to"
 		switch {
+		case c.ToLabel != "":
+			toLabel = c.ToLabel
 		case c.Safe != nil:
 			toLabel = "Safe calls"
 		case c.Classic != nil:
@@ -265,8 +270,10 @@ type WarningInput struct {
 	NativeDecimals uint64
 	HasData        bool
 	Call           *jarviscommon.FunctionCall
-	DelegateCall   bool
-	MultiSend      bool
+	// ToIsERC20 is true when the destination is an ERC-20 token contract.
+	ToIsERC20    bool
+	DelegateCall bool
+	MultiSend    bool
 	// SignerBalance and MaxCost enable the insufficient-funds warning; either
 	// nil skips it. MaxCost is value + gasLimit × max fee.
 	SignerBalance *big.Int
@@ -302,7 +309,9 @@ func SigningWarnings(in WarningInput) []string {
 	if in.To.Address != "" && !jarviscommon.IsKnownAddress(in.To) {
 		out = append(out, fmt.Sprintf("%s is not in your address book", in.To.Address))
 	}
-	if in.Value != nil && in.Value.Sign() > 0 && in.ToIsContract {
+	if w := erc20NativeValueWarnings(in.Call, in.To, in.ToIsERC20, in.Value, in.NativeSymbol, in.nativeDecimals()); len(w) > 0 {
+		out = append(out, w...)
+	} else if in.Value != nil && in.Value.Sign() > 0 && in.ToIsContract {
 		out = append(out, fmt.Sprintf("sends %s %s into a contract",
 			in.nativeAmount(in.Value), in.NativeSymbol))
 	}
@@ -375,6 +384,81 @@ func approvalWarnings(fc *jarviscommon.FunctionCall) []string {
 func isMaxUint(raw string) bool {
 	_, ok := jarviscommon.MaxUintLabel(raw)
 	return ok
+}
+
+func erc20NativeValueWarnings(
+	fc *jarviscommon.FunctionCall,
+	dest jarviscommon.Address,
+	destIsERC20 bool,
+	value *big.Int,
+	symbol string,
+	decimals uint64,
+) []string {
+	var out []string
+	if w := oneERC20NativeValueWarning(fc, dest, destIsERC20, value, symbol, decimals); w != "" {
+		out = append(out, w)
+	}
+	if fc == nil {
+		return out
+	}
+	for _, inner := range fc.DecodedFunctionCalls {
+		out = append(out, erc20NativeValueWarnings(
+			inner, inner.Destination, isERC20Write(inner.Method), inner.Value, symbol, decimals,
+		)...)
+	}
+	return out
+}
+
+func oneERC20NativeValueWarning(
+	fc *jarviscommon.FunctionCall,
+	dest jarviscommon.Address,
+	destIsERC20 bool,
+	value *big.Int,
+	symbol string,
+	decimals uint64,
+) string {
+	if value == nil || value.Sign() <= 0 {
+		return ""
+	}
+	method := ""
+	if fc != nil {
+		method = fc.Method
+	}
+	if isPayableTokenMethod(method) {
+		return ""
+	}
+	if !destIsERC20 && !isERC20Write(method) {
+		return ""
+	}
+	token := dest.Address
+	if jarviscommon.IsKnownAddress(dest) {
+		if label := strings.TrimSpace(strings.TrimSuffix(dest.Desc, " token")); label != "" {
+			token = label
+		}
+	}
+	amount := jarviscommon.CompactAmount(jarviscommon.BigToFloatString(value, decimals))
+	what := "call"
+	if method != "" {
+		what = method
+	}
+	return fmt.Sprintf("attaches %s %s to an ERC-20 %s on %s; the native value goes to the token contract, not the recipient",
+		amount, symbol, what, token)
+}
+
+func isERC20Write(method string) bool {
+	switch method {
+	case "transfer", "transferFrom", "approve", "increaseAllowance", "decreaseAllowance", "permit":
+		return true
+	}
+	return false
+}
+
+func isPayableTokenMethod(method string) bool {
+	switch method {
+	case "deposit", "depositTo":
+		return true
+	}
+	return false
 }
 
 // FormatGasLine renders the fee parameters of a tx in one line, cost first:
