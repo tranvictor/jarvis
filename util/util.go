@@ -335,21 +335,6 @@ func DisplayWaitAnalyze(
 	AnalyzeAndPrint(u, reader, analyzer, hash, network, false, "", a, customABIs, layout)
 }
 
-func AnalyzeMethodCallAndPrint(
-	u ui.UI,
-	analyzer TxAnalyzer,
-	value *big.Int,
-	destination string,
-	data []byte,
-	customABIs map[string]*abi.ABI,
-	network networks.Network,
-) (fc *jarviscommon.FunctionCall) {
-	fc = analyzer.AnalyzeFunctionCallRecursively(
-		GetABI, value, destination, data, customABIs)
-	DisplayFunctionCall(u, fc, network)
-	return fc
-}
-
 func AnalyzeAndPrint(
 	u ui.UI,
 	reader reader.Reader,
@@ -992,10 +977,6 @@ func IsProxyABI(a *abi.ABI) bool {
 	if isGnosis {
 		return false
 	}
-
-	// if a.Fallback.String() != "" {
-	// 	return true
-	// }
 
 	for _, m := range PROXY_METHODS {
 		_, found := a.Methods[m]

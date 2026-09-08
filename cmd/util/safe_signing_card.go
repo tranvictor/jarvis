@@ -2,13 +2,11 @@ package util
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethcommon "github.com/ethereum/go-ethereum/common"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
-	"github.com/tranvictor/jarvis/config"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/safe"
 	"github.com/tranvictor/jarvis/ui"
@@ -82,32 +80,9 @@ func BuildSafeSigningCard(
 		DelegateCall:   stx.Operation == safe.OpDelegateCall,
 		MultiSend:      isMultiSend,
 	}
-	if isContract, err := util.IsContract(stx.To.Hex(), network); err == nil {
-		warn.ToIsContract = isContract
-	}
-	if isERC20, err := util.IsERC20(stx.To.Hex(), network); err == nil && isERC20 {
-		warn.ToIsERC20 = true
-		util.GetERC20Symbol(stx.To.Hex(), network)
-		util.GetERC20Decimal(stx.To.Hex(), network)
-	}
-	if len(stx.Data) > 0 {
-		fc := decodeSafeCalldata(stx, network, resolver, analyzer, opt.ExtraABIs)
-		if fc != nil {
-			warn.Call = fc
-			card.Call = util.NewFunctionCallDisplay(fc, network)
-		} else {
-			card.RawData = "0x" + ethcommon.Bytes2Hex(stx.Data)
-		}
-	} else if stx.Value != nil && stx.Value.Sign() > 0 {
-		card.Call = util.NewFunctionCallDisplay(&jarviscommon.FunctionCall{
-			Destination: toJarvis,
-			Value:       stx.Value,
-		}, network)
-		if !warn.ToIsContract {
-			card.ToLabel = "Recipient"
-		}
-	}
-	card.Warnings = SigningWarnings(warn)
+	fillDestinationWarn(&warn, stx.To.Hex(), network)
+	fc := decodeSafeCalldata(stx, network, resolver, analyzer, opt.ExtraABIs)
+	attachMultisigInnerCall(card, &warn, toJarvis, stx.Value, stx.Data, fc, network, false)
 	return card
 }
 
@@ -118,38 +93,7 @@ func decodeSafeCalldata(
 	analyzer util.TxAnalyzer,
 	extraABIs map[string]*abi.ABI,
 ) *jarviscommon.FunctionCall {
-	if analyzer == nil {
-		return nil
-	}
-	customABIs := map[string]*abi.ABI{}
-	for addr, a := range extraABIs {
-		customABIs[strings.ToLower(addr)] = a
-	}
-	if resolver != nil {
-		destAbi, err := resolver.ConfigToABI(
-			stx.To.Hex(), config.ForceERC20ABI, config.CustomABI, network,
-		)
-		if err == nil {
-			if _, taken := customABIs[strings.ToLower(stx.To.Hex())]; !taken {
-				customABIs[strings.ToLower(stx.To.Hex())] = destAbi
-			}
-		}
-	}
-	// Always run the analyzer, even when the explorer ABI lookup failed.
-	// AnalyzeFunctionCallRecursively falls back to the standard ERC-20 ABI
-	// (and MultiSend) so approve/transfer still decode. Proxy destinations
-	// must already have been followed to their implementation ABI by
-	// GetABI / ConfigToABI; otherwise the methodless proxy ABI is used.
-	return analyzer.AnalyzeFunctionCallRecursively(
-		lookupABI(resolver), stx.Value, stx.To.Hex(), stx.Data, customABIs,
-	)
-}
-
-func lookupABI(resolver ABIResolver) jarviscommon.ABIDatabase {
-	if resolver != nil {
-		return resolver.GetABI
-	}
-	return util.GetABI
+	return decodeSigningCalldata(stx.To.Hex(), stx.Value, stx.Data, network, resolver, analyzer, extraABIs)
 }
 
 func safeSignerLine(s safe.OwnerSig, network jarvisnetworks.Network) ui.StyledText {

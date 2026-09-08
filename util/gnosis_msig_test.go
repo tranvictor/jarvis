@@ -46,9 +46,8 @@ func TestGnosisMsigTxIDFromLogs(t *testing.T) {
 
 func TestGnosisMsigTxIDFromConfirmationLog(t *testing.T) {
 	// confirmTransaction emits Confirmation(sender, transactionId), not Submission.
-	// Polygon tx 0x76766bc8… is this shape: users paste the approve hash, not the init hash.
-	msig := "0x1b0868fd8a174e979135812db866e5eaed4b3357"
-	sender := common.HexToAddress("0xc18ebcdbcffad08ce433dd10bdef02424bd24e5a")
+	msig := "0x1111111111111111111111111111111111111111"
+	sender := common.HexToAddress("0x2222222222222222222222222222222222222222")
 	confirm := GetGnosisMsigABI().Events["Confirmation"]
 	logs := []*types.Log{{
 		Address: common.HexToAddress(msig),

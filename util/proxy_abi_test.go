@@ -92,7 +92,7 @@ func TestGetABIFollowsExplorerReportedImplementation(t *testing.T) {
 			}`)
 		case strings.EqualFold(addr, impl):
 			io.WriteString(w, `{
-				"name":"aeWETH",
+				"name":"TokenImpl",
 				"isVerified":true,
 				"abi":[{"type":"function","name":"withdraw","inputs":[{"name":"wad","type":"uint256"}],"outputs":[],"stateMutability":"nonpayable"}]
 			}`)

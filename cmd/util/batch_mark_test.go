@@ -8,13 +8,13 @@ func TestAnnotateBatch(t *testing.T) {
 	if got := AnnotateBatch("EOA transaction"); got != "EOA transaction" {
 		t.Fatalf("outside a batch: %q", got)
 	}
-	if BatchItemMark() != "" {
-		t.Fatalf("mark should start empty, got %q", BatchItemMark())
+	if batchItemMark != "" {
+		t.Fatalf("mark should start empty, got %q", batchItemMark)
 	}
 
 	SetBatchItem(12, 87)
-	if BatchItemMark() != "[12/87]" {
-		t.Fatalf("mark = %q", BatchItemMark())
+	if batchItemMark != "[12/87]" {
+		t.Fatalf("mark = %q", batchItemMark)
 	}
 	if got := AnnotateBatch("EOA transaction"); got != "[12/87] EOA transaction" {
 		t.Fatalf("kind: %q", got)
@@ -27,12 +27,12 @@ func TestAnnotateBatch(t *testing.T) {
 	}
 
 	SetBatchItem(0, 10)
-	if BatchItemMark() != "" {
-		t.Fatalf("invalid index must clear, got %q", BatchItemMark())
+	if batchItemMark != "" {
+		t.Fatalf("invalid index must clear, got %q", batchItemMark)
 	}
 	SetBatchItem(1, 1)
-	if BatchItemMark() != "[1/1]" {
-		t.Fatalf("single item: %q", BatchItemMark())
+	if batchItemMark != "[1/1]" {
+		t.Fatalf("single item: %q", batchItemMark)
 	}
 	ClearBatchItem()
 	if AnnotateBatch("approved") != "approved" {

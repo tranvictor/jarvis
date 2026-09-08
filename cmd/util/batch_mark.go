@@ -23,9 +23,6 @@ func SetBatchItem(i, total int) {
 // so a later signing card in the same process is not mislabelled.
 func ClearBatchItem() { batchItemMark = "" }
 
-// BatchItemMark returns the current "[i/n]" stamp, or empty outside a batch.
-func BatchItemMark() string { return batchItemMark }
-
 // AnnotateBatch prefixes s with the current [i/n] mark. No-op outside a
 // batch or when s is empty.
 func AnnotateBatch(s string) string {

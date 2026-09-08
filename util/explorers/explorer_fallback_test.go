@@ -10,11 +10,11 @@ import (
 )
 
 func TestApiEndpointDoesNotDoubleAPI(t *testing.T) {
-	ee := NewEtherscanLikeExplorer("https://robinscan.io/api", "", 4663)
-	if got := ee.apiEndpoint(); got != "https://robinscan.io/api" {
+	ee := NewEtherscanLikeExplorer("https://scan.example/api", "", 1)
+	if got := ee.apiEndpoint(); got != "https://scan.example/api" {
 		t.Fatalf("apiEndpoint = %q", got)
 	}
-	if got := ee.origin(); got != "https://robinscan.io" {
+	if got := ee.origin(); got != "https://scan.example" {
 		t.Fatalf("origin = %q", got)
 	}
 	ee = NewEtherscanLikeExplorer("https://api.etherscan.io/v2", "", 1)
@@ -24,7 +24,7 @@ func TestApiEndpointDoesNotDoubleAPI(t *testing.T) {
 }
 
 func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {
-	const addr = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
+	const addr = "0xa11ce00000000000000000000000000000000001"
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -38,11 +38,11 @@ func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{
-			"address":"0x0bd7d308f8e1639fab988df18a8011f41eacad73",
+			"address":"0xa11ce00000000000000000000000000000000001",
 			"isVerified":true,
 			"name":"TransparentUpgradeableProxy",
 			"proxyType":"eip1967",
-			"implementation":"0xc6b81b429797e0f555440b70cd99e032d7ae947e",
+			"implementation":"0xa11ce00000000000000000000000000000000002",
 			"abi":[{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"implementation","type":"address"}],"name":"Upgraded","type":"event"}]
 		}`)
 	})
@@ -69,7 +69,7 @@ func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {
 	if !info.IsVerified || !info.IsProxy {
 		t.Fatalf("verified proxy: %+v", info)
 	}
-	if !strings.EqualFold(info.Implementation, "0xc6b81b429797e0f555440b70cd99e032d7ae947e") {
+	if !strings.EqualFold(info.Implementation, "0xa11ce00000000000000000000000000000000002") {
 		t.Fatalf("implementation = %q", info.Implementation)
 	}
 	if info.Name != "TransparentUpgradeableProxy" {
@@ -79,8 +79,8 @@ func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {
 
 func TestGetABIStringFollowsMethodlessProxyImplementation(t *testing.T) {
 	const (
-		proxy = "0x0Bd7D308f8E1639FAb988df18A8011f41EAcAD73"
-		impl  = "0xc6b81b429797e0f555440b70cd99e032d7ae947e"
+		proxy = "0xa11ce00000000000000000000000000000000001"
+		impl  = "0xa11ce00000000000000000000000000000000002"
 	)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +94,7 @@ func TestGetABIStringFollowsMethodlessProxyImplementation(t *testing.T) {
 				"name":"TransparentUpgradeableProxy",
 				"isVerified":true,
 				"proxyType":"eip1967",
-				"implementation":"0xc6b81b429797e0f555440b70cd99e032d7ae947e",
+				"implementation":"0xa11ce00000000000000000000000000000000002",
 				"abi":[
 					{"type":"constructor","inputs":[]},
 					{"anonymous":false,"inputs":[{"indexed":true,"name":"implementation","type":"address"}],"name":"Upgraded","type":"event"},
@@ -103,7 +103,7 @@ func TestGetABIStringFollowsMethodlessProxyImplementation(t *testing.T) {
 			}`)
 		case strings.EqualFold(strings.TrimPrefix(r.URL.Path, "/api/contracts/"), impl):
 			io.WriteString(w, `{
-				"name":"aeWETH",
+				"name":"TokenImpl",
 				"isVerified":true,
 				"abi":[
 					{"type":"function","name":"deposit","inputs":[],"outputs":[],"stateMutability":"payable"},
@@ -142,7 +142,7 @@ func TestGetABIStringFallsBackToBlockscoutV2(t *testing.T) {
 	mux.HandleFunc("/api/v2/smart-contracts/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{
-			"name":"WETH",
+			"name":"Token",
 			"is_verified":true,
 			"is_proxy":true,
 			"implementations":[{"address":"0x00000000000000000000000000000000000000aa"}],
