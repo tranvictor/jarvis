@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — terminal output redesign
+## 0.3.0 — terminal output redesign
 
 Everything jarvis prints was reworked so that the information you act on
 comes first and reads the same way across `info`, signing and batch flows.
