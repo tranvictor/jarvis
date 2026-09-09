@@ -11,7 +11,6 @@ type ContractInfo struct {
 }
 
 type BlockExplorer interface {
-	RecommendedGasPrice() (float64, error)
 	GetABIString(address string) (string, error)
 	// GetContractInfo returns the verified-source metadata for a contract:
 	// its display name (e.g. "InitializableImmutableAdminUpgradeabilityProxy"),

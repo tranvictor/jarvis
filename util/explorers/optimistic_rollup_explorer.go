@@ -5,29 +5,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"sync"
 )
 
 type OptimisticRollupExplorer struct {
-	gpmu sync.Mutex
-
 	Domain string
 	APIKey string
 }
 
 func NewOptimisticRollupExplorer(domain string, apiKey string) *OptimisticRollupExplorer {
 	return &OptimisticRollupExplorer{
-		gpmu:   sync.Mutex{},
 		Domain: domain,
 		APIKey: apiKey,
 	}
-}
-
-func (ee *OptimisticRollupExplorer) RecommendedGasPrice() (float64, error) {
-	ee.gpmu.Lock()
-	defer ee.gpmu.Unlock()
-
-	return 0, fmt.Errorf("not implemented")
 }
 
 // SmartContract represents the response structure from the HTTP call for smart contract verification details.

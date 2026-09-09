@@ -441,15 +441,6 @@ func EthReader(network networks.Network) (*reader.EthReader, error) {
 	}
 
 	result = reader.NewEthReaderGeneric(nodes, network)
-	// etherscanAPIKey := strings.Trim(os.Getenv(ETHERSCAN_API_KEY_VAR), " ")
-	// if etherscanAPIKey != "" {
-	// 	result.SetEtherscanAPIKey(etherscanAPIKey)
-	// }
-
-	// bscscanAPIKey := strings.Trim(os.Getenv(BSCSCAN_API_KEY_VAR), " ")
-	// if bscscanAPIKey != "" {
-	// 	result.SetBSCScanAPIKey(bscscanAPIKey)
-	// }
 	return result, nil
 }
 

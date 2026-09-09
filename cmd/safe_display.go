@@ -44,10 +44,6 @@ type safeCardOptions struct {
 	prompt    string
 }
 
-func showSafeTxToConfirm(stx *safe.SafeTx, hash [32]byte, tc *cmdutil.TxContext) {
-	cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(stx, hash, tc, safeCardOptions{kind: "Safe transaction"}))
-}
-
 func buildSafeSigningCard(
 	stx *safe.SafeTx,
 	hash [32]byte,

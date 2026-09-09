@@ -19,11 +19,8 @@ type Network interface {
 
 	GetBlockExplorerAPIKeyVariableName() string
 	GetBlockExplorerAPIURL() string
-	RecommendedGasPrice() (float64, error)
 	GetABIString(address string) (string, error)
 	GetContractInfo(address string) (explorers.ContractInfo, error)
-
-	IsSyncTxSupported() bool
 
 	// GetSafeTxServiceURL returns the Safe Transaction Service base URL
 	// this network is configured with, or "" when it has none. It is

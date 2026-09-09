@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -169,10 +168,6 @@ func (er *EthReader) TxInfoFromHash(tx string) (jarviscommon.TxInfo, error) {
 		}, err
 	}
 
-	// block, _ := er.HeaderByNumber(receipt.BlockNumber.Int64())
-	// only byzantium has status field at the moment
-	// mainnet, ropsten are byzantium, other chains such as
-	// devchain, kovan are not.
 	// if PostState is a hash, it is pre-byzantium and all
 	// txs with PostState are considered done
 	if len(receipt.PostState) == len(common.Hash{}) {
@@ -597,19 +592,6 @@ func (er *EthReader) ReadContractWithABI(
 	return abi.UnpackIntoInterface(result, method, responseBytes)
 }
 
-func (er *EthReader) ReadContract(
-	result interface{},
-	caddr string,
-	method string,
-	args ...interface{},
-) error {
-	abi, err := er.GetABI(caddr)
-	if err != nil {
-		return err
-	}
-	return er.ReadContractWithABI(result, caddr, abi, method, args...)
-}
-
 func (er *EthReader) ERC20Symbol(caddr string) (string, error) {
 	abi := jarviscommon.GetERC20ABI()
 	var result string
@@ -869,17 +851,4 @@ func (er *EthReader) GetABIString(address string) (string, error) {
 // that as "no name available" rather than as an error.
 func (er *EthReader) GetContractInfo(address string) (jarvisnetworks.ContractInfo, error) {
 	return er.be.GetContractInfo(address)
-}
-
-func (er *EthReader) GetABI(address string) (*abi.ABI, error) {
-	body, err := er.GetABIString(address)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := abi.JSON(strings.NewReader(body))
-	if err != nil {
-		return nil, err
-	}
-	return &result, nil
 }

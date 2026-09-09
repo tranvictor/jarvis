@@ -44,7 +44,7 @@ func TestGetSafeTxServiceURLDefaultsEmpty(t *testing.T) {
 }
 
 func TestGenericOptimismSafeTxServiceURL(t *testing.T) {
-	n := NewGenericOptimismNetwork(GenericOptimismNetworkConfig{
+	n := NewGenericOptimismNetwork(GenericEtherscanNetworkConfig{
 		Name:             "custom-op",
 		ChainID:          4664,
 		SafeTxServiceURL: "https://safe-tx-op.example.com/",

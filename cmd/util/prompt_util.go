@@ -76,36 +76,12 @@ func PromptInput(u ui.UI, label string) string {
 	return u.Ask(nil)
 }
 
-// PromptFilePath shows an optional label and reads a file path.
-func PromptFilePath(u ui.UI, label string) string {
-	return PromptInput(u, label)
-}
-
-// PromptParam prompts for a single ABI parameter value.
-// If prefill is non-empty the user is not prompted; the prefill is used directly.
-func PromptParam(
-	u ui.UI,
-	interactiveMode bool,
-	input abi.Argument,
-	prefill string,
-	network jarvisnetworks.Network,
-) (any, error) {
-	raw := prefill
-	if raw == "" {
-		raw = u.Ask(nil)
-	}
-	return convertParamInput(input, raw, network)
-}
-
 // convertParamInput turns one line of user input into the typed value the ABI
 // encoder expects for input. Arrays and tuples are entered as a single
 // bracketed line ("[a, b]", "(a, b)") and delegated to ConvertParamStrToArray,
 // which uses abi.Type.GetType() via reflect to build the exact slice type.
 func convertParamInput(input abi.Argument, raw string, network jarvisnetworks.Network) (any, error) {
-	inpStr, err := util.InterpretInput(strings.TrimSpace(raw), network)
-	if err != nil {
-		return nil, fmt.Errorf("couldn't interpret input: %w", err)
-	}
+	inpStr := strings.TrimSpace(raw)
 	switch input.Type.T {
 	case abi.SliceTy, abi.ArrayTy:
 		return util.ConvertParamStrToArray(input.Name, input.Type, inpStr, network)

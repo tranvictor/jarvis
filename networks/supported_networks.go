@@ -17,7 +17,6 @@ var supportedNetworks = []Network{
 	Ropsten,
 	Kovan,
 	Rinkeby,
-	// TomoMainnet,
 	BSCMainnet,
 	BSCTestnet,
 	Matic,
@@ -30,7 +29,6 @@ var supportedNetworks = []Network{
 	ScrollMainnet,
 	BaseMainnet,
 	PolygonZkevmMainnet,
-	// Mumbai,
 	LineaMainnet,
 	BitfiTestnet,
 }
