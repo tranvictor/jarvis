@@ -168,6 +168,10 @@ byte-for-byte compatible apart from the new `transfers`, `net_effect`,
   `jarvis network list` is a table of names, chain IDs and RPC **hosts**
   (never the full URL, so default Infura keys stay off the screen);
   `jarvis msig chains list` uses the same table primitive.
+- Safe `msig execute` can be sent by any local wallet. Safe
+  `execTransaction` does not require the sender to be an owner once the
+  signature threshold is met; `init` and `approve` still do. Classic
+  execute is unchanged (owner-only).
 - Classic `msig info` / `approve` show the inner call in a rounded box
   (Multisig / Tx ID / Status / Signed by); the following EOA
   confirm/revoke/execute card is a quiet heading that collapses the inner
