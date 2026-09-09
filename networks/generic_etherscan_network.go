@@ -25,7 +25,6 @@ type GenericEtherscanNetworkConfig struct {
 	BlockExplorerAPIKeyVariableName string            `json:"block_explorer_api_key_variable_name"`
 	BlockExplorerAPIURL             string            `json:"block_explorer_api_url"`
 	MultiCallContractAddress        common.Address    `json:"multi_call_contract_address"`
-	SyncedTxSupported               bool              `json:"synced_tx_supported"`
 	// SafeTxServiceURL is optional: chains that Safe doesn't list in its
 	// own registry (private/custom chains especially) can point jarvis at
 	// a self-hosted Safe Transaction Service here. omitempty keeps it out
@@ -33,10 +32,76 @@ type GenericEtherscanNetworkConfig struct {
 	SafeTxServiceURL string `json:"safe_tx_service_url,omitempty"`
 }
 
+// networkMeta holds the JSON-serializable chain config and implements the
+// Network methods that don't depend on the explorer backend. Both
+// GenericEtherscanNetwork and GenericOptimismNetwork embed it.
+type networkMeta struct {
+	Config GenericEtherscanNetworkConfig
+}
+
+func (m *networkMeta) GetName() string {
+	return m.Config.Name
+}
+
+func (m *networkMeta) GetChainID() uint64 {
+	return m.Config.ChainID
+}
+
+func (m *networkMeta) GetAlternativeNames() []string {
+	return m.Config.AlternativeNames
+}
+
+func (m *networkMeta) GetNativeTokenSymbol() string {
+	return m.Config.NativeTokenSymbol
+}
+
+func (m *networkMeta) GetNativeTokenDecimal() uint64 {
+	return m.Config.NativeTokenDecimal
+}
+
+func (m *networkMeta) GetBlockTime() time.Duration {
+	return time.Duration(m.Config.BlockTime) * time.Second
+}
+
+func (m *networkMeta) GetNodeVariableName() string {
+	return m.Config.NodeVariableName
+}
+
+func (m *networkMeta) GetDefaultNodes() map[string]string {
+	return m.Config.DefaultNodes
+}
+
+func (m *networkMeta) GetBlockExplorerAPIKeyVariableName() string {
+	return m.Config.BlockExplorerAPIKeyVariableName
+}
+
+func (m *networkMeta) GetBlockExplorerAPIURL() string {
+	return m.Config.BlockExplorerAPIURL
+}
+
+// GetSafeTxServiceURL normalises the configured URL the same way
+// txservice does for the env overrides: trimmed, with no trailing slash,
+// so callers can concatenate paths onto it unconditionally.
+func (m *networkMeta) GetSafeTxServiceURL() string {
+	return strings.TrimRight(strings.TrimSpace(m.Config.SafeTxServiceURL), "/")
+}
+
+func (m *networkMeta) MultiCallContract() string {
+	return m.Config.MultiCallContractAddress.Hex()
+}
+
+func (m *networkMeta) MarshalJSON() ([]byte, error) {
+	return json.Marshal(m.Config)
+}
+
+func (m *networkMeta) UnmarshalJSON(data []byte) error {
+	return json.Unmarshal(data, &m.Config)
+}
+
 // GenericEtherscanNetwork is a generic implementation of a network that uses Etherscan as their official explorer
 type GenericEtherscanNetwork struct {
 	*explorers.EtherscanLikeExplorer
-	Config GenericEtherscanNetworkConfig
+	networkMeta
 }
 
 func NewGenericEtherscanNetwork(config GenericEtherscanNetworkConfig) *GenericEtherscanNetwork {
@@ -44,72 +109,8 @@ func NewGenericEtherscanNetwork(config GenericEtherscanNetworkConfig) *GenericEt
 	if apiKey == "" {
 		apiKey = defaultAPIKey
 	}
-	result := &GenericEtherscanNetwork{
+	return &GenericEtherscanNetwork{
 		EtherscanLikeExplorer: explorers.NewEtherscanLikeExplorer(config.BlockExplorerAPIURL, apiKey, config.ChainID),
-		Config:                config,
+		networkMeta:           networkMeta{Config: config},
 	}
-	return result
-}
-
-func (gn *GenericEtherscanNetwork) GetName() string {
-	return gn.Config.Name
-}
-
-func (gn *GenericEtherscanNetwork) GetChainID() uint64 {
-	return gn.Config.ChainID
-}
-
-func (gn *GenericEtherscanNetwork) GetAlternativeNames() []string {
-	return gn.Config.AlternativeNames
-}
-
-func (gn *GenericEtherscanNetwork) GetNativeTokenSymbol() string {
-	return gn.Config.NativeTokenSymbol
-}
-
-func (gn *GenericEtherscanNetwork) GetNativeTokenDecimal() uint64 {
-	return gn.Config.NativeTokenDecimal
-}
-
-func (gn *GenericEtherscanNetwork) GetBlockTime() time.Duration {
-	return time.Duration(gn.Config.BlockTime) * time.Second
-}
-
-func (gn *GenericEtherscanNetwork) GetNodeVariableName() string {
-	return gn.Config.NodeVariableName
-}
-
-func (gn *GenericEtherscanNetwork) GetDefaultNodes() map[string]string {
-	return gn.Config.DefaultNodes
-}
-
-func (gn *GenericEtherscanNetwork) GetBlockExplorerAPIKeyVariableName() string {
-	return gn.Config.BlockExplorerAPIKeyVariableName
-}
-
-func (gn *GenericEtherscanNetwork) GetBlockExplorerAPIURL() string {
-	return gn.Config.BlockExplorerAPIURL
-}
-
-// GetSafeTxServiceURL normalises the configured URL the same way
-// txservice does for the env overrides: trimmed, with no trailing slash,
-// so callers can concatenate paths onto it unconditionally.
-func (gn *GenericEtherscanNetwork) GetSafeTxServiceURL() string {
-	return strings.TrimRight(strings.TrimSpace(gn.Config.SafeTxServiceURL), "/")
-}
-
-func (gn *GenericEtherscanNetwork) MultiCallContract() string {
-	return gn.Config.MultiCallContractAddress.Hex()
-}
-
-func (gn *GenericEtherscanNetwork) MarshalJSON() ([]byte, error) {
-	return json.Marshal(gn.Config)
-}
-
-func (gn *GenericEtherscanNetwork) UnmarshalJSON(data []byte) error {
-	return json.Unmarshal(data, &gn.Config)
-}
-
-func (gn *GenericEtherscanNetwork) IsSyncTxSupported() bool {
-	return gn.Config.SyncedTxSupported
 }

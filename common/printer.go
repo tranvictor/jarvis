@@ -239,26 +239,6 @@ func IsZeroAddress(hex string) bool {
 	return strings.Trim(hex[2:], "0") == ""
 }
 
-// VerboseAddress formats an Address for terminal display. The description is
-// wrapped in ANSI color via NameWithColor. Do NOT use the output as data
-// (e.g. JSON) — use PlainAddress for that.
-func VerboseAddress(addr Address) string {
-	if addr.Address == "" {
-		return ""
-	}
-	if IsZeroAddress(addr.Address) {
-		return fmt.Sprintf("%s (%s)", addr.Address, NameWithColor("zero address"))
-	}
-	if addr.Decimal != 0 {
-		return fmt.Sprintf(
-			"%s (%s)",
-			addr.Address,
-			NameWithColor(fmt.Sprintf("%s - %d", addr.Desc, addr.Decimal)),
-		)
-	}
-	return fmt.Sprintf("%s (%s)", addr.Address, NameWithColor(addr.Desc))
-}
-
 // PlainValue returns a human-readable string for a single decoded ABI value
 // with no ANSI color codes. Use in build/data phases.
 func PlainValue(value Value) string {

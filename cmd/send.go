@@ -698,7 +698,7 @@ func sendFromSafe(
 	stx := safe.NewSafeTx(safeTo, safeValue, safeData, safe.OpCall, safeNonce)
 	hash := stx.SafeTxHash(domainSep)
 
-	// Synthesise a TxContext just rich enough for showSafeTxToConfirm to
+	// Synthesise a TxContext just rich enough for the signing card to
 	// resolve the destination ABI and decode the inner calldata. The
 	// fields we omit (FromAcc, Broadcaster, etc.) are not consulted by
 	// the display path.

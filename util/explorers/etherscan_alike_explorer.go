@@ -4,22 +4,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
-const CACHE_TIME_OUT int64 = 30 // 30 seconds
-
 type EtherscanLikeExplorer struct {
-	gpmu              sync.Mutex
-	latestGasPrice    float64
-	gasPriceTimestamp int64
-	ChainID           uint64
+	ChainID uint64
 
 	Domain string
 	APIKey string
@@ -27,81 +19,10 @@ type EtherscanLikeExplorer struct {
 
 func NewEtherscanLikeExplorer(domain string, apiKey string, chainID uint64) *EtherscanLikeExplorer {
 	return &EtherscanLikeExplorer{
-		gpmu:    sync.Mutex{},
 		Domain:  domain,
 		APIKey:  apiKey,
 		ChainID: chainID,
 	}
-}
-
-func (ee *EtherscanLikeExplorer) RecommendedGasPriceAPIURL() string {
-	return fmt.Sprintf(
-		"%s/api?chainid=%dmodule=gastracker&action=gasoracle&apikey=%s",
-		ee.Domain,
-		ee.ChainID,
-		ee.APIKey,
-	)
-}
-
-type etherscanGasResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-	Result  struct {
-		LastBlock       string `json:"LastBlock"`
-		SafeGasPrice    string `json:"SafeGasPrice"`
-		ProposeGasPrice string `json:"ProposeGasPrice"`
-		FastGasPrice    string `json:"FastGasPrice"`
-	} `json:"result"`
-}
-
-func (ee *EtherscanLikeExplorer) getGasPrice() (low, average, fast float64, err error) {
-	resp, err := http.Get(ee.RecommendedGasPriceAPIURL())
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	defer resp.Body.Close()
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	prices := etherscanGasResponse{}
-	err = json.Unmarshal(body, &prices)
-	if err != nil {
-		return 0, 0, 0, fmt.Errorf(
-			"couldn't unmarshal %s to gas price struct, err: %w",
-			string(body),
-			err,
-		)
-	}
-	low, err = strconv.ParseFloat(prices.Result.SafeGasPrice, 64)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	average, err = strconv.ParseFloat(prices.Result.ProposeGasPrice, 64)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	fast, err = strconv.ParseFloat(prices.Result.FastGasPrice, 64)
-	if err != nil {
-		return 0, 0, 0, err
-	}
-	return low, average, fast, nil
-}
-
-func (ee *EtherscanLikeExplorer) RecommendedGasPrice() (float64, error) {
-	ee.gpmu.Lock()
-	defer ee.gpmu.Unlock()
-
-	if ee.latestGasPrice == 0 || time.Now().Unix()-ee.gasPriceTimestamp > CACHE_TIME_OUT {
-		_, _, esFast, err := ee.getGasPrice()
-		if err != nil {
-			return 0, fmt.Errorf("etherscan gas price lookup failed: %w", err)
-		}
-
-		ee.latestGasPrice = esFast
-		ee.gasPriceTimestamp = time.Now().Unix()
-	}
-	return ee.latestGasPrice, nil
 }
 
 func (ee *EtherscanLikeExplorer) GetABIStringAPIURL(address string) string {

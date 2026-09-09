@@ -113,10 +113,6 @@ func ConvertToUintOrBig(str string, size int, network jarvisnetworks.Network) (i
 	}
 }
 
-func ConvertEthereumTypeToInputString(t abi.Type, value interface{}) (string, error) {
-	return "", fmt.Errorf("not implemented")
-}
-
 func ConvertParamStrToTupleType(
 	name string,
 	t abi.Type,

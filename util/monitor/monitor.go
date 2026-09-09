@@ -84,19 +84,8 @@ func (tm TxMonitor) MakeStatusChannel(tx string) <-chan string {
 	return status
 }
 
-func (tm TxMonitor) MakeWaitChannel(tx string) <-chan common.TxInfo {
-	result := make(chan common.TxInfo)
-	go tm.periodicCheck(tx, result, nil, 5*time.Second)
-	return result
-}
-
 func (tm TxMonitor) MakeWaitChannelWithInterval(tx string, interval time.Duration) <-chan common.TxInfo {
 	result := make(chan common.TxInfo)
 	go tm.periodicCheck(tx, result, nil, interval)
 	return result
-}
-
-func (tm TxMonitor) BlockingWait(tx string) common.TxInfo {
-	wChannel := tm.MakeWaitChannel(tx)
-	return <-wChannel
 }

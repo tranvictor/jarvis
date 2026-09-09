@@ -41,26 +41,6 @@ func (self *MultisigContract) Owners() ([]string, error) {
 	return result, nil
 }
 
-func (self *MultisigContract) IsExecuted(txid *big.Int) (bool, error) {
-	_, _, _, executed, _, err := self.TransactionInfo(txid)
-	return executed, err
-}
-
-func (self *MultisigContract) IsConfirmed(txid *big.Int) (bool, error) {
-	r := new(bool)
-	err := self.reader.ReadContractWithABI(
-		r,
-		self.Address,
-		self.Abi,
-		"isConfirmed",
-		txid,
-	)
-	if err != nil {
-		return false, err
-	}
-	return *r, err
-}
-
 func (self *MultisigContract) NOTransactions() (int64, error) {
 	r := big.NewInt(0)
 	err := self.reader.ReadContractWithABI(
@@ -220,7 +200,6 @@ func overrideConfirmation(stateDiff map[common.Hash]common.Hash, transactionID i
 	transactionHash := common.BigToHash(big.NewInt(int64(transactionID)))
 	ownerAddress := common.HexToAddress(owner)
 	addressHash := common.BytesToHash(ownerAddress[:])
-	fmt.Println(addressHash)
 
 	mapSlot := crypto.Keccak256Hash(
 		transactionHash[:],

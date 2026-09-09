@@ -211,7 +211,7 @@ func handleAddKeystoreGivenPath(keystorePath string) error {
 
 func handleAddKeystore() {
 	appUI.Warn("A keystore is convenient but less safe than a hardware wallet; keep it for low-value frequent tasks.")
-	keystorePath := cmdutil.PromptFilePath(appUI, "Please enter the path to your keystore file")
+	keystorePath := cmdutil.PromptInput(appUI, "Please enter the path to your keystore file")
 	handleAddKeystoreGivenPath(keystorePath)
 }
 
