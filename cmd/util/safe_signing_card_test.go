@@ -10,7 +10,6 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
-	"github.com/tranvictor/jarvis/safe"
 	"github.com/tranvictor/jarvis/txanalyzer"
 	"github.com/tranvictor/jarvis/util/addrbook"
 )
@@ -39,13 +38,7 @@ func TestDecodeSafeCalldataFallsBackToERC20WhenExplorerHasNoABI(t *testing.T) {
 	analyzer := txanalyzer.NewGenericAnalyzerWithContext(
 		txanalyzer.NewAnalysisContextWithResolver(nil, network, addrbook.Map{}),
 	)
-	fc := decodeSafeCalldata(
-		&safe.SafeTx{To: token, Value: big.NewInt(0), Data: data},
-		network,
-		stubResolver{},
-		analyzer,
-		nil,
-	)
+	fc := decodeSigningCalldata(token.Hex(), big.NewInt(0), data, network, stubResolver{}, analyzer, nil)
 	if fc == nil {
 		t.Fatal("expected analyzer fallback, got nil call")
 	}

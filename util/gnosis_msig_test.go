@@ -15,9 +15,6 @@ func TestGnosisMsigSubmissionTopicMatchesABI(t *testing.T) {
 	if !ok {
 		t.Fatal("built-in Classic ABI is missing the Submission event")
 	}
-	if ev.ID != GnosisMsigSubmissionTopic() {
-		t.Fatalf("helper %s != ABI event ID %s", GnosisMsigSubmissionTopic().Hex(), ev.ID.Hex())
-	}
 	want := common.HexToHash(knownSubmissionTopic)
 	if ev.ID != want {
 		t.Fatalf("Submission topic = %s, want %s (on-chain Classic event)", ev.ID.Hex(), want.Hex())
@@ -28,11 +25,12 @@ func TestGnosisMsigTxIDFromLogs(t *testing.T) {
 	msig := "0x1111111111111111111111111111111111111111"
 	other := "0x2222222222222222222222222222222222222222"
 	txid := common.BigToHash(big.NewInt(7))
+	submission := GetGnosisMsigABI().Events["Submission"].ID
 
 	logs := []*types.Log{
-		{Address: common.HexToAddress(other), Topics: []common.Hash{GnosisMsigSubmissionTopic(), txid}},
+		{Address: common.HexToAddress(other), Topics: []common.Hash{submission, txid}},
 		{Address: common.HexToAddress(msig), Topics: []common.Hash{common.HexToHash("0x01"), txid}},
-		{Address: common.HexToAddress(msig), Topics: []common.Hash{GnosisMsigSubmissionTopic(), txid}},
+		{Address: common.HexToAddress(msig), Topics: []common.Hash{submission, txid}},
 	}
 
 	got := GnosisMsigTxIDFromLogs(logs, msig)

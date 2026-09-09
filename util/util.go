@@ -832,16 +832,6 @@ func GetGnosisMsigABI() *abi.ABI {
 	return &result
 }
 
-// GnosisMsigSubmissionTopic is the Classic Gnosis multisig Submission event topic
-// (keccak of Submission(uint256)), taken from the built-in ABI.
-func GnosisMsigSubmissionTopic() common.Hash {
-	ev, ok := GetGnosisMsigABI().Events["Submission"]
-	if !ok {
-		panic("gnosis msig ABI missing Submission event")
-	}
-	return ev.ID
-}
-
 // gnosisMsigTxIDTopicIndex maps Classic event IDs to the topic index that
 // holds transactionId. Submission/Execution use topics[1]; Confirmation
 // and Revocation index the sender first, so the id is topics[2].

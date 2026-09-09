@@ -707,9 +707,9 @@ func sendFromSafe(
 		Analyzer: analyzer,
 		Resolver: resolver,
 	}
-	card := buildSafeSigningCard(stx, hash, &tcView, safeCardOptions{
-		kind:   "Safe proposal",
-		prompt: "Sign and submit this Safe proposal (off-chain, no gas)?",
+	card := safeCard(stx, hash, &tcView, cmdutil.SafeCardOptions{
+		Kind:   "Safe proposal",
+		Prompt: "Sign and submit this Safe proposal (off-chain, no gas)?",
 	})
 	if !cmdutil.ConfirmSigningCard(appUI, card) {
 		cmdutil.WarnCancelled(appUI)
@@ -744,12 +744,8 @@ func sendFromSafe(
 	}
 
 	appUI.Success("Proposal submitted.")
-	appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
-	appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
-	appUI.Info("Other owners can approve with:")
-	appUI.Info("  jarvis msig approve %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
-	appUI.Info("Once threshold is met, anyone can execute with:")
-	appUI.Info("  jarvis msig execute %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
+	printSafeProposalMeta(hash)
+	printSafeApproveExecuteHints(safeContract.Address, hash)
 }
 
 func init() {

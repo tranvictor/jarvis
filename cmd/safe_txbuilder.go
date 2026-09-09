@@ -48,7 +48,7 @@ var (
 // initMsigCmd's PersistentPreRunE (which has to parse the file before the
 // preprocess pipeline runs, so the file's chainId can act as a network hint
 // and its meta.createdFromSafeAddress can stand in for the positional Safe
-// argument) and consumed by initSafeCmd's Run. nil means "not in batch mode".
+// argument) and consumed by runInitSafe. nil means "not in batch mode".
 var txBuilderBatch *safe.TxBuilderFile
 
 // txBuilderExclusiveFlags are the interactive single-call flags that a batch
@@ -157,7 +157,7 @@ func prepareTxBuilderBatch(cmd *cobra.Command, args []string) ([]string, error) 
 		// probing an address the operator is going to have to retype anyway.
 		// Aliases and Safe-app URLs can't be compared until the preprocess
 		// pipeline has resolved them, so those fall through to the
-		// authoritative check in initSafeCmd.Run.
+		// authoritative check in runInitSafe.
 		if err := assertTxBuilderSafeMatches(batch, strings.TrimSpace(args[0])); err != nil {
 			return nil, err
 		}

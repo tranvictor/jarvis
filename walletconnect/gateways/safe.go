@@ -111,14 +111,10 @@ func (g *SafeGateway) Chains(ctx context.Context) ([]string, error) {
 	// collision (the Safe deployed at the same address via CREATE2
 	// on multiple chains) is common enough that the UX surprise
 	// isn't worth it in v1.
-	return []string{walletconnect.ChainString(g.network.GetChainID())}, nil
+	return pinnedChains(g.network), nil
 }
 
-func (g *SafeGateway) Methods() []string {
-	return []string{
-		walletconnect.SupportedMethods.SendTransaction,
-	}
-}
+func (g *SafeGateway) Methods() []string { return sendOnlyMethods() }
 
 func (g *SafeGateway) SwitchChain(ctx context.Context, chain string) error {
 	return errSwitchChainPinned("Safe sessions are pinned to the chain they opened on")
@@ -141,10 +137,8 @@ func (g *SafeGateway) SendTransaction(
 ) (string, error) {
 	// Chain is enforced at the session level, but double-check that
 	// nothing has drifted since pair-time.
-	expected := walletconnect.ChainString(g.network.GetChainID())
-	if chain != expected {
-		return "", fmt.Errorf("%w: Safe is on %s, dApp asked for %s",
-			walletconnect.ErrChainNotSupported, expected, chain)
+	if err := ensurePinnedChain(g.network, chain, "Safe"); err != nil {
+		return "", err
 	}
 
 	if tx.To == "" {
@@ -234,11 +228,7 @@ func (g *SafeGateway) promptSafeConfirm(stx *safe.SafeTx, hash [32]byte) error {
 	}
 	g.ui.Info("Nonce      : %s", stx.Nonce.String())
 	if len(stx.Data) > 0 {
-		preview := ethcommon.Bytes2Hex(stx.Data)
-		if len(preview) > 80 {
-			preview = preview[:80] + "…"
-		}
-		g.ui.Info("Data       : 0x%s", preview)
+		g.ui.Info("Data       : %s", previewCalldata(stx.Data))
 	}
 	g.ui.Info("safeTxHash : 0x%s", hex.EncodeToString(hash[:]))
 	if !g.ui.Confirm("Sign this Safe proposal and submit to the transaction service?", true) {

@@ -43,6 +43,41 @@ func (t *batchTally) add(status string) {
 
 func (t batchTally) done() int { return t.ok + t.skipped + t.failed }
 
+func firstNonEmpty(ss ...string) string {
+	for _, s := range ss {
+		if s != "" {
+			return s
+		}
+	}
+	return ""
+}
+
+func labeled(prefix, v string) string {
+	if v == "" {
+		return ""
+	}
+	return prefix + v
+}
+
+type jsonStatusTally struct {
+	Approved, Executed, Broadcasted, Skipped, Failed int
+}
+
+func (t *jsonStatusTally) add(status string) {
+	switch status {
+	case "approved":
+		t.Approved++
+	case "executed":
+		t.Executed++
+	case "broadcasted":
+		t.Broadcasted++
+	case "skipped":
+		t.Skipped++
+	case "failed":
+		t.Failed++
+	}
+}
+
 // String renders "2 ok · 1 skipped · 0 failed · 3 left", dropping zero
 // counters except ok so the line stays short.
 func (t batchTally) String() string {

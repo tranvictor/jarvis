@@ -42,7 +42,7 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 	// otherwise we bind to the default network and fail to fetch the tx.
 	// An explicit -N/--network flag still wins if the user passed it.
 	if len(args) > 0 && !cmd.Flags().Changed("network") {
-		if nwks, txs := ScanForTxs(args[0]); len(txs) > 0 && nwks[0] != "" {
+		if nwks, txs := util.ScanForTxs(args[0]); len(txs) > 0 && nwks[0] != "" {
 			config.NetworkString = nwks[0]
 		}
 	}
@@ -84,7 +84,7 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 	} else {
 		tc.To, _, err = util.GetAddressFromString(args[0])
 		if err != nil {
-			_, txs := ScanForTxs(args[0])
+			_, txs := util.ScanForTxs(args[0])
 			if len(txs) == 0 {
 				return fmt.Errorf("can't interpret the contract address")
 			}
@@ -114,7 +114,7 @@ func CommonNetworkPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 	// An explicit -N/--network flag still wins if the user passed it.
 	if len(args) > 0 && !cmd.Flags().Changed("network") {
 		para := strings.Join(args, " ")
-		if nwks, txs := ScanForTxs(para); len(txs) > 0 && nwks[0] != "" {
+		if nwks, txs := util.ScanForTxs(para); len(txs) > 0 && nwks[0] != "" {
 			config.NetworkString = nwks[0]
 		}
 	}
@@ -258,25 +258,10 @@ func CommonSafeReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error 
 	}
 	tc, _ := TxContextFrom(cmd)
 	tc.SafeAppRef = ref
-
-	if tc.To == "" {
-		return fmt.Errorf("please specify the safe address as the first argument")
+	if _, err := bindSafeContract(&tc); err != nil {
+		return err
 	}
-
-	safeContract, err := safe.NewSafeContract(tc.To, config.Network(), safe.WithReader(EthReaderOf(tc.Reader)))
-	if err != nil {
-		return fmt.Errorf("couldn't init safe reader: %w", err)
-	}
-	if _, err := safeContract.Owners(); err != nil {
-		return fmt.Errorf(
-			"couldn't read safe owners — %s does not appear to be a Gnosis Safe: %w",
-			tc.To, err,
-		)
-	}
-	tc.Safe = safeContract
-
 	wireOptionalCollector(u, &tc)
-
 	cmd.SetContext(WithTxContext(cmd.Context(), tc))
 	return nil
 }
@@ -324,7 +309,6 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string, requireO
 	}
 	tc, _ := TxContextFrom(cmd)
 	tc.SafeAppRef = ref
-
 	if tc.To == "" {
 		return fmt.Errorf("please specify the safe address as the first argument")
 	}
@@ -333,7 +317,7 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string, requireO
 	// deployed as a GnosisSafeProxy whose verified ABI is just a fallback
 	// + constructor — that ABI will never satisfy IsGnosisSafe even though
 	// the contract behaves like a Safe via DELEGATECALL. The authoritative
-	// check is the on-chain getOwners() probe a few lines below.
+	// check is the on-chain getOwners() probe in bindSafeContract.
 	if a, abiErr := util.GetABI(tc.To, config.Network()); abiErr == nil {
 		if !safe.IsGnosisSafe(a) {
 			u.Info(
@@ -348,18 +332,10 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string, requireO
 		)
 	}
 
-	safeContract, err := safe.NewSafeContract(tc.To, config.Network(), safe.WithReader(EthReaderOf(tc.Reader)))
+	owners, err := bindSafeContract(&tc)
 	if err != nil {
-		return fmt.Errorf("couldn't init safe reader: %w", err)
+		return err
 	}
-	owners, err := safeContract.Owners()
-	if err != nil {
-		return fmt.Errorf(
-			"couldn't read safe owners — %s does not appear to be a Gnosis Safe: %w",
-			tc.To, err,
-		)
-	}
-	tc.Safe = safeContract
 
 	fromAcc, err := chooseSafeFrom(
 		config.From,
@@ -412,6 +388,27 @@ func wireOptionalCollector(u ui.UI, tc *TxContext) {
 	)
 }
 
+// bindSafeContract opens a SafeContract at tc.To, probes getOwners() to
+// confirm it is a Safe, and attaches it to tc. Returns the owner list.
+func bindSafeContract(tc *TxContext) ([]string, error) {
+	if tc.To == "" {
+		return nil, fmt.Errorf("please specify the safe address as the first argument")
+	}
+	safeContract, err := safe.NewSafeContract(tc.To, config.Network(), safe.WithReader(EthReaderOf(tc.Reader)))
+	if err != nil {
+		return nil, fmt.Errorf("couldn't init safe reader: %w", err)
+	}
+	owners, err := safeContract.Owners()
+	if err != nil {
+		return nil, fmt.Errorf(
+			"couldn't read safe owners — %s does not appear to be a Gnosis Safe: %w",
+			tc.To, err,
+		)
+	}
+	tc.Safe = safeContract
+	return owners, nil
+}
+
 // preResolveMultisigArg normalises args[0] for the unified multisig
 // preprocesses. It handles three cases identically to the Safe-only path:
 //
@@ -452,7 +449,7 @@ func applyMultisigArgNetworkHint(cmd *cobra.Command, args []string) {
 	if len(args) == 0 || cmd.Flags().Changed("network") {
 		return
 	}
-	if nwks, txs := ScanForTxs(args[0]); len(txs) > 0 && nwks[0] != "" {
+	if nwks, txs := util.ScanForTxs(args[0]); len(txs) > 0 && nwks[0] != "" {
 		config.NetworkString = nwks[0]
 	}
 }
@@ -486,7 +483,7 @@ func resolveMultisigProbeAddress(arg string) (string, error) {
 		return addr, nil
 	}
 
-	_, txs := ScanForTxs(arg)
+	_, txs := util.ScanForTxs(arg)
 	if len(txs) == 0 {
 		return arg, nil
 	}
@@ -522,25 +519,10 @@ func resolveMultisigProbeAddress(arg string) (string, error) {
 // is what classic msig info/gov/summary use today). For Safe addresses
 // it calls CommonSafeReadPreprocess so SafeContract + Collector are wired.
 func CommonMultisigReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
-	ref, err := preResolveMultisigArg(u, cmd, args)
+	ref, addr, typ, err := detectMultisigKind(u, cmd, args)
 	if err != nil {
 		return err
 	}
-	applyMultisigArgNetworkHint(cmd, args)
-	if err := config.SetNetwork(config.NetworkString); err != nil {
-		return err
-	}
-
-	addr, err := resolveMultisigProbeAddress(args[0])
-	if err != nil {
-		return err
-	}
-
-	typ, err := DetectMultisigType(config.Network(), addr)
-	if err != nil {
-		return err
-	}
-
 	switch typ {
 	case MultisigSafe:
 		if err := CommonSafeReadPreprocess(u, cmd, args); err != nil {
@@ -553,14 +535,7 @@ func CommonMultisigReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) er
 	default:
 		return fmt.Errorf("unknown multisig type for %s", addr)
 	}
-
-	tc, _ := TxContextFrom(cmd)
-	tc.MultisigType = typ
-	if ref != nil {
-		tc.SafeAppRef = ref
-	}
-	cmd.SetContext(WithTxContext(cmd.Context(), tc))
-	return nil
+	return finishMultisigPreprocess(cmd, typ, ref)
 }
 
 // CommonMultisigTxPreprocess is the transactional twin of
@@ -584,25 +559,10 @@ func CommonMultisigExecutePreprocess(u ui.UI, cmd *cobra.Command, args []string)
 }
 
 func commonMultisigTxPreprocess(u ui.UI, cmd *cobra.Command, args []string, requireOwner bool) error {
-	ref, err := preResolveMultisigArg(u, cmd, args)
+	ref, addr, typ, err := detectMultisigKind(u, cmd, args)
 	if err != nil {
 		return err
 	}
-	applyMultisigArgNetworkHint(cmd, args)
-	if err := config.SetNetwork(config.NetworkString); err != nil {
-		return err
-	}
-
-	addr, err := resolveMultisigProbeAddress(args[0])
-	if err != nil {
-		return err
-	}
-
-	typ, err := DetectMultisigType(config.Network(), addr)
-	if err != nil {
-		return err
-	}
-
 	switch typ {
 	case MultisigSafe:
 		if err := CommonSafeTxPreprocess(u, cmd, args, requireOwner); err != nil {
@@ -615,7 +575,30 @@ func commonMultisigTxPreprocess(u ui.UI, cmd *cobra.Command, args []string, requ
 	default:
 		return fmt.Errorf("unknown multisig type for %s", addr)
 	}
+	return finishMultisigPreprocess(cmd, typ, ref)
+}
 
+func detectMultisigKind(u ui.UI, cmd *cobra.Command, args []string) (*safe.SafeAppRef, string, MultisigType, error) {
+	ref, err := preResolveMultisigArg(u, cmd, args)
+	if err != nil {
+		return nil, "", MultisigUnknown, err
+	}
+	applyMultisigArgNetworkHint(cmd, args)
+	if err := config.SetNetwork(config.NetworkString); err != nil {
+		return nil, "", MultisigUnknown, err
+	}
+	addr, err := resolveMultisigProbeAddress(args[0])
+	if err != nil {
+		return nil, "", MultisigUnknown, err
+	}
+	typ, err := DetectMultisigType(config.Network(), addr)
+	if err != nil {
+		return nil, "", MultisigUnknown, err
+	}
+	return ref, addr, typ, nil
+}
+
+func finishMultisigPreprocess(cmd *cobra.Command, typ MultisigType, ref *safe.SafeAppRef) error {
 	tc, _ := TxContextFrom(cmd)
 	tc.MultisigType = typ
 	if ref != nil {

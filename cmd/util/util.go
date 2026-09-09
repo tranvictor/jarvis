@@ -47,14 +47,18 @@ func classicMsigABI(resolver ABIResolver, addr string, network jarvisnetworks.Ne
 	return a
 }
 
+// PrintOwnerList prints "Owners (n):" then one numbered styled address per
+// owner. Shared by Safe info, Classic gov, and Safe deploy preview.
+func PrintOwnerList(u ui.UI, owners []string, network jarvisnetworks.Network) {
+	u.Info("Owners (%d):", len(owners))
+	for i, o := range owners {
+		u.Info("  %d. %s", i+1, u.Style(util.StyledAddress(util.GetJarvisAddress(o, network))))
+	}
+}
+
 // PostProcessFunc is a callback called with the decoded function call after
 // displaying a multisig transaction. Return an error to abort the flow.
 type PostProcessFunc func(fc *jarviscommon.FunctionCall) error
-
-// ScanForTxs scans para for network-prefixed or bare transaction hashes.
-func ScanForTxs(para string) (nwks []string, addresses []string) {
-	return util.ScanForTxs(para)
-}
 
 // HandleApproveOrRevokeOrExecuteMsig handles the confirm / revoke / execute
 // flow for a Gnosis multisig transaction.
@@ -82,7 +86,7 @@ func HandleApproveOrRevokeOrExecuteMsig(
 	)
 
 	if config.Tx == "" {
-		nwks, txs := ScanForTxs(args[1])
+		nwks, txs := util.ScanForTxs(args[1])
 		if len(txs) == 0 {
 			txid, err = util.ParamToBigInt(args[1])
 			if err != nil {

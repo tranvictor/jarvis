@@ -59,6 +59,18 @@ type TxContext struct {
 	MultisigType MultisigType
 }
 
+// SafeAddress is the Safe this context is operating on: the bound
+// SafeContract when present, otherwise To.
+func (tc *TxContext) SafeAddress() string {
+	if tc == nil {
+		return ""
+	}
+	if tc.Safe != nil && tc.Safe.Address != "" {
+		return tc.Safe.Address
+	}
+	return tc.To
+}
+
 // EthReaderOf returns the concrete *reader.EthReader when r is that
 // type, or nil otherwise. Safe/Classic constructors treat
 // WithReader(nil) as "open a new EthReader".

@@ -188,16 +188,6 @@ func (onr *OneNodeReader) TransactionByHash(txHash string) (tx *jarviscommon.Tra
 	return onr.transactionByHashOnNode(timeout, hash)
 }
 
-// func (onr *OneNodeReader) Call(result interface{}, method string, args ...interface{}) error {
-// 	cli, err := onr.Client()
-// 	if err != nil {
-// 		return err
-// 	}
-// 	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-// 	defer cancel()
-// 	return cli.CallContext(timeout, result, method, args)
-// }
-
 func (onr *OneNodeReader) HeaderByNumber(number int64) (*types.Header, error) {
 	ethcli, err := onr.EthClient()
 	if err != nil {

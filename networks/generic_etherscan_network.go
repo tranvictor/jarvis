@@ -33,51 +33,25 @@ type GenericEtherscanNetworkConfig struct {
 }
 
 // networkMeta holds the JSON-serializable chain config and implements the
-// Network methods that don't depend on the explorer backend. Both
-// GenericEtherscanNetwork and GenericOptimismNetwork embed it.
+// Network methods that don't depend on the explorer backend.
 type networkMeta struct {
 	Config GenericEtherscanNetworkConfig
 }
 
-func (m *networkMeta) GetName() string {
-	return m.Config.Name
-}
-
-func (m *networkMeta) GetChainID() uint64 {
-	return m.Config.ChainID
-}
-
-func (m *networkMeta) GetAlternativeNames() []string {
-	return m.Config.AlternativeNames
-}
-
-func (m *networkMeta) GetNativeTokenSymbol() string {
-	return m.Config.NativeTokenSymbol
-}
-
-func (m *networkMeta) GetNativeTokenDecimal() uint64 {
-	return m.Config.NativeTokenDecimal
-}
-
+func (m *networkMeta) GetName() string               { return m.Config.Name }
+func (m *networkMeta) GetChainID() uint64            { return m.Config.ChainID }
+func (m *networkMeta) GetAlternativeNames() []string { return m.Config.AlternativeNames }
+func (m *networkMeta) GetNativeTokenSymbol() string  { return m.Config.NativeTokenSymbol }
+func (m *networkMeta) GetNativeTokenDecimal() uint64 { return m.Config.NativeTokenDecimal }
 func (m *networkMeta) GetBlockTime() time.Duration {
 	return time.Duration(m.Config.BlockTime) * time.Second
 }
-
-func (m *networkMeta) GetNodeVariableName() string {
-	return m.Config.NodeVariableName
-}
-
-func (m *networkMeta) GetDefaultNodes() map[string]string {
-	return m.Config.DefaultNodes
-}
-
+func (m *networkMeta) GetNodeVariableName() string        { return m.Config.NodeVariableName }
+func (m *networkMeta) GetDefaultNodes() map[string]string { return m.Config.DefaultNodes }
 func (m *networkMeta) GetBlockExplorerAPIKeyVariableName() string {
 	return m.Config.BlockExplorerAPIKeyVariableName
 }
-
-func (m *networkMeta) GetBlockExplorerAPIURL() string {
-	return m.Config.BlockExplorerAPIURL
-}
+func (m *networkMeta) GetBlockExplorerAPIURL() string { return m.Config.BlockExplorerAPIURL }
 
 // GetSafeTxServiceURL normalises the configured URL the same way
 // txservice does for the env overrides: trimmed, with no trailing slash,
@@ -85,32 +59,37 @@ func (m *networkMeta) GetBlockExplorerAPIURL() string {
 func (m *networkMeta) GetSafeTxServiceURL() string {
 	return strings.TrimRight(strings.TrimSpace(m.Config.SafeTxServiceURL), "/")
 }
-
-func (m *networkMeta) MultiCallContract() string {
-	return m.Config.MultiCallContractAddress.Hex()
-}
-
+func (m *networkMeta) MultiCallContract() string { return m.Config.MultiCallContractAddress.Hex() }
 func (m *networkMeta) MarshalJSON() ([]byte, error) {
 	return json.Marshal(m.Config)
 }
-
 func (m *networkMeta) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, &m.Config)
 }
 
-// GenericEtherscanNetwork is a generic implementation of a network that uses Etherscan as their official explorer
-type GenericEtherscanNetwork struct {
-	*explorers.EtherscanLikeExplorer
+// genericNetwork is a Network whose explorer backend is either Etherscan-like
+// or Blockscout-style (Optimistic rollup /v2). The two constructors below
+// only differ in which explorer they attach.
+type genericNetwork struct {
+	explorers.BlockExplorer
 	networkMeta
 }
 
-func NewGenericEtherscanNetwork(config GenericEtherscanNetworkConfig) *GenericEtherscanNetwork {
+func newGenericNetwork(config GenericEtherscanNetworkConfig, be explorers.BlockExplorer) *genericNetwork {
+	return &genericNetwork{BlockExplorer: be, networkMeta: networkMeta{Config: config}}
+}
+
+func NewGenericEtherscanNetwork(config GenericEtherscanNetworkConfig) *genericNetwork {
 	apiKey := strings.Trim(os.Getenv(config.BlockExplorerAPIKeyVariableName), " ")
 	if apiKey == "" {
 		apiKey = defaultAPIKey
 	}
-	return &GenericEtherscanNetwork{
-		EtherscanLikeExplorer: explorers.NewEtherscanLikeExplorer(config.BlockExplorerAPIURL, apiKey, config.ChainID),
-		networkMeta:           networkMeta{Config: config},
-	}
+	return newGenericNetwork(config, explorers.NewEtherscanLikeExplorer(config.BlockExplorerAPIURL, apiKey, config.ChainID))
+}
+
+func NewGenericOptimismNetwork(config GenericEtherscanNetworkConfig) *genericNetwork {
+	return newGenericNetwork(config, explorers.NewOptimisticRollupExplorer(
+		config.BlockExplorerAPIURL,
+		strings.Trim(os.Getenv(config.BlockExplorerAPIKeyVariableName), " "),
+	))
 }

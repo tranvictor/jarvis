@@ -49,396 +49,319 @@ var safeApproveOnChain bool
 // Transaction Service, even if one is configured for the chain.
 var safeTxFile string
 
-// initSafeCmd is the Safe-specific implementation of `jarvis msig init`.
-// It is no longer registered as its own cobra command: cmd/msig.go reads
-// initSafeCmd.Run / .PersistentPreRunE and invokes them after the unified
-// preprocess detects a Safe target. We keep the cobra wrapper (rather
-// than splitting Run into a free function) so flags, Long descriptions
-// and the existing in-Run TxContextFrom calls stay untouched.
-var initSafeCmd = &cobra.Command{
-	Use:   "init",
-	Short: "Propose a new Safe transaction (off-chain via Safe Transaction Service)",
-	Long: `Build a SafeTx targeting --msig-to with the call data interactively
-constructed from the target's ABI, sign the EIP-712 safeTxHash with --from
-(or the only owner you have a wallet for), and submit the proposal to the
-Safe Transaction Service. Other owners can later approve via 'jarvis msig
-approve' and anyone can finalise via 'jarvis msig execute'.`,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		if err = cmdutil.CommonSafeTxPreprocess(appUI, cmd, args, true); err != nil {
-			return err
-		}
-		if config.MsigValue < 0 {
-			return fmt.Errorf("safe value can't be negative")
-		}
-		tc, _ := cmdutil.TxContextFrom(cmd)
-		var msigToName string
-		config.MsigTo, msigToName, err = tc.Resolver.GetAddressFromString(config.MsigTo)
-		if err != nil {
-			return err
-		}
-		appUI.Info("Call to: %s (%s)", config.MsigTo, msigToName)
-		return nil
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		tc, _ := cmdutil.TxContextFrom(cmd)
-		safeContract := tc.Safe
+// runInitSafe is the Safe-specific implementation of `jarvis msig init`.
+func runInitSafe(cmd *cobra.Command, args []string) {
+	tc, _ := cmdutil.TxContextFrom(cmd)
+	safeContract := tc.Safe
 
-		appUI.Section("Safe info")
-		showSafeInfo(safeContract)
+	appUI.Section("Safe info")
+	showSafeInfo(safeContract)
 
-		// txTo/txValue/txData/txOp are the four SafeTx fields the two input
-		// modes disagree on; everything after this point is shared.
-		var (
-			txTo       string
-			txValue    *big.Int
-			txData     []byte
-			txOp       = safe.OpCall
-			batchABIs  map[string]*abi.ABI
-			batchLabel string
-		)
+	// txTo/txValue/txData/txOp are the four SafeTx fields the two input
+	// modes disagree on; everything after this point is shared.
+	var (
+		txTo       string
+		txValue    *big.Int
+		txData     []byte
+		txOp       = safe.OpCall
+		batchABIs  map[string]*abi.ABI
+		batchLabel string
+	)
 
-		if txBuilderBatch != nil {
-			if err := assertTxBuilderSafeMatches(txBuilderBatch, safeContract.Address); err != nil {
-				appUI.Error("%s", err)
-				return
-			}
-			txTo, txValue, txData, txOp, batchABIs, batchLabel = buildTxBuilderSafeTx(tc)
-			if txData == nil {
-				return // buildTxBuilderSafeTx already reported the failure
-			}
-		} else {
-			targetABI, err := tc.Resolver.ConfigToABI(
-				config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network(),
-			)
-			if err != nil {
-				appUI.Warn("Couldn't get abi for %s: %s. Continue:", config.MsigTo, err)
-			}
-
-			callData := []byte{}
-			if targetABI != nil && !config.NoFuncCall {
-				callData, err = cmdutil.PromptTxData(
-					appUI,
-					tc.Analyzer,
-					config.MsigTo,
-					config.MethodIndex,
-					tc.PrefillParams,
-					tc.PrefillMode,
-					targetABI,
-					nil,
-					config.Network(),
-				)
-				if err != nil {
-					appUI.Error("Couldn't pack target call data: %s", err)
-					appUI.Warn("Continue with EMPTY CALLING DATA")
-					callData = []byte{}
-				}
-			}
-			txTo = config.MsigTo
-			txValue = jarviscommon.FloatToBigInt(
-				config.MsigValue, config.Network().GetNativeTokenDecimal(),
-			)
-			txData = callData
-		}
-
-		if safeTxFile == "" && tc.Collector == nil {
-			appUI.Error(
-				"Safe Transaction Service is not available for chain %d, and --safe-tx-file was not set.",
-				config.Network().GetChainID(),
-			)
-			appUI.Info("Either configure SAFE_TX_SERVICE_URL_%d to point at a self-hosted deployment,", config.Network().GetChainID())
-			appUI.Info("or re-run with --safe-tx-file <path> to write the proposal to a local file.")
-			return
-		}
-
-		safeNonce, err := nextSafeNonce(safeContract, tc.Collector)
-		if err != nil {
-			appUI.Error("Couldn't determine the next safe nonce: %s", err)
-			return
-		}
-		appUI.Info("SafeTx nonce: %d", safeNonce)
-
-		domainSep, err := safeContract.DomainSeparator()
-		if err != nil {
-			appUI.Error("Couldn't read on-chain domainSeparator: %s", err)
-			return
-		}
-
-		stx := safe.NewSafeTx(
-			ethcommon.HexToAddress(txTo),
-			txValue,
-			txData,
-			txOp,
-			safeNonce,
-		)
-		hash := stx.SafeTxHash(domainSep)
-
-		if batchLabel != "" {
-			appUI.Info("MultiSend   : %s", batchLabel)
-		}
-		card := buildSafeSigningCard(stx, hash, &tc, safeCardOptions{
-			kind:      "Safe proposal",
-			extraABIs: batchABIs,
-			signer:    tc.From,
-			prompt:    "Sign and submit this Safe proposal (off-chain, no gas)?",
-		})
-		if !cmdutil.ConfirmSigningCard(appUI, card) {
-			cmdutil.WarnCancelled(appUI)
-			return
-		}
-
-		appUI.Info("Unlock your wallet and sign the EIP-712 safeTxHash now...")
-		sig, err := signSafeTx(tc.FromAcc, stx, domainSep)
-		if errors.Is(err, errSignSafeHash) {
-			appUI.Error("Couldn't sign safeTxHash: %s", signCause(err))
-			return
-		}
-		if err != nil {
-			appUI.Error("Couldn't unlock wallet: %s", err)
-			return
-		}
-
-		if err := safe.SubmitProposal(
-			tc.Collector,
-			safeTxFile,
-			ethcommon.HexToAddress(safeContract.Address),
-			config.Network().GetChainID(),
-			stx, hash,
-			ethcommon.HexToAddress(tc.From),
-			sig,
-		); err != nil {
-			if safeTxFile != "" {
-				appUI.Error("Couldn't write Safe tx file: %s", err)
-			} else {
-				appUI.Error("Submitting proposal to Safe Transaction Service failed: %s", err)
-			}
-			return
-		}
-
-		if safeTxFile != "" {
-			appUI.Success("Proposal written to %s", safeTxFile)
-			appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
-			appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
-			appUI.Info("Share the file with other owners; each can run:")
-			appUI.Info("  jarvis msig approve %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
-			appUI.Info("Once threshold is met, any owner can run:")
-			appUI.Info("  jarvis msig execute %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
-			return
-		}
-		appUI.Success("Proposal submitted.")
-		appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
-		appUI.Info("safeTxHash: 0x%s", ethcommon.Bytes2Hex(hash[:]))
-		appUI.Info("Other owners can approve with:")
-		appUI.Info("  jarvis msig approve %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
-		appUI.Info("Once threshold is met, anyone can execute with:")
-		appUI.Info("  jarvis msig execute %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(hash[:]), networkFlag())
-	},
-}
-
-// approveSafeCmd is the Safe-specific implementation of `jarvis msig
-// approve`. Dispatched from cmd/msig.go after the unified preprocess
-// detects a Safe target and CommonSafeTxPreprocess has wired the
-// Safe-specific TxContext fields. See initSafeCmd's docstring for why we
-// keep the cobra wrapper rather than splitting Run into a free function.
-var approveSafeCmd = &cobra.Command{
-	Use:   "approve",
-	Short: "Off-chain approve a pending Safe transaction (adds your signature to the service)",
-	Long: `Sign the EIP-712 safeTxHash of a pending Safe transaction and
-submit your signature to the Safe Transaction Service. Identify the
-pending tx by:
-
-  - a Safe-app URL (the easiest form for non-CLI signers):
-      jarvis msig approve "https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=eth:<safe>"
-
-  - the safe address followed by a safeTxHash or SafeTx nonce:
-      jarvis msig approve <safe> <safeTxHash|nonce>
-
-If your approval brings the signature count to or above the Safe's
-threshold, jarvis automatically chains an execTransaction in the same
-invocation so you don't have to run a second command. Pass --no-execute
-to opt out (the typical use case is when you want a different EOA to
-pay for execution gas).
-
-By default jarvis signs off-chain: it produces an EIP-712 signature of
-safeTxHash and POSTs it to the Safe Transaction Service. Pass
---approve-onchain to use the on-chain path instead — jarvis will send a
-Safe.approveHash(safeTxHash) transaction from --from. This mode is
-useful on chains without a Transaction Service, for wallets that can't
-produce EIP-712 signatures, or when you prefer an on-chain audit trail
-over an off-chain signature store. Other owners' off-chain signatures
-(and other owners' on-chain approvals) are merged at execution time.
-`,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("usage: jarvis msig approve <safe-or-url> [safeTxHash|nonce]")
-		}
-		return cmdutil.CommonSafeTxPreprocess(appUI, cmd, args, true)
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		tc, _ := cmdutil.TxContextFrom(cmd)
-		safeContract := tc.Safe
-
-		appUI.Section("Safe info")
-		showSafeInfo(safeContract)
-
-		pending, err := loadPendingTx(tc, args, safeTxFile, safeApproveOnChain)
-		if errors.Is(err, errPendingNoCollector) {
-			appUI.Error(
-				"Safe Transaction Service is not available for chain %d.",
-				config.Network().GetChainID(),
-			)
-			appUI.Info("Pass --approve-onchain to approve via Safe.approveHash directly, or")
-			appUI.Info("pass --safe-tx-file <path> to load the pending SafeTx from a local file.")
-			return
-		}
-		if errors.Is(err, errPendingNeedHash) {
-			appUI.Error(
-				"--approve-onchain without a Safe Transaction Service requires an explicit safeTxHash (0x... 32 bytes) or a Safe-app URL that carries one.",
-			)
-			return
-		}
-		if err != nil {
+	if txBuilderBatch != nil {
+		if err := assertTxBuilderSafeMatches(txBuilderBatch, safeContract.Address); err != nil {
 			appUI.Error("%s", err)
 			return
 		}
-		if pending.IsExecuted {
-			appUI.Warn("This transaction has already been executed; nothing to approve.")
-			return
+		txTo, txValue, txData, txOp, batchABIs, batchLabel = buildTxBuilderSafeTx(tc)
+		if txData == nil {
+			return // buildTxBuilderSafeTx already reported the failure
 		}
-
-		domainSep, err := safeContract.DomainSeparator()
+	} else {
+		targetABI, err := tc.Resolver.ConfigToABI(
+			config.MsigTo, config.ForceERC20ABI, config.CustomABI, config.Network(),
+		)
 		if err != nil {
-			appUI.Error("Couldn't read on-chain domainSeparator: %s", err)
-			return
+			appUI.Warn("Couldn't get abi for %s: %s. Continue:", config.MsigTo, err)
 		}
 
-		// When we have SafeTx fields in hand (file mode, or service mode),
-		// verify the declared safeTxHash is what the on-chain domainSep
-		// and SafeTx fields produce. In the service-less --approve-onchain
-		// corner case above we only have the hash, so there's nothing to
-		// cross-check — the Safe itself will reject a wrong hash at
-		// approveHash / execute time.
-		if expected, err := verifyPendingSafeTxHash(pending, domainSep); errors.Is(err, errPendingHashMismatch) {
-			appUI.Error(
-				"declared safeTxHash (0x%s) doesn't match locally recomputed hash (0x%s); refusing to sign",
-				ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
-				ethcommon.Bytes2Hex(expected[:]),
+		callData := []byte{}
+		if targetABI != nil && !config.NoFuncCall {
+			callData, err = cmdutil.PromptTxData(
+				appUI,
+				tc.Analyzer,
+				config.MsigTo,
+				config.MethodIndex,
+				tc.PrefillParams,
+				tc.PrefillMode,
+				targetABI,
+				nil,
+				config.Network(),
 			)
-			return
-		}
-
-		// Merge on-chain approvals into the in-memory Sigs before the
-		// self-signed check and display. This way we correctly recognise
-		// owners who approved via approveHash (and may not appear in the
-		// service's confirmation list) as having already signed.
-		if _, err := safeContract.MergeOnChainApprovals(pending); err != nil {
-			appUI.Warn("Couldn't merge on-chain approvals: %s", err)
-		}
-
-		threshold, _ := safeContract.Threshold()
-		if pending.SafeTx != nil {
-			cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(pending.SafeTx, pending.SafeTxHash, &tc, safeCardOptions{
-				kind:      "Safe approval",
-				sigs:      pending.Sigs,
-				threshold: threshold,
-				signer:    tc.From,
-			}))
-		} else {
-			appUI.Info("safeTxHash: 0x%s (no SafeTx body available; only approving the hash on-chain)", ethcommon.Bytes2Hex(pending.SafeTxHash[:]))
-			showSafeSigners("Existing signatures", pending.Sigs)
-		}
-
-		me := ethcommon.HexToAddress(tc.From)
-		if onChain, found := ownerAlreadySigned(pending, me); found {
-			if onChain {
-				appUI.Warn("You (%s) have already approved this transaction on-chain (approveHash).", me.Hex())
-			} else {
-				appUI.Warn("You (%s) have already signed this transaction off-chain.", me.Hex())
+			if err != nil {
+				appUI.Error("Couldn't pack target call data: %s", err)
+				appUI.Warn("Continue with EMPTY CALLING DATA")
+				callData = []byte{}
 			}
-			return
 		}
+		txTo = config.MsigTo
+		txValue = jarviscommon.FloatToBigInt(
+			config.MsigValue, config.Network().GetNativeTokenDecimal(),
+		)
+		txData = callData
+	}
 
-		if safeApproveOnChain {
-			runSafeApproveOnChain(tc, safeContract, pending, domainSep, me)
-			return
-		}
+	if safeTxFile == "" && tc.Collector == nil {
+		appUI.Error(
+			"Safe Transaction Service is not available for chain %d, and --safe-tx-file was not set.",
+			config.Network().GetChainID(),
+		)
+		appUI.Info("Either configure SAFE_TX_SERVICE_URL_%d to point at a self-hosted deployment,", config.Network().GetChainID())
+		appUI.Info("or re-run with --safe-tx-file <path> to write the proposal to a local file.")
+		return
+	}
 
-		if pending.SafeTx == nil {
-			appUI.Error("Off-chain approval requires the full SafeTx body; either pass --safe-tx-file, configure the Safe Transaction Service, or use --approve-onchain.")
-			return
-		}
+	safeNonce, err := nextSafeNonce(safeContract, tc.Collector)
+	if err != nil {
+		appUI.Error("Couldn't determine the next safe nonce: %s", err)
+		return
+	}
+	appUI.Info("SafeTx nonce: %d", safeNonce)
 
-		if !config.YesToAllPrompt && !appUI.Confirm("Sign approval (off-chain, no gas)?", true) {
-			cmdutil.WarnCancelled(appUI)
-			return
-		}
+	domainSep, err := safeContract.DomainSeparator()
+	if err != nil {
+		appUI.Error("Couldn't read on-chain domainSeparator: %s", err)
+		return
+	}
 
-		appUI.Info("Unlock your wallet and sign the EIP-712 safeTxHash now...")
-		sig, err := signPendingSafeTx(tc.FromAcc, pending, domainSep)
-		if errors.Is(err, errSignSafeHash) {
-			appUI.Error("Couldn't sign safeTxHash: %s", signCause(err))
-			return
-		}
-		if err != nil {
-			appUI.Error("Couldn't unlock wallet: %s", err)
-			return
-		}
+	stx := safe.NewSafeTx(
+		ethcommon.HexToAddress(txTo),
+		txValue,
+		txData,
+		txOp,
+		safeNonce,
+	)
+	hash := stx.SafeTxHash(domainSep)
 
-		// Persist the new signature. In file mode we append to the file
-		// (the collective source of truth); otherwise we POST to the Safe
-		// Transaction Service.
-		if err := persistApproval(tc, safeContract.Address, pending, me, sig, safeTxFile, config.Network().GetChainID()); err != nil {
-			if safeTxFile != "" {
-				appUI.Error("Couldn't write updated Safe tx file: %s", err)
-			} else {
-				appUI.Error("Submitting confirmation to Safe Transaction Service failed: %s", err)
-			}
-			return
-		}
+	if batchLabel != "" {
+		appUI.Info("MultiSend   : %s", batchLabel)
+	}
+	card := safeCard(stx, hash, &tc, cmdutil.SafeCardOptions{
+		Kind:      "Safe proposal",
+		ExtraABIs: batchABIs,
+		Signer:    tc.From,
+		Prompt:    "Sign and submit this Safe proposal (off-chain, no gas)?",
+	})
+	if !cmdutil.ConfirmSigningCard(appUI, card) {
+		cmdutil.WarnCancelled(appUI)
+		return
+	}
+
+	appUI.Info("Unlock your wallet and sign the EIP-712 safeTxHash now...")
+	sig, err := signSafeTx(tc.FromAcc, stx, domainSep)
+	if errors.Is(err, errSignSafeHash) {
+		appUI.Error("Couldn't sign safeTxHash: %s", signCause(err))
+		return
+	}
+	if err != nil {
+		appUI.Error("Couldn't unlock wallet: %s", err)
+		return
+	}
+
+	if err := safe.SubmitProposal(
+		tc.Collector,
+		safeTxFile,
+		ethcommon.HexToAddress(safeContract.Address),
+		config.Network().GetChainID(),
+		stx, hash,
+		ethcommon.HexToAddress(tc.From),
+		sig,
+	); err != nil {
 		if safeTxFile != "" {
-			appUI.Success("Signature appended to %s", safeTxFile)
+			appUI.Error("Couldn't write Safe tx file: %s", err)
 		} else {
-			appUI.Success("Confirmation submitted.")
+			appUI.Error("Submitting proposal to Safe Transaction Service failed: %s", err)
 		}
-		totalSigs := len(pending.Sigs) + 1
-		appUI.Info("Total signatures now: %d", totalSigs)
+		return
+	}
 
-		threshold, err = safeContract.Threshold()
-		if err != nil {
-			appUI.Warn("Couldn't read safe threshold post-approval: %s", err)
-			return
+	if safeTxFile != "" {
+		appUI.Success("Proposal written to %s", safeTxFile)
+		printSafeProposalMeta(hash)
+		printSafeFileHints(safeContract.Address)
+		return
+	}
+	appUI.Success("Proposal submitted.")
+	printSafeProposalMeta(hash)
+	printSafeApproveExecuteHints(safeContract.Address, hash)
+}
+
+// runApproveSafe is the Safe-specific implementation of `jarvis msig approve`.
+func runApproveSafe(cmd *cobra.Command, args []string) {
+	tc, _ := cmdutil.TxContextFrom(cmd)
+	safeContract := tc.Safe
+
+	appUI.Section("Safe info")
+	showSafeInfo(safeContract)
+
+	pending, err := loadPendingTx(tc, args, safeTxFile, safeApproveOnChain)
+	if errors.Is(err, errPendingNoCollector) {
+		appUI.Error(
+			"Safe Transaction Service is not available for chain %d.",
+			config.Network().GetChainID(),
+		)
+		appUI.Info("Pass --approve-onchain to approve via Safe.approveHash directly, or")
+		appUI.Info("pass --safe-tx-file <path> to load the pending SafeTx from a local file.")
+		return
+	}
+	if errors.Is(err, errPendingNeedHash) {
+		appUI.Error(
+			"--approve-onchain without a Safe Transaction Service requires an explicit safeTxHash (0x... 32 bytes) or a Safe-app URL that carries one.",
+		)
+		return
+	}
+	if err != nil {
+		appUI.Error("%s", err)
+		return
+	}
+	if pending.IsExecuted {
+		appUI.Warn("This transaction has already been executed; nothing to approve.")
+		return
+	}
+
+	domainSep, err := safeContract.DomainSeparator()
+	if err != nil {
+		appUI.Error("Couldn't read on-chain domainSeparator: %s", err)
+		return
+	}
+
+	// When we have SafeTx fields in hand (file mode, or service mode),
+	// verify the declared safeTxHash is what the on-chain domainSep
+	// and SafeTx fields produce. In the service-less --approve-onchain
+	// corner case above we only have the hash, so there's nothing to
+	// cross-check — the Safe itself will reject a wrong hash at
+	// approveHash / execute time.
+	if expected, err := verifyPendingSafeTxHash(pending, domainSep); errors.Is(err, errPendingHashMismatch) {
+		appUI.Error(
+			"declared safeTxHash (0x%s) doesn't match locally recomputed hash (0x%s); refusing to sign",
+			ethcommon.Bytes2Hex(pending.SafeTxHash[:]),
+			ethcommon.Bytes2Hex(expected[:]),
+		)
+		return
+	}
+
+	// Merge on-chain approvals into the in-memory Sigs before the
+	// self-signed check and display. This way we correctly recognise
+	// owners who approved via approveHash (and may not appear in the
+	// service's confirmation list) as having already signed.
+	if _, err := safeContract.MergeOnChainApprovals(pending); err != nil {
+		appUI.Warn("Couldn't merge on-chain approvals: %s", err)
+	}
+
+	threshold, _ := safeContract.Threshold()
+	if pending.SafeTx != nil {
+		cmdutil.ShowSigningCard(appUI, safeCard(pending.SafeTx, pending.SafeTxHash, &tc, cmdutil.SafeCardOptions{
+			Kind:      "Safe approval",
+			Sigs:      pending.Sigs,
+			Threshold: threshold,
+			Signer:    tc.From,
+		}))
+	} else {
+		appUI.Info("safeTxHash: 0x%s (no SafeTx body available; only approving the hash on-chain)", ethcommon.Bytes2Hex(pending.SafeTxHash[:]))
+		showSafeSigners("Existing signatures", pending.Sigs)
+	}
+
+	me := ethcommon.HexToAddress(tc.From)
+	if onChain, found := ownerAlreadySigned(pending, me); found {
+		if onChain {
+			appUI.Warn("You (%s) have already approved this transaction on-chain (approveHash).", me.Hex())
+		} else {
+			appUI.Warn("You (%s) have already signed this transaction off-chain.", me.Hex())
 		}
-		nextCmdHint := fmt.Sprintf("  jarvis msig execute %s 0x%s%s", safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag())
+		return
+	}
+
+	if safeApproveOnChain {
+		runSafeApproveOnChain(tc, safeContract, pending, domainSep, me)
+		return
+	}
+
+	if pending.SafeTx == nil {
+		appUI.Error("Off-chain approval requires the full SafeTx body; either pass --safe-tx-file, configure the Safe Transaction Service, or use --approve-onchain.")
+		return
+	}
+
+	if !config.YesToAllPrompt && !appUI.Confirm("Sign approval (off-chain, no gas)?", true) {
+		cmdutil.WarnCancelled(appUI)
+		return
+	}
+
+	appUI.Info("Unlock your wallet and sign the EIP-712 safeTxHash now...")
+	sig, err := signPendingSafeTx(tc.FromAcc, pending, domainSep)
+	if errors.Is(err, errSignSafeHash) {
+		appUI.Error("Couldn't sign safeTxHash: %s", signCause(err))
+		return
+	}
+	if err != nil {
+		appUI.Error("Couldn't unlock wallet: %s", err)
+		return
+	}
+
+	// Persist the new signature. In file mode we append to the file
+	// (the collective source of truth); otherwise we POST to the Safe
+	// Transaction Service.
+	if err := persistApproval(tc, safeContract.Address, pending, me, sig, safeTxFile, config.Network().GetChainID()); err != nil {
 		if safeTxFile != "" {
-			nextCmdHint = fmt.Sprintf("  jarvis msig execute %s --safe-tx-file %s%s", safeContract.Address, safeTxFile, networkFlag())
+			appUI.Error("Couldn't write updated Safe tx file: %s", err)
+		} else {
+			appUI.Error("Submitting confirmation to Safe Transaction Service failed: %s", err)
 		}
-		if uint64(totalSigs) < threshold {
-			appUI.Info(
-				"Need %d more approval(s). Once threshold is met, any owner can run:",
-				threshold-uint64(totalSigs),
-			)
-			appUI.Info("%s", nextCmdHint)
-			return
-		}
+		return
+	}
+	if safeTxFile != "" {
+		appUI.Success("Signature appended to %s", safeTxFile)
+	} else {
+		appUI.Success("Confirmation submitted.")
+	}
+	totalSigs := len(pending.Sigs) + 1
+	appUI.Info("Total signatures now: %d", totalSigs)
 
-		// Threshold reached on this very approval. Unless the caller asked
-		// us to stop here (--no-execute), chain straight into execTransaction
-		// so the last signer doesn't need a second command. We use the
-		// in-memory signature list (existing + ours) to avoid a race with
-		// the Safe Transaction Service indexing our just-submitted sig.
-		appUI.Success("Threshold (%d) met with this approval.", threshold)
-		if safeNoExecute {
-			appUI.Info("--no-execute set; skipping execTransaction. Run later with:")
-			appUI.Info("%s", nextCmdHint)
-			return
-		}
-		if !config.YesToAllPrompt && !appUI.Confirm("Broadcast execTransaction now?", true) {
-			appUI.Warn("Skipping execution. Run later with:")
-			appUI.Info("%s", nextCmdHint)
-			return
-		}
+	threshold, err = safeContract.Threshold()
+	if err != nil {
+		appUI.Warn("Couldn't read safe threshold post-approval: %s", err)
+		return
+	}
+	nextCmdHint := msigCmdLine("execute", safeContract.Address, safeHashArg(pending.SafeTxHash))
+	if safeTxFile != "" {
+		nextCmdHint = msigCmdLine("execute", safeContract.Address, "--safe-tx-file "+safeTxFile)
+	}
+	if uint64(totalSigs) < threshold {
+		appUI.Info(
+			"Need %d more approval(s). Once threshold is met, any owner can run:",
+			threshold-uint64(totalSigs),
+		)
+		appUI.Info("%s", nextCmdHint)
+		return
+	}
 
-		runSafeExecute(tc, safeContract, pendingWithNewSig(pending, me, sig), domainSep)
-	},
+	// Threshold reached on this very approval. Unless the caller asked
+	// us to stop here (--no-execute), chain straight into execTransaction
+	// so the last signer doesn't need a second command. We use the
+	// in-memory signature list (existing + ours) to avoid a race with
+	// the Safe Transaction Service indexing our just-submitted sig.
+	appUI.Success("Threshold (%d) met with this approval.", threshold)
+	if safeNoExecute {
+		appUI.Info("--no-execute set; skipping execTransaction. Run later with:")
+		appUI.Info("%s", nextCmdHint)
+		return
+	}
+	if !config.YesToAllPrompt && !appUI.Confirm("Broadcast execTransaction now?", true) {
+		appUI.Warn("Skipping execution. Run later with:")
+		appUI.Info("%s", nextCmdHint)
+		return
+	}
+
+	runSafeExecute(tc, safeContract, pendingWithNewSig(pending, me, sig), domainSep)
 }
 
 // runSafeApproveOnChain is the --approve-onchain code path for
@@ -520,10 +443,7 @@ func runSafeApproveOnChain(
 	if config.DontBroadcast || config.DontWaitToBeMined {
 		appUI.Info("--no-wait / --dont-broadcast is in effect; skipping auto-execute.")
 		appUI.Info("Once the approveHash tx is mined, finalise with:")
-		appUI.Info(
-			"  jarvis msig execute %s 0x%s%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
-		)
+		printExecuteLater(safeContract.Address, pending.SafeTxHash)
 		return
 	}
 
@@ -554,28 +474,19 @@ func runSafeApproveOnChain(
 			"Need %d more approval(s). Once threshold is met, any owner can run:",
 			threshold-uint64(totalSigs),
 		)
-		appUI.Info(
-			"  jarvis msig execute %s 0x%s%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
-		)
+		printExecuteLater(safeContract.Address, pending.SafeTxHash)
 		return
 	}
 
 	appUI.Success("Threshold (%d) met with this approval.", threshold)
 	if safeNoExecute {
 		appUI.Info("--no-execute set; skipping execTransaction. Run later with:")
-		appUI.Info(
-			"  jarvis msig execute %s 0x%s%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
-		)
+		printExecuteLater(safeContract.Address, pending.SafeTxHash)
 		return
 	}
 	if !config.YesToAllPrompt && !appUI.Confirm("Broadcast execTransaction now?", true) {
 		appUI.Warn("Skipping execution. Run later with:")
-		appUI.Info(
-			"  jarvis msig execute %s 0x%s%s",
-			safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
-		)
+		printExecuteLater(safeContract.Address, pending.SafeTxHash)
 		return
 	}
 
@@ -593,210 +504,148 @@ func runSafeApproveOnChain(
 	runSafeExecute(tc, safeContract, pending, domainSep)
 }
 
-var executeSafeCmd = &cobra.Command{
-	Use:   "execute",
-	Short: "Execute a Safe transaction whose signatures meet the threshold",
-	Long: `Fetch a pending Safe transaction, assemble its signatures into the
-format Safe.execTransaction expects, and broadcast the on-chain execution
-from --from (or the only local wallet you have). The executor does not
-need to be a Safe owner: once the signature threshold is met, anyone
-who can pay gas can execute.
+// runExecuteSafe is the Safe-specific implementation of `jarvis msig execute`.
+func runExecuteSafe(cmd *cobra.Command, args []string) {
+	tc, _ := cmdutil.TxContextFrom(cmd)
+	safeContract := tc.Safe
 
-The pending tx can be identified by:
+	appUI.Section("Safe info")
+	showSafeInfo(safeContract)
 
-  - a Safe-app URL:
-      jarvis msig execute "https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=eth:<safe>"
+	pending, err := loadPendingTx(tc, args, safeTxFile, false)
+	if errors.Is(err, errPendingNoCollector) {
+		appUI.Error(
+			"Safe Transaction Service is not available for chain %d, and --safe-tx-file was not set.",
+			config.Network().GetChainID(),
+		)
+		appUI.Info("Pass --safe-tx-file <path> to execute from a local file, or configure SAFE_TX_SERVICE_URL_%d.", config.Network().GetChainID())
+		return
+	}
+	if err != nil {
+		appUI.Error("%s", err)
+		return
+	}
+	if pending.IsExecuted {
+		appUI.Warn("This transaction has already been executed.")
+		return
+	}
 
-  - the safe address followed by a safeTxHash or SafeTx nonce:
-      jarvis msig execute <safe> <safeTxHash|nonce>
-`,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		if len(args) < 1 {
-			return fmt.Errorf("usage: jarvis msig execute <safe-or-url> [safeTxHash|nonce]")
-		}
-		return cmdutil.CommonSafeTxPreprocess(appUI, cmd, args, false)
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		tc, _ := cmdutil.TxContextFrom(cmd)
-		safeContract := tc.Safe
+	domainSep, err := safeContract.DomainSeparator()
+	if err != nil {
+		appUI.Error("Couldn't read on-chain domainSeparator: %s", err)
+		return
+	}
 
-		appUI.Section("Safe info")
-		showSafeInfo(safeContract)
-
-		pending, err := loadPendingTx(tc, args, safeTxFile, false)
-		if errors.Is(err, errPendingNoCollector) {
-			appUI.Error(
-				"Safe Transaction Service is not available for chain %d, and --safe-tx-file was not set.",
-				config.Network().GetChainID(),
-			)
-			appUI.Info("Pass --safe-tx-file <path> to execute from a local file, or configure SAFE_TX_SERVICE_URL_%d.", config.Network().GetChainID())
-			return
-		}
-		if err != nil {
-			appUI.Error("%s", err)
-			return
-		}
-		if pending.IsExecuted {
-			appUI.Warn("This transaction has already been executed.")
-			return
-		}
-
-		domainSep, err := safeContract.DomainSeparator()
-		if err != nil {
-			appUI.Error("Couldn't read on-chain domainSeparator: %s", err)
-			return
-		}
-
-		runSafeExecute(tc, safeContract, pending, domainSep)
-	},
+	runSafeExecute(tc, safeContract, pending, domainSep)
 }
 
-// summarySafeCmd lists every pending Safe transaction the Transaction
-// Service knows about for a Safe, plus a short status line per entry. The
-// classic-msig analogue scans every tx id on chain; here we ask the service
-// because Safe doesn't number its txs sequentially on chain.
-var summarySafeCmd = &cobra.Command{
-	Use:   "summary",
-	Short: "List all pending Safe transactions and their signature progress",
-	Long: `Fetch the queue of pending (not-yet-executed) Safe transactions
-from the Safe Transaction Service and print, for each one, the SafeTx
-nonce, target, signature progress (n/threshold) and safeTxHash. Also
-prints the on-chain Safe nonce so you can see how far ahead the queue is.`,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		return cmdutil.CommonSafeReadPreprocess(appUI, cmd, args)
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		tc, _ := cmdutil.TxContextFrom(cmd)
-		safeContract := tc.Safe
+// runSummarySafe lists every pending Safe transaction the Transaction
+// Service knows about for a Safe, plus a short status line per entry.
+func runSummarySafe(cmd *cobra.Command, args []string) {
+	tc, _ := cmdutil.TxContextFrom(cmd)
+	safeContract := tc.Safe
 
-		appUI.Section("Safe info")
-		showSafeInfo(safeContract)
+	appUI.Section("Safe info")
+	showSafeInfo(safeContract)
 
-		if tc.Collector == nil {
-			appUI.Error(
-				"Safe Transaction Service is not available for chain %d; `summary` needs it to list the pending queue.",
-				config.Network().GetChainID(),
-			)
-			appUI.Info("Configure SAFE_TX_SERVICE_URL_%d to point at a self-hosted service.", config.Network().GetChainID())
-			return
+	if tc.Collector == nil {
+		appUI.Error(
+			"Safe Transaction Service is not available for chain %d; `summary` needs it to list the pending queue.",
+			config.Network().GetChainID(),
+		)
+		appUI.Info("Configure SAFE_TX_SERVICE_URL_%d to point at a self-hosted service.", config.Network().GetChainID())
+		return
+	}
+	threshold, _ := safeContract.Threshold()
+	pending, err := tc.Collector.ListPending(ethcommon.HexToAddress(safeContract.Address))
+	if err != nil {
+		appUI.Error("Couldn't fetch the pending queue: %s", err)
+		return
+	}
+
+	appUI.Section(fmt.Sprintf("Pending Safe transactions: %d", len(pending)))
+	if len(pending) == 0 {
+		appUI.Info("Queue is empty. Use `jarvis msig init` to propose a new tx.")
+		return
+	}
+	for i, p := range pending {
+		// Fold in on-chain approvals so the signature count reflects
+		// reality rather than just the Safe Transaction Service view.
+		// Errors here are non-fatal: we still want the queue listing.
+		if _, err := safeContract.MergeOnChainApprovals(p); err != nil {
+			appUI.Warn("  nonce %s: couldn't merge on-chain approvals (%s); count may be low", p.SafeTx.Nonce.String(), err)
 		}
-		threshold, _ := safeContract.Threshold()
-		pending, err := tc.Collector.ListPending(ethcommon.HexToAddress(safeContract.Address))
-		if err != nil {
-			appUI.Error("Couldn't fetch the pending queue: %s", err)
-			return
-		}
-
-		appUI.Section(fmt.Sprintf("Pending Safe transactions: %d", len(pending)))
-		if len(pending) == 0 {
-			appUI.Info("Queue is empty. Use `jarvis msig init` to propose a new tx.")
-			return
-		}
-		for i, p := range pending {
-			// Fold in on-chain approvals so the signature count reflects
-			// reality rather than just the Safe Transaction Service view.
-			// Errors here are non-fatal: we still want the queue listing.
-			if _, err := safeContract.MergeOnChainApprovals(p); err != nil {
-				appUI.Warn("  nonce %s: couldn't merge on-chain approvals (%s); count may be low", p.SafeTx.Nonce.String(), err)
-			}
-			toJarvis := util.GetJarvisAddress(p.SafeTx.To.Hex(), config.Network())
-			progress := fmt.Sprintf("%d/%d", len(p.Sigs), threshold)
-			status := "pending"
-			switch {
-			case p.IsExecuted:
-				status = "executed"
-			case threshold > 0 && uint64(len(p.Sigs)) >= threshold:
-				status = "ready to execute"
-			}
-			appUI.Info(
-				"  %d. nonce %s  sigs %s  status %s",
-				i+1, p.SafeTx.Nonce.String(), progress, status,
-			)
-			appUI.Info("       to       %s", appUI.Style(util.StyledAddress(toJarvis)))
-			appUI.Info("       safeTxHash 0x%s", ethcommon.Bytes2Hex(p.SafeTxHash[:]))
-		}
-	},
-}
-
-// infoSafeCmd shows the full detail (decoded calldata + signers list) of
-// one pending Safe tx, identified the same way `safe approve` accepts it:
-// by URL, by safeTxHash, or by SafeTx nonce.
-var infoSafeCmd = &cobra.Command{
-	Use:   "info",
-	Short: "Show the full detail of one pending Safe transaction",
-	Long: `Fetch a pending Safe transaction by safeTxHash, SafeTx nonce, or
-Safe-app URL, and print its decoded calldata, signers and execution status.
-Equivalent to ` + "`jarvis msig info`" + ` for Gnosis Classic.`,
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		return cmdutil.CommonSafeReadPreprocess(appUI, cmd, args)
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		tc, _ := cmdutil.TxContextFrom(cmd)
-		safeContract := tc.Safe
-
-		appUI.Section("Safe info")
-		showSafeInfo(safeContract)
-
-		pending, err := loadPendingTx(tc, args, safeTxFile, false)
-		if errors.Is(err, errPendingNoCollector) {
-			appUI.Error(
-				"Safe Transaction Service is not available for chain %d, and --safe-tx-file was not set.",
-				config.Network().GetChainID(),
-			)
-			appUI.Info("Pass --safe-tx-file <path> to inspect a local Safe tx file, or configure SAFE_TX_SERVICE_URL_%d.", config.Network().GetChainID())
-			return
-		}
-		if err != nil {
-			appUI.Error("%s", err)
-			return
-		}
-
-		if _, err := safeContract.MergeOnChainApprovals(pending); err != nil {
-			appUI.Warn("Couldn't merge on-chain approvals: %s", err)
-		}
-
-		threshold, _ := safeContract.Threshold()
-		cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(pending.SafeTx, pending.SafeTxHash, &tc, safeCardOptions{
-			kind:      "Safe transaction",
-			sigs:      pending.Sigs,
-			threshold: threshold,
-		}))
+		toJarvis := util.GetJarvisAddress(p.SafeTx.To.Hex(), config.Network())
+		progress := fmt.Sprintf("%d/%d", len(p.Sigs), threshold)
+		status := "pending"
 		switch {
-		case pending.IsExecuted:
-			appUI.Success("Status: executed.")
-		case threshold > 0 && uint64(len(pending.Sigs)) >= threshold:
-			appUI.Success("Status: threshold met — ready to execute.")
-			appUI.Info(
-				"  jarvis msig execute %s 0x%s%s",
-				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
-			)
-		default:
-			needed := uint64(0)
-			if threshold > uint64(len(pending.Sigs)) {
-				needed = threshold - uint64(len(pending.Sigs))
-			}
-			appUI.Info("Status: pending — needs %d more approval(s).", needed)
-			appUI.Info(
-				"  jarvis msig approve %s 0x%s%s",
-				safeContract.Address, ethcommon.Bytes2Hex(pending.SafeTxHash[:]), networkFlag(),
-			)
+		case p.IsExecuted:
+			status = "executed"
+		case threshold > 0 && uint64(len(p.Sigs)) >= threshold:
+			status = "ready to execute"
 		}
-	},
+		appUI.Info(
+			"  %d. nonce %s  sigs %s  status %s",
+			i+1, p.SafeTx.Nonce.String(), progress, status,
+		)
+		appUI.Info("       to       %s", appUI.Style(util.StyledAddress(toJarvis)))
+		appUI.Info("       safeTxHash 0x%s", ethcommon.Bytes2Hex(p.SafeTxHash[:]))
+	}
 }
 
-// govSafeCmd prints owner list, threshold, version and on-chain nonce for
-// a Safe. Read-only and equivalent to `jarvis msig gov` for the classic UI.
-var govSafeCmd = &cobra.Command{
-	Use:   "gov",
-	Short: "Show owners, threshold, version and on-chain nonce of a Safe",
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		return cmdutil.CommonSafeReadPreprocess(appUI, cmd, args)
-	},
-	Run: func(cmd *cobra.Command, args []string) {
-		tc, _ := cmdutil.TxContextFrom(cmd)
-		appUI.Section("Safe governance")
-		showSafeInfo(tc.Safe)
-	},
+// runInfoSafe shows the full detail of one pending Safe tx.
+func runInfoSafe(cmd *cobra.Command, args []string) {
+	tc, _ := cmdutil.TxContextFrom(cmd)
+	safeContract := tc.Safe
+
+	appUI.Section("Safe info")
+	showSafeInfo(safeContract)
+
+	pending, err := loadPendingTx(tc, args, safeTxFile, false)
+	if errors.Is(err, errPendingNoCollector) {
+		appUI.Error(
+			"Safe Transaction Service is not available for chain %d, and --safe-tx-file was not set.",
+			config.Network().GetChainID(),
+		)
+		appUI.Info("Pass --safe-tx-file <path> to inspect a local Safe tx file, or configure SAFE_TX_SERVICE_URL_%d.", config.Network().GetChainID())
+		return
+	}
+	if err != nil {
+		appUI.Error("%s", err)
+		return
+	}
+
+	if _, err := safeContract.MergeOnChainApprovals(pending); err != nil {
+		appUI.Warn("Couldn't merge on-chain approvals: %s", err)
+	}
+
+	threshold, _ := safeContract.Threshold()
+	cmdutil.ShowSigningCard(appUI, safeCard(pending.SafeTx, pending.SafeTxHash, &tc, cmdutil.SafeCardOptions{
+		Kind:      "Safe transaction",
+		Sigs:      pending.Sigs,
+		Threshold: threshold,
+	}))
+	switch {
+	case pending.IsExecuted:
+		appUI.Success("Status: executed.")
+	case threshold > 0 && uint64(len(pending.Sigs)) >= threshold:
+		appUI.Success("Status: threshold met — ready to execute.")
+		printExecuteLater(safeContract.Address, pending.SafeTxHash)
+	default:
+		needed := uint64(0)
+		if threshold > uint64(len(pending.Sigs)) {
+			needed = threshold - uint64(len(pending.Sigs))
+		}
+		appUI.Info("Status: pending — needs %d more approval(s).", needed)
+		printMsigCmd("approve", safeContract.Address, safeHashArg(pending.SafeTxHash))
+	}
+}
+
+// runGovSafe prints owner list, threshold, version and on-chain nonce.
+func runGovSafe(cmd *cobra.Command, args []string) {
+	tc, _ := cmdutil.TxContextFrom(cmd)
+	appUI.Section("Safe governance")
+	showSafeInfo(tc.Safe)
 }
 
 // safeDeployPromptABI is the interactive shape of `jarvis msig new --type safe`.
@@ -912,11 +761,11 @@ func runNewSafe(cmd *cobra.Command, args []string) {
 	}
 	appUI.Critical("Threshold         : %s / %d", threshold.String(), len(owners))
 	appUI.Critical("Salt nonce        : %s", saltNonce.String())
-	appUI.Info("Owners (%d):", len(owners))
+	ownersHex := make([]string, len(owners))
 	for i, o := range owners {
-		jarvisAddr := util.GetJarvisAddress(o.Hex(), config.Network())
-		appUI.Info("  %d. %s", i+1, appUI.Style(util.StyledAddress(jarvisAddr)))
+		ownersHex[i] = o.Hex()
 	}
+	cmdutil.PrintOwnerList(appUI, ownersHex, config.Network())
 
 	gasLimit := config.GasLimit
 	if gasLimit == 0 {
@@ -1056,11 +905,11 @@ func runSafeExecute(
 		return
 	}
 
-	cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(pending.SafeTx, pending.SafeTxHash, &tc, safeCardOptions{
-		kind:      "Safe execution",
-		sigs:      pending.Sigs,
-		threshold: threshold,
-		signer:    tc.From,
+	cmdutil.ShowSigningCard(appUI, safeCard(pending.SafeTx, pending.SafeTxHash, &tc, cmdutil.SafeCardOptions{
+		Kind:      "Safe execution",
+		Sigs:      pending.Sigs,
+		Threshold: threshold,
+		Signer:    tc.From,
 	}))
 
 	txData, err := safeContract.Abi.Pack(
@@ -1127,12 +976,3 @@ func nextSafeNonce(s *safe.SafeContract, c safe.SignatureCollector) (uint64, err
 	}
 	return safe.NextNonce(s, c)
 }
-
-// Safe-specific flag bindings are wired onto the unified `jarvis msig`
-// commands in cmd/msig.go's init(). The cobra command vars in this file
-// (initSafeCmd, approveSafeCmd, ...) are intentionally NOT registered as
-// their own subcommand tree — the msig dispatcher invokes their .Run /
-// .PersistentPreRunE closures directly after the unified preprocess
-// detects a Gnosis Safe target. Keeping them as cobra structs (rather
-// than free functions) is just a refactor convenience: it avoids
-// touching the body of each Run closure.

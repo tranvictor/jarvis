@@ -6,15 +6,17 @@ import (
 	"math/big"
 	"strings"
 
+	ethcommon "github.com/ethereum/go-ethereum/common"
+
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	jarvisutil "github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/util/broadcaster"
+	utilreader "github.com/tranvictor/jarvis/util/reader"
 	"github.com/tranvictor/jarvis/walletconnect"
 )
 
-// ErrMissingChainForSwitch is returned when a gateway's SwitchChain is
-// called with a CAIP-2 chain that jarvis has no supported network
-// entry for. Wrapped into ErrChainNotSupported so the session layer
-// reports WC 5100.
+// errChainUnknown wraps ErrChainNotSupported when a gateway's
+// SwitchChain is called with a CAIP-2 chain jarvis does not know.
 func errChainUnknown(chain string) error {
 	return fmt.Errorf("%w: %s is not a jarvis-known chain",
 		walletconnect.ErrChainNotSupported, chain)
@@ -104,4 +106,37 @@ func shortLabel(addr string, network jarvisnetworks.Network) string {
 		return fmt.Sprintf("%s (%s)", addr, ja.Desc)
 	}
 	return addr
+}
+
+func pinnedChains(net jarvisnetworks.Network) []string {
+	return []string{walletconnect.ChainString(net.GetChainID())}
+}
+
+func ensurePinnedChain(net jarvisnetworks.Network, chain, label string) error {
+	expected := walletconnect.ChainString(net.GetChainID())
+	if chain != expected {
+		return fmt.Errorf("%w: %s is on %s, dApp asked for %s",
+			walletconnect.ErrChainNotSupported, label, expected, chain)
+	}
+	return nil
+}
+
+func previewCalldata(data []byte) string {
+	preview := ethcommon.Bytes2Hex(data)
+	if len(preview) > 80 {
+		preview = preview[:80] + "…"
+	}
+	return "0x" + preview
+}
+
+func sendOnlyMethods() []string {
+	return []string{walletconnect.SupportedMethods.SendTransaction}
+}
+
+func jarvisNetReader(net jarvisnetworks.Network) (utilreader.Reader, error) {
+	return jarvisutil.EthReader(net)
+}
+
+func jarvisNetBroadcaster(net jarvisnetworks.Network) (*broadcaster.Broadcaster, error) {
+	return jarvisutil.EthBroadcaster(net)
 }

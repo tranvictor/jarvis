@@ -11,7 +11,6 @@ import (
 // spec's JSON keys, just promoted to Go exports.
 type Descriptor struct {
 	Schema   string   `json:"$schema,omitempty"`
-	Includes string   `json:"includes,omitempty"`
 	Context  Context  `json:"context"`
 	Metadata Metadata `json:"metadata"`
 	Display  Display  `json:"display"`
@@ -27,9 +26,9 @@ type Descriptor struct {
 // Context is the binding context — describes which structured data
 // this descriptor applies to. Only one of Contract / EIP712 is set.
 type Context struct {
-	ID       string          `json:"$id,omitempty"`
-	Contract *ContractCtx    `json:"contract,omitempty"`
-	EIP712   *EIP712Ctx      `json:"eip712,omitempty"`
+	ID       string       `json:"$id,omitempty"`
+	Contract *ContractCtx `json:"contract,omitempty"`
+	EIP712   *EIP712Ctx   `json:"eip712,omitempty"`
 }
 
 // ContractCtx binds a descriptor to EVM smart contract calldata.
@@ -87,13 +86,13 @@ type EIP712Domain struct {
 // Metadata carries displayable constants (owner, contractName, token,
 // enums, maps, constants). All optional.
 type Metadata struct {
-	Owner        string           `json:"owner,omitempty"`
-	ContractName string           `json:"contractName,omitempty"`
-	Info         *MetadataInfo    `json:"info,omitempty"`
-	Token        *TokenMetadata   `json:"token,omitempty"`
-	Enums        map[string]Enum  `json:"enums,omitempty"`
-	Constants    map[string]any   `json:"constants,omitempty"`
-	Maps         map[string]Map   `json:"maps,omitempty"`
+	Owner        string          `json:"owner,omitempty"`
+	ContractName string          `json:"contractName,omitempty"`
+	Info         *MetadataInfo   `json:"info,omitempty"`
+	Token        *TokenMetadata  `json:"token,omitempty"`
+	Enums        map[string]Enum `json:"enums,omitempty"`
+	Constants    map[string]any  `json:"constants,omitempty"`
+	Maps         map[string]Map  `json:"maps,omitempty"`
 }
 
 type MetadataInfo struct {
@@ -192,15 +191,15 @@ func (i Intent) IsEmpty() bool { return i.Text == "" && len(i.Map) == 0 }
 // both leaf field formatters and group formatters: a group is a
 // Field with nested Fields set.
 type Field struct {
-	Path     string         `json:"path,omitempty"`
-	Value    any            `json:"value,omitempty"`
-	Ref      string         `json:"$ref,omitempty"`
-	Label    string         `json:"label,omitempty"`
-	Format   string         `json:"format,omitempty"`
-	Params   map[string]any `json:"params,omitempty"`
-	ID       string         `json:"$id,omitempty"`
-	Visible  Visibility     `json:"visible,omitempty"`
-	Separator string        `json:"separator,omitempty"`
+	Path      string         `json:"path,omitempty"`
+	Value     any            `json:"value,omitempty"`
+	Ref       string         `json:"$ref,omitempty"`
+	Label     string         `json:"label,omitempty"`
+	Format    string         `json:"format,omitempty"`
+	Params    map[string]any `json:"params,omitempty"`
+	ID        string         `json:"$id,omitempty"`
+	Visible   Visibility     `json:"visible,omitempty"`
+	Separator string         `json:"separator,omitempty"`
 
 	// Iteration applies only to group fields containing array paths.
 	// "sequential" (default) iterates each array independently;
@@ -226,11 +225,11 @@ type EncryptionInfo struct {
 type VisibilityKind int
 
 const (
-	VisibilityAlways   VisibilityKind = iota // shown (the spec default)
-	VisibilityNever                          // skipped from the curated view
-	VisibilityOptional                       // wallet may show or skip
-	VisibilityIfNotIn                        // skipped only when value matches the deny-list
-	VisibilityMustMatch                      // hidden but enforced — descriptor invalid if value not in allow-list
+	VisibilityAlways    VisibilityKind = iota // shown (the spec default)
+	VisibilityNever                           // skipped from the curated view
+	VisibilityOptional                        // wallet may show or skip
+	VisibilityIfNotIn                         // skipped only when value matches the deny-list
+	VisibilityMustMatch                       // hidden but enforced — descriptor invalid if value not in allow-list
 )
 
 // Visibility is the polymorphic "visible" key on a field: either a

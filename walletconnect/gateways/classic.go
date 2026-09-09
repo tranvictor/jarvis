@@ -104,12 +104,10 @@ func (g *ClassicGateway) Chains(ctx context.Context) ([]string, error) {
 	// bytecode might live at the same address on other chains. But
 	// membership (owners, thresholds, queued txs) does not transfer.
 	// Pinning to one chain keeps the UX consistent with Safe sessions.
-	return []string{walletconnect.ChainString(g.network.GetChainID())}, nil
+	return pinnedChains(g.network), nil
 }
 
-func (g *ClassicGateway) Methods() []string {
-	return []string{walletconnect.SupportedMethods.SendTransaction}
-}
+func (g *ClassicGateway) Methods() []string { return sendOnlyMethods() }
 
 // SwitchChain: a classic msig is just contract code, so the address
 // could in theory be a valid msig on another chain too — but we'd
@@ -135,10 +133,8 @@ func (g *ClassicGateway) SignTypedData(ctx context.Context, chain string, typedD
 func (g *ClassicGateway) SendTransaction(
 	ctx context.Context, chain string, tx *walletconnect.RawTx,
 ) (string, error) {
-	expected := walletconnect.ChainString(g.network.GetChainID())
-	if chain != expected {
-		return "", fmt.Errorf("%w: msig is on %s, dApp asked for %s",
-			walletconnect.ErrChainNotSupported, expected, chain)
+	if err := ensurePinnedChain(g.network, chain, "msig"); err != nil {
+		return "", err
 	}
 
 	if tx.To == "" {
@@ -267,11 +263,7 @@ func (g *ClassicGateway) promptClassicConfirm(
 			g.network.GetNativeTokenSymbol())
 	}
 	if len(innerData) > 0 {
-		preview := ethcommon.Bytes2Hex(innerData)
-		if len(preview) > 80 {
-			preview = preview[:80] + "…"
-		}
-		g.ui.Info("Data     : 0x%s", preview)
+		g.ui.Info("Data     : %s", previewCalldata(innerData))
 	}
 	if !g.ui.Confirm(
 		"Wrap this call in submitTransaction and broadcast it from the owner wallet?",

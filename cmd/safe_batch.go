@@ -356,11 +356,11 @@ func reviewSafeRef(in safeRefInput) (*preparedSafeRef, approveSafeRefResult) {
 	}
 
 	threshold, _ := safeContract.Threshold()
-	cmdutil.ShowSigningCard(appUI, buildSafeSigningCard(pending.SafeTx, pending.SafeTxHash, &tc, safeCardOptions{
-		kind:      "Safe approval",
-		sigs:      pending.Sigs,
-		threshold: threshold,
-		signer:    fromAcc.Address,
+	cmdutil.ShowSigningCard(appUI, safeCard(pending.SafeTx, pending.SafeTxHash, &tc, cmdutil.SafeCardOptions{
+		Kind:      "Safe approval",
+		Sigs:      pending.Sigs,
+		Threshold: threshold,
+		Signer:    fromAcc.Address,
 	}))
 
 	return &preparedSafeRef{
@@ -491,15 +491,7 @@ func buildTxContextForBatch(
 // reason for skips/failures, the exec tx hash when it executed, otherwise the
 // safeTxHash that was approved.
 func safeResultDetail(r safeBatchResult) string {
-	switch {
-	case r.reason != "":
-		return r.reason
-	case r.execTxHash != "":
-		return "exec tx " + r.execTxHash
-	case r.safeTxHash != "":
-		return "safeTxHash " + r.safeTxHash
-	}
-	return ""
+	return firstNonEmpty(r.reason, labeled("exec tx ", r.execTxHash), labeled("safeTxHash ", r.safeTxHash))
 }
 
 // jsonSafeBatchResult and jsonSafeBatchSummary mirror the classic-msig
@@ -532,6 +524,7 @@ func buildSafeBatchSummary(results []safeBatchResult) jsonSafeBatchSummary {
 		Generated: time.Now().UTC().Format(time.RFC3339),
 		Results:   make([]jsonSafeBatchResult, 0, len(results)),
 	}
+	var tally jsonStatusTally
 	for _, r := range results {
 		out.Results = append(out.Results, jsonSafeBatchResult{
 			Ref:         r.ref,
@@ -543,16 +536,8 @@ func buildSafeBatchSummary(results []safeBatchResult) jsonSafeBatchSummary {
 			ConfirmType: r.confirmType,
 			ExecTxHash:  r.execTxHash,
 		})
-		switch r.status {
-		case "approved":
-			out.Approved++
-		case "executed":
-			out.Executed++
-		case "skipped":
-			out.Skipped++
-		case "failed":
-			out.Failed++
-		}
+		tally.add(r.status)
 	}
+	out.Approved, out.Executed, out.Skipped, out.Failed = tally.Approved, tally.Executed, tally.Skipped, tally.Failed
 	return out
 }

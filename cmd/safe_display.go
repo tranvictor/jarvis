@@ -1,9 +1,9 @@
 package cmd
 
-// Human-readable Safe info, confirmation, and signer printers.
-
 import (
-	"github.com/ethereum/go-ethereum/accounts/abi"
+	"fmt"
+
+	ethcommon "github.com/ethereum/go-ethereum/common"
 
 	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/config"
@@ -26,51 +26,13 @@ func showSafeInfo(s *safe.SafeContract) {
 		appUI.Info("Threshold    : %d", t)
 	}
 	if owners, err := s.Owners(); err == nil {
-		appUI.Info("Owners (%d):", len(owners))
-		for i, o := range owners {
-			jarvisAddr := util.GetJarvisAddress(o, config.Network())
-			appUI.Info("  %d. %s", i+1, appUI.Style(util.StyledAddress(jarvisAddr)))
-		}
+		cmdutil.PrintOwnerList(appUI, owners, config.Network())
 	}
 }
 
-// safeCardOptions are the per-flow choices when building a Safe signing card.
-type safeCardOptions struct {
-	kind      string // "Safe proposal", "Safe approval", "Safe execution", "Safe transaction"
-	extraABIs map[string]*abi.ABI
-	sigs      []safe.OwnerSig
-	threshold uint64
-	signer    string
-	prompt    string
-}
-
-func buildSafeSigningCard(
-	stx *safe.SafeTx,
-	hash [32]byte,
-	tc *cmdutil.TxContext,
-	opt safeCardOptions,
-) *cmdutil.SigningCard {
-	var resolver cmdutil.ABIResolver
-	var analyzer util.TxAnalyzer
-	safeAddr := ""
-	if tc != nil {
-		resolver = tc.Resolver
-		analyzer = tc.Analyzer
-		if tc.Safe != nil && tc.Safe.Address != "" {
-			safeAddr = tc.Safe.Address
-		} else {
-			safeAddr = tc.To
-		}
-	}
-	return cmdutil.BuildSafeSigningCard(stx, hash, config.Network(), resolver, analyzer, cmdutil.SafeCardOptions{
-		Kind:      opt.kind,
-		Prompt:    opt.prompt,
-		Signer:    opt.signer,
-		SafeAddr:  safeAddr,
-		ExtraABIs: opt.extraABIs,
-		Sigs:      opt.sigs,
-		Threshold: opt.threshold,
-	})
+func safeCard(stx *safe.SafeTx, hash [32]byte, tc *cmdutil.TxContext, opt cmdutil.SafeCardOptions) *cmdutil.SigningCard {
+	opt.SafeAddr = tc.SafeAddress()
+	return cmdutil.BuildSafeSigningCard(stx, hash, config.Network(), tc.Resolver, tc.Analyzer, opt)
 }
 
 // showSafeSigners renders the list of owners that have already signed.
@@ -82,10 +44,47 @@ func showSafeSigners(label string, sigs []safe.OwnerSig) {
 	appUI.Info("%s (%d):", label, len(sigs))
 	for i, s := range sigs {
 		jarvisAddr := util.GetJarvisAddress(s.Owner.Hex(), config.Network())
-		tag := "[off-chain]"
-		if safe.IsOnChainApproval(s.Sig) {
-			tag = "[on-chain] "
-		}
-		appUI.Info("  %d. %s %s", i+1, tag, appUI.Style(util.StyledAddress(jarvisAddr)))
+		appUI.Info("  %d. %s %s", i+1, cmdutil.SafeOwnerSigTag(s), appUI.Style(util.StyledAddress(jarvisAddr)))
 	}
+}
+
+func safeHashArg(hash [32]byte) string {
+	return "0x" + ethcommon.Bytes2Hex(hash[:])
+}
+
+func msigCmdLine(verb, addr, ident string) string {
+	return fmt.Sprintf("  jarvis msig %s %s %s%s", verb, addr, ident, networkFlag())
+}
+
+func printMsigCmd(verb, addr, ident string) {
+	appUI.Info("%s", msigCmdLine(verb, addr, ident))
+}
+
+func printSafeApproveExecuteHints(addr string, hash [32]byte) {
+	ident := safeHashArg(hash)
+	appUI.Info("Other owners can approve with:")
+	printMsigCmd("approve", addr, ident)
+	appUI.Info("Once threshold is met, anyone can execute with:")
+	printMsigCmd("execute", addr, ident)
+}
+
+func printSafeFileHints(addr string) {
+	ident := "--safe-tx-file " + safeTxFile
+	appUI.Info("Share the file with other owners; each can run:")
+	printMsigCmd("approve", addr, ident)
+	appUI.Info("Once threshold is met, any owner can run:")
+	printMsigCmd("execute", addr, ident)
+}
+
+func printSafeProposalMeta(hash [32]byte) {
+	appUI.Info("network: %s (chain %d)", config.Network().GetName(), config.Network().GetChainID())
+	appUI.Info("safeTxHash: %s", safeHashArg(hash))
+}
+
+func printExecuteLater(addr string, hash [32]byte) {
+	ident := safeHashArg(hash)
+	if safeTxFile != "" {
+		ident = "--safe-tx-file " + safeTxFile
+	}
+	printMsigCmd("execute", addr, ident)
 }

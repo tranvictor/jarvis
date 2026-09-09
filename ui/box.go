@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"strings"
@@ -143,17 +142,6 @@ func truncateToWidth(s string, maxWidth int) string {
 	}
 	return b.String()
 }
-
-// captureBox is the io.Writer used by TerminalUI.BoxedSection so the body
-// callback can target the same UI interface as the outer scope; whatever
-// the body emits is buffered, framed, and written back out with the
-// outer UI's indent prefix.
-type captureBox struct{ buf *bytes.Buffer }
-
-func (c *captureBox) Write(p []byte) (int, error) { return c.buf.Write(p) }
-
-// Compile-time guard.
-var _ io.Writer = (*captureBox)(nil)
 
 // writeBoxed renders body's accumulated output as a coloured-border box
 // and writes the framed lines (one per line) to out with prefix applied.

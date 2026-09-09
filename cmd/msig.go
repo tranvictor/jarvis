@@ -29,6 +29,27 @@ import (
 var ErrUserAborted = errors.New("user aborted")
 var ErrNotWaitingForMining = errors.New("not waiting for mining")
 
+func dispatchSafe(tc cmdutil.TxContext, cmd *cobra.Command, args []string, run func(*cobra.Command, []string)) bool {
+	if tc.MultisigType != cmdutil.MultisigSafe {
+		return false
+	}
+	run(cmd, args)
+	return true
+}
+
+func openClassicMsig(tc cmdutil.TxContext, args []string) (*msig.MultisigContract, string, bool) {
+	addr, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
+	if err != nil {
+		return nil, "", false
+	}
+	c, err := msig.NewMultisigContract(addr, config.Network(), msig.WithReader(cmdutil.EthReaderOf(tc.Reader)))
+	if err != nil {
+		appUI.Error("Couldn't interact with the contract: %s", err)
+		return nil, "", false
+	}
+	return c, addr, true
+}
+
 var summaryMsigCmd = &cobra.Command{
 	Use:   "summary",
 	Short: "List pending Gnosis multisig transactions (Classic on-chain queue or Safe Transaction Service queue)",
@@ -42,23 +63,12 @@ automatically based on an on-chain probe of the address.`,
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
-		if tc.MultisigType == cmdutil.MultisigSafe {
-			summarySafeCmd.Run(cmd, args)
+		if dispatchSafe(tc, cmd, args, runSummarySafe) {
 			return
 		}
 
-		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
-		if err != nil {
-			return
-		}
-
-		multisigContract, err := msig.NewMultisigContract(
-			msigAddress,
-			config.Network(),
-			msig.WithReader(cmdutil.EthReaderOf(tc.Reader)),
-		)
-		if err != nil {
-			appUI.Error("Couldn't interact with the contract: %s", err)
+		multisigContract, msigAddress, ok := openClassicMsig(tc, args)
+		if !ok {
 			return
 		}
 
@@ -151,23 +161,12 @@ or msig tx id / init tx hash for Classic targets.`,
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
-		if tc.MultisigType == cmdutil.MultisigSafe {
-			infoSafeCmd.Run(cmd, args)
+		if dispatchSafe(tc, cmd, args, runInfoSafe) {
 			return
 		}
 
-		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
-		if err != nil {
-			return
-		}
-
-		multisigContract, err := msig.NewMultisigContract(
-			msigAddress,
-			config.Network(),
-			msig.WithReader(cmdutil.EthReaderOf(tc.Reader)),
-		)
-		if err != nil {
-			appUI.Error("Couldn't interact with the contract: %s", err)
+		multisigContract, msigAddress, ok := openClassicMsig(tc, args)
+		if !ok {
 			return
 		}
 
@@ -192,10 +191,10 @@ or msig tx id / init tx hash for Classic targets.`,
 			appUI.Success("Status: executed.")
 		case confirmed:
 			appUI.Success("Status: threshold met — ready to execute.")
-			appUI.Info("  jarvis msig execute %s %s%s", msigAddress, txid.String(), networkFlag())
+			printMsigCmd("execute", msigAddress, txid.String())
 		default:
 			appUI.Info("Status: pending — needs more approval(s).")
-			appUI.Info("  jarvis msig approve %s %s%s", msigAddress, txid.String(), networkFlag())
+			printMsigCmd("approve", msigAddress, txid.String())
 		}
 	},
 }
@@ -212,23 +211,12 @@ the on-chain transaction count.`,
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
-		if tc.MultisigType == cmdutil.MultisigSafe {
-			govSafeCmd.Run(cmd, args)
+		if dispatchSafe(tc, cmd, args, runGovSafe) {
 			return
 		}
 
-		msigAddress, err := getMsigContractFromParams(args, cmdutil.DefaultABIResolver{})
-		if err != nil {
-			return
-		}
-
-		multisigContract, err := msig.NewMultisigContract(
-			msigAddress,
-			config.Network(),
-			msig.WithReader(cmdutil.EthReaderOf(tc.Reader)),
-		)
-		if err != nil {
-			appUI.Error("Couldn't interact with the contract: %s", err)
+		multisigContract, msigAddress, ok := openClassicMsig(tc, args)
+		if !ok {
 			return
 		}
 
@@ -239,11 +227,7 @@ the on-chain transaction count.`,
 			return
 		}
 		appUI.Info("Address          : %s", appUI.Style(util.StyledAddress(util.GetJarvisAddress(msigAddress, config.Network()))))
-		appUI.Info("Owners (%d):", len(owners))
-		for i, owner := range owners {
-			ja := util.GetJarvisAddress(owner, config.Network())
-			appUI.Info("  %d. %s", i+1, appUI.Style(util.StyledAddress(ja)))
-		}
+		cmdutil.PrintOwnerList(appUI, owners, config.Network())
 		voteRequirement, err := multisigContract.VoteRequirement()
 		if err != nil {
 			appUI.Error("Couldn't get vote requirements of the multisig: %s", err)
@@ -344,8 +328,7 @@ owner.`,
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
-		if tc.MultisigType == cmdutil.MultisigSafe {
-			executeSafeCmd.Run(cmd, args)
+		if dispatchSafe(tc, cmd, args, runExecuteSafe) {
 			return
 		}
 		cmdutil.HandleApproveOrRevokeOrExecuteMsig(appUI, "executeTransaction", cmd, args, nil)
@@ -372,8 +355,7 @@ execution time, so the two modes can be mixed freely across signers.`,
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
-		if tc.MultisigType == cmdutil.MultisigSafe {
-			approveSafeCmd.Run(cmd, args)
+		if dispatchSafe(tc, cmd, args, runApproveSafe) {
 			return
 		}
 		cmdutil.HandleApproveOrRevokeOrExecuteMsig(appUI, "confirmTransaction", cmd, args, nil)
@@ -518,13 +500,7 @@ type batchResult struct {
 // classicResultDetail is the one-line detail shown next to a Classic
 // outcome: the reason for skips/failures, the confirm tx hash otherwise.
 func classicResultDetail(r batchResult) string {
-	if r.reason != "" {
-		return r.reason
-	}
-	if r.confirmTxHash != "" {
-		return "confirm tx " + r.confirmTxHash
-	}
-	return ""
+	return firstNonEmpty(r.reason, labeled("confirm tx ", r.confirmTxHash))
 }
 
 // printBatchApproveSummary renders the closing table for a bapprove run:
@@ -610,6 +586,7 @@ func buildClassicBatchSummary(results []batchResult) jsonBatchSummary {
 		Results: make([]jsonBatchResult, 0, len(results)),
 	}
 
+	var tally jsonStatusTally
 	for _, r := range results {
 		jr := jsonBatchResult{
 			Network:       r.network,
@@ -631,18 +608,9 @@ func buildClassicBatchSummary(results []batchResult) jsonBatchSummary {
 		}
 
 		summary.Results = append(summary.Results, jr)
-
-		switch r.status {
-		case "approved":
-			summary.Approved++
-		case "broadcasted":
-			summary.Broadcasted++
-		case "skipped":
-			summary.Skipped++
-		case "failed":
-			summary.Failed++
-		}
+		tally.add(r.status)
 	}
+	summary.Approved, summary.Broadcasted, summary.Skipped, summary.Failed = tally.Approved, tally.Broadcasted, tally.Skipped, tally.Failed
 	return summary
 }
 
@@ -753,7 +721,7 @@ Safe+Classic runs write both arrays into one file.`,
 		for _, sr := range safeRefs {
 			residual = strings.ReplaceAll(residual, sr.original, " ")
 		}
-		networkNames, txs := cmdutil.ScanForTxs(residual)
+		networkNames, txs := util.ScanForTxs(residual)
 		if len(networkNames) == 0 || len(txs) == 0 {
 			networkNames, txs = nil, nil
 		}
@@ -1214,8 +1182,7 @@ the Safe, so the positional Safe address and --network become optional.`,
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
-		if tc.MultisigType == cmdutil.MultisigSafe {
-			initSafeCmd.Run(cmd, args)
+		if dispatchSafe(tc, cmd, args, runInitSafe) {
 			return
 		}
 

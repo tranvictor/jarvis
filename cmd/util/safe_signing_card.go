@@ -81,28 +81,21 @@ func BuildSafeSigningCard(
 		MultiSend:      isMultiSend,
 	}
 	fillDestinationWarn(&warn, stx.To.Hex(), network)
-	fc := decodeSafeCalldata(stx, network, resolver, analyzer, opt.ExtraABIs)
+	fc := decodeSigningCalldata(stx.To.Hex(), stx.Value, stx.Data, network, resolver, analyzer, opt.ExtraABIs)
 	attachMultisigInnerCall(card, &warn, toJarvis, stx.Value, stx.Data, fc, network, false)
 	return card
 }
 
-func decodeSafeCalldata(
-	stx *safe.SafeTx,
-	network jarvisnetworks.Network,
-	resolver ABIResolver,
-	analyzer util.TxAnalyzer,
-	extraABIs map[string]*abi.ABI,
-) *jarviscommon.FunctionCall {
-	return decodeSigningCalldata(stx.To.Hex(), stx.Value, stx.Data, network, resolver, analyzer, extraABIs)
+func SafeOwnerSigTag(s safe.OwnerSig) string {
+	if safe.IsOnChainApproval(s.Sig) {
+		return "[on-chain] "
+	}
+	return "[off-chain]"
 }
 
 func safeSignerLine(s safe.OwnerSig, network jarvisnetworks.Network) ui.StyledText {
 	st := util.StyledAddress(util.GetJarvisAddress(s.Owner.Hex(), network))
-	tag := "[off-chain]"
-	if safe.IsOnChainApproval(s.Sig) {
-		tag = "[on-chain] "
-	}
-	st.Text = tag + " " + st.Text
+	st.Text = SafeOwnerSigTag(s) + " " + st.Text
 	return st
 }
 

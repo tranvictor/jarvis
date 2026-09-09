@@ -453,12 +453,7 @@ func (g *EOAGateway) fallbackConfirm(
 	}
 	g.ui.Info("Gas   : %d", tx.Gas())
 	if len(data) > 0 {
-		hexData := ethcommon.Bytes2Hex(data)
-		preview := hexData
-		if len(preview) > 80 {
-			preview = preview[:80] + "…"
-		}
-		g.ui.Info("Data  : 0x%s", preview)
+		g.ui.Info("Data  : %s", previewCalldata(data))
 		if a, err := g.resolver.ConfigToABI(to, false, "", net); err == nil && a != nil {
 			if m, ok := matchMethod(a, data); ok {
 				g.ui.Info("Call  : %s", m)

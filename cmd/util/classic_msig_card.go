@@ -10,17 +10,6 @@ import (
 	"github.com/tranvictor/jarvis/util"
 )
 
-func decodeClassicCalldata(
-	to string,
-	value *big.Int,
-	data []byte,
-	network jarvisnetworks.Network,
-	resolver ABIResolver,
-	analyzer util.TxAnalyzer,
-) *jarviscommon.FunctionCall {
-	return decodeSigningCalldata(to, value, data, network, resolver, analyzer, nil)
-}
-
 func buildClassicMsigCard(
 	msigAddr string,
 	txid *big.Int,
@@ -98,7 +87,7 @@ func AnalyzeAndShowMsigTxInfo(
 
 	numConfirmations = len(confirmations)
 	confirmed = numConfirmations >= int(requirement)
-	fc = decodeClassicCalldata(address, value, data, network, resolver, analyzer)
+	fc = decodeSigningCalldata(address, value, data, network, resolver, analyzer, nil)
 	ShowSigningCard(u, buildClassicMsigCard(
 		multisigContract.Address, txid, address, value, data,
 		executed, confirmations, requirement, network, fc,
@@ -117,7 +106,7 @@ func BuildClassicProposalCard(
 	resolver ABIResolver,
 	analyzer util.TxAnalyzer,
 ) *SigningCard {
-	fc := decodeClassicCalldata(to, value, data, network, resolver, analyzer)
+	fc := decodeSigningCalldata(to, value, data, network, resolver, analyzer, nil)
 	return buildClassicMsigCard(msigAddr, nil, to, value, data, false, nil, threshold, network, fc)
 }
 
