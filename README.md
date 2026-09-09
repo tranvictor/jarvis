@@ -349,7 +349,7 @@ of multisig you're talking to.
 |------------|:-------:|:----:|-------|
 | `jarvis msig init`     | yes | yes | Propose a new multisig tx. Safe also accepts a Transaction Builder batch via `--tx-builder-file` / `--tx-builder-json`. |
 | `jarvis msig approve`  | yes | yes | Add your approval. Auto-executes when threshold is met. |
-| `jarvis msig execute`  | yes | yes | Broadcast the on-chain execution. |
+| `jarvis msig execute`  | yes | yes | Broadcast the on-chain execution. Safe: any wallet can pay gas once the threshold is met. |
 | `jarvis msig info`     | yes | yes | Show a specific pending tx with decoded calldata. |
 | `jarvis msig summary`  | yes | yes | List pending txs (Classic: on-chain queue with id / to / sigs / status; Safe: Transaction Service queue). |
 | `jarvis msig gov`      | yes | yes | Show owners / threshold / version / nonce. |
@@ -512,7 +512,7 @@ jarvis msig init 0xSAFE --msig-to 0xTOKEN --msig-value 100 \
 # Other owners load the file, append their signature, write it back
 jarvis msig approve 0xSAFE --from 0xBOB --safe-tx-file ./proposal.json
 
-# Any owner executes from the file once threshold is met
+# Anyone can execute from the file once threshold is met
 jarvis msig execute 0xSAFE --from 0xCAROL --safe-tx-file ./proposal.json
 
 # You can also just inspect a local proposal file

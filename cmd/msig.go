@@ -335,11 +335,12 @@ var executeMsigCmd = &cobra.Command{
 	Short: "Execute a confirmed multisig transaction (Classic execTransaction or Safe execTransaction)",
 	Long: `Broadcast the on-chain execution of a multisig transaction whose
 confirmations meet the threshold. Classic targets call
-executeTransaction(txid); Safe targets call execTransaction(...) with
-the off-chain-collected signatures assembled from the Safe Transaction
-Service.`,
+executeTransaction(txid) from an owner. Safe targets call
+execTransaction(...) with the off-chain-collected signatures assembled
+from the Safe Transaction Service; the executor does not need to be an
+owner.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-		return cmdutil.CommonMultisigTxPreprocess(appUI, cmd, args)
+		return cmdutil.CommonMultisigExecutePreprocess(appUI, cmd, args)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
