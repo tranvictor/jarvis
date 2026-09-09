@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/spf13/cobra"
 
+	"github.com/tranvictor/jarvis/accounts"
 	jtypes "github.com/tranvictor/jarvis/accounts/types"
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
@@ -298,13 +299,15 @@ func CommonSafeReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) error 
 //  1. Resolves the network and Safe address via the standard preprocess.
 //  2. Builds a SafeContract reader and verifies that the on-chain ABI
 //     matches the Safe shape (so we don't operate on random addresses).
-//  3. Picks the signing wallet — when --from is empty, looks for a single
-//     local wallet that is also an owner of the Safe.
+//  3. Picks the signing wallet. For init/approve, when --from is empty,
+//     looks for a single local wallet that is also an owner of the Safe.
+//     For execute (requireOwner false), any local wallet can pay gas:
+//     Safe.execTransaction does not require the sender to be an owner.
 //  4. Resolves gas / nonce / tx type for any future on-chain transactions
 //     (e.g. execTransaction) so callers can reuse SignAndBroadcast.
 //  5. Wires a SignatureCollector backed by the Safe Transaction Service
 //     for off-chain signature exchange.
-func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string, requireOwner bool) error {
 	// Step 0: try to recognise a Safe-app URL / EIP-3770 reference in
 	// args[0] BEFORE the inner preprocess looks at it.
 	var ref *safe.SafeAppRef
@@ -358,33 +361,20 @@ func CommonSafeTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 	}
 	tc.Safe = safeContract
 
-	var fromAcc jtypes.AccDesc
-	if config.From == "" {
-		fromAcc, _, err = PickLocalOwner(owners, config.From, OwnerRequireUnique)
-		if errors.Is(err, ErrNoLocalOwner) {
-			return fmt.Errorf(
-				"you don't have any wallet which is an owner of this Safe; please run `jarvis wallet add` first",
-			)
-		}
-		if errors.Is(err, ErrMultipleLocalOwners) {
-			return fmt.Errorf(
-				"you have multiple wallets that are owners of this Safe; please specify exactly one with --from",
-			)
-		}
-		if err != nil {
-			return err
-		}
-	} else {
-		fromAcc, _, err = ResolveAccount(tc.Resolver, config.From)
-		if err != nil {
-			return err
-		}
-		if !IsAmongOwners(owners, fromAcc.Address) {
-			return fmt.Errorf(
-				"%s is not an owner of Safe %s",
-				fromAcc.Address, tc.To,
-			)
-		}
+	fromAcc, err := chooseSafeFrom(
+		config.From,
+		tc.To,
+		owners,
+		requireOwner,
+		func(keyword string) (jtypes.AccDesc, error) {
+			acc, _, err := ResolveAccount(tc.Resolver, keyword)
+			return acc, err
+		},
+		accounts.GetAccount,
+		accounts.GetAccounts(),
+	)
+	if err != nil {
+		return err
 	}
 	tc.FromAcc = fromAcc
 	tc.From = fromAcc.Address
@@ -582,6 +572,18 @@ func CommonMultisigReadPreprocess(u ui.UI, cmd *cobra.Command, args []string) er
 // Note: revoke is classic-only; the Run dispatcher is expected to refuse
 // the operation when MultisigType == MultisigSafe with an actionable error.
 func CommonMultisigTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+	return commonMultisigTxPreprocess(u, cmd, args, true)
+}
+
+// CommonMultisigExecutePreprocess is CommonMultisigTxPreprocess for
+// `jarvis msig execute`. Safe execTransaction can be sent by any local
+// wallet once the threshold is met, so the executor is not required to
+// be an owner. Classic execute still requires an owner.
+func CommonMultisigExecutePreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
+	return commonMultisigTxPreprocess(u, cmd, args, false)
+}
+
+func commonMultisigTxPreprocess(u ui.UI, cmd *cobra.Command, args []string, requireOwner bool) error {
 	ref, err := preResolveMultisigArg(u, cmd, args)
 	if err != nil {
 		return err
@@ -603,7 +605,7 @@ func CommonMultisigTxPreprocess(u ui.UI, cmd *cobra.Command, args []string) erro
 
 	switch typ {
 	case MultisigSafe:
-		if err := CommonSafeTxPreprocess(u, cmd, args); err != nil {
+		if err := CommonSafeTxPreprocess(u, cmd, args, requireOwner); err != nil {
 			return err
 		}
 	case MultisigClassic:

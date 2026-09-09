@@ -62,9 +62,9 @@ var initSafeCmd = &cobra.Command{
 constructed from the target's ABI, sign the EIP-712 safeTxHash with --from
 (or the only owner you have a wallet for), and submit the proposal to the
 Safe Transaction Service. Other owners can later approve via 'jarvis msig
-approve' and any owner can finalise via 'jarvis msig execute'.`,
+approve' and anyone can finalise via 'jarvis msig execute'.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		if err = cmdutil.CommonSafeTxPreprocess(appUI, cmd, args); err != nil {
+		if err = cmdutil.CommonSafeTxPreprocess(appUI, cmd, args, true); err != nil {
 			return err
 		}
 		if config.MsigValue < 0 {
@@ -271,7 +271,7 @@ over an off-chain signature store. Other owners' off-chain signatures
 		if len(args) < 1 {
 			return fmt.Errorf("usage: jarvis msig approve <safe-or-url> [safeTxHash|nonce]")
 		}
-		return cmdutil.CommonSafeTxPreprocess(appUI, cmd, args)
+		return cmdutil.CommonSafeTxPreprocess(appUI, cmd, args, true)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
@@ -598,7 +598,9 @@ var executeSafeCmd = &cobra.Command{
 	Short: "Execute a Safe transaction whose signatures meet the threshold",
 	Long: `Fetch a pending Safe transaction, assemble its signatures into the
 format Safe.execTransaction expects, and broadcast the on-chain execution
-from --from (or the single matching owner you have a wallet for).
+from --from (or the only local wallet you have). The executor does not
+need to be a Safe owner: once the signature threshold is met, anyone
+who can pay gas can execute.
 
 The pending tx can be identified by:
 
@@ -612,7 +614,7 @@ The pending tx can be identified by:
 		if len(args) < 1 {
 			return fmt.Errorf("usage: jarvis msig execute <safe-or-url> [safeTxHash|nonce]")
 		}
-		return cmdutil.CommonSafeTxPreprocess(appUI, cmd, args)
+		return cmdutil.CommonSafeTxPreprocess(appUI, cmd, args, false)
 	},
 	Run: func(cmd *cobra.Command, args []string) {
 		tc, _ := cmdutil.TxContextFrom(cmd)
