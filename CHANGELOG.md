@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- `msig bapprove`: bare Classic init hashes (no `mainnet:` / `bsc ` prefix)
+  now use `-k/--network`, which defaults to Ethereum mainnet. Pasting a
+  summary line such as `Transfer back 2,890.418601 0xabc…` used to skip
+  every hash as "unsupported network".
+
 ## 0.3.0 — terminal output redesign
 
 Everything jarvis prints was reworked so that the information you act on

@@ -721,6 +721,34 @@ func writeBatchApproveJSONIfRequested(safe []safeBatchResult, classic []batchRes
 	writeBatchApproveJSON(config.JSONOutputFile, safe, classic)
 }
 
+// scanClassicBatchTxs finds Classic init hashes in raw and fills in a
+// network for each. ScanForTxs leaves the network empty when the hash
+// has no prefix (mainnet:0x… / bsc 0x…); bapprove used to pass that
+// empty string to GetNetwork and skip the tx as "unsupported network".
+// Bare hashes therefore inherit defaultNetwork, which is -k/--network
+// and defaults to Ethereum mainnet — the same rule as a single
+// `msig approve`. Prefixed hashes keep their prefix; aliases such as
+// "ethereum" are canonicalized so the plan prints "mainnet".
+func scanClassicBatchTxs(raw, defaultNetwork string) (nwks, hashes []string) {
+	nwks, hashes = cmdutil.ScanForTxs(raw)
+	if len(nwks) == 0 || len(hashes) == 0 {
+		return nil, nil
+	}
+	if strings.TrimSpace(defaultNetwork) == "" {
+		defaultNetwork = jarvisnetworks.EthereumMainnet.GetName()
+	}
+	for i, n := range nwks {
+		if n == "" {
+			n = defaultNetwork
+		}
+		if net, err := jarvisnetworks.GetNetwork(n); err == nil {
+			n = net.GetName()
+		}
+		nwks[i] = n
+	}
+	return nwks, hashes
+}
+
 var batchApproveMsigCmd = &cobra.Command{
 	Use:   "bapprove",
 	Short: "Approve a mixed batch of pending Classic and Safe multisig transactions",
@@ -729,6 +757,7 @@ Each whitespace- or comma-separated token may be:
 
   - a Gnosis Classic init tx hash, optionally network-prefixed:
       mainnet:0x<64-hex>   or   bsc 0x<64-hex>
+    Bare hashes (no prefix) use -k/--network, which defaults to mainnet.
 
   - a Gnosis Safe app URL:
       https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=<chain>:<safe>
@@ -753,10 +782,7 @@ Safe+Classic runs write both arrays into one file.`,
 		for _, sr := range safeRefs {
 			residual = strings.ReplaceAll(residual, sr.original, " ")
 		}
-		networkNames, txs := cmdutil.ScanForTxs(residual)
-		if len(networkNames) == 0 || len(txs) == 0 {
-			networkNames, txs = nil, nil
-		}
+		networkNames, txs := scanClassicBatchTxs(residual, config.NetworkString)
 		if len(safeRefs) == 0 && len(txs) == 0 {
 			appUI.Error("No txs passed to the first param. Did nothing.")
 			return
