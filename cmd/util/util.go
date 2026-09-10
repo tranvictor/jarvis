@@ -52,8 +52,10 @@ func classicMsigABI(resolver ABIResolver, addr string, network jarvisnetworks.Ne
 type PostProcessFunc func(fc *jarviscommon.FunctionCall) error
 
 // ScanForTxs scans para for network-prefixed or bare transaction hashes.
+// Bare hashes inherit -k/--network (config.NetworkString), which defaults
+// to Ethereum mainnet.
 func ScanForTxs(para string) (nwks []string, addresses []string) {
-	return util.ScanForTxs(para)
+	return util.ScanForTxs(para, config.NetworkString)
 }
 
 // HandleApproveOrRevokeOrExecuteMsig handles the confirm / revoke / execute
@@ -91,11 +93,9 @@ func HandleApproveOrRevokeOrExecuteMsig(
 			}
 		} else {
 			config.Tx = txs[0]
-			if nwks[0] != "" {
-				if err = config.SetNetwork(nwks[0]); err != nil {
-					u.Error("Not supported network: %s", err)
-					return
-				}
+			if err = config.SetNetwork(nwks[0]); err != nil {
+				u.Error("Not supported network: %s", err)
+				return
 			}
 		}
 	}
