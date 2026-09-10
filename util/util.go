@@ -203,8 +203,10 @@ func ValueToAmountAndCurrency(value string) (string, string, error) {
 }
 
 // ScanForTxs finds network-prefixed or bare 32-byte transaction hashes.
-// nwks[i] is the lowercase network name when a prefix was present, else "".
-func ScanForTxs(para string) (nwks []string, hashes []string) {
+// nwks[i] is the canonical network for hashes[i]: a prefix when present
+// (mainnet:0x… / bsc 0x…), otherwise defaultNetwork, otherwise Ethereum
+// mainnet. Aliases such as "ethereum" are canonicalized to GetName().
+func ScanForTxs(para, defaultNetwork string) (nwks []string, hashes []string) {
 	networkNames := networks.GetSupportedNetworkNames()
 	regexStr := strings.Join(networkNames, "|")
 	regexStr = fmt.Sprintf(
@@ -214,15 +216,31 @@ func ScanForTxs(para string) (nwks []string, hashes []string) {
 
 	re := regexp.MustCompile(regexStr)
 	for _, match := range re.FindAllStringSubmatch(para, -1) {
-		nwks = append(nwks, strings.ToLower(match[1]))
+		nwks = append(nwks, resolveTxNetwork(strings.ToLower(match[1]), defaultNetwork))
 		hashes = append(hashes, match[2])
 	}
 	return
 }
 
-// ScanForTxHashes is ScanForTxs dropping the optional network prefixes.
+// resolveTxNetwork turns a captured prefix (possibly empty) into the
+// canonical network name jarvis will use for that hash.
+func resolveTxNetwork(captured, defaultNetwork string) string {
+	name := captured
+	if name == "" {
+		name = strings.ToLower(strings.TrimSpace(defaultNetwork))
+	}
+	if name == "" {
+		name = networks.EthereumMainnet.GetName()
+	}
+	if net, err := networks.GetNetwork(name); err == nil {
+		return net.GetName()
+	}
+	return name
+}
+
+// ScanForTxHashes is ScanForTxs dropping the network names.
 func ScanForTxHashes(para string) []string {
-	_, hashes := ScanForTxs(para)
+	_, hashes := ScanForTxs(para, "")
 	if hashes == nil {
 		return []string{}
 	}

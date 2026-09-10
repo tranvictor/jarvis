@@ -320,6 +320,9 @@ Continue with the remaining 1 transaction(s)? [Y/n]
   without further prompts. Anything that broadcasts a transaction — on-chain
   `approveHash`, auto-execution when the threshold is met, Classic
   confirmations — still asks per item.
+- Tx hashes without a network prefix use `-k/--network` (default: Ethereum
+  mainnet), the same rule as `info` and the rest of jarvis. Prefixed hashes
+  still win per item (`bsc 0x…` stays BSC).
 - The process exits with status 1 when any item failed; skipped items alone
   keep it at 0.
 

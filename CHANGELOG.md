@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- `ScanForTxs` now assigns a network to every hash, not only prefixed ones.
+  A bare `0x<64-hex>` uses `-k/--network` (Ethereum mainnet unless the user
+  overrode it); aliases such as `ethereum` are canonicalized to `mainnet`.
+  `msig bapprove` was skipping those hashes as "unsupported network" because
+  it passed the empty prefix through to `GetNetwork`. `info` looks each
+  hash up on its own network, so `mainnet:0x… bsc:0x…` in one invocation
+  no longer fetches both on the first prefix.
+
 ## 0.3.0 — terminal output redesign
 
 Everything jarvis prints was reworked so that the information you act on

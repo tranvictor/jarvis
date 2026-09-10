@@ -729,6 +729,7 @@ Each whitespace- or comma-separated token may be:
 
   - a Gnosis Classic init tx hash, optionally network-prefixed:
       mainnet:0x<64-hex>   or   bsc 0x<64-hex>
+    Bare hashes (no prefix) use -k/--network, which defaults to mainnet.
 
   - a Gnosis Safe app URL:
       https://app.safe.global/transactions/tx?id=multisig_<safe>_<hash>&safe=<chain>:<safe>

@@ -42,7 +42,7 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 	// otherwise we bind to the default network and fail to fetch the tx.
 	// An explicit -N/--network flag still wins if the user passed it.
 	if len(args) > 0 && !cmd.Flags().Changed("network") {
-		if nwks, txs := ScanForTxs(args[0]); len(txs) > 0 && nwks[0] != "" {
+		if nwks, txs := ScanForTxs(args[0]); len(txs) > 0 {
 			config.NetworkString = nwks[0]
 		}
 	}
@@ -114,7 +114,7 @@ func CommonNetworkPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 	// An explicit -N/--network flag still wins if the user passed it.
 	if len(args) > 0 && !cmd.Flags().Changed("network") {
 		para := strings.Join(args, " ")
-		if nwks, txs := ScanForTxs(para); len(txs) > 0 && nwks[0] != "" {
+		if nwks, txs := ScanForTxs(para); len(txs) > 0 {
 			config.NetworkString = nwks[0]
 		}
 	}
@@ -445,14 +445,14 @@ func preResolveMultisigArg(u ui.UI, cmd *cobra.Command, args []string) (*safe.Sa
 	return r, nil
 }
 
-// applyMultisigArgNetworkHint sets config.NetworkString from a
-// network-prefixed first argument (e.g. "mainnet:0x…") when the user
-// did not pass -k/--network explicitly.
+// applyMultisigArgNetworkHint sets config.NetworkString from a tx hash
+// in args[0] (prefix if present, otherwise the ScanForTxs default) when
+// the user did not pass -k/--network explicitly.
 func applyMultisigArgNetworkHint(cmd *cobra.Command, args []string) {
 	if len(args) == 0 || cmd.Flags().Changed("network") {
 		return
 	}
-	if nwks, txs := ScanForTxs(args[0]); len(txs) > 0 && nwks[0] != "" {
+	if nwks, txs := ScanForTxs(args[0]); len(txs) > 0 {
 		config.NetworkString = nwks[0]
 	}
 }
