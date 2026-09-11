@@ -1,0 +1,4 @@
+{
+  "name": "jarvis",
+  "install": "go build ./... && make jarvis"
+}
