@@ -1,47 +1,40 @@
 # jarvis
 
-Ethereum automation made easy to human
+Ethereum automation made easy for humans.
 
-## If you like Jarvis You can buy me a cup of coffee by sending any tokens to
+<p align="center">
+  <a href="#support-jarvis"><img src="https://img.shields.io/badge/☕_Buy_me_a_coffee-ETH_·_BSC-FFDD00?style=for-the-badge" alt="Buy me a coffee"></a>
+</p>
 
-0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb
+Jarvis is a CLI for people who operate Ethereum contracts. It decodes
+transactions, builds and signs from keystores, Ledger and Trezor, and
+drives Gnosis Safe and Classic multisigs from a terminal.
 
-Both Ethereum and BSC :)
+```text
+jarvis info <tx hash>     what a transaction did, decoded
+jarvis send               move ETH or tokens from a wallet or a Safe
+jarvis contract read|tx   call or write any verified contract
+jarvis msig               propose, approve and execute multisig txs
+jarvis wc                 drive a dApp over WalletConnect v2
+jarvis wallet / addr      the keys you sign with, the names you trust
+```
 
-## Installation
+## Install
 
 ### Homebrew (macOS and Linux)
 
-Easiest on a Mac (installs Homebrew if needed, puts it on PATH, then installs jarvis):
+Easiest on a Mac (installs Homebrew if needed, then jarvis):
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/tranvictor/jarvis/master/scripts/install.sh)"
 ```
 
-Then open a **new** Terminal window and run `jarvis`.
-
-If you already use Homebrew:
+Open a **new** terminal and run `jarvis`. If you already use Homebrew:
 
 ```bash
 brew install tranvictor/jarvis/jarvis
+brew update && brew upgrade tranvictor/jarvis/jarvis   # later
 ```
-
-On Apple Silicon, Homebrew lives in `/opt/homebrew/bin`, which is not on macOS's default PATH. The formula appends `brew shellenv` to zsh (`~/.zprofile`, `~/.zshrc`) and bash (`~/.bash_profile`, `~/.bashrc`) startup files so `jarvis` works in new terminals regardless of which of those shells they use. Already installed? Run `brew reinstall tranvictor/jarvis/jarvis` once, or:
-
-```bash
-eval "$(/opt/homebrew/bin/brew shellenv)"
-```
-
-To upgrade to the latest version, refresh the tap first. `brew upgrade jarvis` alone uses the locally cached formula, so after a new GitHub release it can report:
-
-`Warning: tranvictor/jarvis/jarvis 0.1.0 already installed`
-
-```bash
-brew update
-brew upgrade tranvictor/jarvis/jarvis
-```
-
-Linux users who already have [Homebrew](https://docs.brew.sh/Homebrew-on-Linux) can use the same `brew install` / `brew upgrade` commands; the tap ships Linux amd64 and arm64 bottles.
 
 ### Linux (apt)
 
@@ -51,13 +44,8 @@ sudo curl -fsSL https://tranvictor.github.io/jarvis/gpg/jarvis-archive-keyring.g
   -o /etc/apt/keyrings/jarvis-archive-keyring.gpg
 echo "deb [signed-by=/etc/apt/keyrings/jarvis-archive-keyring.gpg] https://tranvictor.github.io/jarvis/apt stable main" \
   | sudo tee /etc/apt/sources.list.d/jarvis.list
-sudo apt update
-sudo apt install jarvis
+sudo apt update && sudo apt install jarvis
 ```
-
-Upgrade with `sudo apt update && sudo apt install --only-upgrade jarvis`.
-
-The apt (and dnf) repo is published to GitHub Pages on each GitHub release (`make release`). Until that has happened once after these packages were added, the URLs above will 404.
 
 ### Linux (dnf / yum)
 
@@ -68,8 +56,6 @@ sudo curl -fsSL https://tranvictor.github.io/jarvis/jarvis.repo \
 sudo dnf install jarvis
 ```
 
-Upgrade with `sudo dnf upgrade jarvis`.
-
 ### Windows (Scoop)
 
 ```powershell
@@ -77,642 +63,46 @@ scoop bucket add tranvictor https://github.com/tranvictor/homebrew-tranvictor
 scoop install jarvis
 ```
 
-Upgrade with `scoop update jarvis`.
+PATH, upgrades, Ledger udev rules and building from source:
+[docs/install.md](docs/install.md).
 
-## Build from source
-
-### Ubuntu Build
-
-```bash
-sudo add-apt-repository ppa:longsleep/golang-backports
-sudo apt-get update
-sudo apt-get install go-1.12
-GO111MODULE=on /usr/lib/go-1.12/bin/go get github.com/tranvictor/jarvis@v0.0.1
-GO111MODULE=on /usr/lib/go-1.12/bin/go install github.com/tranvictor/jarvis
-```
-
-`jarvis` command will be installed to `~/go/bin`
-
-### MacOS Build
-
-1. Download and install Go v1.12 [here](https://golang.org/dl/)
-
-```
-GO111MODULE=on go get github.com/tranvictor/jarvis
-GO111MODULE=on go install github.com/tranvictor/jarvis
-```
-
-`jarvis` binary file will be placed at `$GOPATH/bin/`
-
-If the installation process returned errors, try to clear Go module cache at `$GOPATH/pkg/mod`
-
-2. Try `$GOPATH/bin/jarvis --help`
-3. Add Jarvis to PATH, and relevant `addresses.json`
-
-### Windows Build
-
-Install mingw-w64 from [here](https://sourceforge.net/projects/mingw-w64/files/Toolchains%20targetting%20Win32/Personal%20Builds/mingw-builds/installer/mingw-w64-install.exe/download)
-Add mingw-64 bin folder to PATH
-Go to jarvis folder and using following command to build
-
-```
-go build -v
-```
-
-There should be jarvis.exe file. Add jarvis to PATH (optional)
-
-Jarvis works on cmd, proshell but will not have color.
-[Windows Terminal](https://www.microsoft.com/en-us/p/windows-terminal-preview/9n0dx20hk701?activetab=pivot:overviewtab) and [Gitbash](https://gitforwindows.org/) support color
-
-## How to use it
-
-See help with
-
-```
-~/go/bin/jarvis -h
-```
-
-## Reading the output
-
-Jarvis prints the things you have to decide on first and the things you
-might want to look up later further down. Colour is used sparingly: green
-for a confirmed outcome, red for a failure, yellow only for something you
-should read before signing. Addresses show their address-book name first
-and a shortened hex (`0x9642…5D4E`); the full hex is always shown on
-signing screens and with `--degen`. `--json-output` is unaffected by any of
-this and always carries full, untruncated values.
-
-### `jarvis info <hash>`
-
-```
-✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
-         mainnet   from me (0x9642…5D4E)   value 0 ETH   gas 0.00213000 ETH   nonce 412   block 19234567
-
-Call  swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)
-  amountIn      1,000,000,000  uint256
-  amountOutMin  311,200,000,000,000,000  uint256
-  path          [2 items]  address[]
-  ├─ USDC (0xA0b8…eB48)
-  └─ WETH (0xC02a…6Cc2)
-  to            me (0x9642…5D4E)  address
-  deadline      2024-09-06 05:20:00 UTC, 2 years ago  uint256
-
-Events (3)
-  1. Transfer  USDC token (0xA0b8…eB48)   from me (0x9642…5D4E)  to USDC/WETH pair (0x0d4a…1852)  value 1,000 USDC
-  2. Sync      USDC/WETH pair (0x0d4a…1852)   reserve0 5,000,000,000,000  reserve1 1,500,000,000,000,000,000,000
-  3. Transfer  WETH token (0xC02a…6Cc2)   from USDC/WETH pair (0x0d4a…1852)  to me (0x9642…5D4E)  value 0.3121 WETH
-
-✓ done   swapExactTokensForTokens  →  Uniswap V2 Router (0x7a25…488D)   0x3f9a…e1c2
-```
-
-- The headline is status + what was called + where. The muted second line
-  holds the numbers you rarely need (network, gas, nonce, block).
-- Time-named parameters (`deadline`, `expiry`, `validUntil`, …) show the
-  date and distance instead of raw seconds; `-x` keeps both.
-- With four or more token movements a **Net effect** block comes first: one
-  line per address with its net change per token, sender first, so a swap
-  that hops through three pools still reads as "−1,000 USDC, +0.3121 WETH".
-  The per-hop list is not printed; **Events** at the bottom has every
-  `Transfer` / `Approval` / `Deposit` / `Withdrawal`, including standard
-  token events from unverified contracts. `--json-output` still includes
-  a `transfers` array.
-- Unknown addresses are shown as bare short hex; `(zero address)` marks
-  mints, burns and empty approve-targets, and is never replaced by an
-  address-book name. Integers get thousands separators and token amounts are
-  rounded to four decimals (four significant digits below 1). `--degen` and
-  `--json-output` keep every digit.
-- Arrays longer than a few items and long `bytes` blobs are collapsed;
-  `--degen` expands everything, shows full addresses and switches the
-  parameter list to a table.
-- A reverted tx opens with `✗ reverted`; the revert reason, when it can be
-  recovered by replaying the call, is the red `reason` line under the
-  headline. Events that no ABI describes are listed as `<undecoded>` with
-  their raw topics so the event count is always complete.
-- When an ERC-7730 descriptor matches the call (or an inner MultiSend / Safe
-  call), a green **Clear Signed** panel is printed above the ABI **Call**
-  tree — the same fields shown at sign time, without the hardware-wallet
-  comparison hint. No match leaves the output unchanged.
-
-### Signing screen
-
-Every `send`, `tx`, `msig init/approve/execute`, Classic and Safe
-`msig info`, and WalletConnect `eth_sendTransaction` ends in the same
-card. WalletConnect `personal_sign` / typed-data still use a compact
-confirm. The decoded call comes first (with a green Clear Signed panel
-above it when an ERC-7730 descriptor matches), the who/where/cost block sits
-directly above the prompt, and anything jarvis thinks you should
-double-check is listed as a `!` line right before you answer:
-
-```
-================ EOA transaction =================
-
-Call  approve  →  0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC)
-  spender  0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D  address
-  amount   uint256.max (∞)  uint256
-
-Sign with  0x9642b23Ed1E01Df1092B92641051881a322F5D4E (me)   ledger   mainnet
-Send to    0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC)
-Gas        ≈ 0.00170246 ETH   (85,123 gas × max 20 gwei, tip 1.5 gwei)   nonce 42
-
-! approves UNLIMITED USDC to 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
-! spender 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D is not in your address book
-
-Sign and broadcast (≈ 0.00170246 ETH)? [y/N]
->
-```
-
-```
-================ Safe approval =================
-
-Send  1.5 ETH  →  0x9642b23Ed1E01Df1092B92641051881a322F5D4E (Alice)
-
-Sign with    0x9642b23Ed1E01Df1092B92641051881a322F5D4E (me)   ledger   mainnet
-Recipient    0x9642b23Ed1E01Df1092B92641051881a322F5D4E (Alice)
-Value        1.5 ETH
-Operation    CALL (0)
-Safe nonce   17
-safeTxHash   0xabc…
-
-Sign this Safe approval (off-chain, no gas)? [y/N]
->
-```
-
-An ERC-20 transfer uses the same `Send  amount  →  recipient` line (the
-token contract stays on `Safe calls` / `Send to`). Attaching native value
-to an ERC-20 `transfer` / `approve` / similar call adds:
-
-```
-! attaches 1.5 ETH to an ERC-20 transfer on USDC; the native value goes to the token contract, not the recipient
-```
-
-WETH `deposit` is payable on purpose, so it keeps the ordinary
-`sends 1.5 ETH into a contract` warning instead.
-
-Warnings are emitted for: a destination that is not in your address book,
-native value sent into a contract, native value attached to an ERC-20 call,
-calldata jarvis could not decode,
-unlimited ERC-20 approvals, `setApprovalForAll`, approvals to unknown
-spenders, and Safe `DELEGATECALL` operations. Safe cards add the Safe
-address, operation, nonce, `safeTxHash` and the list of collected
-signatures. Classic cards add the multisig, on-chain tx id, confirmation
-progress and the list of confirmers; approving then collapses the inner
-`confirmTransaction` call the same way a Safe execution collapses
-`execTransaction`. `-Y` / `--yes` skips the prompt but still prints the card.
-
-After signing, a live status line replaces the silent wait
-(`⠋ in mempool, waiting to be mined…  0:12`), and once mined jarvis prints
-the same headline + Net effect + Events view as `info` so you can see what
-actually happened. The same status line is used while jarvis waits for a
-Ledger to be plugged in and unlocked.
-
-### Batch runs
-
-`jarvis msig bapprove` shows the plan before asking anything, then works
-through the list with one indented block per item. The inner Classic/Safe
-operation is a rounded box so it stands apart from the EOA confirm that
-follows. Every banner, box title, Y/n prompt and result line repeats
-`[i/n]`, so you can search or scroll a 50-item transcript and still know
-which transaction you are looking at:
-
-```
-=============== Batch approve: 3 transaction(s) ===============
-1. Safe     eth:0xSafe…:0xhash…
-2. Safe     bsc:0xSafe…:0xhash…
-3. Classic  mainnet:0xinit…
-
-=============== [1/3] Safe  eth:0xSafe…:0xhash… ===============
-  ╭─ [1/3] Safe approval ──────────────────────────────╮
-  │ ... decoded call, warnings ...                     │
-  ╰────────────────────────────────────────────────────╯
-  [1/3] Sign approval (off-chain, no gas)? [Y/n]
-✓ [1/3] approved  safeTxHash 0x…   (1 ok · 2 left)
-
-=============== [2/3] Safe  bsc:0xSafe…:0xhash… ===============
-  ...
-✗ [2/3] failed  unlock wallet: ledger not connected   (1 ok · 1 failed · 1 left)
-Continue with the remaining 1 transaction(s)? [Y/n]
-
-=============== [3/3] Classic  mainnet:0xinit… ===============
-  ╭─ [3/3] Classic multisig transaction ───────────────╮
-  │ Send  1.5 ETH  →  Alice                            │
-  │ ...                                                │
-  ╰────────────────────────────────────────────────────╯
-  [3/3] EOA transaction
-  Call  confirmTransaction  →  Treasury   (Classic transaction shown above)
-  [3/3] Sign and broadcast (≈ 0.0017 ETH)? [Y/n]
-✓ [3/3] approved  confirm tx 0x…   (2 ok · 1 failed)
-
-===================== Batch summary =====================
-┌───┬─────────┬─────────┬──────────┬──────────┬───────────────────────┐
-│ # │ Kind    │ Network │ Target   │ Result   │ Detail                │
-├───┼─────────┼─────────┼──────────┼──────────┼───────────────────────┤
-│ 1 │ Safe    │ mainnet │ 0xSafe…  │ approved │ safeTxHash 0x…        │
-│ 2 │ Safe    │ bsc     │ 0xSafe…  │ failed   │ unlock wallet: …      │
-│ 3 │ Classic │ mainnet │ msig #7  │ approved │ confirm tx 0x…        │
-└───┴─────────┴─────────┴──────────┴──────────┴───────────────────────┘
-
-3 transaction(s): 2 ok · 1 failed
-```
-
-- `--continue-on-error` skips the `Continue with the remaining…?` question.
-- `--confirm-once` (Safe refs only) reviews every signing card first, asks
-  one `Sign all N reviewed Safe approval(s)?` question and then signs each
-  without further prompts. Anything that broadcasts a transaction — on-chain
-  `approveHash`, auto-execution when the threshold is met, Classic
-  confirmations — still asks per item.
-- Tx hashes without a network prefix use `-k/--network` (default: Ethereum
-  mainnet), the same rule as `info` and the rest of jarvis. Prefixed hashes
-  still win per item (`bsc 0x…` stays BSC).
-- The process exits with status 1 when any item failed; skipped items alone
-  keep it at 0.
-
-### Directories
-
-`jarvis wallet list`, `jarvis network list` and `jarvis msig chains list`
-are bordered tables. `network list` prints RPC **hostnames** only so a
-default Infura/Alchemy key never lands on the screen; full URLs live
-under `jarvis node list <network>`.
-
-## Multisig: Gnosis Classic and Gnosis Safe
-
-Jarvis has first-class support for both Gnosis Classic (on-chain
-confirmations, sequential `txid`s) and Gnosis Safe (off-chain / on-chain
-confirmations, EIP-712 `safeTxHash`). **There is a single command for
-both — `jarvis msig`.** Jarvis probes the address on-chain once, caches
-the detected type per `(chain, address)` on disk, and dispatches to the
-right backend automatically. You never have to tell jarvis which flavor
-of multisig you're talking to.
-
-> Older versions exposed a separate `jarvis safe` tree. It is gone. All
-> Safe functionality lives under `jarvis msig` now.
-
-### Subcommand matrix
-
-| Subcommand | Classic | Safe | Notes |
-|------------|:-------:|:----:|-------|
-| `jarvis msig init`     | yes | yes | Propose a new multisig tx. Safe also accepts a Transaction Builder batch via `--tx-builder-file` / `--tx-builder-json`. |
-| `jarvis msig approve`  | yes | yes | Add your approval. Auto-executes when threshold is met. |
-| `jarvis msig execute`  | yes | yes | Broadcast the on-chain execution. Safe: any wallet can pay gas once the threshold is met. |
-| `jarvis msig info`     | yes | yes | Show a specific pending tx with decoded calldata. |
-| `jarvis msig summary`  | yes | yes | List pending txs (Classic: on-chain queue with id / to / sigs / status; Safe: Transaction Service queue). |
-| `jarvis msig gov`      | yes | yes | Show owners / threshold / version / nonce. |
-| `jarvis msig bapprove` | yes | yes | Batch-approve many pending txs in one shot. Safe refs may be Safe-app URLs, `multisig_<safe>_<hash>` tokens, or `<chain>:<safe>:<hash>` triples. |
-| `jarvis msig revoke`   | yes | **no** | Classic-only; errors with a clear message on Safe addresses. |
-| `jarvis msig new`      | yes | yes | Deploy a new wallet. `--type safe` uses SafeProxyFactory (CREATE2); `--type classic` deploys the original MultiSigWallet. Omitted `--type` prompts, or stays Classic when `--prefills` is set. |
-
-`jarvis send --from <multisig>` also auto-detects and routes through
-`msig init` automatically for both flavors, so you rarely need to reach
-for `init` directly.
-
-### Deploying a new Safe (`jarvis msig new`)
+## Quick start
 
 ```bash
-# Prompt for Safe vs Classic, then owners / threshold / salt
-jarvis msig new --from 0xALICE --network eth
-
-# Deploy a Safe without the flavor prompt
-jarvis msig new --from 0xALICE --type safe --network eth
-
-# Non-interactive: owners | threshold | salt nonce
-jarvis msig new --from 0xALICE --type safe -I "0xA,0xB,0xC|2|0" -y --network eth
-
-# Custom factory / singleton on a chain without the canonical set
-jarvis msig new --from 0xALICE --type safe \
-    --factory 0xFACTORY --singleton 0xSAFE --fallback-handler 0xHANDLER
+jarvis -h
+jarvis info 0x…                    # decode a tx
+jarvis send                        # ETH or tokens, EOA or Safe
+jarvis msig summary 0xSAFE         # pending Safe / Classic txs
+jarvis wc "wc:…" --from me         # pair a dApp
 ```
 
-Jarvis probes the canonical Safe 1.4.1 deployments first, then 1.3.0
-(canonical and eip155). L2 chains get SafeL2 so indexers see the extra
-events; Ethereum mainnet and its L1 testnets get the L1 Safe singleton.
-The predicted CREATE2 address is shown before you sign. After the
-deploy confirms:
+More: [output](docs/output.md) · [multisig](docs/multisig.md) ·
+[WalletConnect](docs/walletconnect.md)
 
-```bash
-jarvis msig gov 0xNEWSAFE --network eth
+Nodes and networks: `jarvis node` / `jarvis network` (stored under
+`~/.jarvis/`). Pick a chain with `-k/--network`.
+
+## Support Jarvis
+
+<p align="center">
+  <img src="docs/images/donate-qr.png" width="180" alt="QR code — scan to send any token">
+</p>
+
+<p align="center">
+  <b>Like Jarvis? Buy me a coffee ☕</b><br>
+  Send <em>any</em> token on Ethereum or BNB Smart Chain.<br>
+  ETH, BNB, USDC, memecoins — all welcome.
+</p>
+
+```text
+0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb
 ```
 
-### Identifying a pending Safe transaction
-
-Any of these work wherever a Safe pending-tx reference is expected:
-
-```bash
-# Safe-app URL (the easiest form to paste from the UI)
-jarvis msig approve "https://app.safe.global/transactions/tx?id=multisig_0xSAFE_0xHASH&safe=eth:0xSAFE"
-
-# Bare multisig token (as emitted by the Safe UI "Copy link")
-jarvis msig approve multisig_0xSAFE_0xHASH
-
-# Safe address + safeTxHash
-jarvis msig approve 0xSAFE 0xHASH
-
-# Safe address + SafeTx nonce
-jarvis msig approve 0xSAFE 17
-```
-
-If you omit the identifier and there is exactly one pending Safe tx for
-that wallet, jarvis auto-selects it.
-
-### Safe approval modes
-
-Two orthogonal approval paths are supported. You can mix them across
-signers on the same pending tx — jarvis merges both sets at execute time.
-
-1. **Off-chain (default).** Jarvis signs the EIP-712 `safeTxHash` with
-   `--from` (or the only local owner wallet it finds) and POSTs the
-   signature to the Safe Transaction Service.
-2. **On-chain (`--approve-onchain`).** Jarvis broadcasts
-   `Safe.approveHash(safeTxHash)` from `--from`. Useful on chains
-   without a Transaction Service, for wallets that can't produce
-   EIP-712 signatures, or when you want an on-chain audit trail.
-
-```bash
-# Off-chain (default): sign + post to Safe Transaction Service
-jarvis msig approve 0xSAFE 0xHASH --from 0xMYOWNER
-
-# On-chain: send approveHash(...) from --from
-jarvis msig approve 0xSAFE 0xHASH --from 0xMYOWNER --approve-onchain
-```
-
-When your approval brings the signature count to the Safe's threshold,
-jarvis **auto-chains `execTransaction` in the same invocation** so the
-last signer doesn't need to run a second command. Pass `--no-execute` to
-opt out.
-
-### Batching with the Safe Transaction Builder (`--tx-builder-file` / `--tx-builder-json`)
-
-Assemble a batch in the **Transaction Builder** app on
-[app.safe.global](https://app.safe.global), then propose it with jarvis —
-so you get hardware-wallet signing, offline flows, and jarvis's decoded
-review screen for a batch you composed in the browser. Download the JSON
-and pass the path with `--tx-builder-file`, or skip the file entirely and
-paste the JSON itself with `--tx-builder-json`.
-
-The export names both the chain (`chainId`) and the Safe
-(`meta.createdFromSafeAddress`), so **the positional Safe address and
-`--network` are optional** here — the one place in `jarvis msig` where
-that's true:
-
-```bash
-# chain and Safe both inferred from the downloaded file
-jarvis msig init --tx-builder-file ./batch.json --from 0xALICE
-
-# or name them explicitly; they must agree with the batch
-jarvis msig init 0xSAFE --network bsc --tx-builder-file ./batch.json --from 0xALICE
-
-# paste the JSON straight from the Transaction Builder, no file needed
-jarvis msig init --tx-builder-json '{"version":"1.0","chainId":"56","meta":{...},"transactions":[...]}' --from 0xALICE
-```
-
-Wrap the JSON in **single** quotes so your shell doesn't eat the double
-quotes inside it. The two flags are mutually exclusive.
-
-How the batch is executed:
-
-- **One transaction** in the file → proposed as a plain `CALL` to that
-  target, exactly as if you had used `--msig-to`.
-- **Several transactions** → one SafeTx that `DELEGATECALL`s
-  **MultiSendCallOnly** with the calls packed into `multiSend(bytes)`.
-  This is what the Safe UI does too. `value` on the outer SafeTx is 0
-  because the delegatecall spends the Safe's balance directly.
-
-Jarvis resolves MultiSendCallOnly from the Safe's on-chain `VERSION()`,
-verifies the candidate actually has code, and prints which one it picked.
-Override it with `--multisend-address 0x…` if you run your own
-deployment.
-
-Batches are **fully expanded in every review screen** — `msig init`'s
-confirmation prompt, and `msig info` / `msig approve` for the other
-owners — so nobody signs an opaque blob. Each inner call is decoded with
-the ABI from the file, which means it stays readable even when the target
-contract is unverified on the block explorer.
-
-Guard rails, all of them fatal with no override flag:
-
-- `chainId` disagreeing with an explicit `--network`.
-- `meta.createdFromSafeAddress` disagreeing with the Safe you're
-  proposing through.
-- No Safe address given *and* no usable `meta.createdFromSafeAddress`.
-- An empty batch, an entry with neither `data` nor `contractMethod`, or a
-  `contractInputsValues` entry missing for a declared input. Nothing is
-  ever silently skipped or defaulted to zero.
-
-Both flags are Safe-only and mutually exclusive with the interactive
-single-call flags (`--msig-to`, `--msig-value`, `--method-index`,
-`--no-func-call`, `--prefills`). They do compose with `--safe-nonce`,
-`--safe-tx-file` and `--from`.
-
-### Chains without a Safe Transaction Service (`--safe-tx-file`)
-
-Jarvis ships with Safe Transaction Service URLs for every chain where
-Safe maintains one. On chains that don't have one (or when you prefer
-not to use it), use a local JSON file as the source of truth:
-
-```bash
-# Proposer writes the SafeTx + their first signature to a file
-jarvis msig init 0xSAFE --msig-to 0xTOKEN --msig-value 100 \
-    --from 0xALICE --safe-tx-file ./proposal.json
-
-# Other owners load the file, append their signature, write it back
-jarvis msig approve 0xSAFE --from 0xBOB --safe-tx-file ./proposal.json
-
-# Anyone can execute from the file once threshold is met
-jarvis msig execute 0xSAFE --from 0xCAROL --safe-tx-file ./proposal.json
-
-# You can also just inspect a local proposal file
-jarvis msig info 0xSAFE --safe-tx-file ./proposal.json
-```
-
-When `--safe-tx-file` is set, jarvis treats the file as the single
-source of truth and does not consult the Safe Transaction Service even
-if one is configured. You can still use `--approve-onchain` alongside a
-file; the two approval paths merge at execute time via the Safe's
-`approvedHashes` mapping.
-
-If the service is up but you want to use a self-hosted deployment, set:
-
-```
-SAFE_TX_SERVICE_URL_<chainID>=https://my-safe-tx-service.example.com
-# or a global fallback that applies to every chain:
-SAFE_TX_SERVICE_URL=https://my-safe-tx-service.example.com
-```
-
-### Type-detection cache
-
-The first time jarvis sees a `(chain, multisig-address)` pair it probes
-the contract to decide Safe vs Classic and caches the answer on disk
-(in `~/.jarvis/cache.json`) so subsequent commands don't pay the RPC
-round-trip. Delete that file if you ever need to force re-detection
-(e.g. after redeploying at the same address).
-
-### Hardware wallet support
-
-Ledger and Trezor are supported for both Classic confirmations and Safe
-off-chain EIP-712 signing out of the box. Pick them through `--from`
-exactly as you would for a normal `jarvis send`.
-
-### A note on address inputs
-
-Anywhere jarvis accepts an address (`--from`, `--msig-to`, the
-multisig positional arg, etc.) it resolves the string in this order:
-
-1. **ENS** — if the input looks like a `.eth` name (e.g. `alice.eth`,
-   `foo.bar.eth`), jarvis resolves it against the canonical ENS
-   registry on **Ethereum mainnet**, regardless of which chain you
-   passed to `--network`. The same `0x…` is then used on the target
-   chain. Results are cached in `~/.jarvis/cache.json` under the
-   `ens:v1:<name>` key so subsequent runs don't re-query. If mainnet
-   isn't configured or resolution fails, jarvis warns to stderr and
-   falls through to step 2.
-2. **Local address book** — built-in labels plus any entries you've
-   added. Used both for forward lookup ("find an address by name") and
-   for description tagging (printing `0xA0b8… (USDC - 6)`).
-3. **Raw hex** — if the input contains a `0x…` hex address it's
-   accepted as-is.
-
-**Scope of ENS support:**
-
-- `.eth` names only. Alt-TLDs that require CCIP-Read gateways
-  (`alice.base.eth` on Basenames, `.linea.eth` on Linea Names,
-  Unstoppable Domains, etc.) are **not** resolved. They'll fall
-  through to the address book.
-- Forward only. Jarvis does not reverse-resolve displayed addresses
-  into `.eth` names; that would need a lookup on every rendered
-  address and the cost isn't worth it for the CLI use case.
-- EOA-safe, contract-caveat. EOAs have the same address on every EVM
-  chain, so resolving `alice.eth → 0xABC` on mainnet and using `0xABC`
-  as a signer on another chain is sound. Contract addresses are
-  **not** guaranteed to host the same contract across chains — a
-  multichain Safe with the same address on Ethereum and BSC is two
-  independent Safes that happen to share an address. When an input
-  like `--msig-to someproto.eth` resolves and you're operating on a
-  non-mainnet chain, double-check the resolved `0x…` actually hosts
-  the contract you expect.
-- Results are shown with `ens:` as the provenance label (e.g.
-  `To: 0xd8dA…6045 (ens:vitalik.eth)`) so you can always tell at a
-  glance that an address came from ENS.
-
-To disable the network hop entirely (airgap, offline signing), either
-leave `~/.jarvis/nodes/mainnet.json` unconfigured (jarvis will warn
-once and skip ENS for the rest of the run) or avoid typing `.eth`
-names altogether.
-
-## WalletConnect: drive dApps from jarvis (`jarvis wc`)
-
-Browser-hosted dApps such as AAVE, KyberSwap and Uniswap all speak
-[WalletConnect v2](https://docs.walletconnect.com/). `jarvis wc`
-turns jarvis into a WalletConnect **wallet** for the duration of one
-command, so you can sit at a terminal and have the dApp propose
-transactions for any jarvis-managed account — EOAs, Gnosis Safes, or
-legacy Gnosis classic multisigs alike.
-
-### Quick start
-
-```
-# 1. On the dApp: pick "WalletConnect" in the connect dialog,
-#    then "Copy URI" (looks like `wc:7a9c...@2?relay-protocol=...`).
-
-# 2. Paste it into jarvis and pick the account you want to act as:
-jarvis wc "wc:7a9c...@2?relay-protocol=irn&symKey=..." \
-    --from alice.eth
-```
-
-Jarvis ships with a bundled Reown projectId so the above works with
-no extra setup. See [projectId](#projectid) below if you want to
-register your own.
-
-jarvis then:
-
-1. Pairs with the dApp using the URI's symmetric key.
-2. Shows you the incoming session proposal (dApp name, URL, requested
-   chains and methods) and asks you to confirm.
-3. Subscribes to the session topic and **blocks**. Every
-   `eth_sendTransaction`, `personal_sign`, `eth_signTypedData_v4`, or
-   `wallet_switchEthereumChain` the dApp emits is printed with
-   jarvis's usual decoded-calldata view before you get a
-   sign/broadcast prompt. Rejecting a request sends the dApp a
-   JSON-RPC error; the session stays open for the next one.
-4. Exits cleanly on `Ctrl-C` (jarvis tells the dApp
-   `wc_sessionDelete` before disconnecting, so the dApp UI updates
-   immediately).
-
-### How `--from` picks the signing strategy
-
-`jarvis wc` reuses the same type-detection pipeline as `jarvis msig`
-and `jarvis send`, so you can point it at any of:
-
-- **EOA** (`--from alice.eth`, `--from 0xabc…`, or a wallet nickname)
-  — jarvis signs and broadcasts each `eth_sendTransaction` directly.
-  `personal_sign` / `eth_signTypedData_v4` / `wallet_switchEthereumChain`
-  all work.
-- **Gnosis Safe** (`--from <safe-addr>`) — each `eth_sendTransaction`
-  is wrapped into a SafeTx, signed with your configured owner, and
-  posted to the Safe Transaction Service. You then collect the other
-  owners' signatures with `jarvis msig approve`/`execute` as usual.
-  Raw signing methods are rejected, because there is no safe,
-  generic way for a Safe to counter-sign an arbitrary off-chain
-  message.
-- **Gnosis Classic multisig** (`--from <classic-msig-addr>`) — each
-  `eth_sendTransaction` is wrapped into `submitTransaction(...)` and
-  broadcast by your owner EOA. Other owners confirm the resulting
-  on-chain transaction ID with `jarvis msig approve`. Raw signing
-  methods are rejected.
-
-For multisig `--from`, jarvis auto-picks a local wallet that is also
-an on-chain owner. If several of your local wallets qualify, pass
-`--owner <addr>` to disambiguate.
-
-### `--network` and `wallet_switchEthereumChain`
-
-`--network` sets the **default** chain jarvis will honour; any dApp
-chain outside of that is rejected unless you pre-authorise it. If the
-dApp issues `wallet_switchEthereumChain`:
-
-- **EOA**: jarvis swaps its node reader/broadcaster to the requested
-  chain. The same EOA address is used (EOAs are address-stable
-  across EVM chains).
-- **Gnosis Safe**: jarvis checks the Safe Transaction Service
-  registry (same data powering the chain autodetect for `jarvis
-  msig`) to confirm the target chain actually has that Safe
-  deployed; refuses otherwise.
-- **Gnosis Classic**: jarvis probes the target chain for the
-  `submitTransaction` / `confirmTransaction` / `getTransactionCount`
-  selector surface; refuses if the target chain has no classic
-  multisig code at that address.
-
-### projectId
-
-The WalletConnect relay requires every client to identify itself
-with a registered Reown projectId (used for quota accounting, not
-authentication of secrets). Jarvis ships with a bundled default
-projectId so the out-of-the-box experience works without any signup.
-If you share that default with the rest of the jarvis userbase you
-may occasionally hit relay rate limits — in that case register your
-own at [cloud.reown.com](https://cloud.reown.com) and either export
-`JARVIS_WC_PROJECT_ID=<your-id>` or pass `--project-id <your-id>`.
-No other WalletConnect credentials are stored; the session ephemeral
-keys are generated in-memory for every run.
-
-## Ledger on Ubuntu
-
-Add the rules and reload udev. More infomation see [here](https://support.ledger.com/hc/en-us/articles/115005165269-Fix-connection-issues)
-
-```
-wget -q -O - https://raw.githubusercontent.com/LedgerHQ/udev-rules/master/add_udev_rules.sh | sudo bash
-```
-
-## Configure custom nodes
-
-Custom node is load from ~/nodes.json
-This settings will override all default nodes
-If any supported network is not define it will use default nodes
-
-```
-{
-  "mainnet": {
-    "infura": "infura_link",
-    "alchemy": "alchemy_link"
-  },
-  "bsc": {
-  }
-}
-```
+<p align="center">
+  <a href="https://etherscan.io/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb"><img src="https://img.shields.io/badge/Ethereum-Etherscan-627EEA?style=for-the-badge&logo=ethereum&logoColor=white" alt="View on Etherscan"></a>
+  &nbsp;
+  <a href="https://bscscan.com/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb"><img src="https://img.shields.io/badge/BNB_Smart_Chain-BscScan-F0B90B?style=for-the-badge&logo=binance&logoColor=black" alt="View on BscScan"></a>
+</p>
+
+Same address on both chains. Scan the QR from a wallet or copy the
+address above.
