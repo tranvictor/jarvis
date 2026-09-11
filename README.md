@@ -15,10 +15,10 @@ jarvis wc                 drive a dApp over WalletConnect v2
 jarvis wallet / addr      the keys you sign with, the names you trust
 ```
 
-## Support Jarvis
+## ☕ Support Jarvis
 
 <p align="center">
-  <a href="https://etherscan.io/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb"><img src="https://img.shields.io/badge/☕_Buy_me_a_coffee-ETH_·_BSC_·_any_token-FFDD00?style=for-the-badge" alt="Buy me a coffee"></a>
+  <a href="https://etherscan.io/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb"><img src="https://img.shields.io/badge/Buy_me_a_coffee-ETH_·_BSC_·_any_token-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=white" alt="Buy me a coffee"></a>
 </p>
 
 <p align="center">
