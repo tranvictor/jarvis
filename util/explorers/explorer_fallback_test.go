@@ -75,6 +75,9 @@ func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {
 	if info.Name != "TransparentUpgradeableProxy" {
 		t.Fatalf("name = %q", info.Name)
 	}
+	if info.ABI == "" {
+		t.Fatal("GetContractInfo should keep the ABI from the same response")
+	}
 }
 
 func TestGetABIStringFollowsMethodlessProxyImplementation(t *testing.T) {
@@ -163,6 +166,9 @@ func TestGetABIStringFallsBackToBlockscoutV2(t *testing.T) {
 	}
 	if !info.IsProxy || !strings.EqualFold(info.Implementation, "0x00000000000000000000000000000000000000aa") {
 		t.Fatalf("info: %+v", info)
+	}
+	if info.ABI == "" {
+		t.Fatal("JSON contract info should include ABI")
 	}
 }
 

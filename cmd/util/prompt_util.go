@@ -546,7 +546,7 @@ func RenderContractClearSign(
 	params []jarviscommon.ParamResult,
 	customABIs map[string]*abi.ABI,
 ) bool {
-	return renderMatchedContract(u, network, to, value, data, params, customABIs, erc7730.Render)
+	return renderMatchedContract(u, network, to, value, data, params, customABIs, erc7730.Render, true)
 }
 
 func renderMatchedContract(
@@ -558,6 +558,7 @@ func renderMatchedContract(
 	params []jarviscommon.ParamResult,
 	customABIs map[string]*abi.ABI,
 	paint func(ui.UI, *erc7730.ClearSignedView),
+	autoSync bool,
 ) bool {
 	if to == "" || len(data) < 4 {
 		return false
@@ -572,6 +573,9 @@ func renderMatchedContract(
 		}
 	}
 	engine := erc7730.DefaultEngine()
+	if !autoSync {
+		engine.AutoSyncEvery = 0
+	}
 	view, err := engine.ContractView(
 		context.Background(),
 		network.GetChainID(),
@@ -618,7 +622,7 @@ func renderInfoClearSign(
 		if call.Method == "" {
 			return
 		}
-		renderMatchedContract(u, network, call.Destination.Address, call.Value, call.Data, call.Params, customABIs, erc7730.RenderInfo)
+		renderMatchedContract(u, network, call.Destination.Address, call.Value, call.Data, call.Params, customABIs, erc7730.RenderInfo, false)
 	})
 }
 

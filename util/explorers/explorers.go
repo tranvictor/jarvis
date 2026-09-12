@@ -2,12 +2,15 @@ package explorers
 
 // ContractInfo is the subset of Etherscan-style getsourcecode response the
 // rest of jarvis cares about. Implementation is the proxy's underlying
-// singleton when applicable, empty otherwise.
+// singleton when applicable, empty otherwise. ABI is the explorer-published
+// ABI JSON when the response included one (getsourcecode does); empty when
+// the explorer only returned metadata.
 type ContractInfo struct {
 	Name           string
 	Implementation string
 	IsProxy        bool
 	IsVerified     bool
+	ABI            string
 }
 
 type BlockExplorer interface {

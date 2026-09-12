@@ -1,6 +1,7 @@
 package erc7730
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -147,6 +148,24 @@ func DefaultEngine() *Engine {
 	}
 }
 
+// WarmRegistry starts a background registry sync when the on-disk mirror
+// is older than defaultAutoSync. Signing commands call this during
+// preprocess so the download overlaps ABI/gas/nonce work; ContractView
+// then usually finds a fresh LastSyncAge and skips the blocking retry.
+func WarmRegistry() {
+	go func() {
+		warmRegistryOnce.Do(func() {
+			lr := sharedLocalRegistry()
+			if lr.LastSyncAge() < defaultAutoSync {
+				return
+			}
+			if _, err := lr.SyncRegistry(context.Background(), SyncOptions{Timeout: 20 * time.Second}); err == nil {
+				lr.TouchLastSync()
+			}
+		})
+	}()
+}
+
 // jarvisReaderFor maps a chainID to a Reader and Network using the
 // regular EthReader pipeline. Returns ok=false when the chain isn't
 // configured locally — proxy resolution then degrades silently.
@@ -167,6 +186,7 @@ func jarvisReaderFor(chainID uint64) (reader.Reader, networks.Network, bool) {
 var (
 	sharedRegistryOnce sync.Once
 	sharedRegistry     *LocalRegistry
+	warmRegistryOnce   sync.Once
 )
 
 const defaultAutoSync = 15 * time.Minute // refresh on miss when registry is older than this

@@ -369,24 +369,44 @@ func AnalyzeAndPrint(
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
 	}
+	defer cache.Flush()
 
 	txinfo, err := reader.TxInfoFromHash(tx)
 	if err != nil {
 		u.Error("getting tx info failed: %s", err)
 		return nil
 	}
+	if txinfo.Tx == nil {
+		u.Error("transaction not found: %s", tx)
+		return nil
+	}
 
 	// A contract creation has no destination to classify or fetch an ABI
 	// for; the analyzer reports it from the receipt.
 	if txinfo.Tx.To() == nil {
+		prefetchTxAddresses(&txinfo, network)
 		result := analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, false)
 		return displayTxResultAfter(u, result, network, layout, tx, customABIs, after)
 	}
 	contractAddress := txinfo.Tx.To().Hex()
 
-	isContract, err := IsContract(contractAddress, network)
-	if err != nil {
-		u.Error("checking tx type failed: %s", err)
+	// Explorer name/ABI lookups and eth_getCode are independent. Starting
+	// them together hides the getCode RTT behind the first explorer call
+	// and means AnalyzeOffline's per-address Resolve/GetABI hits are warm.
+	var isContract bool
+	var isContractErr error
+	jarviscommon.RunParallel(
+		func() error {
+			prefetchTxAddresses(&txinfo, network)
+			return nil
+		},
+		func() error {
+			isContract, isContractErr = IsContract(contractAddress, network)
+			return nil
+		},
+	)
+	if isContractErr != nil {
+		u.Error("checking tx type failed: %s", isContractErr)
 		return nil
 	}
 
@@ -559,22 +579,85 @@ func PrefetchContractName(addr string, network networks.Network) {
 		return
 	}
 	info, err := r.GetContractInfo(addr)
-	if err != nil || !info.IsVerified || info.Name == "" {
+	if err != nil || !info.IsVerified {
 		return
 	}
-	label := info.Name
+	if info.ABI != "" {
+		_ = cache.SetCache(fmt.Sprintf("%s_abi", addrLower), info.ABI)
+	}
 
+	label := info.Name
 	if info.IsProxy && info.Implementation != "" {
 		implInfo, err := r.GetContractInfo(info.Implementation)
-		if err == nil && implInfo.IsVerified && implInfo.Name != "" && implInfo.Name != info.Name {
-			label = fmt.Sprintf("%s -> %s", info.Name, implInfo.Name)
+		if err == nil && implInfo.IsVerified {
+			implLower := strings.ToLower(info.Implementation)
+			if implInfo.ABI != "" {
+				_ = cache.SetCache(fmt.Sprintf("%s_abi", implLower), implInfo.ABI)
+			}
+			if implInfo.Name != "" && implInfo.Name != info.Name {
+				label = fmt.Sprintf("%s -> %s", info.Name, implInfo.Name)
+			} else if implInfo.Name != "" {
+				label = implInfo.Name
+			}
+			if implInfo.Name != "" {
+				_ = cache.SetCache(
+					fmt.Sprintf("%s_contract_name", implLower),
+					implInfo.Name,
+				)
+			}
+			if implInfo.ABI != "" {
+				_ = cache.SetCache(fmt.Sprintf("%s_abi", addrLower), implInfo.ABI)
+			}
 		}
-		_ = cache.SetCache(
-			fmt.Sprintf("%s_contract_name", strings.ToLower(info.Implementation)),
-			implInfo.Name,
-		)
+	}
+	if label == "" {
+		return
 	}
 	_ = cache.SetCache(cacheKey, label)
+}
+
+// prefetchTxAddresses warms explorer names/ABIs for the addresses in
+// txinfo so later Resolve/GetABI calls hit cache.
+func prefetchTxAddresses(txinfo *jarviscommon.TxInfo, network networks.Network) {
+	if txinfo == nil {
+		return
+	}
+	seen := map[string]struct{}{}
+	var fns []func() error
+	add := func(addr string) {
+		addr = strings.TrimSpace(addr)
+		if addr == "" || jarviscommon.IsZeroAddress(addr) {
+			return
+		}
+		key := strings.ToLower(addr)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		fns = append(fns, func() error {
+			PrefetchContractName(addr, network)
+			return nil
+		})
+	}
+	if txinfo.Tx != nil {
+		if txinfo.Tx.Extra.From != nil {
+			add(txinfo.Tx.Extra.From.Hex())
+		}
+		if to := txinfo.Tx.To(); to != nil {
+			add(to.Hex())
+		}
+	}
+	if txinfo.Receipt != nil {
+		if txinfo.Receipt.ContractAddress != (common.Address{}) {
+			add(txinfo.Receipt.ContractAddress.Hex())
+		}
+		for _, l := range txinfo.Receipt.Logs {
+			if l != nil {
+				add(l.Address.Hex())
+			}
+		}
+	}
+	jarviscommon.RunParallel(fns...)
 }
 
 // contractNameProbed tracks (network, address) pairs whose explorer
@@ -693,7 +776,7 @@ func IsDelegationDesignator(code []byte) bool {
 }
 
 func IsContract(addr string, network networks.Network) (bool, error) {
-	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network)
+	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network.GetName())
 	_, found := cache.GetCache(cacheKey)
 	if found {
 		return true, nil
