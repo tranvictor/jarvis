@@ -75,6 +75,9 @@ func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {
 	if info.Name != "TransparentUpgradeableProxy" {
 		t.Fatalf("name = %q", info.Name)
 	}
+	if !strings.Contains(info.ABI, "Upgraded") {
+		t.Fatalf("GetContractInfo must keep the ABI from the same response, got %q", info.ABI)
+	}
 }
 
 func TestGetABIStringFollowsMethodlessProxyImplementation(t *testing.T) {
@@ -162,6 +165,32 @@ func TestGetABIStringFallsBackToBlockscoutV2(t *testing.T) {
 		t.Fatalf("GetContractInfo: %v", err)
 	}
 	if !info.IsProxy || !strings.EqualFold(info.Implementation, "0x00000000000000000000000000000000000000aa") {
+		t.Fatalf("info: %+v", info)
+	}
+	if !strings.Contains(info.ABI, "deposit") {
+		t.Fatalf("JSON contract info must include ABI, got %q", info.ABI)
+	}
+}
+
+func TestGetContractInfoKeepsEtherscanABI(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{
+			"status":"1","message":"OK","result":[{
+				"ContractName":"WETH9",
+				"ABI":"[{\"type\":\"function\",\"name\":\"deposit\"}]",
+				"Proxy":"0",
+				"Implementation":""
+			}]
+		}`)
+	}))
+	defer srv.Close()
+
+	ee := NewEtherscanLikeExplorer(srv.URL, "", 1)
+	info, err := ee.GetContractInfo("0x0000000000000000000000000000000000000001")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Name != "WETH9" || !info.IsVerified || !strings.Contains(info.ABI, "deposit") {
 		t.Fatalf("info: %+v", info)
 	}
 }

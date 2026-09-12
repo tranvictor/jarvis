@@ -7,7 +7,13 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
+
+// httpClient bounds every explorer request so a hung API cannot stall
+// a jarvis command indefinitely. 8s is long enough for a cold CDN and
+// short enough that a dead explorer fails the lookup instead of hanging.
+var httpClient = &http.Client{Timeout: 8 * time.Second}
 
 // fetchKind classifies one explorer HTTP response so callers can decide
 // whether to retry, stop, or try a different URL shape.
@@ -74,7 +80,7 @@ func (ee *EtherscanLikeExplorer) contractInfoURLs(address string) []string {
 }
 
 func (ee *EtherscanLikeExplorer) get(u string) (int, []byte, error) {
-	resp, err := http.Get(u)
+	resp, err := httpClient.Get(u)
 	if err != nil {
 		return 0, nil, fmt.Errorf("%s: %w", ee.label(), redactURLError(err))
 	}
@@ -154,10 +160,14 @@ func implementationFromBody(body []byte) string {
 	return strings.TrimSpace(info.Implementation)
 }
 
-// abiJSONHasFunctions reports whether an ABI JSON array contains any
+// ABIJSONHasFunctions reports whether an ABI JSON array contains any
 // function entries. Transparent proxies verify as constructor + events +
 // fallback, so a methodless ABI next to an `implementation` field should
 // be replaced by the implementation ABI.
+func ABIJSONHasFunctions(abiStr string) bool {
+	return abiJSONHasFunctions(abiStr)
+}
+
 func abiJSONHasFunctions(abiStr string) bool {
 	var arr []map[string]any
 	if json.Unmarshal([]byte(abiStr), &arr) != nil {
@@ -189,14 +199,19 @@ func parseEtherscanContractInfo(body []byte) (etherscanContractParse, bool) {
 		return etherscanContractParse{ok: false}, true
 	}
 	r := sc.Result[0]
+	verified := r.ABI != "" && r.ABI != "Contract source code not verified"
+	info := ContractInfo{
+		Name:           r.ContractName,
+		Implementation: r.Implementation,
+		IsProxy:        r.Proxy == "1",
+		IsVerified:     verified,
+	}
+	if verified {
+		info.ABI = r.ABI
+	}
 	return etherscanContractParse{
-		info: ContractInfo{
-			Name:           r.ContractName,
-			Implementation: r.Implementation,
-			IsProxy:        r.Proxy == "1",
-			IsVerified:     r.ABI != "" && r.ABI != "Contract source code not verified",
-		},
-		ok: true,
+		info: info,
+		ok:   true,
 	}, true
 }
 
@@ -220,6 +235,12 @@ func parseJSONContractInfo(body []byte) (ContractInfo, bool) {
 		Implementation: parseImplementation(raw["implementation"]),
 		IsVerified:     jsonBool(raw["isVerified"]) || jsonBool(raw["is_verified"]),
 		IsProxy:        jsonBool(raw["is_proxy"]),
+	}
+	if abiStr, ok := abiFieldToString(raw["abi"]); ok {
+		info.ABI = abiStr
+		if !info.IsVerified {
+			info.IsVerified = true
+		}
 	}
 	if proxyType := jsonString(raw["proxyType"]); proxyType != "" && !strings.EqualFold(proxyType, "null") {
 		info.IsProxy = true

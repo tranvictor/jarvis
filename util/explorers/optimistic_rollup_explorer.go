@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 )
 
 type OptimisticRollupExplorer struct {
@@ -67,31 +66,16 @@ type ExternalLibrary struct {
 }
 
 func (ee *OptimisticRollupExplorer) GetABIString(address string) (string, error) {
-	url := fmt.Sprintf("%s/smart-contract/%s", ee.Domain, address)
-	resp, err := http.Get(url)
+	sc, err := ee.fetchSmartContract(address)
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	abiresp := SmartContractResponse{}
-	err = json.Unmarshal(body, &abiresp)
-	return abiresp.ABI, err
+	return sc.ABI, nil
 }
 
 func (ee *OptimisticRollupExplorer) GetContractInfo(address string) (ContractInfo, error) {
-	url := fmt.Sprintf("%s/smart-contract/%s", ee.Domain, address)
-	resp, err := http.Get(url)
+	sc, err := ee.fetchSmartContract(address)
 	if err != nil {
-		return ContractInfo{}, err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return ContractInfo{}, err
-	}
-	sc := SmartContractResponse{}
-	if err := json.Unmarshal(body, &sc); err != nil {
 		return ContractInfo{}, err
 	}
 	return ContractInfo{
@@ -99,5 +83,24 @@ func (ee *OptimisticRollupExplorer) GetContractInfo(address string) (ContractInf
 		Implementation: sc.MinimalProxyAddressHash,
 		IsProxy:        sc.MinimalProxyAddressHash != "",
 		IsVerified:     sc.IsVerified || sc.IsFullyVerified || sc.IsPartiallyVerified,
+		ABI:            sc.ABI,
 	}, nil
+}
+
+func (ee *OptimisticRollupExplorer) fetchSmartContract(address string) (SmartContractResponse, error) {
+	url := fmt.Sprintf("%s/smart-contract/%s", ee.Domain, address)
+	resp, err := httpClient.Get(url)
+	if err != nil {
+		return SmartContractResponse{}, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return SmartContractResponse{}, err
+	}
+	sc := SmartContractResponse{}
+	if err := json.Unmarshal(body, &sc); err != nil {
+		return SmartContractResponse{}, err
+	}
+	return sc, nil
 }
