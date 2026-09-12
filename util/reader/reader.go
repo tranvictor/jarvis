@@ -873,16 +873,12 @@ func (er *EthReader) GetABIString(address string) (string, error) {
 
 var contractInfoCache sync.Map
 
-func contractInfoCacheKey(be jarvisnetworks.BlockExplorer, address string) string {
-	return fmt.Sprintf("%p|%s", be, strings.ToLower(strings.TrimSpace(address)))
-}
-
 // GetContractInfo returns the verified-contract metadata reported by the
 // network's block explorer (name, proxy flag, underlying implementation, ABI).
 // Results are memoised for the process lifetime so PrefetchContractName and
 // followProxyImplementation share one explorer round-trip per address.
 func (er *EthReader) GetContractInfo(address string) (jarvisnetworks.ContractInfo, error) {
-	key := contractInfoCacheKey(er.be, address)
+	key := fmt.Sprintf("%p|%s", er.be, strings.ToLower(strings.TrimSpace(address)))
 	if v, ok := contractInfoCache.Load(key); ok {
 		return v.(jarvisnetworks.ContractInfo), nil
 	}

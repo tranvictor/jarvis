@@ -572,9 +572,9 @@ func renderMatchedContract(
 			contractABI = a
 		}
 	}
-	engine := erc7730.LookupEngine()
-	if autoSync {
-		engine = erc7730.DefaultEngine()
+	engine := erc7730.DefaultEngine()
+	if !autoSync {
+		engine.AutoSyncEvery = 0
 	}
 	view, err := engine.ContractView(
 		context.Background(),

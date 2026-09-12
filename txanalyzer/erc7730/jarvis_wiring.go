@@ -140,22 +140,11 @@ func (h *JarvisHelpers) networkFor(chainID uint64) (networks.Network, bool) {
 // LocalRegistry caches its in-memory indexes for the process
 // lifetime and concurrent reads are guarded inside the registry.
 func DefaultEngine() *Engine {
-	return newEngine(defaultAutoSync)
-}
-
-// LookupEngine is DefaultEngine without the blocking GitHub registry
-// refresh. Use it on read-only paths (`jarvis info`) where a miss should
-// stay a miss instead of stalling the command on a tarball download.
-func LookupEngine() *Engine {
-	return newEngine(0)
-}
-
-func newEngine(autoSync time.Duration) *Engine {
 	helpers := NewJarvisHelpers(jarvisReaderFor)
 	return &Engine{
 		Source:        sharedLocalRegistry(),
 		Helpers:       helpers,
-		AutoSyncEvery: autoSync,
+		AutoSyncEvery: defaultAutoSync,
 	}
 }
 

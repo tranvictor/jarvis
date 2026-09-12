@@ -92,9 +92,7 @@ func Flush() error {
 	return nil
 }
 
-// ResetForTest points the cache at path and drops in-memory state.
-// Tests must call this so they do not touch the real ~/.jarvis/cache.json.
-func ResetForTest(path string) {
+func resetForTest(path string) {
 	mu.Lock()
 	defer mu.Unlock()
 	CACHE_PATH = path

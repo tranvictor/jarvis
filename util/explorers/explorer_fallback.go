@@ -160,14 +160,10 @@ func implementationFromBody(body []byte) string {
 	return strings.TrimSpace(info.Implementation)
 }
 
-// ABIJSONHasFunctions reports whether an ABI JSON array contains any
+// abiJSONHasFunctions reports whether an ABI JSON array contains any
 // function entries. Transparent proxies verify as constructor + events +
 // fallback, so a methodless ABI next to an `implementation` field should
 // be replaced by the implementation ABI.
-func ABIJSONHasFunctions(abiStr string) bool {
-	return abiJSONHasFunctions(abiStr)
-}
-
 func abiJSONHasFunctions(abiStr string) bool {
 	var arr []map[string]any
 	if json.Unmarshal([]byte(abiStr), &arr) != nil {
