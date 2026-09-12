@@ -32,6 +32,7 @@ import (
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util/account/ledgereum"
+	"github.com/tranvictor/jarvis/util/cache"
 )
 
 // appUI is the package-level UI used by all cmd/* files. It is initialised
@@ -112,6 +113,8 @@ func blockExplorerKeyVariables() []string {
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	defer cache.Flush()
+
 	// Hardware-wallet waits (Ledger not yet connected) report through the
 	// same status spinner as the rest of the app.
 	ledgereum.ProgressUI = appUI
