@@ -776,7 +776,7 @@ func IsDelegationDesignator(code []byte) bool {
 }
 
 func IsContract(addr string, network networks.Network) (bool, error) {
-	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network)
+	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network.GetName())
 	_, found := cache.GetCache(cacheKey)
 	if found {
 		return true, nil
