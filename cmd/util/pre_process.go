@@ -17,6 +17,7 @@ import (
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/safe"
 	"github.com/tranvictor/jarvis/txanalyzer"
+	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 	utilreader "github.com/tranvictor/jarvis/util/reader"
@@ -51,6 +52,7 @@ func CommonFunctionCallPreprocess(u ui.UI, cmd *cobra.Command, args []string) (e
 		return err
 	}
 	u.Info("Network: %s", config.Network().GetName())
+	erc7730.WarmRegistry()
 
 	tc := TxContext{}
 
@@ -123,6 +125,7 @@ func CommonNetworkPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 		return err
 	}
 	// The network is part of the tx details line; no separate header.
+	erc7730.WarmRegistry()
 
 	tc := TxContext{}
 
@@ -148,6 +151,7 @@ func CommonSendPreprocess(u ui.UI, cmd *cobra.Command, args []string) error {
 		return err
 	}
 	u.Info("Network: %s", config.Network().GetName())
+	erc7730.WarmRegistry()
 
 	tc := TxContext{}
 

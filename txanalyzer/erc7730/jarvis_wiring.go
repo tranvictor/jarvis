@@ -1,6 +1,7 @@
 package erc7730
 
 import (
+	"context"
 	"strings"
 	"sync"
 	"time"
@@ -139,12 +140,41 @@ func (h *JarvisHelpers) networkFor(chainID uint64) (networks.Network, bool) {
 // LocalRegistry caches its in-memory indexes for the process
 // lifetime and concurrent reads are guarded inside the registry.
 func DefaultEngine() *Engine {
+	return newEngine(defaultAutoSync)
+}
+
+// LookupEngine is DefaultEngine without the blocking GitHub registry
+// refresh. Use it on read-only paths (`jarvis info`) where a miss should
+// stay a miss instead of stalling the command on a tarball download.
+func LookupEngine() *Engine {
+	return newEngine(0)
+}
+
+func newEngine(autoSync time.Duration) *Engine {
 	helpers := NewJarvisHelpers(jarvisReaderFor)
 	return &Engine{
 		Source:        sharedLocalRegistry(),
 		Helpers:       helpers,
-		AutoSyncEvery: defaultAutoSync,
+		AutoSyncEvery: autoSync,
 	}
+}
+
+// WarmRegistry starts a background registry sync when the on-disk mirror
+// is older than defaultAutoSync. Signing commands call this during
+// preprocess so the download overlaps ABI/gas/nonce work; ContractView
+// then usually finds a fresh LastSyncAge and skips the blocking retry.
+func WarmRegistry() {
+	go func() {
+		warmRegistryOnce.Do(func() {
+			lr := sharedLocalRegistry()
+			if lr.LastSyncAge() < defaultAutoSync {
+				return
+			}
+			if _, err := lr.SyncRegistry(context.Background(), SyncOptions{Timeout: 20 * time.Second}); err == nil {
+				lr.TouchLastSync()
+			}
+		})
+	}()
 }
 
 // jarvisReaderFor maps a chainID to a Reader and Network using the
@@ -167,6 +197,7 @@ func jarvisReaderFor(chainID uint64) (reader.Reader, networks.Network, bool) {
 var (
 	sharedRegistryOnce sync.Once
 	sharedRegistry     *LocalRegistry
+	warmRegistryOnce   sync.Once
 )
 
 const defaultAutoSync = 15 * time.Minute // refresh on miss when registry is older than this
