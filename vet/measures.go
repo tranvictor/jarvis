@@ -118,6 +118,15 @@ func measureUnverified(req Request) []Finding {
 	if dest == "" || !common.IsHexAddress(dest) {
 		return nil
 	}
+	if has, err := req.Chain.HasCode(dest); err != nil {
+		return []Finding{{
+			Code: CodeAISkip,
+			Risk: RiskCaution,
+			Text: fmt.Sprintf("vet skipped: could not check whether %s is a contract (%s)", common.HexToAddress(dest).Hex(), err),
+		}}
+	} else if !has {
+		return nil
+	}
 	src, err := req.Chain.Source(dest)
 	if err != nil {
 		return []Finding{{

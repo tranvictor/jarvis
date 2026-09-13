@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/spf13/cobra"
 
@@ -113,7 +114,12 @@ func runVetCall(cmd *cobra.Command) {
 	dest := util.GetJarvisAddress(to, config.Network())
 	var fc *jarviscommon.FunctionCall
 	if len(data) > 0 && to != "" {
-		fc = tc.Analyzer.AnalyzeFunctionCallRecursively(util.GetABI, tc.Value, to, data, nil)
+		var custom map[string]*abi.ABI
+		if a, aerr := tc.Resolver.ConfigToABI(to, config.ForceERC20ABI, config.CustomABI, config.Network()); aerr == nil && a != nil {
+			key := strings.ToLower(common.HexToAddress(to).Hex())
+			custom = map[string]*abi.ABI{key: a, strings.ToLower(to): a}
+		}
+		fc = tc.Analyzer.AnalyzeFunctionCallRecursively(util.GetABI, tc.Value, to, data, custom)
 	}
 	appUI.Info("Contract: %s", dest.Address)
 	if fc != nil && fc.Method != "" {

@@ -111,6 +111,17 @@ func TestPoison2Plus2(t *testing.T) {
 	}
 }
 
+func TestUnverifiedSkipsEOA(t *testing.T) {
+	r := Analyze(context.Background(), Request{
+		Mode:  ModeFull,
+		To:    addr(testMe, "me"),
+		Chain: fakeLookup{eoa: true},
+	})
+	if hasFinding(r, CodeUnverified) {
+		t.Fatalf("EOA must not be flagged unverified: %+v", r.Findings)
+	}
+}
+
 func TestUnverifiedAndCreate(t *testing.T) {
 	r := Analyze(context.Background(), Request{Mode: ModeFull, Create: true})
 	if !hasFinding(r, CodeCreate) {
@@ -202,11 +213,20 @@ func hasFinding(r Report, code string) bool {
 	return false
 }
 
-type fakeLookup struct{ src Source }
+type fakeLookup struct {
+	src Source
+	eoa bool
+}
 
 func (f fakeLookup) Source(addr string) (Source, error) { return f.src, nil }
 func (f fakeLookup) Implementation(addr string) (string, error) {
 	return f.src.Implementation, nil
+}
+func (f fakeLookup) HasCode(addr string) (bool, error) {
+	if f.eoa {
+		return false, nil
+	}
+	return true, nil
 }
 
 type fakeAI struct {

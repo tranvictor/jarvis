@@ -32,6 +32,17 @@ func (l ExplorerLookup) Source(addr string) (Source, error) {
 	}, nil
 }
 
+func (l ExplorerLookup) HasCode(addr string) (bool, error) {
+	if l.Reader == nil {
+		return true, nil
+	}
+	code, err := l.Reader.GetCode(addr)
+	if err != nil {
+		return false, err
+	}
+	return len(code) > 0, nil
+}
+
 func (l ExplorerLookup) Implementation(addr string) (string, error) {
 	if l.Reader != nil {
 		impl, err := l.Reader.ImplementationOf(-1, addr)

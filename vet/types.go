@@ -58,6 +58,9 @@ type Source struct {
 type Lookup interface {
 	Source(addr string) (Source, error)
 	Implementation(addr string) (string, error)
+	// HasCode is true when dest is a contract. EOAs must not get
+	// "unverified source" findings.
+	HasCode(addr string) (bool, error)
 }
 
 // Completer is the Grok (or test) client. The only value it accepts is
