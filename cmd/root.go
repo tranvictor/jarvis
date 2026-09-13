@@ -53,6 +53,7 @@ keystores, Ledger and Trezor, and drives Gnosis Safe / classic multisigs.
   jarvis contract read|tx        call or write any verified contract
   jarvis msig                    propose, approve and execute multisig txs
   jarvis wallet / addr           the keys you sign with, the names you trust
+  jarvis vet                     review a call for scam risk before signing
 
 Networks (pick one with -k/--network):
 %s
@@ -152,6 +153,14 @@ func Execute() {
 		"B",
 		false,
 		"print debug logs to screen, helpful to diagnose performance issues",
+	)
+
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.Careful,
+		"careful",
+		"C",
+		false,
+		"run vet analysis before signing (source review, extra warnings, Grok)",
 	)
 
 	if err := rootCmd.Execute(); err != nil {
