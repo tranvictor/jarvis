@@ -15,7 +15,7 @@ Two product surfaces:
 
 Without `--careful`, signing cards keep the old always-on lines (unknown dest, ETH-into-contract, undecoded calldata, unlimited `approve` / `setApprovalForAll` / permit spender) plus **DELEGATECALL** from vet. None of these cases are Safe DELEGATECALLs.
 
-Grok (`XAI_API_KEY`) was **unset** in this environment. Every verified-source path therefore ends with `AI review skipped: no AI client`. Findings below are **local measures only**.
+No AI key (`JARVIS_AI_KEY` / `XAI_API_KEY`) was set in this environment. Every verified-source path therefore ends with `AI review skipped: no AI client`. Findings below are **local measures only**.
 
 Live checks used Kyber RPCs (Ethereum, BSC, Arbitrum) and explorer `GetVerifiedSource` / `HasCode`. `jarvis vet --data` / `--typed-data` was run on the same payloads.
 
@@ -285,7 +285,7 @@ Treat unlimited approve to a *named* protocol as a real risk (OKX/Unibot class).
 
 Do not vet attacker `multicall` / `withdraw` txs and call that user protection.
 
-Grok still needs `XAI_API_KEY` before claiming coverage of verified-but-hostile factories (`createAndCall`, 100% `percentageForFirstAddressInBasisPoints`).
+AI review still needs `JARVIS_AI_KEY` (or `XAI_API_KEY`) before claiming coverage of verified-but-hostile factories (`createAndCall`, 100% `percentageForFirstAddressInBasisPoints`).
 
 ---
 

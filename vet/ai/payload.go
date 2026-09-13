@@ -1,6 +1,7 @@
-// Package ai is the closed wire format for Grok. It does not import the
-// address book, db, or jarvis Address.Desc. The HTTP client accepts only
-// a Payload; there is no field that can hold a human label.
+// Package ai is the closed wire format for the signing-card AI review.
+// It does not import the address book, db, or jarvis Address.Desc. The
+// HTTP client accepts only a Payload; there is no field that can hold a
+// human label. The transport is OpenAI-compatible Chat Completions.
 package ai
 
 import (
@@ -59,7 +60,7 @@ type Param struct {
 	Value string `json:"value"`
 }
 
-// Payload is the only JSON body sent to Grok. Adding a field requires
+// Payload is the only JSON body sent to the model. Adding a field requires
 // updating ToPayload in package vet; do not json.Marshal jarvis types.
 type Payload struct {
 	ChainID      uint64   `json:"chain_id"`

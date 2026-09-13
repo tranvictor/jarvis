@@ -296,7 +296,7 @@ func renderSigningCardBody(u ui.UI, c *SigningCard) {
 		for _, f := range c.Vet {
 			text := f.Text
 			if f.GrokReconfirm {
-				text += " — Grok reconfirms"
+				text += " — AI reconfirms"
 			}
 			if f.Risk == vet.RiskDanger {
 				u.Error("! %s", text)
