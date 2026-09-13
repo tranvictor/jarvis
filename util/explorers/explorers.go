@@ -13,6 +13,17 @@ type ContractInfo struct {
 	ABI            string
 }
 
+// VerifiedSource is the Solidity (or flattened multi-file source) the
+// explorer published for an address. Used by vet; GetContractInfo stays
+// name/proxy/ABI-only so operational lookups do not start carrying source.
+type VerifiedSource struct {
+	Address        string
+	Source         string
+	Verified       bool
+	Implementation string
+	IsProxy        bool
+}
+
 type BlockExplorer interface {
 	GetABIString(address string) (string, error)
 	// GetContractInfo returns the verified-source metadata for a contract:
@@ -23,4 +34,5 @@ type BlockExplorer interface {
 	// as unverified — callers should treat that as "no name available"
 	// rather than as a hard failure.
 	GetContractInfo(address string) (ContractInfo, error)
+	GetVerifiedSource(address string) (VerifiedSource, error)
 }

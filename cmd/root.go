@@ -53,6 +53,7 @@ keystores, Ledger and Trezor, and drives Gnosis Safe / classic multisigs.
   jarvis contract read|tx        call or write any verified contract
   jarvis msig                    propose, approve and execute multisig txs
   jarvis wallet / addr           the keys you sign with, the names you trust
+  jarvis vet                     review a call for scam risk before signing
 
 Networks (pick one with -k/--network):
 %s
@@ -62,6 +63,10 @@ overridden with the network's node env var (e.g. ETHEREUM_MAINNET_NODE).
 
 Block-explorer API keys (set your own for reliable ABI lookups):
 %s
+
+AI review (--careful / jarvis vet) uses OpenAI-compatible Chat Completions.
+Set JARVIS_AI_KEY (XAI_API_KEY still works). Optional JARVIS_AI_URL and
+JARVIS_AI_MODEL; defaults are xAI. See jarvis vet --help.
 
 For more information or support, reach me at https://github.com/tranvictor.`,
 		wrapList(strings.Split(networks.SupportedNetworkNamesHelp(), ", "), "  ", 76),
@@ -152,6 +157,14 @@ func Execute() {
 		"B",
 		false,
 		"print debug logs to screen, helpful to diagnose performance issues",
+	)
+
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.Careful,
+		"careful",
+		"C",
+		false,
+		"run vet analysis before signing (source review, extra warnings, AI when JARVIS_AI_KEY is set)",
 	)
 
 	if err := rootCmd.Execute(); err != nil {
