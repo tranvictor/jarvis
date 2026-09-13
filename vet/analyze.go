@@ -9,7 +9,7 @@ import (
 )
 
 // Analyze runs the selected measures. ModeAlways is DELEGATECALL only.
-// ModeFull runs every local measure and Grok when a Completer is set.
+// ModeFull runs every local measure and AI review when a Completer is set.
 func Analyze(ctx context.Context, req Request) Report {
 	var findings []Finding
 	var skipped []string
@@ -161,14 +161,14 @@ func applyReply(reply ModelReply, local []Finding) []Finding {
 		out = append(out, Finding{
 			Code: CodeGrok,
 			Risk: risk,
-			Text: "Grok: " + b,
+			Text: "AI: " + b,
 		})
 	}
 	if reply.AssetEffect != "" {
 		out = append(out, Finding{
 			Code: CodeGrok,
 			Risk: risk,
-			Text: "Grok: " + reply.AssetEffect,
+			Text: "AI: " + reply.AssetEffect,
 		})
 	}
 	return out
@@ -216,10 +216,10 @@ type EnvCompleter struct {
 
 func (e EnvCompleter) Complete(ctx context.Context, payload []byte) (ModelReply, error) {
 	if e.Client == nil {
-		return ModelReply{}, fmt.Errorf("XAI_API_KEY is not set")
+		return ModelReply{}, fmt.Errorf("%s is not set", ai.EnvKey)
 	}
 	if e.Client.Key == "" {
-		return ModelReply{}, fmt.Errorf("XAI_API_KEY is not set")
+		return ModelReply{}, fmt.Errorf("%s is not set", ai.EnvKey)
 	}
 	r, err := e.Client.Complete(ctx, payload)
 	if err != nil {

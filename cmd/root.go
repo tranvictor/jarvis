@@ -64,6 +64,10 @@ overridden with the network's node env var (e.g. ETHEREUM_MAINNET_NODE).
 Block-explorer API keys (set your own for reliable ABI lookups):
 %s
 
+AI review (--careful / jarvis vet) uses OpenAI-compatible Chat Completions.
+Set JARVIS_AI_KEY (XAI_API_KEY still works). Optional JARVIS_AI_URL and
+JARVIS_AI_MODEL; defaults are xAI. See jarvis vet --help.
+
 For more information or support, reach me at https://github.com/tranvictor.`,
 		wrapList(strings.Split(networks.SupportedNetworkNamesHelp(), ", "), "  ", 76),
 		wrapList(blockExplorerKeyVariables(), "  ", 76),
@@ -160,7 +164,7 @@ func Execute() {
 		"careful",
 		"C",
 		false,
-		"run vet analysis before signing (source review, extra warnings, Grok)",
+		"run vet analysis before signing (source review, extra warnings, AI when JARVIS_AI_KEY is set)",
 	)
 
 	if err := rootCmd.Execute(); err != nil {

@@ -14,7 +14,7 @@ const (
 	// ModeAlways is the DELEGATECALL measure only. It runs on every Safe
 	// signing card so turning --careful off does not drop that warning.
 	ModeAlways Mode = iota
-	// ModeFull is every measure, including Grok. Used by --careful and
+	// ModeFull is every measure, including AI review. Used by --careful and
 	// `jarvis vet`.
 	ModeFull
 )
@@ -63,13 +63,13 @@ type Lookup interface {
 	HasCode(addr string) (bool, error)
 }
 
-// Completer is the Grok (or test) client. The only value it accepts is
+// Completer is the AI (or test) client. The only value it accepts is
 // an [ai.Payload] built by [ToPayload].
 type Completer interface {
 	Complete(ctx context.Context, payload []byte) (ModelReply, error)
 }
 
-// ModelReply is the structured JSON Grok must return.
+// ModelReply is the structured JSON the model must return.
 type ModelReply struct {
 	Risk        string   `json:"risk"`
 	Bullets     []string `json:"bullets"`

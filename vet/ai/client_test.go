@@ -54,3 +54,28 @@ func TestCompleteMissingKey(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestNewFromEnv(t *testing.T) {
+	t.Setenv(EnvKey, "")
+	t.Setenv(EnvKeyLegacy, "")
+	t.Setenv(EnvURL, "")
+	t.Setenv(EnvModel, "")
+	c := NewFromEnv()
+	if c.Key != "" || c.URL != DefaultURL || c.Model != DefaultModel {
+		t.Fatalf("defaults: %+v", c)
+	}
+
+	t.Setenv(EnvKeyLegacy, "legacy-xai")
+	c = NewFromEnv()
+	if c.Key != "legacy-xai" {
+		t.Fatalf("legacy key: %q", c.Key)
+	}
+
+	t.Setenv(EnvKey, "user-key")
+	t.Setenv(EnvURL, "https://api.openai.com/v1/chat/completions")
+	t.Setenv(EnvModel, "gpt-5")
+	c = NewFromEnv()
+	if c.Key != "user-key" || c.URL != "https://api.openai.com/v1/chat/completions" || c.Model != "gpt-5" {
+		t.Fatalf("JARVIS_AI_* should win: %+v", c)
+	}
+}

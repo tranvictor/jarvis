@@ -13,12 +13,21 @@ import (
 )
 
 const (
+	// OpenAI-compatible Chat Completions. Any vendor that speaks this
+	// shape works: set JARVIS_AI_URL + JARVIS_AI_MODEL + JARVIS_AI_KEY.
 	DefaultURL   = "https://api.x.ai/v1/chat/completions"
 	DefaultModel = "grok-4.6"
 	DefaultWait  = 45 * time.Second
+
+	EnvKey   = "JARVIS_AI_KEY"
+	EnvURL   = "JARVIS_AI_URL"
+	EnvModel = "JARVIS_AI_MODEL"
+	// EnvKeyLegacy is still read when JARVIS_AI_KEY is unset.
+	EnvKeyLegacy = "XAI_API_KEY"
 )
 
-// Client talks to xAI Chat Completions. It accepts only a marshaled Payload.
+// Client talks to an OpenAI-compatible Chat Completions endpoint.
+// It accepts only a marshaled Payload.
 type Client struct {
 	HTTP  *http.Client
 	URL   string
@@ -26,14 +35,26 @@ type Client struct {
 	Key   string
 }
 
-// NewFromEnv builds a Client from XAI_API_KEY. Key empty means the caller
-// should skip the AI measure rather than send.
+// NewFromEnv reads JARVIS_AI_KEY / JARVIS_AI_URL / JARVIS_AI_MODEL.
+// URL and model fall back to xAI. Key also falls back to XAI_API_KEY.
+// Empty key means the caller should skip the AI measure rather than send.
 func NewFromEnv() *Client {
-	key := os.Getenv("XAI_API_KEY")
+	key := strings.TrimSpace(os.Getenv(EnvKey))
+	if key == "" {
+		key = strings.TrimSpace(os.Getenv(EnvKeyLegacy))
+	}
+	url := strings.TrimSpace(os.Getenv(EnvURL))
+	if url == "" {
+		url = DefaultURL
+	}
+	model := strings.TrimSpace(os.Getenv(EnvModel))
+	if model == "" {
+		model = DefaultModel
+	}
 	return &Client{
 		HTTP:  &http.Client{Timeout: DefaultWait},
-		URL:   DefaultURL,
-		Model: DefaultModel,
+		URL:   url,
+		Model: model,
 		Key:   key,
 	}
 }
@@ -74,7 +95,7 @@ func (c *Client) Complete(ctx context.Context, payloadJSON []byte) (Reply, error
 		return Reply{}, fmt.Errorf("ai: nil client")
 	}
 	if c.Key == "" {
-		return Reply{}, fmt.Errorf("ai: XAI_API_KEY is not set")
+		return Reply{}, fmt.Errorf("ai: %s is not set", EnvKey)
 	}
 	url := c.URL
 	if url == "" {

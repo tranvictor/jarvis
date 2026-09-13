@@ -25,13 +25,30 @@ var vetCmd = &cobra.Command{
 	Use:   "vet [address]",
 	Short: "Review a contract call or typed-data Permit without signing",
 	Long: `vet runs the same analysis --careful adds to a signing card:
-local danger checks, verified source, and Grok when XAI_API_KEY is set.
+local danger checks, verified source, and an optional AI review.
 
   jarvis vet <address>                 pick a method interactively
   jarvis vet <address> --data 0x...    review already-encoded calldata
   jarvis vet --typed-data file.json    review eth_signTypedData_v4 JSON
 
-Address-book names stay on the terminal and are never sent to Grok.`,
+AI uses OpenAI-compatible Chat Completions. Set a key (and optionally
+URL / model). No key skips AI; local findings still show. XAI_API_KEY
+is still accepted when JARVIS_AI_KEY is unset. Defaults are xAI.
+
+  JARVIS_AI_KEY    API key (or XAI_API_KEY)
+  JARVIS_AI_URL    Chat Completions URL
+                   default https://api.x.ai/v1/chat/completions
+  JARVIS_AI_MODEL  model id  (default grok-4.6)
+
+  OpenAI     https://api.openai.com/v1/chat/completions
+  Groq       https://api.groq.com/openai/v1/chat/completions
+  DeepSeek   https://api.deepseek.com/chat/completions
+  Mistral    https://api.mistral.ai/v1/chat/completions
+  Gemini     https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+  OpenRouter https://openrouter.ai/api/v1/chat/completions
+  Ollama     http://127.0.0.1:11434/v1/chat/completions
+
+Address-book names stay on the terminal and are never sent to the model.`,
 	Args: cobra.MaximumNArgs(1),
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		if config.VetTypedData != "" {

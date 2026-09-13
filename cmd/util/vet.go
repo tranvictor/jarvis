@@ -59,7 +59,7 @@ func vetRequest(warn WarningInput, network jarvisnetworks.Network, create bool, 
 }
 
 // AddressBook is the local hex→label map used by poisoning and typed-data
-// spender checks. Labels are never sent to Grok.
+// spender checks. Labels are never sent to the AI.
 func AddressBook() []vet.BookAddr {
 	return loadBook()
 }
@@ -77,7 +77,7 @@ func ExplorerLookupFor(network jarvisnetworks.Network) vet.Lookup {
 	return explorerLookup(network)
 }
 
-// GrokCompleter is the production Completer (nil when XAI_API_KEY is unset).
+// GrokCompleter is the production Completer (nil when no AI key is set).
 func GrokCompleter() vet.Completer {
 	return grokCompleter()
 }
@@ -107,7 +107,7 @@ func PrintVetReport(u ui.UI, report vet.Report) {
 	for _, f := range report.Findings {
 		text := f.Text
 		if f.GrokReconfirm {
-			text += " — Grok reconfirms"
+			text += " — AI reconfirms"
 		}
 		if f.Risk == vet.RiskDanger {
 			u.Error("! %s", text)
