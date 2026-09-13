@@ -73,4 +73,8 @@ var (
 	JSONOutputFile string
 
 	Simulate bool
+
+	Careful      bool
+	VetCalldata  string
+	VetTypedData string
 )

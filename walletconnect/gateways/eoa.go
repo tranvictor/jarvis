@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	ethcommon "github.com/ethereum/go-ethereum/common"
@@ -23,6 +24,7 @@ import (
 	"github.com/tranvictor/jarvis/util/account"
 	"github.com/tranvictor/jarvis/util/broadcaster"
 	utilreader "github.com/tranvictor/jarvis/util/reader"
+	"github.com/tranvictor/jarvis/vet"
 	"github.com/tranvictor/jarvis/walletconnect"
 )
 
@@ -354,6 +356,35 @@ func (g *EOAGateway) SignTypedData(ctx context.Context, chain string, typedDataJ
 	}
 
 	g.ui.Info("Message   : %s", firstLineOf(string(typedDataJSON), 200))
+	if config.Careful {
+		req := vet.TypedRequest{
+			Mode:        vet.ModeFull,
+			PrimaryType: td.PrimaryType,
+			Verifying:   td.Domain.VerifyingContract,
+			Message:     td.Message,
+			Book:        cmdutil.AddressBook(),
+			AI:          cmdutil.GrokCompleter(),
+		}
+		if td.Domain.ChainId != nil {
+			req.DomainChainID = (*big.Int)(td.Domain.ChainId)
+		}
+		if g.curNet != nil {
+			req.NetworkName = g.curNet.GetName()
+			req.NetworkChainID = g.curNet.GetChainID()
+			req.ChainID = g.curNet.GetChainID()
+			req.Chain = cmdutil.ExplorerLookupFor(g.curNet)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
+		report := vet.AnalyzeTypedData(ctx, req)
+		cancel()
+		if fullUI, ok := g.ui.(jarvisui.UI); ok {
+			cmdutil.PrintVetReport(fullUI, report)
+		} else {
+			for _, f := range report.Findings {
+				g.ui.Info("! %s", f.Text)
+			}
+		}
+	}
 	if !g.ui.Confirm("Sign this typed-data message?", true) {
 		return "", walletconnect.ErrUserRejected
 	}

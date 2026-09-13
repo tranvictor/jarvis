@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"math/big"
 	"strings"
 	"testing"
@@ -8,6 +9,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/vet"
 )
 
 const (
@@ -99,9 +101,9 @@ func TestSigningWarningsCoverTheRiskyCases(t *testing.T) {
 			want: []string{"sends 1.5 ETH into a contract"},
 		},
 		{
-			name: "delegatecall multisend",
+			name: "delegatecall is owned by vet, not SigningWarnings",
 			in:   WarningInput{To: cardAddr(cardRouter, "MultiSendCallOnly"), DelegateCall: true, MultiSend: true},
-			want: []string{"DELEGATECALL into MultiSend"},
+			want: []string{},
 		},
 		{
 			name: "undecoded calldata",
@@ -222,6 +224,9 @@ func TestShowSigningCardSafeFieldsAndCollapse(t *testing.T) {
 			Threshold:  2,
 		},
 		Warnings: SigningWarnings(WarningInput{To: cardAddr(cardRouter, "MultiSendCallOnly"), DelegateCall: true, MultiSend: true}),
+		Vet: vet.Analyze(context.Background(), vet.Request{
+			Mode: vet.ModeAlways, DelegateCall: true, MultiSend: true,
+		}).Findings,
 	}
 	ShowSigningCard(rec, card)
 	if !hasEntry(rec, "BoxedSection", "Safe approval") {

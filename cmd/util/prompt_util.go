@@ -250,10 +250,13 @@ func buildEOASigningCard(
 		if len(tx.Data()) > 0 {
 			card.RawData = "0x" + ethcommon.Bytes2Hex(tx.Data())
 		}
-		card.Warnings = SigningWarnings(WarningInput{
+		warn := WarningInput{
 			Value: tx.Value(), NativeSymbol: symbol, NativeDecimals: network.GetNativeTokenDecimal(),
 			SignerBalance: balance, MaxCost: maxCost,
-		})
+		}
+		card.Warnings = SigningWarnings(warn)
+		warn.HasData = len(tx.Data()) > 0
+		attachVetCreate(card, warn, network, tx.Data())
 		card.Prompt = fmt.Sprintf("Sign and broadcast contract creation (%s)?", gasCostOnly(card.Gas))
 		return card, nil
 	}
@@ -313,6 +316,7 @@ func buildEOASigningCard(
 	}
 
 	card.Warnings = SigningWarnings(warn)
+	attachVet(card, warn, network)
 	card.Prompt = fmt.Sprintf("Sign and broadcast (%s)?", gasCostOnly(card.Gas))
 	return card, nil
 }
