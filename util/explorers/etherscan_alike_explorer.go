@@ -179,6 +179,7 @@ type sourceCodeResponse struct {
 		Proxy           string `json:"Proxy"`
 		Implementation  string `json:"Implementation"`
 		CompilerVersion string `json:"CompilerVersion"`
+		SourceCode      string `json:"SourceCode"`
 	} `json:"result"`
 }
 

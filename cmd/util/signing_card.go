@@ -12,6 +12,7 @@ import (
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/vet"
 )
 
 // SigningCard is everything shown to the user right before they sign. The
@@ -59,7 +60,10 @@ type SigningCard struct {
 	ClearSign func(ui.UI)
 
 	Warnings []string
-	Prompt   string
+	// Vet is extra findings from package vet. DELEGATECALL is always
+	// present when applicable; the rest require --careful.
+	Vet    []vet.Finding
+	Prompt string
 }
 
 // SafeCardFields are the SafeTx parameters that have no EOA equivalent.
@@ -284,10 +288,21 @@ func renderSigningCardBody(u ui.UI, c *SigningCard) {
 		}
 	}
 
-	if len(c.Warnings) > 0 {
+	if len(c.Warnings) > 0 || len(c.Vet) > 0 {
 		u.Info("")
 		for _, w := range c.Warnings {
 			u.Warn("! %s", w)
+		}
+		for _, f := range c.Vet {
+			text := f.Text
+			if f.GrokReconfirm {
+				text += " — Grok reconfirms"
+			}
+			if f.Risk == vet.RiskDanger {
+				u.Error("! %s", text)
+			} else {
+				u.Warn("! %s", text)
+			}
 		}
 	}
 	u.Info("")
@@ -359,6 +374,7 @@ func attachMultisigInnerCall(
 		}
 	}
 	card.Warnings = SigningWarnings(*warn)
+	attachVet(card, *warn, network)
 }
 
 // WarningInput is what SigningWarnings looks at. It is deliberately a plain
@@ -421,13 +437,6 @@ func SigningWarnings(in WarningInput) []string {
 		out = append(out, fmt.Sprintf("balance %s %s does not cover value + max gas (%s %s); the tx would be rejected",
 			in.nativeAmount(in.SignerBalance), in.NativeSymbol,
 			in.nativeAmount(in.MaxCost), in.NativeSymbol))
-	}
-	if in.DelegateCall {
-		if in.MultiSend {
-			out = append(out, "DELEGATECALL into MultiSend: every inner call below runs with the Safe's full authority")
-		} else {
-			out = append(out, "DELEGATECALL: the target's code runs in the Safe's own context")
-		}
 	}
 	if in.HasData && (in.Call == nil || in.Call.Method == "") {
 		dest := in.To.Address

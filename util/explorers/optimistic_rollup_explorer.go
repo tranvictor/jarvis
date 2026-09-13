@@ -65,6 +65,29 @@ type ExternalLibrary struct {
 	AddressHash string `json:"address_hash"`
 }
 
+func (ee *OptimisticRollupExplorer) GetVerifiedSource(address string) (VerifiedSource, error) {
+	sc, err := ee.fetchSmartContract(address)
+	if err != nil {
+		return VerifiedSource{Address: address}, err
+	}
+	code := flattenSource(sc.SourceCode)
+	if code == "" {
+		for _, extra := range sc.AdditionalSources {
+			if extra.SourceCode != "" {
+				code += fmt.Sprintf("// file: %s\n%s\n", extra.FilePath, extra.SourceCode)
+			}
+		}
+	}
+	verified := sc.IsVerified || sc.IsFullyVerified || sc.IsPartiallyVerified
+	return VerifiedSource{
+		Address:        address,
+		Source:         code,
+		Verified:       verified && code != "",
+		Implementation: sc.MinimalProxyAddressHash,
+		IsProxy:        sc.MinimalProxyAddressHash != "",
+	}, nil
+}
+
 func (ee *OptimisticRollupExplorer) GetABIString(address string) (string, error) {
 	sc, err := ee.fetchSmartContract(address)
 	if err != nil {

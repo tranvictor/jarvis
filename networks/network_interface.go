@@ -21,6 +21,7 @@ type Network interface {
 	GetBlockExplorerAPIURL() string
 	GetABIString(address string) (string, error)
 	GetContractInfo(address string) (explorers.ContractInfo, error)
+	GetVerifiedSource(address string) (explorers.VerifiedSource, error)
 
 	// GetSafeTxServiceURL returns the Safe Transaction Service base URL
 	// this network is configured with, or "" when it has none. It is
