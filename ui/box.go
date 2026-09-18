@@ -36,23 +36,51 @@ func BorderColor(s Severity) lipgloss.Color {
 	}
 }
 
+// boxChrome is the columns a BoxedSection adds around its body:
+// left/right border plus one padding space on each side.
+const boxChrome = 4
+
+// boxedInnerWidth is the wrap budget for content captured inside a box,
+// given the parent's remaining line width. 0 means no cap. Never returns
+// more than outer-boxChrome: flooring to minWrapWidth would make the box
+// itself wider than the terminal.
+func boxedInnerWidth(outer int) int {
+	if outer <= 0 {
+		return 0
+	}
+	inner := outer - boxChrome
+	if inner < 1 {
+		return 1
+	}
+	return inner
+}
+
 // renderBoxedSection produces a rounded-bordered box around body's bytes
 // using the colour matching severity, with title injected into the top
 // border (e.g. "╭─ Clear Signed · ERC-7730 ─────────╮"). The result has
 // no surrounding prefix — callers (TerminalUI.BoxedSection) prepend their
 // indent prefix to every line before writing.
-func renderBoxedSection(severity Severity, title string, body string) string {
+
+func renderBoxedSection(severity Severity, title string, body string, inner int) string {
 	body = strings.TrimRight(body, "\n")
 	// Size the box to the title, not just the body: otherwise a short
 	// body (jarvis info's clear-signed panel, with no hardware-wallet
 	// hint) truncates "Clear Signed · Uniswap (Router)" on the top border.
 	if title != "" {
-		body = padBlockToWidth(body, runewidth.StringWidth(title)+2)
+		minW := runewidth.StringWidth(title) + 2
+		if inner > 0 && minW > inner {
+			minW = inner
+		}
+		body = padBlockToWidth(body, minW)
 	}
 	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(BorderColor(severity)).
 		Padding(0, 1)
+	if inner > 0 {
+		// Width includes horizontal padding; wrap happens at inner.
+		style = style.Width(inner + 2)
+	}
 	boxed := style.Render(body)
 	if title != "" {
 		boxed = injectBoxTitle(boxed, title, BorderColor(severity))
@@ -158,8 +186,8 @@ var _ io.Writer = (*captureBox)(nil)
 // writeBoxed renders body's accumulated output as a coloured-border box
 // and writes the framed lines (one per line) to out with prefix applied.
 // Shared by the live and indented TerminalUI cases.
-func writeBoxed(out io.Writer, prefix string, severity Severity, title string, body string) {
-	boxed := renderBoxedSection(severity, title, body)
+func writeBoxed(out io.Writer, prefix string, severity Severity, title string, body string, inner int) {
+	boxed := renderBoxedSection(severity, title, body, inner)
 	for _, line := range strings.Split(boxed, "\n") {
 		fmt.Fprintf(out, "%s%s\n", prefix, line)
 	}
