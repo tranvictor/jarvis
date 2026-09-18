@@ -14,7 +14,6 @@ import (
 // a Completer is set.
 func Analyze(ctx context.Context, req Request) Report {
 	var findings []Finding
-	var skipped []string
 
 	findings = append(findings, measureDelegateCall(req)...)
 	findings = append(findings, measure7702(req)...)
@@ -29,12 +28,11 @@ func Analyze(ctx context.Context, req Request) Report {
 	findings = append(findings, measurePoison(req)...)
 
 	if req.Create {
-		return Report{Findings: findings, Skipped: skipped}
+		return Report{Findings: findings}
 	}
 
 	grokFindings, skip := runGrok(ctx, req, findings)
 	if skip != "" {
-		skipped = append(skipped, skip)
 		findings = append(findings, Finding{
 			Code: CodeAISkip,
 			Risk: RiskCaution,
@@ -42,7 +40,7 @@ func Analyze(ctx context.Context, req Request) Report {
 		})
 	}
 	findings = append(findings, grokFindings...)
-	return Report{Findings: findings, Skipped: skipped}
+	return Report{Findings: findings}
 }
 
 // AnalyzeTypedData reviews an eth_signTypedData_v4 Permit (and related) message.

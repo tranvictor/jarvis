@@ -389,9 +389,3 @@ func TestPoisonDoesNotMatchExactBookEntry(t *testing.T) {
 		t.Fatalf("exact match is not poison: %+v", r.Findings)
 	}
 }
-
-func TestHexRoundTrip(t *testing.T) {
-	if common.HexToAddress(testMe).Hex() == "" {
-		t.Fatal("sanity")
-	}
-}

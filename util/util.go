@@ -814,12 +814,6 @@ func IsDelegationDesignator(code []byte) bool {
 	return ok
 }
 
-// ParseDelegation returns the first-hop EIP-7702 target encoded in code.
-// ok is false when code is not a 23-byte 0xef0100 designator.
-func ParseDelegation(code []byte) (common.Address, bool) {
-	return types.ParseDelegation(code)
-}
-
 // DelegationOf reads eth_getCode and returns the first-hop EIP-7702 target.
 // ok is false when the account is not delegated (including a zero target).
 // Only the first hop is followed: if D is itself a 7702 EOA, D is still returned.

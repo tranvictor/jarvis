@@ -11,11 +11,10 @@ func AuthorizationsFromTx(tx *types.Transaction) []Authorization {
 	if tx == nil {
 		return nil
 	}
-	return AuthorizationsFrom(tx.SetCodeAuthorizations())
+	return authorizationsFrom(tx.SetCodeAuthorizations())
 }
 
-// AuthorizationsFrom converts geth SetCodeAuthorization values.
-func AuthorizationsFrom(auths []types.SetCodeAuthorization) []Authorization {
+func authorizationsFrom(auths []types.SetCodeAuthorization) []Authorization {
 	if len(auths) == 0 {
 		return nil
 	}

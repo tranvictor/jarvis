@@ -60,7 +60,7 @@ func TestExplorerKindOmittedFromBuiltinJSON(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), `"explorer_kind":"routescan"`) && !strings.Contains(string(raw), `"explorer_kind": "routescan"`) {
+	if !strings.Contains(string(raw), `"explorer_kind":"routescan"`) {
 		t.Fatalf("avalanche should persist explorer_kind routescan: %s", raw)
 	}
 }
