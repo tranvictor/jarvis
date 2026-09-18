@@ -17,7 +17,6 @@ import (
 	"golang.org/x/term"
 
 	"github.com/tranvictor/jarvis/accounts/types"
-	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/account"
 )
 
@@ -88,7 +87,11 @@ func StoreAccountRecord(accDesc types.AccDesc) error {
 	os.MkdirAll(dir, os.ModePerm)
 	path := filepath.Join(dir, fmt.Sprintf("%s.json", accDesc.Address))
 	content, _ := json.Marshal(accDesc)
-	return os.WriteFile(path, content, 0644)
+	err := os.WriteFile(path, content, 0644)
+	if err == nil {
+		invalidateWalletCache()
+	}
+	return err
 }
 
 func UnlockAccount(ad types.AccDesc) (*account.Account, error) {
@@ -158,7 +161,7 @@ func GetAccounts() map[string]types.AccDesc {
 					err,
 				)
 			} else {
-				addr, err := util.PathToAddress(p)
+				addr, err := addressFromPath(p)
 				if err == nil {
 					result[addr] = desc
 				}

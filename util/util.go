@@ -501,7 +501,8 @@ func isRealAddress(value string) bool {
 }
 
 // GetJarvisAddress resolves addr using the default (production) address
-// resolver. Call sites that already have a resolver (e.g. txanalyzer via
+// resolver, then names it if Jarvis controls a local wallet for that
+// address. Call sites that already have a resolver (e.g. txanalyzer via
 // AnalysisContext) should use that resolver directly so the implementation
 // can be swapped in tests.
 func GetJarvisAddress(addr string, network networks.Network) jarviscommon.Address {
@@ -533,14 +534,18 @@ func NewEnrichedResolver(network networks.Network) *EnrichedResolver {
 	}
 }
 
-// Resolve first consults the local address book / ERC20 cache. If that
-// comes back as "unknown", it best-effort prefetches a verified
-// contract name from the explorer and retries the lookup. Failures are
-// silent: network errors, rate limits, or unverified contracts all
-// just fall back to the original "unknown" result, and the in-memory
-// probed-set guarantees we don't retry within the same process.
+// Resolve first consults the local address book / ERC20 cache, then local
+// Jarvis wallets (~/.jarvis/<address>.json). If that still comes back as
+// "unknown", it best-effort prefetches a verified contract name from the
+// explorer and retries the lookup. Failures are silent: network errors,
+// rate limits, or unverified contracts all just fall back to the original
+// "unknown" result, and the in-memory probed-set guarantees we don't retry
+// within the same process.
 func (r *EnrichedResolver) Resolve(addr string) jarviscommon.Address {
 	a := r.inner.Resolve(addr)
+	if desc, kind, ok := lookupWallet(addr); ok {
+		a = applyWalletLabel(a, desc, kind)
+	}
 	if a.Desc != "unknown" {
 		return a
 	}
