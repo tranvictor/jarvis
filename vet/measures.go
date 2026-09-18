@@ -451,7 +451,7 @@ func measurePoison(req Request) []Finding {
 			out = append(out, Finding{
 				Code: CodePoison,
 				Risk: RiskDanger,
-				Text: fmt.Sprintf("%s looks like your address-book entry %s (%s)", got.Hex(), b.addr.Hex(), b.label),
+				Text: fmt.Sprintf("%s looks like your address-book entry %s (%s)", got.Hex(), b.addr.Hex(), jarviscommon.MaskLabel(b.label, true)),
 			})
 		}
 	}

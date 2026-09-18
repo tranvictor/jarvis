@@ -140,7 +140,10 @@ for a confirmed outcome, red for a failure, yellow only for something you
 should read before signing. Addresses show their address-book name first
 and a shortened hex (`0x9642…5D4E`); the full hex is always shown on
 signing screens and with `--degen`. `--json-output` is unaffected by any of
-this and always carries full, untruncated values.
+this and always carries full, untruncated values. `--mask-names` replaces
+address-book and wallet labels with `•••` (hex unchanged) so a copied
+transcript or JSON file does not leak private names; bundled token and
+explorer contract names stay visible.
 
 ### `jarvis info <hash>`
 

@@ -101,6 +101,33 @@ func TestGetAddressMatches_FreeTextStillFuzzyMatches(t *testing.T) {
 	}
 }
 
+func TestGetAddressMatchesPreservesPersonal(t *testing.T) {
+	const (
+		meAddr = "0x1111111111111111111111111111111111111111"
+		usdc   = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+	)
+	source := FuzzySource{
+		{Address: meAddr, Desc: "me", SearchString: "me_" + meAddr, Personal: true},
+		{Address: usdc, Desc: "USDC token", SearchString: "USDC_token_" + usdc, Personal: false},
+	}
+	exact := func(addr string) (AddressDesc, bool) {
+		for _, ad := range source {
+			if ad.Address == addr {
+				return ad, true
+			}
+		}
+		return AddressDesc{}, false
+	}
+	got, _ := getAddressMatches(meAddr, source, exact)
+	if len(got) != 1 || !got[0].Personal || got[0].Desc != "me" {
+		t.Fatalf("personal book entry: %+v", got)
+	}
+	got, _ = getAddressMatches(usdc, source, exact)
+	if len(got) != 1 || got[0].Personal || got[0].Desc != "USDC token" {
+		t.Fatalf("bundled token: %+v", got)
+	}
+}
+
 func TestRegisterIgnoresInvalidKeysAndZeroAddress(t *testing.T) {
 	d := &DefaultAddressDatabase{Data: map[common.Address]string{}}
 	d.Register("Quang Le", "should not bind")

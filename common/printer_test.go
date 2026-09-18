@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/tranvictor/jarvis/config"
 )
 
 func TestShortAddress(t *testing.T) {
@@ -42,6 +44,36 @@ func TestNameFirst(t *testing.T) {
 		if got := NameFirst(c.addr, c.full); got != c.want {
 			t.Errorf("NameFirst(%v, %v) = %q, want %q", c.addr, c.full, got, c.want)
 		}
+	}
+}
+
+func TestMaskNamesRewritesPrivateLabels(t *testing.T) {
+	prev := config.MaskNames
+	config.MaskNames = true
+	t.Cleanup(func() { config.MaskNames = prev })
+
+	hex := "0x9642b23Ed1E01Df1092B92641051881a322F5D4E"
+	private := Address{Address: hex, Desc: "me", Private: true}
+	public := Address{Address: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", Desc: "Uniswap V2 Router"}
+	token := Address{Address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", Desc: "USDC token", Decimal: 6}
+
+	if got := NameFirst(private, false); got != "••• (0x9642…5D4E)" {
+		t.Errorf("NameFirst private = %q", got)
+	}
+	if got := PlainAddress(private); got != hex+" (•••)" {
+		t.Errorf("PlainAddress private = %q", got)
+	}
+	if got := NameFirst(public, false); got != "Uniswap V2 Router (0x7a25…488D)" {
+		t.Errorf("public name must stay visible, got %q", got)
+	}
+	if got := PlainAddress(token); got != "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (USDC token - 6)" {
+		t.Errorf("token name must stay visible, got %q", got)
+	}
+	if got := MaskLabel("work ledger", true); got != MaskedName {
+		t.Errorf("MaskLabel = %q", got)
+	}
+	if got := MaskLabel("USDC token", false); got != "USDC token" {
+		t.Errorf("public MaskLabel = %q", got)
 	}
 }
 

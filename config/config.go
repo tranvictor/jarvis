@@ -9,6 +9,9 @@ import (
 var (
 	Debug     bool = false
 	DegenMode bool
+	// MaskNames replaces address-book and wallet labels with "•••" in
+	// printed output so a copied transcript does not leak private names.
+	MaskNames bool
 )
 
 var (

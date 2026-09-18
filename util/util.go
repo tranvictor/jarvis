@@ -51,7 +51,7 @@ func getRelevantAddressesFromDatabases(str string) (addrs []string, names []stri
 	addrDescs, matchScores := db.GetAddresses(str)
 	for i, addr := range addrDescs {
 		addrs = append(addrs, addr.Address)
-		names = append(names, addr.Desc)
+		names = append(names, jarviscommon.MaskLabel(addr.Desc, addr.Personal))
 		scores = append(scores, matchScores[i])
 	}
 	return addrs, names, scores

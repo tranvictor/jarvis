@@ -170,6 +170,30 @@ func CompactAmount(human string) string {
 	return GroupDigits(intPart) + "." + frac
 }
 
+// MaskedName is the stand-in --mask-names uses for a private address-book
+// or wallet label. Three bullets, not three ASCII dots, so a copied
+// transcript is obviously redacted rather than looking like a truncated name.
+const MaskedName = "•••"
+
+// MaskLabel returns MaskedName when --mask-names is on and private is true.
+// Empty and "unknown" labels are left alone so callers can still tell a
+// missing name from a redacted one.
+func MaskLabel(label string, private bool) string {
+	if !config.MaskNames || !private {
+		return label
+	}
+	if label == "" || label == "unknown" {
+		return label
+	}
+	return MaskedName
+}
+
+// DisplayDesc is the name shown for addr: the real Desc, or MaskedName when
+// --mask-names is on and the name came from the address book or a wallet.
+func DisplayDesc(addr Address) string {
+	return MaskLabel(addr.Desc, addr.Private)
+}
+
 // PlainAddress formats an Address as a plain string with no ANSI color codes.
 // Use this when the result will be stored in a data structure or serialized to
 // JSON so that consumers don't receive terminal markup.
@@ -183,11 +207,12 @@ func PlainAddress(addr Address) string {
 	if IsZeroAddress(addr.Address) {
 		return addr.Address + " (zero address)"
 	}
+	desc := DisplayDesc(addr)
 	if addr.Decimal != 0 {
-		return fmt.Sprintf("%s (%s - %d)", addr.Address, addr.Desc, addr.Decimal)
+		return fmt.Sprintf("%s (%s - %d)", addr.Address, desc, addr.Decimal)
 	}
-	if addr.Desc != "" && addr.Desc != "unknown" {
-		return fmt.Sprintf("%s (%s)", addr.Address, addr.Desc)
+	if desc != "" && desc != "unknown" {
+		return fmt.Sprintf("%s (%s)", addr.Address, desc)
 	}
 	return addr.Address
 }
@@ -224,10 +249,11 @@ func NameFirst(addr Address, full bool) string {
 	if IsZeroAddress(addr.Address) {
 		return hex + " (zero address)"
 	}
-	if !IsKnownAddress(addr) {
+	desc := DisplayDesc(addr)
+	if desc == "" || desc == "unknown" {
 		return hex
 	}
-	return fmt.Sprintf("%s (%s)", addr.Desc, hex)
+	return fmt.Sprintf("%s (%s)", desc, hex)
 }
 
 // IsZeroAddress reports whether hex is 0x0000…0000, the conventional mint /

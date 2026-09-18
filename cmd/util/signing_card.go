@@ -512,7 +512,7 @@ func approvalWarnings(fc *jarviscommon.FunctionCall) []string {
 		}
 		target := fc.Destination.Address
 		if jarviscommon.IsKnownAddress(fc.Destination) {
-			target = fc.Destination.Desc
+			target = jarviscommon.DisplayDesc(fc.Destination)
 		}
 		spenderText := "an unspecified spender"
 		if spender != nil {
@@ -585,7 +585,7 @@ func oneERC20NativeValueWarning(
 	}
 	token := dest.Address
 	if jarviscommon.IsKnownAddress(dest) {
-		if label := strings.TrimSpace(strings.TrimSuffix(dest.Desc, " token")); label != "" {
+		if label := strings.TrimSpace(strings.TrimSuffix(jarviscommon.DisplayDesc(dest), " token")); label != "" {
 			token = label
 		}
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
+	"github.com/tranvictor/jarvis/config"
 )
 
 const (
@@ -192,6 +193,29 @@ func TestPoison2Plus2(t *testing.T) {
 	}
 	if !strings.Contains(r.Findings[0].Text, "me") {
 		t.Fatalf("card may show label: %q", r.Findings[0].Text)
+	}
+}
+
+func TestPoisonMaskNamesHidesBookLabel(t *testing.T) {
+	prev := config.MaskNames
+	config.MaskNames = true
+	t.Cleanup(func() { config.MaskNames = prev })
+
+	poison := "0x9642aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5D4E"
+	r := Analyze(context.Background(), Request{
+		Mode: ModeFull,
+		To:   addr(poison, ""),
+		Book: []BookAddr{{Hex: testMe, Label: "me"}},
+	})
+	if !hasFinding(r, CodePoison) {
+		t.Fatalf("expected poison, got %+v", r.Findings)
+	}
+	text := r.Findings[0].Text
+	if strings.Contains(text, "(me)") {
+		t.Fatalf("book label leaked under --mask-names: %q", text)
+	}
+	if !strings.Contains(text, jarviscommon.MaskedName) || !strings.Contains(text, testMe) {
+		t.Fatalf("expected masked label and book hex: %q", text)
 	}
 }
 
