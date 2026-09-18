@@ -23,7 +23,6 @@ type sourceRecord struct {
 	SourceCode              string          `json:"SourceCode"`
 	SimilarMatch            string          `json:"SimilarMatch"`
 	VerifiedTwinAddressHash string          `json:"verified_twin_address_hash"`
-	FileName                string          `json:"FileName"`
 }
 
 type fetchedSource struct {

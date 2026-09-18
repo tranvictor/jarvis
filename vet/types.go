@@ -119,5 +119,4 @@ type Authorization struct {
 // Report is the ordered list of findings after all selected measures.
 type Report struct {
 	Findings []Finding
-	Skipped  []string
 }

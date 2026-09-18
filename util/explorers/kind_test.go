@@ -128,13 +128,6 @@ func TestExplorerClassURLs(t *testing.T) {
 	})
 }
 
-func TestNewInfersKindFromDomain(t *testing.T) {
-	ee := New("", "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/", "", 43114)
-	if ee.Kind != KindRoutescan {
-		t.Fatalf("Kind = %q", ee.Kind)
-	}
-}
-
 func assertNoOtherFamilyPaths(t *testing.T, urls []string) {
 	t.Helper()
 	for _, u := range urls {

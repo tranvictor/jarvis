@@ -6,11 +6,10 @@ import (
 )
 
 func init() {
-	util.SetWalletNamer(AccountsWalletNamer)
+	util.SetWalletNamer(accountsWalletNamer)
 }
 
-// AccountsWalletNamer is the production WalletNamer: ~/.jarvis wallet records.
-func AccountsWalletNamer(addr string) (desc, kind string, ok bool) {
+func accountsWalletNamer(addr string) (desc, kind string, ok bool) {
 	acc, ok := accounts.Lookup(addr)
 	if !ok {
 		return "", "", false

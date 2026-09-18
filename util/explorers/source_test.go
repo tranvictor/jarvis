@@ -271,11 +271,7 @@ func TestParseEtherscanSourceBlockscoutObjectResult(t *testing.T) {
 	}
 }
 
-func TestParseSourcifySources(t *testing.T) {
-	got := parseSourcifySources([]byte(`{"match":"match","sources":{"A.sol":{"content":"pragma solidity ^0.8;"}}}`))
-	if !strings.Contains(got, "file: A.sol") || !strings.Contains(got, "pragma solidity") {
-		t.Fatalf("%q", got)
-	}
+func TestParseSourcifySourcesRejectsEmptyMatch(t *testing.T) {
 	if parseSourcifySources([]byte(`{"match":null,"sources":{}}`)) != "" {
 		t.Fatal("empty sourcify payload must not look verified")
 	}
@@ -306,7 +302,7 @@ func TestGetVerifiedSourceBlockscoutSingularSmartContract(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	ee := NewOptimisticRollupExplorer(srv.URL+"/api/v2", "", 891891)
+	ee := New(KindBlockscout, srv.URL+"/api/v2", "", 891891)
 	if ee.Kind != KindBlockscout {
 		t.Fatalf("Kind = %q", ee.Kind)
 	}

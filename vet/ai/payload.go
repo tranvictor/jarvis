@@ -18,7 +18,7 @@ var abiIdent = regexp.MustCompile(`^[a-zA-Z_][a-zA-Z0-9_]*$`)
 // HexAddr is a 20-byte address. String() is always 0x + 40 hex characters.
 type HexAddr [20]byte
 
-func HexAddrFrom(addr common.Address) HexAddr {
+func hexAddrFrom(addr common.Address) HexAddr {
 	var h HexAddr
 	copy(h[:], addr.Bytes())
 	return h
@@ -28,7 +28,7 @@ func ParseHexAddr(s string) (HexAddr, bool) {
 	if !common.IsHexAddress(strings.TrimSpace(s)) {
 		return HexAddr{}, false
 	}
-	return HexAddrFrom(common.HexToAddress(s)), true
+	return hexAddrFrom(common.HexToAddress(s)), true
 }
 
 func (h HexAddr) String() string {
