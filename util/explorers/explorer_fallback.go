@@ -191,15 +191,26 @@ func parseEtherscanContractInfo(body []byte) (etherscanContractParse, bool) {
 	if sc.Status != "1" && sc.Status != "0" {
 		return etherscanContractParse{}, false
 	}
-	if sc.Status != "1" || len(sc.Result) == 0 {
+	if sc.Status != "1" {
+		if isUnverifiedMessage(string(bytes.TrimSpace(sc.Result))) {
+			return etherscanContractParse{ok: false}, true
+		}
+		return etherscanContractParse{}, false
+	}
+	records := parseSourceRecords(sc.Result)
+	if len(records) == 0 {
 		return etherscanContractParse{ok: false}, true
 	}
-	r := sc.Result[0]
+	r := records[0]
 	verified := r.ABI != "" && r.ABI != "Contract source code not verified"
+	impl := strings.TrimSpace(r.Implementation)
+	if impl == "" {
+		impl = strings.TrimSpace(r.ImplementationAddress)
+	}
 	info := ContractInfo{
 		Name:           r.ContractName,
-		Implementation: r.Implementation,
-		IsProxy:        r.Proxy == "1",
+		Implementation: impl,
+		IsProxy:        r.Proxy == "1" || jsonBool(r.IsProxy),
 		IsVerified:     verified,
 	}
 	if verified {
@@ -229,8 +240,12 @@ func parseJSONContractInfo(body []byte) (ContractInfo, bool) {
 	info := ContractInfo{
 		Name:           jsonString(raw["name"]),
 		Implementation: parseImplementation(raw["implementation"]),
-		IsVerified:     jsonBool(raw["isVerified"]) || jsonBool(raw["is_verified"]),
-		IsProxy:        jsonBool(raw["is_proxy"]),
+		IsVerified: jsonBool(raw["isVerified"]) ||
+			jsonBool(raw["is_verified"]) ||
+			jsonBool(raw["is_fully_verified"]) ||
+			jsonBool(raw["is_partially_verified"]) ||
+			jsonBool(raw["is_verified_via_sourcify"]),
+		IsProxy: jsonBool(raw["is_proxy"]),
 	}
 	if abiStr, ok := abiFieldToString(raw["abi"]); ok {
 		info.ABI = abiStr
