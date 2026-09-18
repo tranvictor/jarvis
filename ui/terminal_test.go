@@ -63,14 +63,20 @@ func TestKeyValueCellsWrapsLongAddressName(t *testing.T) {
 	if valueCol < 0 {
 		t.Fatalf("network value missing:\n%s", plain)
 	}
+	hung := 0
 	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) == "" {
+		trim := strings.TrimLeft(line, " ")
+		if trim == "" || strings.HasPrefix(trim, "Multisig") {
 			continue
 		}
-		start := len(line) - len(strings.TrimLeft(line, " "))
+		start := len(line) - len(trim)
 		if start != valueCol {
 			t.Fatalf("continuation not hung under the value column (%d vs %d):\n%s", start, valueCol, plain)
 		}
+		hung++
+	}
+	if hung == 0 {
+		t.Fatalf("expected hung continuation lines:\n%s", plain)
 	}
 }
 
