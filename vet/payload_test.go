@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/ethereum/go-ethereum/common"
+
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/vet/ai"
 )
@@ -46,6 +48,37 @@ func TestToPayloadStripsDescCanary(t *testing.T) {
 	}
 	if p.Method != "transfer" || p.To == nil {
 		t.Fatalf("payload incomplete: %+v", p)
+	}
+}
+
+func TestToPayloadIncludes7702HexOnly(t *testing.T) {
+	const canary = "CANARY_UncleBob_7f3a"
+	p, ok := ToPayload(Request{
+		ChainID:    1,
+		To:         addr(testMe, canary),
+		Delegation: testRouter,
+		Authorizations: []Authorization{{
+			Authority: testMe,
+			Address:   testRouter,
+			ChainID:   1,
+			Nonce:     4,
+		}},
+	}, Source{}, []string{CodeEIP7702})
+	if !ok {
+		t.Fatal("ToPayload rejected")
+	}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), canary) {
+		t.Fatalf("canary leaked: %s", raw)
+	}
+	if p.Delegation == nil || p.Delegation.String() != common.HexToAddress(testRouter).Hex() {
+		t.Fatalf("delegation %+v", p.Delegation)
+	}
+	if len(p.Authorizations) != 1 || p.Authorizations[0].Nonce != 4 {
+		t.Fatalf("auths %+v", p.Authorizations)
 	}
 }
 

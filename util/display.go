@@ -159,6 +159,22 @@ func buildTxDisplay(result *jarviscommon.TxResult, network networks.Network) *Tx
 		GasCost:      result.GasCost,
 		BlockNumber:  result.BlockNumber,
 	}
+	if result.Delegation.Address != "" {
+		d.Delegation = StyledAddress(result.Delegation)
+	}
+	for _, a := range result.Authorizations {
+		ad := AuthDisplay{
+			Authority: styledParamAddress(a.Authority),
+			Address:   StyledAddress(a.Address),
+			ChainID:   a.ChainID,
+			Nonce:     a.Nonce,
+			Revoke:    a.Revoke,
+		}
+		if a.Revoke {
+			ad.Address = ui.StyledText{Text: "revoke"}
+		}
+		d.Authorizations = append(d.Authorizations, ad)
+	}
 	if result.TxType == "" || result.TxType == "normal" {
 		return d
 	}

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 
 	"github.com/tranvictor/jarvis/util/explorers"
 	"github.com/tranvictor/jarvis/util/reader"
@@ -40,11 +41,22 @@ func (l ExplorerLookup) HasCode(addr string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// Empty-code EOAs must not get unverified findings. An EIP-7702
+	// designator is bytecode, so dest is checked via its delegated
+	// implementation the same way a proxy is.
 	return len(code) > 0, nil
 }
 
 func (l ExplorerLookup) Implementation(addr string) (string, error) {
 	if l.Reader != nil {
+		if code, err := l.Reader.GetCode(addr); err == nil {
+			if d, ok := types.ParseDelegation(code); ok {
+				if d == (common.Address{}) {
+					return "", nil
+				}
+				return d.Hex(), nil
+			}
+		}
 		impl, err := l.Reader.ImplementationOf(-1, addr)
 		if err == nil && impl != (common.Address{}) {
 			return impl.Hex(), nil

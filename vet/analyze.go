@@ -9,19 +9,22 @@ import (
 	"github.com/tranvictor/jarvis/vet/ai"
 )
 
-// Analyze runs the selected measures. ModeAlways is DELEGATECALL only.
-// ModeFull runs every local measure and AI review when a Completer is set.
+// Analyze runs the selected measures. ModeAlways is DELEGATECALL and
+// EIP-7702 only. ModeFull runs every local measure and AI review when
+// a Completer is set.
 func Analyze(ctx context.Context, req Request) Report {
 	var findings []Finding
 	var skipped []string
 
 	findings = append(findings, measureDelegateCall(req)...)
+	findings = append(findings, measure7702(req)...)
 	if req.Mode != ModeFull {
 		return Report{Findings: findings}
 	}
 
 	findings = append(findings, measureCreate(req)...)
 	findings = append(findings, measureUnverified(req)...)
+	findings = append(findings, measure7702Targets(req)...)
 	findings = append(findings, measureMethods(req)...)
 	findings = append(findings, measurePoison(req)...)
 

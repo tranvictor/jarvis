@@ -228,6 +228,44 @@ func TestPlainTransferIsHeadlineOnly(t *testing.T) {
 	}
 }
 
+func Test7702DelegationAndSetCode(t *testing.T) {
+	r := jarviscommon.NewTxResult()
+	r.Status = "done"
+	r.TxType = "normal"
+	r.From = addr(meHex, "me")
+	r.To = addr(meHex, "me")
+	r.Value = "0"
+	r.GasCost = "0.00031500"
+	r.Nonce = "8"
+	r.Delegation = addr(routerHex, "BatchCaller")
+	r.Authorizations = []jarviscommon.TxAuthorization{{
+		Authority: addr(meHex, "me"),
+		Address:   addr(routerHex, "BatchCaller"),
+		ChainID:   "1",
+		Nonce:     "8",
+	}}
+
+	out := render(t, r, util.LayoutInfo, hashHex)
+	if !strings.Contains(out, "set-code") {
+		t.Fatalf("type-4 empty-value tx should read as set-code:\n%s", out)
+	}
+	if !strings.Contains(out, "delegates to") || !strings.Contains(out, "7702 auth") {
+		t.Fatalf("details should name the 7702 dest and auth:\n%s", out)
+	}
+
+	full := render(t, r, util.LayoutInfoFull, hashHex)
+	if !strings.Contains(full, "Delegates") || !strings.Contains(full, "7702 auth") {
+		t.Fatalf("full card missing 7702 rows:\n%s", full)
+	}
+
+	r.Authorizations[0].Revoke = true
+	r.Authorizations[0].Address = addr("0x0000000000000000000000000000000000000000", "")
+	revoke := render(t, r, util.LayoutInfoFull, hashHex)
+	if !strings.Contains(revoke, "revokes delegation") {
+		t.Fatalf("revoke row missing:\n%s", revoke)
+	}
+}
+
 func TestZeroAddressNeverShowsAddressBookName(t *testing.T) {
 	r := swapTxResult()
 	zero := "0x0000000000000000000000000000000000000000"

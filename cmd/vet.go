@@ -146,6 +146,9 @@ func runVetCall(cmd *cobra.Command) {
 		appUI.Info("To: %s", common.HexToAddress(to).Hex())
 	}
 	req := cmdutil.FullVetRequest(config.Network(), dest, tc.Value, data, fc)
+	if req.Delegation != "" {
+		appUI.Info("Delegates to: %s", common.HexToAddress(req.Delegation).Hex())
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
 	defer cancel()
 	progress := appUI.Spinner("vet: analysing…")

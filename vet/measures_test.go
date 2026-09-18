@@ -48,6 +48,90 @@ func TestDelegateCallAlwaysOn(t *testing.T) {
 	}
 }
 
+func Test7702AlwaysOn(t *testing.T) {
+	d := "0x1111111111111111111111111111111111111111"
+	r := Analyze(context.Background(), Request{Mode: ModeAlways, Delegation: d})
+	if !hasFinding(r, CodeEIP7702) {
+		t.Fatalf("dest 7702 must warn without --careful: %+v", r.Findings)
+	}
+	if r.Findings[0].Risk != RiskDanger || !strings.Contains(r.Findings[0].Text, common.HexToAddress(d).Hex()) {
+		t.Fatalf("finding %+v", r.Findings[0])
+	}
+
+	r = Analyze(context.Background(), Request{
+		Mode: ModeAlways,
+		Authorizations: []Authorization{{
+			Authority: testMe,
+			Address:   d,
+			ChainID:   1,
+			Nonce:     7,
+		}},
+	})
+	if !hasFinding(r, CodeEIP7702) || r.Findings[0].Risk != RiskDanger {
+		t.Fatalf("type-4 auth must be always-on danger: %+v", r.Findings)
+	}
+	if !strings.Contains(r.Findings[0].Text, "full control") {
+		t.Fatalf("text %q", r.Findings[0].Text)
+	}
+
+	r = Analyze(context.Background(), Request{
+		Mode: ModeAlways,
+		Authorizations: []Authorization{{
+			Authority: testMe,
+			Address:   common.Address{}.Hex(),
+		}},
+	})
+	if !hasFinding(r, CodeEIP7702) || r.Findings[0].Risk != RiskCaution {
+		t.Fatalf("revoke must be caution: %+v", r.Findings)
+	}
+}
+
+func Test7702DestFollowsDelegatedImpl(t *testing.T) {
+	eoa := testMe
+	impl := "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
+	r := Analyze(context.Background(), Request{
+		Mode:       ModeFull,
+		To:         addr(eoa, ""),
+		Delegation: impl,
+		Chain: fakeLookup{
+			impl: impl,
+			srcs: map[string]Source{
+				strings.ToLower(common.HexToAddress(eoa).Hex()):  {Address: eoa},
+				strings.ToLower(common.HexToAddress(impl).Hex()): {Address: impl, Verified: true, Code: "contract D {}"},
+			},
+		},
+	})
+	if hasFinding(r, CodeUnverified) || hasFinding(r, CodeProxyImplUnverified) {
+		t.Fatalf("verified 7702 target must clear dest unverified: %+v", r.Findings)
+	}
+	if !hasFinding(r, CodeEIP7702) {
+		t.Fatalf("always-on 7702 missing: %+v", r.Findings)
+	}
+}
+
+func Test7702AuthTargetUnverified(t *testing.T) {
+	target := "0x2222222222222222222222222222222222222222"
+	r := Analyze(context.Background(), Request{
+		Mode: ModeFull,
+		To:   addr(testRouter, ""),
+		Authorizations: []Authorization{{
+			Authority: testMe,
+			Address:   target,
+		}},
+		Chain: fakeLookup{
+			srcs: map[string]Source{
+				strings.ToLower(common.HexToAddress(testRouter).Hex()): {
+					Address: testRouter, Verified: true, Code: "contract Router {}",
+				},
+				strings.ToLower(common.HexToAddress(target).Hex()): {Address: target},
+			},
+		},
+	})
+	if !hasFinding(r, CodeUnverified) {
+		t.Fatalf("unverified 7702 target: %+v", r.Findings)
+	}
+}
+
 func TestAdminUpgradeDrainMinOutRecipient(t *testing.T) {
 	fc := &jarviscommon.FunctionCall{
 		Destination: addr(testUSDC, "USDC"),

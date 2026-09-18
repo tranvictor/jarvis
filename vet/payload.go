@@ -49,6 +49,25 @@ func ToPayload(req Request, src Source, localCodes []string) (ai.Payload, bool) 
 	if src.Code != "" {
 		p.Source = truncateSource(src.Code)
 	}
+	if req.Delegation != "" {
+		if h, ok := ai.ParseHexAddr(req.Delegation); ok {
+			p.Delegation = &h
+		}
+	}
+	for _, a := range req.Authorizations {
+		auth := ai.Auth{ChainID: a.ChainID, Nonce: a.Nonce}
+		if a.Authority != "" {
+			if h, ok := ai.ParseHexAddr(a.Authority); ok {
+				auth.Authority = &h
+			}
+		}
+		if a.Address != "" {
+			if h, ok := ai.ParseHexAddr(a.Address); ok {
+				auth.Address = &h
+			}
+		}
+		p.Authorizations = append(p.Authorizations, auth)
+	}
 	return p, true
 }
 
