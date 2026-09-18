@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
-	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/util/addrbook"
 )
 
@@ -28,9 +27,6 @@ func TestApplyWalletLabel(t *testing.T) {
 			}
 			if !jarviscommon.IsKnownAddress(got) {
 				t.Fatal("wallet label must count as a known address")
-			}
-			if !got.Private {
-				t.Fatal("wallet label must be marked private so --mask-names can hide it")
 			}
 			plain := jarviscommon.PlainAddress(got)
 			if !strings.Contains(plain, addr) || !strings.Contains(plain, "("+tc.want+")") {
@@ -79,27 +75,5 @@ func TestEnrichedResolverAnnotatesWallets(t *testing.T) {
 	plain := jarviscommon.PlainAddress(got)
 	if !strings.Contains(plain, mine) || !strings.Contains(plain, "your wallet") {
 		t.Fatalf("plain: %q", plain)
-	}
-}
-
-func TestApplyWalletLabelMaskNames(t *testing.T) {
-	prev := config.MaskNames
-	config.MaskNames = true
-	t.Cleanup(func() { config.MaskNames = prev })
-
-	addr := "0xa3759774994F5012E5d725dCC1B96750945C793f"
-	got := applyWalletLabel(jarviscommon.Address{Address: addr, Desc: "Alice"}, "work ledger", "ledger")
-	if got.Desc != "Alice - your wallet" {
-		t.Fatalf("stored Desc must stay intact, got %q", got.Desc)
-	}
-	if !got.Private {
-		t.Fatal("expected Private")
-	}
-	plain := jarviscommon.PlainAddress(got)
-	if strings.Contains(plain, "Alice") || strings.Contains(plain, "work ledger") {
-		t.Fatalf("masked PlainAddress leaked a name: %q", plain)
-	}
-	if !strings.Contains(plain, addr) || !strings.Contains(plain, "("+jarviscommon.MaskedName+")") {
-		t.Fatalf("masked PlainAddress = %q", plain)
 	}
 }

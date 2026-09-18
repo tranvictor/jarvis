@@ -123,28 +123,17 @@ func TestInfoLayoutOrdersByImportance(t *testing.T) {
 	}
 }
 
-func TestInfoLayoutMaskNamesHidesPrivateLabels(t *testing.T) {
+func TestInfoLayoutMaskNamesHidesResolvedNames(t *testing.T) {
 	prev := config.MaskNames
 	config.MaskNames = true
 	t.Cleanup(func() { config.MaskNames = prev })
 
-	r := swapTxResult()
-	r.From.Private = true
-	toParam := r.FunctionCall.Params[3].Values[0].Address
-	toParam.Private = true
-	r.FunctionCall.Params[3].Values[0].Address = toParam
-	r.Logs[0].Topics[0].Value.Address.Private = true
-	r.Logs[2].Topics[1].Value.Address.Private = true
-
-	out := render(t, r, util.LayoutInfo, hashHex)
-	if strings.Contains(out, "me (") || strings.Contains(out, "(me)") {
-		t.Fatalf("private name leaked:\n%s", out)
+	out := render(t, swapTxResult(), util.LayoutInfo, hashHex)
+	if strings.Contains(out, "me (") || strings.Contains(out, "Uniswap V2 Router") {
+		t.Fatalf("resolved names leaked:\n%s", out)
 	}
 	if !strings.Contains(out, "•••") {
 		t.Fatalf("expected masked name:\n%s", out)
-	}
-	if !strings.Contains(out, "Uniswap V2 Router") || !strings.Contains(out, "USDC") {
-		t.Fatalf("public names must stay visible:\n%s", out)
 	}
 }
 
@@ -366,9 +355,7 @@ func TestTxDisplayJSONMaskNames(t *testing.T) {
 	config.MaskNames = true
 	t.Cleanup(func() { config.MaskNames = prev })
 
-	r := swapTxResult()
-	r.From.Private = true
-	d := util.DisplayTxResult(ui.NewRecordingUI(), r, networks.EthereumMainnet, util.LayoutInfo, hashHex)
+	d := util.DisplayTxResult(ui.NewRecordingUI(), swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex)
 	raw, err := json.Marshal(d)
 	if err != nil {
 		t.Fatal(err)
@@ -378,10 +365,10 @@ func TestTxDisplayJSONMaskNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	if m["from"] != meHex+" (•••)" {
-		t.Fatalf("json must mask private names, got %v", m["from"])
+		t.Fatalf("json must mask names, got %v", m["from"])
 	}
-	if to, _ := m["to"].(string); !strings.Contains(to, "Uniswap V2 Router") {
-		t.Fatalf("public names must stay in json: %v", m["to"])
+	if m["to"] != routerHex+" (•••)" {
+		t.Fatalf("json must mask names, got %v", m["to"])
 	}
 }
 

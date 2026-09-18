@@ -221,7 +221,6 @@ func buildEOASigningCard(
 	from.Address = jarviscommon.HexToAddress(from.Address).Hex()
 	if note != nil && note.WalletName != "" && !jarviscommon.IsKnownAddress(from) {
 		from.Desc = note.WalletName
-		from.Private = true
 	}
 	legacy := tx.Type() == types.LegacyTxType
 	price := tx.GasFeeCap()

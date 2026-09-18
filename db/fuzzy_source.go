@@ -16,9 +16,6 @@ type AddressDesc struct {
 	Address      string
 	Desc         string
 	SearchString string
-	// Personal is true when Desc came from ~/addresses.json or
-	// ~/secrets.json, not the bundled token list.
-	Personal bool
 }
 
 type FuzzySource []AddressDesc
@@ -33,28 +30,17 @@ func (self FuzzySource) String(i int) string {
 
 func NewFuzzySource() FuzzySource {
 	onceSource.Do(func() {
-		tokens := AllTokenAddresses()
-		personal := PersonalAddresses()
-		merged := make(map[string]AddressDesc, len(tokens)+len(personal))
-		add := func(addr, desc string, personal bool) {
-			merged[strings.ToLower(addr)] = AddressDesc{
+		addrs := AllAddresses()
+		source = make(FuzzySource, 0, len(addrs))
+		sourceByAddress = make(map[string]AddressDesc, len(addrs))
+		for addr, desc := range addrs {
+			ad := AddressDesc{
 				Address:      addr,
 				Desc:         desc,
 				SearchString: fmt.Sprintf("%s_%s", strings.Replace(desc, " ", "_", -1), addr),
-				Personal:     personal,
 			}
-		}
-		for addr, desc := range tokens {
-			add(addr, desc, false)
-		}
-		for addr, desc := range personal {
-			add(addr, desc, true)
-		}
-		source = make(FuzzySource, 0, len(merged))
-		sourceByAddress = make(map[string]AddressDesc, len(merged))
-		for addr, ad := range merged {
 			source = append(source, ad)
-			sourceByAddress[addr] = ad
+			sourceByAddress[strings.ToLower(addr)] = ad
 		}
 	})
 	return source

@@ -274,7 +274,7 @@ var listWalletCmd = &cobra.Command{
 		})
 		rows := make([][]string, 0, len(accountList))
 		for _, item := range accountList {
-			rows = append(rows, []string{item.addr, item.acc.Kind, jarviscommon.MaskLabel(item.acc.Desc, true)})
+			rows = append(rows, []string{item.addr, item.acc.Kind, jarviscommon.DisplayDesc(jarviscommon.Address{Desc: item.acc.Desc})})
 		}
 		appUI.Table([]string{"Address", "Kind", "Description"}, rows)
 		appUI.Info("%s", appUI.Style(ui.StyledText{Text: "jarvis wallet add — register another", Severity: ui.SeverityMuted}))

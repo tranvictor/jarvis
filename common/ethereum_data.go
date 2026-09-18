@@ -8,11 +8,6 @@ type Address struct {
 	Address string
 	Desc    string
 	Decimal int64
-	// Private is true when Desc came from the personal address book
-	// (~/addresses.json, ~/secrets.json) or a local wallet record.
-	// Public names (bundled tokens, explorer contract names, ENS) leave
-	// this false. --mask-names rewrites only Private labels.
-	Private bool
 }
 
 // TokenHint carries token metadata for a Value that represents a token amount.

@@ -147,7 +147,7 @@ func Execute() {
 		&config.MaskNames,
 		"mask-names",
 		false,
-		"replace address-book and wallet names with ••• so copied output does not leak private labels",
+		"replace resolved address names with ••• so copied output does not leak labels",
 	)
 
 	rootCmd.PersistentFlags().BoolVarP(

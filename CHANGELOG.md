@@ -2,10 +2,9 @@
 
 ## Unreleased
 
-- `--mask-names` replaces address-book and wallet labels with `•••` in
-  terminal output and `--json-output` so a copied transcript does not leak
-  private names. Hex, bundled token names and explorer contract names are
-  unchanged.
+- `--mask-names` replaces resolved address names with `•••` in printed
+  output (and `--json-output`) so a copied transcript does not leak labels.
+  Hex is unchanged.
 
 - `ScanForTxs` now assigns a network to every hash, not only prefixed ones.
   A bare `0x<64-hex>` uses `-k/--network` (Ethereum mainnet unless the user

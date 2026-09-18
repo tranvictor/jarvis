@@ -63,7 +63,7 @@ func (r Default) Resolve(addr string) jarviscommon.Address {
 		decimal, _ = cache.GetInt64Cache(fmt.Sprintf("%s_decimal", addr))
 	}
 
-	resolvedAddr, name, personal, err := lookupName(addr)
+	resolvedAddr, name, err := lookupName(addr)
 	if err != nil {
 		if erc20Detected && symbol != "" {
 			return jarviscommon.Address{Address: addr, Desc: symbol + " token", Decimal: decimal}
@@ -79,21 +79,19 @@ func (r Default) Resolve(addr string) jarviscommon.Address {
 		return jarviscommon.Address{Address: addr, Desc: "unknown"}
 	}
 
-	a := jarviscommon.Address{Address: resolvedAddr, Desc: name, Private: personal}
 	if erc20Detected {
-		a.Decimal = decimal
+		return jarviscommon.Address{Address: resolvedAddr, Desc: name, Decimal: decimal}
 	}
-	return a
+	return jarviscommon.Address{Address: resolvedAddr, Desc: name}
 }
 
 // lookupName resolves addr against the local address database. It mirrors
 // util.GetMatchingAddress without creating an import cycle (util imports
-// addrbook). personal is true when the name came from ~/addresses.json or
-// ~/secrets.json rather than the bundled token list.
-func lookupName(addr string) (resolvedAddr, name string, personal bool, err error) {
+// addrbook).
+func lookupName(addr string) (resolvedAddr, name string, err error) {
 	results, _ := db.GetAddresses(addr)
 	if len(results) == 0 {
-		return "", "", false, fmt.Errorf("address not found for %q", addr)
+		return "", "", fmt.Errorf("address not found for %q", addr)
 	}
-	return results[0].Address, results[0].Desc, results[0].Personal, nil
+	return results[0].Address, results[0].Desc, nil
 }

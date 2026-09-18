@@ -43,7 +43,6 @@ func applyWalletLabel(a jarviscommon.Address, walletDesc, walletKind string) jar
 	if jarviscommon.IsZeroAddress(a.Address) {
 		return a
 	}
-	a.Private = true
 	if strings.Contains(strings.ToLower(a.Desc), yourWalletTag) {
 		return a
 	}

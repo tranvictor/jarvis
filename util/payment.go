@@ -103,7 +103,7 @@ func paymentTokenSymbol(v jarviscommon.Value, dest jarviscommon.Address) string 
 	if v.Token != nil && v.Token.Symbol != "" {
 		return v.Token.Symbol
 	}
-	d := strings.TrimSpace(jarviscommon.DisplayDesc(dest))
+	d := strings.TrimSpace(dest.Desc)
 	d = strings.TrimSuffix(d, " token")
 	d = strings.TrimSpace(d)
 	if d != "" && d != "unknown" {

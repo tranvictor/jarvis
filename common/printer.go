@@ -170,28 +170,16 @@ func CompactAmount(human string) string {
 	return GroupDigits(intPart) + "." + frac
 }
 
-// MaskedName is the stand-in --mask-names uses for a private address-book
-// or wallet label. Three bullets, not three ASCII dots, so a copied
-// transcript is obviously redacted rather than looking like a truncated name.
+// MaskedName is the stand-in --mask-names uses for a resolved address name.
 const MaskedName = "•••"
 
-// MaskLabel returns MaskedName when --mask-names is on and private is true.
-// Empty and "unknown" labels are left alone so callers can still tell a
-// missing name from a redacted one.
-func MaskLabel(label string, private bool) string {
-	if !config.MaskNames || !private {
-		return label
-	}
-	if label == "" || label == "unknown" {
-		return label
-	}
-	return MaskedName
-}
-
-// DisplayDesc is the name shown for addr: the real Desc, or MaskedName when
-// --mask-names is on and the name came from the address book or a wallet.
+// DisplayDesc is the name shown next to an address. --mask-names rewrites
+// a known Desc to MaskedName so copied output does not leak labels.
 func DisplayDesc(addr Address) string {
-	return MaskLabel(addr.Desc, addr.Private)
+	if config.MaskNames && IsKnownAddress(addr) {
+		return MaskedName
+	}
+	return addr.Desc
 }
 
 // PlainAddress formats an Address as a plain string with no ANSI color codes.
@@ -249,11 +237,10 @@ func NameFirst(addr Address, full bool) string {
 	if IsZeroAddress(addr.Address) {
 		return hex + " (zero address)"
 	}
-	desc := DisplayDesc(addr)
-	if desc == "" || desc == "unknown" {
+	if !IsKnownAddress(addr) {
 		return hex
 	}
-	return fmt.Sprintf("%s (%s)", desc, hex)
+	return fmt.Sprintf("%s (%s)", DisplayDesc(addr), hex)
 }
 
 // IsZeroAddress reports whether hex is 0x0000…0000, the conventional mint /

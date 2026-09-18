@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/user"
 	"path"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 
@@ -82,24 +81,6 @@ func getDataFromDefaultFile() map[string]string {
 				result[addr] = name
 			}
 		}
-	}
-	return result
-}
-
-// PersonalAddresses is the user's ~/addresses.json and ~/secrets.json,
-// keyed by lower-case hex. Bundled token names are not included.
-func PersonalAddresses() map[string]string {
-	data := getDataFromDefaultFile()
-	result := map[string]string{}
-	for addr, name := range data {
-		if !jarviscommon.LooksLikeAddress(addr) {
-			continue
-		}
-		a := common.HexToAddress(addr)
-		if a == (common.Address{}) {
-			continue
-		}
-		result[strings.ToLower(a.Hex())] = name
 	}
 	return result
 }
