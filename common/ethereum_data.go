@@ -138,8 +138,22 @@ type TxResult struct {
 	FunctionCall *FunctionCall
 	Logs         []LogResult
 
+	// Delegation is dest's current EIP-7702 target when dest is a
+	// delegated EOA. Empty Address means none.
+	Delegation Address
+	// Authorizations is the type-4 authorization_list. Empty otherwise.
+	Authorizations []TxAuthorization
+
 	Completed bool
 	Error     string
+}
+
+type TxAuthorization struct {
+	Authority Address
+	Address   Address
+	ChainID   string
+	Nonce     string
+	Revoke    bool
 }
 
 func NewTxResult() *TxResult {

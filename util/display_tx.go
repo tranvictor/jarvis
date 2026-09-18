@@ -182,6 +182,8 @@ func statusText(status string) ui.StyledText {
 // contract call, "transfer <value>" for a plain value transfer.
 func (p txPrinter) intent(d *TxDisplay, network networks.Network) string {
 	switch {
+	case len(d.Authorizations) > 0 && (d.TxType == "normal" || d.FunctionCall == nil) && (d.Value == "" || d.Value == "0"):
+		return "set-code"
 	case d.TxType == "normal":
 		return "transfer " + d.Value + " " + network.GetNativeTokenSymbol()
 	case d.TxType == "contract creation":
@@ -297,6 +299,14 @@ func (p txPrinter) details(d *TxDisplay, network networks.Network) string {
 	if d.Nonce != "" {
 		parts = append(parts, "nonce "+d.Nonce)
 	}
+	if d.Delegation.Text != "" {
+		parts = append(parts, "delegates to "+p.text(d.Delegation))
+	}
+	if n := len(d.Authorizations); n == 1 {
+		parts = append(parts, "7702 auth")
+	} else if n > 1 {
+		parts = append(parts, fmt.Sprintf("7702 auths %d", n))
+	}
 	if d.BlockNumber != "" {
 		parts = append(parts, "block "+d.BlockNumber)
 	}
@@ -317,6 +327,9 @@ func (p txPrinter) printCard(d *TxDisplay, network networks.Network) {
 		[2]ui.TableCell{label("To"), tableCell(d.To)},
 		[2]ui.TableCell{label("Value"), ui.TC(d.Value + " " + network.GetNativeTokenSymbol())},
 	)
+	if d.Delegation.Text != "" {
+		rows = append(rows, [2]ui.TableCell{label("Delegates"), tableCell(d.Delegation)})
+	}
 	if d.Nonce != "" {
 		rows = append(rows,
 			[2]ui.TableCell{label("Nonce"), ui.TC(d.Nonce)},
@@ -328,6 +341,22 @@ func (p txPrinter) printCard(d *TxDisplay, network networks.Network) {
 	}
 	if d.BlockNumber != "" {
 		rows = append(rows, [2]ui.TableCell{label("Block"), ui.TC(d.BlockNumber)})
+	}
+	for i, a := range d.Authorizations {
+		labelText := "7702 auth"
+		if len(d.Authorizations) > 1 {
+			labelText = fmt.Sprintf("7702 auth %d", i+1)
+		}
+		var body string
+		if a.Revoke {
+			body = fmt.Sprintf("%s revokes delegation", a.Authority.Text)
+		} else {
+			body = fmt.Sprintf("%s → %s", a.Authority.Text, a.Address.Text)
+		}
+		if a.Nonce != "" || a.ChainID != "" {
+			body += fmt.Sprintf("   nonce %s   chain %s", a.Nonce, a.ChainID)
+		}
+		rows = append(rows, [2]ui.TableCell{label(labelText), ui.TC(body)})
 	}
 	p.u.Info("")
 	p.u.KeyValueCells(rows)

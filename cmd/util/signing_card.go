@@ -60,10 +60,25 @@ type SigningCard struct {
 	ClearSign func(ui.UI)
 
 	Warnings []string
-	// Vet is extra findings from package vet. DELEGATECALL is always
-	// present when applicable; the rest require --careful.
+	// Vet is extra findings from package vet. DELEGATECALL and EIP-7702
+	// are always present when applicable; the rest require --careful.
 	Vet    []vet.Finding
 	Prompt string
+
+	// Delegation is the first-hop EIP-7702 target of dest when dest is a
+	// delegated EOA. Empty Text hides the row.
+	Delegation ui.StyledText
+	// Authorizations are type-4 authorization_list rows.
+	Authorizations []AuthCardRow
+}
+
+// AuthCardRow is one EIP-7702 authorization shown on the signing card.
+type AuthCardRow struct {
+	Authority ui.StyledText
+	Target    ui.StyledText
+	Nonce     string
+	ChainID   string
+	Revoke    bool
 }
 
 // SafeCardFields are the SafeTx parameters that have no EOA equivalent.
@@ -209,6 +224,9 @@ func renderSigningCardBody(u ui.UI, c *SigningCard) {
 		}
 		rows = append(rows, [2]ui.TableCell{label(toLabel), ui.TCS(c.To.Text, c.To.Severity)})
 	}
+	if c.Delegation.Text != "" {
+		rows = append(rows, [2]ui.TableCell{label("Delegates"), ui.TCS(c.Delegation.Text, ui.SeverityWarn)})
+	}
 	if c.Value != "" {
 		rows = append(rows, [2]ui.TableCell{label("Value"), ui.TC(c.Value)})
 	}
@@ -263,6 +281,26 @@ func renderSigningCardBody(u ui.UI, c *SigningCard) {
 			status = fmt.Sprintf("pending (%d/%d)", cl.Confirmations, cl.Threshold)
 		}
 		rows = append(rows, [2]ui.TableCell{label("Status"), ui.TCS(status, sev)})
+	}
+	for i, a := range c.Authorizations {
+		labelText := "7702 auth"
+		if len(c.Authorizations) > 1 {
+			labelText = fmt.Sprintf("7702 auth %d", i+1)
+		}
+		var body string
+		if a.Revoke {
+			body = fmt.Sprintf("%s revokes delegation", a.Authority.Text)
+		} else {
+			body = fmt.Sprintf("%s → %s", a.Authority.Text, a.Target.Text)
+		}
+		if a.Nonce != "" || a.ChainID != "" {
+			body += fmt.Sprintf("   nonce %s   chain %s", a.Nonce, a.ChainID)
+		}
+		sev := ui.SeverityWarn
+		if a.Revoke {
+			sev = ui.SeverityInfo
+		}
+		rows = append(rows, [2]ui.TableCell{label(labelText), ui.TCS(body, sev)})
 	}
 	if body {
 		u.Info("")
@@ -396,6 +434,10 @@ type WarningInput struct {
 	// nil skips it. MaxCost is value + gasLimit × max fee.
 	SignerBalance *big.Int
 	MaxCost       *big.Int
+	// Delegation is dest's current EIP-7702 target (hex). Empty if none.
+	Delegation string
+	// Authorizations are type-4 authorization_list entries.
+	Authorizations []vet.Authorization
 }
 
 func (in WarningInput) nativeDecimals() uint64 {

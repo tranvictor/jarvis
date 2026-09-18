@@ -193,6 +193,7 @@ func (g *EOAGateway) SendTransaction(
 			return "", fmt.Errorf("estimate gas: %w", err)
 		}
 		gasLimit = est + 50_000 // modest buffer; dApps rarely send tight estimates.
+		gasLimit += 25_000 * uint64(len(tx.Authorizations))
 	}
 
 	// Resolve gas pricing. If the dApp provided EIP-1559 fields and
@@ -238,10 +239,18 @@ func (g *EOAGateway) SendTransaction(
 			"refusing eth_sendTransaction with no `to` (contract creation)")
 	}
 
-	ethTx := jarviscommon.BuildExactTx(
-		txType, nonce, signedTxTo, value, gasLimit, priceGwei, tipGwei, data,
-		net.GetChainID(),
-	)
+	var ethTx *types.Transaction
+	if len(tx.Authorizations) > 0 {
+		ethTx = jarviscommon.BuildSetCodeTx(
+			nonce, signedTxTo, value, gasLimit, priceGwei, tipGwei, data,
+			net.GetChainID(), tx.Authorizations,
+		)
+	} else {
+		ethTx = jarviscommon.BuildExactTx(
+			txType, nonce, signedTxTo, value, gasLimit, priceGwei, tipGwei, data,
+			net.GetChainID(),
+		)
+	}
 
 	// Delegate the confirmation to the standard jarvis prompt so the
 	// operator sees the same rich decoded view (token transfers, ENS
@@ -493,6 +502,20 @@ func (g *EOAGateway) fallbackConfirm(
 		if a, err := g.resolver.ConfigToABI(to, false, "", net); err == nil && a != nil {
 			if m, ok := matchMethod(a, data); ok {
 				g.ui.Info("Call  : %s", m)
+			}
+		}
+	}
+	if auths := tx.SetCodeAuthorizations(); len(auths) > 0 {
+		g.ui.Info("EIP-7702 authorizations (%d):", len(auths))
+		for i, a := range auths {
+			who := "unknown signer"
+			if addr, err := a.Authority(); err == nil {
+				who = addr.Hex()
+			}
+			if a.Address == (ethcommon.Address{}) {
+				g.ui.Info("  %d. %s revokes delegation (nonce %d, chain %s)", i+1, who, a.Nonce, a.ChainID.String())
+			} else {
+				g.ui.Info("  %d. %s → %s (nonce %d, chain %s)", i+1, who, a.Address.Hex(), a.Nonce, a.ChainID.String())
 			}
 		}
 	}

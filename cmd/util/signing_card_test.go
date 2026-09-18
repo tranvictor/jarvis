@@ -483,3 +483,47 @@ func TestSigningCardShowsWalletKind(t *testing.T) {
 		t.Fatalf("wallet kind missing from signer line: %v", rec.Entries())
 	}
 }
+
+func TestShowSigningCard7702(t *testing.T) {
+	rec := ui.NewRecordingUI()
+	ShowSigningCard(rec, &SigningCard{
+		Kind:       "EOA transaction",
+		To:         util.StyledAddress(cardAddr(cardMe, "hot wallet")),
+		Delegation: util.StyledAddress(cardAddr(cardRouter, "BatchCaller")),
+		Authorizations: []AuthCardRow{{
+			Authority: util.StyledAddress(cardAddr(cardMe, "hot wallet")),
+			Target:    util.StyledAddress(cardAddr(cardRouter, "BatchCaller")),
+			Nonce:     "4",
+			ChainID:   "1",
+		}},
+		Vet: []vet.Finding{{
+			Code: vet.CodeEIP7702,
+			Risk: vet.RiskDanger,
+			Text: "EIP-7702 authorization: " + cardMe + " grants " + cardRouter + " full control of the account until revoked",
+		}},
+	})
+	if !rec.HasMessage("Delegates: " + cardRouter + " (BatchCaller)") {
+		t.Fatalf("Delegates row missing: %v", rec.Entries())
+	}
+	if !rec.HasMessage("7702 auth: " + cardMe + " (hot wallet) → " + cardRouter + " (BatchCaller)   nonce 4   chain 1") {
+		t.Fatalf("auth row missing: %v", rec.Entries())
+	}
+	if !rec.HasMessage("! EIP-7702 authorization: " + cardMe + " grants " + cardRouter + " full control of the account until revoked") {
+		t.Fatalf("vet 7702 line missing: %v", rec.Entries())
+	}
+
+	rec = ui.NewRecordingUI()
+	ShowSigningCard(rec, &SigningCard{
+		Kind: "EOA transaction",
+		To:   util.StyledAddress(cardAddr(cardMe, "hot wallet")),
+		Authorizations: []AuthCardRow{{
+			Authority: util.StyledAddress(cardAddr(cardMe, "hot wallet")),
+			Revoke:    true,
+			Nonce:     "5",
+			ChainID:   "1",
+		}},
+	})
+	if !rec.HasMessage("7702 auth: " + cardMe + " (hot wallet) revokes delegation   nonce 5   chain 1") {
+		t.Fatalf("revoke row missing: %v", rec.Entries())
+	}
+}

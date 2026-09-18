@@ -653,6 +653,7 @@ func (self *TxAnalyzer) AnalyzeOffline(
 	result.Network = self.ctx.Network.GetName()
 	result.Hash = txinfo.Tx.Hash().Hex()
 	result.Status = txinfo.Status
+	result.Authorizations = TxAuthorizationsFrom(txinfo.Tx.Transaction, self.ctx.GetJarvisAddress)
 	if txinfo.Status == "done" || txinfo.Status == "reverted" {
 		self.setBasicTxInfo(*txinfo, result)
 		if txinfo.Status == "reverted" {

@@ -100,3 +100,61 @@ func TestParseSignTypedDataV4_WrappedString(t *testing.T) {
 		t.Errorf("unwrap failed: %s", out)
 	}
 }
+
+func TestParseSendTxParamsAuthorizationList(t *testing.T) {
+	raw := json.RawMessage(`[{
+		"from": "0xAbC0000000000000000000000000000000000001",
+		"to":   "0xDeF0000000000000000000000000000000000002",
+		"value": "0x0",
+		"data": "0x",
+		"authorizationList": [{
+			"chainId": "0x1",
+			"address": "0x1111111111111111111111111111111111111111",
+			"nonce": "0x4",
+			"yParity": "0x0",
+			"r": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+			"s": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+		}]
+	}]`)
+	tx, err := parseSendTxParams(raw)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(tx.Authorizations) != 1 {
+		t.Fatalf("auths %d", len(tx.Authorizations))
+	}
+	a := tx.Authorizations[0]
+	if a.Address.Hex() != "0x1111111111111111111111111111111111111111" {
+		t.Errorf("address %s", a.Address.Hex())
+	}
+	if a.Nonce != 4 || a.ChainID.Uint64() != 1 || a.V != 0 {
+		t.Errorf("nonce=%d chain=%s v=%d", a.Nonce, a.ChainID.String(), a.V)
+	}
+
+	raw = json.RawMessage(`[{
+		"from": "0xAbC0000000000000000000000000000000000001",
+		"to":   "0xDeF0000000000000000000000000000000000002",
+		"authorizationList": [{
+			"chainId": "1",
+			"address": "0x0000000000000000000000000000000000000000",
+			"nonce": "5",
+			"v": "28",
+			"r": "0x1",
+			"s": "0x2"
+		}]
+	}]`)
+	tx, err = parseSendTxParams(raw)
+	if err != nil {
+		t.Fatalf("tolerant parse: %v", err)
+	}
+	if len(tx.Authorizations) != 1 {
+		t.Fatalf("auths %d", len(tx.Authorizations))
+	}
+	a = tx.Authorizations[0]
+	if a.Address.Hex() != "0x0000000000000000000000000000000000000000" {
+		t.Errorf("revoke address %s", a.Address.Hex())
+	}
+	if a.V != 1 {
+		t.Errorf("v=28 should become yParity 1, got %d", a.V)
+	}
+}

@@ -34,16 +34,18 @@ func runVet(card *SigningCard, req vet.Request) {
 
 func vetRequest(warn WarningInput, network jarvisnetworks.Network, create bool, data []byte) vet.Request {
 	req := vet.Request{
-		Mode:         vet.ModeAlways,
-		ChainID:      network.GetChainID(),
-		NetworkName:  network.GetName(),
-		To:           warn.To,
-		Value:        warn.Value,
-		Data:         data,
-		Call:         warn.Call,
-		DelegateCall: warn.DelegateCall,
-		MultiSend:    warn.MultiSend,
-		Create:       create,
+		Mode:           vet.ModeAlways,
+		ChainID:        network.GetChainID(),
+		NetworkName:    network.GetName(),
+		To:             warn.To,
+		Value:          warn.Value,
+		Data:           data,
+		Call:           warn.Call,
+		DelegateCall:   warn.DelegateCall,
+		MultiSend:      warn.MultiSend,
+		Create:         create,
+		Delegation:     warn.Delegation,
+		Authorizations: warn.Authorizations,
 	}
 	if warn.HasData && warn.Call != nil {
 		req.Data = warn.Call.Data
@@ -136,6 +138,11 @@ func FullVetRequest(
 		Book:        loadBook(),
 		Chain:       explorerLookup(network),
 		AI:          grokCompleter(),
+	}
+	if to.Address != "" {
+		if d, ok, err := jarvisutil.DelegationOf(to.Address, network); err == nil && ok {
+			req.Delegation = d.Hex()
+		}
 	}
 	if to.Address == "" {
 		req.Create = true

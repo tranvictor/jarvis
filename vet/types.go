@@ -58,8 +58,9 @@ type Source struct {
 type Lookup interface {
 	Source(addr string) (Source, error)
 	Implementation(addr string) (string, error)
-	// HasCode is true when dest is a contract. EOAs must not get
-	// "unverified source" findings.
+	// HasCode is true when dest has bytecode, including an EIP-7702
+	// delegation designator. Empty-code EOAs must not get unverified
+	// findings; 7702 dests are checked via their delegated implementation.
 	HasCode(addr string) (bool, error)
 }
 
@@ -92,9 +93,27 @@ type Request struct {
 	MultiSend    bool
 	Create       bool
 
+	// Delegation is the first-hop EIP-7702 target of dest when dest is a
+	// delegated EOA. Empty when dest is not 7702. Labels stay off this
+	// field; it is hex only.
+	Delegation string
+	// Authorizations are the type-4 authorization_list entries on the
+	// transaction being signed. Empty for every other tx type.
+	Authorizations []Authorization
+
 	Book  []BookAddr
 	Chain Lookup
 	AI    Completer
+}
+
+// Authorization is one EIP-7702 SetCodeAuthorization. Authority is the
+// recovered signer; empty when recovery fails. Address is the code to
+// install (zero means revoke).
+type Authorization struct {
+	Authority string
+	Address   string
+	ChainID   uint64
+	Nonce     uint64
 }
 
 // Report is the ordered list of findings after all selected measures.

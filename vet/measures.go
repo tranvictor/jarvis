@@ -28,6 +28,7 @@ const (
 	CodeTypedChainID        = "typed_chainid"
 	CodeAISkip              = "ai_skip"
 	CodeGrok                = "grok"
+	CodeEIP7702             = "eip7702"
 )
 
 var adminMethods = map[string]struct{}{
@@ -97,6 +98,116 @@ func measureDelegateCall(req Request) []Finding {
 		Risk: RiskDanger,
 		Text: "DELEGATECALL: the target's code runs in the Safe's own context",
 	}}
+}
+
+func measure7702(req Request) []Finding {
+	var out []Finding
+	if req.Delegation != "" && common.IsHexAddress(req.Delegation) {
+		d := common.HexToAddress(req.Delegation)
+		if d != (common.Address{}) {
+			out = append(out, Finding{
+				Code: CodeEIP7702,
+				Risk: RiskDanger,
+				Text: fmt.Sprintf("EIP-7702: destination delegates execution to %s; that contract's code runs for this account", d.Hex()),
+			})
+		}
+	}
+	for _, a := range req.Authorizations {
+		target := a.Address
+		who := "an account"
+		if a.Authority != "" && common.IsHexAddress(a.Authority) {
+			who = common.HexToAddress(a.Authority).Hex()
+		}
+		if target == "" || (common.IsHexAddress(target) && common.HexToAddress(target) == (common.Address{})) {
+			out = append(out, Finding{
+				Code: CodeEIP7702,
+				Risk: RiskCaution,
+				Text: fmt.Sprintf("EIP-7702 authorization: %s revokes its delegation", who),
+			})
+			continue
+		}
+		targetHex := target
+		if common.IsHexAddress(target) {
+			targetHex = common.HexToAddress(target).Hex()
+		}
+		out = append(out, Finding{
+			Code: CodeEIP7702,
+			Risk: RiskDanger,
+			Text: fmt.Sprintf("EIP-7702 authorization: %s grants %s full control of the account until revoked", who, targetHex),
+		})
+	}
+	return out
+}
+
+func measure7702Targets(req Request) []Finding {
+	if req.Chain == nil {
+		return nil
+	}
+	dest := effectiveDest(req)
+	seen := map[string]struct{}{}
+	if dest != "" && common.IsHexAddress(dest) {
+		seen[strings.ToLower(common.HexToAddress(dest).Hex())] = struct{}{}
+	}
+	var out []Finding
+	for _, a := range req.Authorizations {
+		if a.Address == "" || !common.IsHexAddress(a.Address) {
+			continue
+		}
+		hex := common.HexToAddress(a.Address).Hex()
+		if hex == (common.Address{}).Hex() {
+			continue
+		}
+		key := strings.ToLower(hex)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		src, err := req.Chain.Source(hex)
+		if err != nil {
+			out = append(out, Finding{
+				Code: CodeAISkip,
+				Risk: RiskCaution,
+				Text: fmt.Sprintf("vet skipped: could not fetch source for EIP-7702 target %s (%s)", hex, err),
+			})
+			continue
+		}
+		impl := strings.TrimSpace(src.Implementation)
+		if impl == "" {
+			if got, ierr := req.Chain.Implementation(hex); ierr == nil {
+				impl = got
+			}
+		}
+		unverified := !src.Verified || src.Code == ""
+		if impl != "" && !sameAddr(impl, hex) {
+			implSrc, err := req.Chain.Source(impl)
+			if err != nil {
+				out = append(out, Finding{
+					Code: CodeAISkip,
+					Risk: RiskCaution,
+					Text: fmt.Sprintf("vet skipped: could not resolve implementation %s (%s)", common.HexToAddress(impl).Hex(), err),
+				})
+				continue
+			}
+			if !implSrc.Verified || implSrc.Code == "" {
+				out = append(out, Finding{
+					Code: CodeProxyImplUnverified,
+					Risk: RiskDanger,
+					Text: fmt.Sprintf("EIP-7702 target %s delegates to unverified implementation %s", hex, common.HexToAddress(impl).Hex()),
+				})
+				unverified = false
+			} else {
+				unverified = false
+			}
+		}
+		if unverified {
+			out = append(out, Finding{
+				Code: CodeUnverified,
+				Risk: RiskDanger,
+				Text: fmt.Sprintf("EIP-7702 target %s has no verified source; vet cannot read the code that will run", hex),
+			})
+		}
+	}
+	return out
 }
 
 func measureCreate(req Request) []Finding {

@@ -112,16 +112,17 @@ type wcSessionEventParams struct {
 // eth_sendTransaction. Numeric fields are hex-encoded with optional
 // 0x prefix; we parse them tolerantly.
 type ethSendTxPayload struct {
-	From                 string `json:"from"`
-	To                   string `json:"to,omitempty"`
-	Gas                  string `json:"gas,omitempty"`
-	GasPrice             string `json:"gasPrice,omitempty"`
-	MaxFeePerGas         string `json:"maxFeePerGas,omitempty"`
-	MaxPriorityFeePerGas string `json:"maxPriorityFeePerGas,omitempty"`
-	Value                string `json:"value,omitempty"`
-	Data                 string `json:"data,omitempty"`
-	Input                string `json:"input,omitempty"` // some dApps use "input" instead of "data"
-	Nonce                string `json:"nonce,omitempty"`
+	From                 string          `json:"from"`
+	To                   string          `json:"to,omitempty"`
+	Gas                  string          `json:"gas,omitempty"`
+	GasPrice             string          `json:"gasPrice,omitempty"`
+	MaxFeePerGas         string          `json:"maxFeePerGas,omitempty"`
+	MaxPriorityFeePerGas string          `json:"maxPriorityFeePerGas,omitempty"`
+	Value                string          `json:"value,omitempty"`
+	Data                 string          `json:"data,omitempty"`
+	Input                string          `json:"input,omitempty"` // some dApps use "input" instead of "data"
+	Nonce                string          `json:"nonce,omitempty"`
+	AuthorizationList    json.RawMessage `json:"authorizationList,omitempty"`
 }
 
 // switchChainPayload is the first arg of wallet_switchEthereumChain.

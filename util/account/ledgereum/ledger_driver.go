@@ -346,7 +346,7 @@ func (w *ledgerDriver) ledgerSign(
 		}
 		txrlp = append([]byte{types.DynamicFeeTxType}, txrlp...)
 	} else {
-		return common.Address{}, nil, fmt.Errorf("ledger doesn't support this tx type yet")
+		return common.Address{}, nil, fmt.Errorf("Ledger cannot sign EIP-7702 type-4 transactions (tx type %d)", tx.Type())
 	}
 	payload := append(path, txrlp...)
 
