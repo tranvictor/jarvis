@@ -27,9 +27,8 @@ func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {
 	const addr = "0xa11ce00000000000000000000000000000000001"
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		io.WriteString(w, `{"error":"not found"}`)
+		t.Errorf("Robinscan kind must not hit Etherscan module=contract: %s", r.URL)
+		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(strings.ToLower(r.URL.Path), strings.ToLower(addr)) {
@@ -49,7 +48,7 @@ func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	ee := NewEtherscanLikeExplorer(srv.URL, "SECRETKEY", 4663)
+	ee := New(KindRobinscan, srv.URL, "SECRETKEY", 4663)
 	got, err := ee.GetABIString(addr)
 	if err != nil {
 		t.Fatalf("GetABIString: %v", err)
@@ -87,6 +86,7 @@ func TestGetABIStringFollowsMethodlessProxyImplementation(t *testing.T) {
 	)
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Robinscan kind must not hit Etherscan module=contract: %s", r.URL)
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +120,7 @@ func TestGetABIStringFollowsMethodlessProxyImplementation(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	ee := NewEtherscanLikeExplorer(srv.URL, "", 4663)
+	ee := New(KindRobinscan, srv.URL, "", 4663)
 	got, err := ee.GetABIString(proxy)
 	if err != nil {
 		t.Fatalf("GetABIString: %v", err)
@@ -140,6 +140,7 @@ func TestGetABIStringFallsBackToBlockscoutV2(t *testing.T) {
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Blockscout kind must not hit Robinscan /api/contracts: %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/v2/smart-contracts/", func(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +156,7 @@ func TestGetABIStringFallsBackToBlockscoutV2(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	ee := NewEtherscanLikeExplorer(srv.URL, "", 1)
+	ee := New(KindBlockscout, srv.URL, "", 1)
 	got, err := ee.GetABIString(addr)
 	if err != nil || !strings.Contains(got, "deposit") {
 		t.Fatalf("GetABIString: %q %v", got, err)

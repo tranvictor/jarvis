@@ -10,13 +10,18 @@ import (
 // GenericOptimismNetwork is a network whose explorer is Blockscout-style
 // (Optimistic rollup /v2 smart-contract API) rather than Etherscan.
 type GenericOptimismNetwork struct {
-	*explorers.OptimisticRollupExplorer
+	*explorers.EtherscanLikeExplorer
 	networkMeta
 }
 
 func NewGenericOptimismNetwork(config GenericEtherscanNetworkConfig) *GenericOptimismNetwork {
+	kind := explorers.KindBlockscout
+	if k, err := explorers.ParseKind(config.ExplorerKind); err == nil && k != "" {
+		kind = k
+	}
 	return &GenericOptimismNetwork{
-		OptimisticRollupExplorer: explorers.NewOptimisticRollupExplorer(
+		EtherscanLikeExplorer: explorers.New(
+			kind,
 			config.BlockExplorerAPIURL,
 			strings.Trim(os.Getenv(config.BlockExplorerAPIKeyVariableName), " "),
 			config.ChainID,

@@ -10,19 +10,26 @@ import (
 	"time"
 )
 
+// EtherscanLikeExplorer is the shared HTTP client for every explorer Kind.
+// URL shapes are Kind-specific (see abiURLs / contractInfoURLs); parsers
+// understand Etherscan module=contract JSON, Blockscout REST, and Robinscan
+// /api/contracts JSON.
 type EtherscanLikeExplorer struct {
+	Kind    Kind
 	ChainID uint64
-
-	Domain string
-	APIKey string
+	Domain  string
+	APIKey  string
 }
 
 func NewEtherscanLikeExplorer(domain string, apiKey string, chainID uint64) *EtherscanLikeExplorer {
-	return &EtherscanLikeExplorer{
-		Domain:  domain,
-		APIKey:  apiKey,
-		ChainID: chainID,
+	return New(KindEtherscan, domain, apiKey, chainID)
+}
+
+func (ee *EtherscanLikeExplorer) kind() Kind {
+	if ee.Kind != "" {
+		return ee.Kind
 	}
+	return KindEtherscan
 }
 
 func (ee *EtherscanLikeExplorer) GetABIStringAPIURL(address string) string {
@@ -62,7 +69,7 @@ var (
 // label names the explorer in errors without echoing the request URL, which
 // carries the API key.
 func (ee *EtherscanLikeExplorer) label() string {
-	return fmt.Sprintf("%s (chain %d)", ee.Domain, ee.ChainID)
+	return fmt.Sprintf("%s %s (chain %d)", ee.kind(), ee.Domain, ee.ChainID)
 }
 
 func isRateLimited(body []byte) bool {

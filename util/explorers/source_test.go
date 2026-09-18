@@ -35,6 +35,7 @@ func TestGetVerifiedSourceRobinscanSourceFiles(t *testing.T) {
 	const impl = "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Robinscan kind must not hit Etherscan module=contract: %s", r.URL)
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
@@ -53,7 +54,7 @@ func TestGetVerifiedSourceRobinscanSourceFiles(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	ee := NewEtherscanLikeExplorer(srv.URL, "", 1)
+	ee := New(KindRobinscan, srv.URL, "", 4663)
 	src, err := ee.GetVerifiedSource(impl)
 	if err != nil {
 		t.Fatal(err)
@@ -108,9 +109,11 @@ func TestGetVerifiedSourceFollowsEtherscanSimilarMatch(t *testing.T) {
 		}
 	})
 	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("etherscan kind must not hit Robinscan: %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/v2/smart-contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("etherscan kind must not hit Blockscout REST: %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
 	srv := httptest.NewServer(mux)
@@ -143,9 +146,11 @@ func TestGetVerifiedSourceFallsBackToSourcify(t *testing.T) {
 		w.Write([]byte(`{"status":"1","message":"OK","result":[{"SourceCode":"","ABI":"Contract source code not verified","SimilarMatch":""}]}`))
 	})
 	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("etherscan kind must not hit Robinscan: %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/v2/smart-contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("etherscan kind must not hit Blockscout REST: %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
 	srv := httptest.NewServer(mux)
@@ -168,6 +173,7 @@ func TestGetVerifiedSourceBlockscoutAdditionalSources(t *testing.T) {
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Blockscout kind must not hit Robinscan: %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/v2/smart-contracts/", func(w http.ResponseWriter, r *http.Request) {
@@ -185,7 +191,7 @@ func TestGetVerifiedSourceBlockscoutAdditionalSources(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	ee := NewEtherscanLikeExplorer(srv.URL, "", 1)
+	ee := New(KindBlockscout, srv.URL, "", 1)
 	src, err := ee.GetVerifiedSource("0x0000000000000000000000000000000000000001")
 	if err != nil {
 		t.Fatal(err)
@@ -205,22 +211,24 @@ func TestGetVerifiedSourceAPIErrorIsNotUnverified(t *testing.T) {
 		w.Write([]byte(`{"status":"0","message":"NOTOK","result":"Missing chainid parameter (required for v2 api)"}`))
 	})
 	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("etherscan kind must not hit Robinscan: %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/v2/smart-contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("etherscan kind must not fall through to Blockscout REST: %s", r.URL.Path)
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"name":"Foo","is_verified":true,"source_code":"contract Foo {}","abi":[]}`))
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	ee := NewEtherscanLikeExplorer(srv.URL, "k", 1)
+	ee := New(KindEtherscan, srv.URL, "k", 1)
 	src, err := ee.GetVerifiedSource("0x0000000000000000000000000000000000000001")
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatalf("missing-chainid is an API error, not unverified, and must not use another family's REST: %+v", src)
 	}
-	if !src.Verified || !strings.Contains(src.Source, "contract Foo") {
-		t.Fatalf("missing-chainid must not stop fallbacks: %+v", src)
+	if src.Verified {
+		t.Fatalf("must not mark verified: %+v", src)
 	}
 }
 
@@ -235,9 +243,11 @@ func TestGetVerifiedSourceRateLimitIsFetchError(t *testing.T) {
 		w.Write([]byte(`{"status":"0","message":"NOTOK","result":"Max calls per sec rate limit reached (3/sec)"}`))
 	})
 	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("etherscan kind must not hit Robinscan: %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
 	mux.HandleFunc("/api/v2/smart-contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("etherscan kind must not hit Blockscout REST: %s", r.URL.Path)
 		http.NotFound(w, r)
 	})
 	srv := httptest.NewServer(mux)
@@ -268,5 +278,43 @@ func TestParseSourcifySources(t *testing.T) {
 	}
 	if parseSourcifySources([]byte(`{"match":null,"sources":{}}`)) != "" {
 		t.Fatal("empty sourcify payload must not look verified")
+	}
+}
+
+func TestGetVerifiedSourceBlockscoutSingularSmartContract(t *testing.T) {
+	sourcify404(t)
+	const addr = "0x0000000000000000000000000000000000000001"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v2/smart-contracts/", func(w http.ResponseWriter, r *http.Request) {
+		http.NotFound(w, r)
+	})
+	mux.HandleFunc("/api/v2/smart-contract/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"name":"RollupToken",
+			"is_verified":true,
+			"file_path":"Token.sol",
+			"source_code":"contract RollupToken {}",
+			"additional_sources":[{"file_path":"lib/Safe.sol","source_code":"contract Safe {}"}],
+			"abi":[]
+		}`))
+	})
+	mux.HandleFunc("/api/contracts/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("Blockscout kind must not hit Robinscan: %s", r.URL.Path)
+		http.NotFound(w, r)
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+
+	ee := NewOptimisticRollupExplorer(srv.URL+"/api/v2", "", 891891)
+	if ee.Kind != KindBlockscout {
+		t.Fatalf("Kind = %q", ee.Kind)
+	}
+	src, err := ee.GetVerifiedSource(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !src.Verified || !strings.Contains(src.Source, "contract RollupToken") || !strings.Contains(src.Source, "file: lib/Safe.sol") {
+		t.Fatalf("Bitfi-style singular REST: %+v", src)
 	}
 }

@@ -35,12 +35,11 @@ type BlockExplorer interface {
 	// rather than as a hard failure.
 	GetContractInfo(address string) (ContractInfo, error)
 	// GetVerifiedSource returns the Solidity (or flattened multi-file)
-	// source the explorer published. It understands Etherscan v2
-	// getsourcecode (including SimilarMatch twins), Blockscout
-	// etherscan-compat and /api/v2/smart-contracts, Robinscan
-	// /api/contracts sourceFiles, and Sourcify v2 exact-match as a
-	// last fallback. A confirmed "not verified" is Verified=false with
-	// a nil error; transport / API-key failures return an error so vet
-	// does not treat an outage as missing source.
+	// source the explorer published. Lookup is per explorer Kind
+	// (etherscan, blockscout, routescan, robinscan), then Sourcify v2
+	// exact-match, then Etherscan SimilarMatch / Blockscout verified-twin.
+	// A confirmed "not verified" is Verified=false with a nil error;
+	// transport / API-key failures return an error so vet does not treat
+	// an outage as missing source.
 	GetVerifiedSource(address string) (VerifiedSource, error)
 }
