@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/tranvictor/jarvis/vet/ai"
 )
@@ -90,9 +91,15 @@ func runGrok(ctx context.Context, req Request, local []Finding) ([]Finding, stri
 			return nil, err.Error()
 		}
 		src = s
-		if s.Implementation != "" && !sameAddr(s.Implementation, dest) {
-			if impl, err := req.Chain.Source(s.Implementation); err == nil && impl.Code != "" {
-				src = impl
+		impl := strings.TrimSpace(s.Implementation)
+		if impl == "" {
+			if got, ierr := req.Chain.Implementation(dest); ierr == nil {
+				impl = got
+			}
+		}
+		if impl != "" && !sameAddr(impl, dest) {
+			if implSrc, err := req.Chain.Source(impl); err == nil && implSrc.Code != "" {
+				src = implSrc
 			}
 		}
 	}

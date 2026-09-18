@@ -1,6 +1,7 @@
 package explorers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -37,7 +38,7 @@ func (ee *EtherscanLikeExplorer) getVerifiedSourceOnce(u, addr string) (Verified
 	if err != nil {
 		return VerifiedSource{}, fetchRetry, err
 	}
-	if status == http.StatusTooManyRequests || isRateLimited(string(body)) {
+	if status == http.StatusTooManyRequests || isRateLimited(body) {
 		return VerifiedSource{}, fetchRetry, fmt.Errorf("%s: rate limited", ee.label())
 	}
 	if src, ok := parseEtherscanSource(body, addr); ok {
@@ -102,6 +103,12 @@ func parseJSONSource(body []byte, addr string) (VerifiedSource, bool) {
 	if code == "" {
 		code = flattenSource(jsonString(raw["SourceCode"]))
 	}
+	if code == "" {
+		code = flattenSourceFiles(raw["sourceFiles"])
+	}
+	if code == "" {
+		code = flattenSourceFiles(raw["source_files"])
+	}
 	return VerifiedSource{
 		Address:        addr,
 		Source:         code,
@@ -144,4 +151,50 @@ func flattenSource(raw string) string {
 		return b.String()
 	}
 	return raw
+}
+
+// flattenSourceFiles reads Robinscan-style sourceFiles: [{path, content}, ...].
+func flattenSourceFiles(raw json.RawMessage) string {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+	if raw[0] == '{' {
+		return flattenSource(string(raw))
+	}
+	if raw[0] != '[' {
+		return ""
+	}
+	var files []struct {
+		Path    string `json:"path"`
+		Name    string `json:"name"`
+		File    string `json:"file"`
+		Content string `json:"content"`
+	}
+	if json.Unmarshal(raw, &files) != nil || len(files) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	n := 0
+	for _, f := range files {
+		if strings.TrimSpace(f.Content) == "" {
+			continue
+		}
+		name := f.Path
+		if name == "" {
+			name = f.Name
+		}
+		if name == "" {
+			name = f.File
+		}
+		if name == "" {
+			name = "source"
+		}
+		fmt.Fprintf(&b, "// file: %s\n%s\n", name, f.Content)
+		n++
+	}
+	if n == 0 {
+		return ""
+	}
+	return b.String()
 }

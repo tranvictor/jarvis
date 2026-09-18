@@ -137,6 +137,48 @@ func TestUnverifiedAndCreate(t *testing.T) {
 	}
 }
 
+func TestVerifiedImplClearsUnverifiedProxy(t *testing.T) {
+	proxy := "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"
+	impl := "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
+	r := Analyze(context.Background(), Request{
+		Mode: ModeFull,
+		To:   addr(proxy, ""),
+		Chain: fakeLookup{
+			impl: impl,
+			srcs: map[string]Source{
+				strings.ToLower(common.HexToAddress(proxy).Hex()): {Address: proxy},
+				strings.ToLower(common.HexToAddress(impl).Hex()): {
+					Address:  impl,
+					Verified: true,
+					Code:     "contract USDG { function approve(address,uint256) public {} }",
+				},
+			},
+		},
+	})
+	if hasFinding(r, CodeUnverified) || hasFinding(r, CodeProxyImplUnverified) {
+		t.Fatalf("verified impl is the running code: %+v", r.Findings)
+	}
+}
+
+func TestUnverifiedImplStillFlagsProxy(t *testing.T) {
+	proxy := "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168"
+	impl := "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
+	r := Analyze(context.Background(), Request{
+		Mode: ModeFull,
+		To:   addr(proxy, ""),
+		Chain: fakeLookup{
+			impl: impl,
+			srcs: map[string]Source{
+				strings.ToLower(common.HexToAddress(proxy).Hex()): {Address: proxy},
+				strings.ToLower(common.HexToAddress(impl).Hex()):  {Address: impl},
+			},
+		},
+	})
+	if !hasFinding(r, CodeProxyImplUnverified) {
+		t.Fatalf("unverified impl: %+v", r.Findings)
+	}
+}
+
 func TestGrokReconfirmAndSkipWhenUnverified(t *testing.T) {
 	fc := &jarviscommon.FunctionCall{Destination: addr(testUSDC, "CANARY_UncleBob"), Method: "upgradeTo"}
 	ai := &fakeAI{reply: ModelReply{
@@ -214,12 +256,24 @@ func hasFinding(r Report, code string) bool {
 }
 
 type fakeLookup struct {
-	src Source
-	eoa bool
+	src  Source
+	srcs map[string]Source
+	impl string
+	eoa  bool
 }
 
-func (f fakeLookup) Source(addr string) (Source, error) { return f.src, nil }
+func (f fakeLookup) Source(addr string) (Source, error) {
+	if f.srcs != nil && common.IsHexAddress(addr) {
+		if s, ok := f.srcs[strings.ToLower(common.HexToAddress(addr).Hex())]; ok {
+			return s, nil
+		}
+	}
+	return f.src, nil
+}
 func (f fakeLookup) Implementation(addr string) (string, error) {
+	if f.impl != "" {
+		return f.impl, nil
+	}
 	return f.src.Implementation, nil
 }
 func (f fakeLookup) HasCode(addr string) (bool, error) {
