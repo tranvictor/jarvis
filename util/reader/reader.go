@@ -109,6 +109,22 @@ type getCodeResponse struct {
 }
 
 func (er *EthReader) GetCode(address string) (code []byte, err error) {
+	// PrefetchContractName, vet HasCode, and Implementation all GetCode
+	// the same address on one --careful card. Key by explorer (the network)
+	// so separately constructed EthReaders still share the bytecode.
+	key := fmt.Sprintf("%p|%s", er.be, strings.ToLower(strings.TrimSpace(address)))
+	if v, ok := codeCache.Load(key); ok {
+		cached := v.([]byte)
+		return append([]byte(nil), cached...), nil
+	}
+	code, err = er.fetchCode(address)
+	if err == nil {
+		codeCache.Store(key, append([]byte(nil), code...))
+	}
+	return code, err
+}
+
+func (er *EthReader) fetchCode(address string) (code []byte, err error) {
 	resCh := make(chan getCodeResponse, len(er.nodes))
 	for i := range er.nodes {
 		n := er.nodes[i]
@@ -871,7 +887,10 @@ func (er *EthReader) GetABIString(address string) (string, error) {
 	return er.be.GetABIString(address)
 }
 
-var contractInfoCache sync.Map
+var (
+	contractInfoCache sync.Map
+	codeCache         sync.Map
+)
 
 // GetContractInfo returns the verified-contract metadata reported by the
 // network's block explorer (name, proxy flag, underlying implementation, ABI).

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,17 @@ import (
 // a jarvis command indefinitely. 8s is long enough for a cold CDN and
 // short enough that a dead explorer fails the lookup instead of hanging.
 var httpClient = &http.Client{Timeout: 8 * time.Second}
+
+// httpCache stores non-rate-limited explorer/Sourcify responses for the
+// process lifetime. GetABIString, GetContractInfo, and GetVerifiedSource
+// share URL shapes on Blockscout/Robinscan REST, and vet calls Source
+// more than once for the same address on one --careful card.
+type cachedHTTP struct {
+	status int
+	body   []byte
+}
+
+var httpCache sync.Map // string URL -> cachedHTTP
 
 // fetchKind classifies one explorer HTTP response so callers can decide
 // whether to retry, stop, or try a different URL shape.
@@ -126,14 +138,34 @@ func dedupeStrings(in []string) []string {
 }
 
 func (ee *EtherscanLikeExplorer) get(u string) (int, []byte, error) {
+	return getURL(ee.label(), u)
+}
+
+func getURL(label, u string) (int, []byte, error) {
+	if v, ok := httpCache.Load(u); ok {
+		c := v.(cachedHTTP)
+		return c.status, c.body, nil
+	}
 	resp, err := httpClient.Get(u)
 	if err != nil {
-		return 0, nil, fmt.Errorf("%s: %w", ee.label(), redactURLError(err))
+		wrapped := redactURLError(err)
+		if label != "" {
+			return 0, nil, fmt.Errorf("%s: %w", label, wrapped)
+		}
+		return 0, nil, wrapped
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return resp.StatusCode, nil, fmt.Errorf("%s: reading response: %w", ee.label(), err)
+		if label != "" {
+			return resp.StatusCode, nil, fmt.Errorf("%s: reading response: %w", label, err)
+		}
+		return resp.StatusCode, nil, fmt.Errorf("reading response: %w", err)
+	}
+	// Do not cache 429 / rate-limit JSON: the retry loop must re-hit the
+	// network after abiRetryDelay, not replay the limited payload.
+	if resp.StatusCode != http.StatusTooManyRequests && !isRateLimited(body) {
+		httpCache.Store(u, cachedHTTP{status: resp.StatusCode, body: body})
 	}
 	return resp.StatusCode, body, nil
 }

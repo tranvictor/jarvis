@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -189,7 +190,19 @@ type sourceCodeResponse struct {
 	Result  json.RawMessage `json:"result"`
 }
 
+var contractInfoMemo sync.Map // resultKey -> ContractInfo
+
 func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, error) {
+	key := ee.resultKey(address)
+	if v, ok := contractInfoMemo.Load(key); ok {
+		return v.(ContractInfo), nil
+	}
+	info := ee.fetchContractInfo(address)
+	contractInfoMemo.Store(key, info)
+	return info, nil
+}
+
+func (ee *EtherscanLikeExplorer) fetchContractInfo(address string) ContractInfo {
 	for _, u := range ee.contractInfoURLs(address) {
 		for attempt := 0; attempt < abiFetchAttempts; attempt++ {
 			if attempt > 0 {
@@ -197,13 +210,13 @@ func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, 
 			}
 			info, kind, err := ee.getContractInfoOnce(u)
 			if kind == fetchOK {
-				return info, nil
+				return info
 			}
 			if kind == fetchUnverified {
 				// Etherscan returns Status="0" / Message="NOTOK" for unverified
 				// contracts. That's not an error from jarvis's POV — we simply
 				// don't have a name to display.
-				return ContractInfo{}, nil
+				return ContractInfo{}
 			}
 			if kind == fetchRetry {
 				_ = err
@@ -212,7 +225,7 @@ func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, 
 			break
 		}
 	}
-	return ContractInfo{}, nil
+	return ContractInfo{}
 }
 
 func (ee *EtherscanLikeExplorer) getContractInfoOnce(u string) (ContractInfo, fetchKind, error) {

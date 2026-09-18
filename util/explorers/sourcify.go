@@ -3,7 +3,6 @@ package explorers
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 )
@@ -22,13 +21,8 @@ func sourcifySource(chainID uint64, addr string) (VerifiedSource, bool) {
 		return VerifiedSource{}, false
 	}
 	u := sourcifyContractURL(chainID, addr)
-	resp, err := httpClient.Get(u)
-	if err != nil {
-		return VerifiedSource{}, false
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil || resp.StatusCode != http.StatusOK {
+	status, body, err := getURL("", u)
+	if err != nil || status != http.StatusOK {
 		return VerifiedSource{}, false
 	}
 	code := parseSourcifySources(body)
