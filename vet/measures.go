@@ -1,7 +1,6 @@
 package vet
 
 import (
-	"bytes"
 	"fmt"
 	"math/big"
 	"strings"
@@ -402,6 +401,27 @@ func measurePoison(req Request) []Finding {
 	if len(book) == 0 {
 		return nil
 	}
+
+	type poisonHit struct {
+		addr  common.Address
+		label string
+	}
+	exact := make(map[common.Address]struct{}, len(book))
+	byAffix := make(map[[4]byte][]poisonHit, len(book))
+	for _, b := range book {
+		if !common.IsHexAddress(b.Hex) {
+			continue
+		}
+		want := common.HexToAddress(b.Hex)
+		exact[want] = struct{}{}
+		label := b.Label
+		if label == "" {
+			label = want.Hex()
+		}
+		aff := poisonAffix(want)
+		byAffix[aff] = append(byAffix[aff], poisonHit{addr: want, label: label})
+	}
+
 	var addrs []jarviscommon.Address
 	if req.To.Address != "" {
 		addrs = append(addrs, req.To)
@@ -416,36 +436,31 @@ func measurePoison(req Request) []Finding {
 			continue
 		}
 		got := common.HexToAddress(a.Address)
-		for _, b := range book {
-			if !common.IsHexAddress(b.Hex) {
+		if _, ok := exact[got]; ok {
+			continue
+		}
+		for _, b := range byAffix[poisonAffix(got)] {
+			if got == b.addr {
 				continue
 			}
-			want := common.HexToAddress(b.Hex)
-			if got == want || !poisonPair(got, want) {
-				continue
-			}
-			key := got.Hex() + "|" + want.Hex()
+			key := got.Hex() + "|" + b.addr.Hex()
 			if _, ok := seen[key]; ok {
 				continue
 			}
 			seen[key] = struct{}{}
-			label := b.Label
-			if label == "" {
-				label = want.Hex()
-			}
 			out = append(out, Finding{
 				Code: CodePoison,
 				Risk: RiskDanger,
-				Text: fmt.Sprintf("%s looks like your address-book entry %s (%s)", got.Hex(), want.Hex(), label),
+				Text: fmt.Sprintf("%s looks like your address-book entry %s (%s)", got.Hex(), b.addr.Hex(), b.label),
 			})
 		}
 	}
 	return out
 }
 
-func poisonPair(a, b common.Address) bool {
-	ab, bb := a.Bytes(), b.Bytes()
-	return bytes.Equal(ab[:2], bb[:2]) && bytes.Equal(ab[18:], bb[18:])
+func poisonAffix(a common.Address) [4]byte {
+	b := a.Bytes()
+	return [4]byte{b[0], b[1], b[18], b[19]}
 }
 
 func effectiveDest(req Request) string {

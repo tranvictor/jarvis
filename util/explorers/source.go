@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -30,8 +31,28 @@ type fetchedSource struct {
 	similar string
 }
 
+var sourceCache sync.Map // resultKey -> VerifiedSource
+
 func (ee *EtherscanLikeExplorer) GetVerifiedSource(address string) (VerifiedSource, error) {
-	return ee.getVerifiedSource(strings.TrimSpace(address), 0)
+	addr := strings.TrimSpace(address)
+	key := ee.resultKey(addr)
+	if v, ok := sourceCache.Load(key); ok {
+		return v.(VerifiedSource), nil
+	}
+	src, err := ee.getVerifiedSource(addr, 0)
+	if err == nil {
+		sourceCache.Store(key, src)
+	}
+	return src, err
+}
+
+func (ee *EtherscanLikeExplorer) resultKey(addr string) string {
+	return strings.Join([]string{
+		string(ee.kind()),
+		strings.ToLower(ee.Domain),
+		fmt.Sprintf("%d", ee.ChainID),
+		strings.ToLower(strings.TrimSpace(addr)),
+	}, "|")
 }
 
 func (ee *EtherscanLikeExplorer) getVerifiedSource(addr string, depth int) (VerifiedSource, error) {
@@ -43,22 +64,20 @@ func (ee *EtherscanLikeExplorer) getVerifiedSource(addr string, depth int) (Veri
 		got, kind, err := ee.getVerifiedSourceWithRetry(u, addr)
 		switch kind {
 		case fetchOK:
-			if got.Verified && got.Source != "" {
-				return got.VerifiedSource, nil
-			}
-			if got.similar != "" {
-				similar = got.similar
-			}
-			if !got.Verified {
-				sawUnverified = true
-			}
+			return got.VerifiedSource, nil
 		case fetchUnverified:
-			sawUnverified = true
 			if got.similar != "" {
 				similar = got.similar
 			}
+			sawUnverified = true
 		case fetchRetry, fetchMiss:
 			lastErr = err
+		}
+		if sawUnverified {
+			// This family answered. Other URL shapes (v1 chainid,
+			// Blockscout etherscan-compat) would repeat the same
+			// unverified row; Sourcify / similar-match still run.
+			break
 		}
 	}
 

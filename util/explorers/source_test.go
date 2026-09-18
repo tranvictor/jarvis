@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -312,5 +313,58 @@ func TestGetVerifiedSourceBlockscoutSingularSmartContract(t *testing.T) {
 	}
 	if !src.Verified || !strings.Contains(src.Source, "contract RollupToken") || !strings.Contains(src.Source, "file: lib/Safe.sol") {
 		t.Fatalf("Bitfi-style singular REST: %+v", src)
+	}
+}
+
+func TestGetVerifiedSourceStopsAfterUnverifiedParse(t *testing.T) {
+	sourcify404(t)
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.Write([]byte(`{"status":"1","message":"OK","result":[{"SourceCode":"","ABI":"Contract source code not verified","SimilarMatch":""}]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	ee := NewEtherscanLikeExplorer(srv.URL, "k", 56)
+	addr := "0x00000000000000000000000000000000000000aa"
+	if n := len(ee.contractInfoURLs(addr)); n != 2 {
+		t.Fatalf("v1 family must try two URL shapes, got %d: %v", n, ee.contractInfoURLs(addr))
+	}
+	src, err := ee.GetVerifiedSource(addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.Verified {
+		t.Fatalf("unverified: %+v", src)
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("unverified parse must not hit remaining family URLs, got %d calls", got)
+	}
+}
+
+func TestGetVerifiedSourceAndContractInfoShareHTTP(t *testing.T) {
+	var calls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&calls, 1)
+		w.Write([]byte(`{"status":"1","message":"OK","result":[{"ContractName":"Foo","ABI":"[]","Proxy":"0","Implementation":"","SourceCode":"contract Foo {}"}]}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	ee := NewEtherscanLikeExplorer(srv.URL, "k", 1)
+	addr := "0x00000000000000000000000000000000000000bb"
+	src, err := ee.GetVerifiedSource(addr)
+	if err != nil || !src.Verified || !strings.Contains(src.Source, "contract Foo") {
+		t.Fatalf("%+v %v", src, err)
+	}
+	info, err := ee.GetContractInfo(addr)
+	if err != nil || info.Name != "Foo" || !info.IsVerified {
+		t.Fatalf("%+v %v", info, err)
+	}
+	src2, err := ee.GetVerifiedSource(addr)
+	if err != nil || !src2.Verified {
+		t.Fatal(err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 1 {
+		t.Fatalf("source + info + repeat source must share one HTTP GET, got %d", got)
 	}
 }
