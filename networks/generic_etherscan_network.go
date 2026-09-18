@@ -24,7 +24,12 @@ type GenericEtherscanNetworkConfig struct {
 	DefaultNodes                    map[string]string `json:"default_nodes"`
 	BlockExplorerAPIKeyVariableName string            `json:"block_explorer_api_key_variable_name"`
 	BlockExplorerAPIURL             string            `json:"block_explorer_api_url"`
-	MultiCallContractAddress        common.Address    `json:"multi_call_contract_address"`
+	// ExplorerKind is the explorer family used to look up ABI and verified
+	// source: etherscan, blockscout, routescan, or robinscan. Empty means
+	// infer from BlockExplorerAPIURL. Sourcify is always tried as a
+	// chain-agnostic overlay and is not a kind.
+	ExplorerKind             string         `json:"explorer_kind,omitempty"`
+	MultiCallContractAddress common.Address `json:"multi_call_contract_address"`
 	// SafeTxServiceURL is optional: chains that Safe doesn't list in its
 	// own registry (private/custom chains especially) can point jarvis at
 	// a self-hosted Safe Transaction Service here. omitempty keeps it out
@@ -109,8 +114,12 @@ func NewGenericEtherscanNetwork(config GenericEtherscanNetworkConfig) *GenericEt
 	if apiKey == "" {
 		apiKey = defaultAPIKey
 	}
+	kind, err := explorers.ParseKind(config.ExplorerKind)
+	if err != nil || kind == "" {
+		kind = explorers.InferKind(config.BlockExplorerAPIURL)
+	}
 	return &GenericEtherscanNetwork{
-		EtherscanLikeExplorer: explorers.NewEtherscanLikeExplorer(config.BlockExplorerAPIURL, apiKey, config.ChainID),
+		EtherscanLikeExplorer: explorers.New(kind, config.BlockExplorerAPIURL, apiKey, config.ChainID),
 		networkMeta:           networkMeta{Config: config},
 	}
 }

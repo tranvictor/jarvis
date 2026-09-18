@@ -45,9 +45,9 @@ func (ee *EtherscanLikeExplorer) apiEndpoint() string {
 	return d + "/api"
 }
 
-// origin is the explorer host without a trailing /api or /api/v2, used for
-// JSON REST paths such as Robinscan /api/contracts/:address and Blockscout
-// /api/v2/smart-contracts/:address.
+// origin is the explorer host without a trailing /api or /api/v2, used by
+// Blockscout and Robinscan REST paths. Etherscan/Routescan never append
+// those REST paths onto origin.
 func (ee *EtherscanLikeExplorer) origin() string {
 	d := ee.trimmedDomain()
 	lower := strings.ToLower(d)
@@ -61,22 +61,68 @@ func (ee *EtherscanLikeExplorer) origin() string {
 
 func (ee *EtherscanLikeExplorer) abiURLs(address string) []string {
 	addr := strings.TrimSpace(address)
-	return []string{
-		ee.GetABIStringAPIURL(addr),
-		ee.getABIStringAPIURLNoChainID(addr),
-		ee.origin() + "/api/contracts/" + addr,
-		ee.origin() + "/api/v2/smart-contracts/" + addr,
-	}
+	return ee.familyURLs(addr, ee.GetABIStringAPIURL(addr), ee.getABIStringAPIURLNoChainID(addr))
 }
 
 func (ee *EtherscanLikeExplorer) contractInfoURLs(address string) []string {
 	addr := strings.TrimSpace(address)
-	return []string{
-		ee.getSourceCodeAPIURL(addr),
-		ee.getSourceCodeAPIURLNoChainID(addr),
-		ee.origin() + "/api/contracts/" + addr,
-		ee.origin() + "/api/v2/smart-contracts/" + addr,
+	return ee.familyURLs(addr, ee.getSourceCodeAPIURL(addr), ee.getSourceCodeAPIURLNoChainID(addr))
+}
+
+// familyURLs is the per-Kind lookup list. withChain / withoutChain are the
+// Etherscan-compat module=contract URLs for this action (getabi or
+// getsourcecode). Other families ignore them or append them as a last try.
+func (ee *EtherscanLikeExplorer) familyURLs(addr, withChain, withoutChain string) []string {
+	switch ee.kind() {
+	case KindRobinscan:
+		return []string{ee.origin() + "/api/contracts/" + addr}
+	case KindBlockscout:
+		return ee.blockscoutURLs(addr, withChain, withoutChain)
+	case KindRoutescan:
+		// Chain id is already in the Routescan path; extra chainid is a
+		// harmless fallback if a gateway requires it.
+		return dedupeStrings([]string{withoutChain, withChain})
+	default:
+		if ee.etherscanV2() {
+			return []string{withChain}
+		}
+		return dedupeStrings([]string{withoutChain, withChain})
 	}
+}
+
+func (ee *EtherscanLikeExplorer) blockscoutURLs(addr, withChain, withoutChain string) []string {
+	origin := ee.origin()
+	urls := []string{origin + "/api/v2/smart-contracts/" + addr}
+	d := ee.trimmedDomain()
+	lower := strings.ToLower(d)
+	// Bitfi and some OP-stack Blockscout builds put REST at Domain/api/v2
+	// and the singular /smart-contract/:addr path. Do not hit that path
+	// on a bare host — it is the HTML contract page, not the API.
+	if strings.HasSuffix(lower, "/api/v2") || strings.HasSuffix(lower, "/api/v1") {
+		urls = append(urls, d+"/smart-contract/"+addr)
+	}
+	return dedupeStrings(append(urls, withoutChain, withChain))
+}
+
+func (ee *EtherscanLikeExplorer) etherscanV2() bool {
+	d := strings.ToLower(ee.trimmedDomain())
+	if !etherscanHost(hostOf(d), d) {
+		return false
+	}
+	return strings.Contains(d, "/v2")
+}
+
+func dedupeStrings(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
 }
 
 func (ee *EtherscanLikeExplorer) get(u string) (int, []byte, error) {
