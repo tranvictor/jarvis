@@ -170,6 +170,18 @@ func CompactAmount(human string) string {
 	return GroupDigits(intPart) + "." + frac
 }
 
+// MaskedName is the stand-in --mask-names uses for a resolved address name.
+const MaskedName = "•••"
+
+// DisplayDesc is the name shown next to an address. --mask-names rewrites
+// a known Desc to MaskedName so copied output does not leak labels.
+func DisplayDesc(addr Address) string {
+	if config.MaskNames && IsKnownAddress(addr) {
+		return MaskedName
+	}
+	return addr.Desc
+}
+
 // PlainAddress formats an Address as a plain string with no ANSI color codes.
 // Use this when the result will be stored in a data structure or serialized to
 // JSON so that consumers don't receive terminal markup.
@@ -183,11 +195,12 @@ func PlainAddress(addr Address) string {
 	if IsZeroAddress(addr.Address) {
 		return addr.Address + " (zero address)"
 	}
+	desc := DisplayDesc(addr)
 	if addr.Decimal != 0 {
-		return fmt.Sprintf("%s (%s - %d)", addr.Address, addr.Desc, addr.Decimal)
+		return fmt.Sprintf("%s (%s - %d)", addr.Address, desc, addr.Decimal)
 	}
-	if addr.Desc != "" && addr.Desc != "unknown" {
-		return fmt.Sprintf("%s (%s)", addr.Address, addr.Desc)
+	if desc != "" && desc != "unknown" {
+		return fmt.Sprintf("%s (%s)", addr.Address, desc)
 	}
 	return addr.Address
 }
@@ -227,7 +240,7 @@ func NameFirst(addr Address, full bool) string {
 	if !IsKnownAddress(addr) {
 		return hex
 	}
-	return fmt.Sprintf("%s (%s)", addr.Desc, hex)
+	return fmt.Sprintf("%s (%s)", DisplayDesc(addr), hex)
 }
 
 // IsZeroAddress reports whether hex is 0x0000…0000, the conventional mint /

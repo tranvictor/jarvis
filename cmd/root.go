@@ -143,6 +143,13 @@ func Execute() {
 		"show full addresses, uncollapsed arrays, gas/nonce details and the event table",
 	)
 
+	rootCmd.PersistentFlags().BoolVar(
+		&config.MaskNames,
+		"mask-names",
+		false,
+		"replace resolved address names with ••• so copied output does not leak labels",
+	)
+
 	rootCmd.PersistentFlags().BoolVarP(
 		&config.YesToAllPrompt,
 		"yes",

@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"strings"
 
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	jarvisutil "github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/walletconnect"
@@ -99,9 +100,5 @@ func shortLabel(addr string, network jarvisnetworks.Network) string {
 	if addr == "" {
 		return "(contract creation)"
 	}
-	ja := jarvisutil.GetJarvisAddress(addr, network)
-	if ja.Desc != "" {
-		return fmt.Sprintf("%s (%s)", addr, ja.Desc)
-	}
-	return addr
+	return jarviscommon.PlainAddress(jarvisutil.GetJarvisAddress(addr, network))
 }

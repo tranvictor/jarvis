@@ -9,6 +9,9 @@ import (
 var (
 	Debug     bool = false
 	DegenMode bool
+	// MaskNames replaces resolved address names with "•••" in printed
+	// output so a copied transcript does not leak labels.
+	MaskNames bool
 )
 
 var (

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	"github.com/tranvictor/jarvis/ui"
@@ -119,6 +120,20 @@ func TestInfoLayoutOrdersByImportance(t *testing.T) {
 	}
 	if strings.Contains(out, "│") || strings.Contains(out, "╭") {
 		t.Fatalf("compact layout must not draw table borders:\n%s", out)
+	}
+}
+
+func TestInfoLayoutMaskNamesHidesResolvedNames(t *testing.T) {
+	prev := config.MaskNames
+	config.MaskNames = true
+	t.Cleanup(func() { config.MaskNames = prev })
+
+	out := render(t, swapTxResult(), util.LayoutInfo, hashHex)
+	if strings.Contains(out, "me (") || strings.Contains(out, "Uniswap V2 Router") {
+		t.Fatalf("resolved names leaked:\n%s", out)
+	}
+	if !strings.Contains(out, "•••") {
+		t.Fatalf("expected masked name:\n%s", out)
 	}
 }
 
@@ -332,6 +347,28 @@ func TestTxDisplayJSONIsAdditiveAndPlain(t *testing.T) {
 	first := transfers[0].(map[string]any)
 	if first["token"] != "USDC" || first["amount"] != "1000" {
 		t.Fatalf("unexpected transfer json: %v", first)
+	}
+}
+
+func TestTxDisplayJSONMaskNames(t *testing.T) {
+	prev := config.MaskNames
+	config.MaskNames = true
+	t.Cleanup(func() { config.MaskNames = prev })
+
+	d := util.DisplayTxResult(ui.NewRecordingUI(), swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex)
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["from"] != meHex+" (•••)" {
+		t.Fatalf("json must mask names, got %v", m["from"])
+	}
+	if m["to"] != routerHex+" (•••)" {
+		t.Fatalf("json must mask names, got %v", m["to"])
 	}
 }
 
