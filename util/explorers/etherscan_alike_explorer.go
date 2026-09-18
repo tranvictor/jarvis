@@ -174,19 +174,12 @@ func (ee *EtherscanLikeExplorer) getSourceCodeAPIURLNoChainID(address string) st
 }
 
 // sourceCodeResponse is the v2 Etherscan-multichain getsourcecode shape.
-// Many fields are omitted; we only keep what's needed to build ContractInfo.
-// Note: Etherscan returns numeric flag fields ("1" / "0") as JSON strings.
+// Result is raw because Etherscan returns an array, Blockscout sometimes
+// returns a single object, and error payloads return a string.
 type sourceCodeResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-	Result  []struct {
-		ContractName    string `json:"ContractName"`
-		ABI             string `json:"ABI"`
-		Proxy           string `json:"Proxy"`
-		Implementation  string `json:"Implementation"`
-		CompilerVersion string `json:"CompilerVersion"`
-		SourceCode      string `json:"SourceCode"`
-	} `json:"result"`
+	Status  string          `json:"status"`
+	Message string          `json:"message"`
+	Result  json.RawMessage `json:"result"`
 }
 
 func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, error) {

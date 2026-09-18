@@ -19,6 +19,7 @@ func NewGenericOptimismNetwork(config GenericEtherscanNetworkConfig) *GenericOpt
 		OptimisticRollupExplorer: explorers.NewOptimisticRollupExplorer(
 			config.BlockExplorerAPIURL,
 			strings.Trim(os.Getenv(config.BlockExplorerAPIKeyVariableName), " "),
+			config.ChainID,
 		),
 		networkMeta: networkMeta{Config: config},
 	}

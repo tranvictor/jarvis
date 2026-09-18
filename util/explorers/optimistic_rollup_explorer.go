@@ -4,17 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 )
 
 type OptimisticRollupExplorer struct {
-	Domain string
-	APIKey string
+	Domain  string
+	APIKey  string
+	ChainID uint64
 }
 
-func NewOptimisticRollupExplorer(domain string, apiKey string) *OptimisticRollupExplorer {
+func NewOptimisticRollupExplorer(domain string, apiKey string, chainID uint64) *OptimisticRollupExplorer {
 	return &OptimisticRollupExplorer{
-		Domain: domain,
-		APIKey: apiKey,
+		Domain:  domain,
+		APIKey:  apiKey,
+		ChainID: chainID,
 	}
 }
 
@@ -66,26 +69,49 @@ type ExternalLibrary struct {
 }
 
 func (ee *OptimisticRollupExplorer) GetVerifiedSource(address string) (VerifiedSource, error) {
+	return ee.getVerifiedSource(address, 0)
+}
+
+func (ee *OptimisticRollupExplorer) getVerifiedSource(address string, depth int) (VerifiedSource, error) {
 	sc, err := ee.fetchSmartContract(address)
-	if err != nil {
-		return VerifiedSource{Address: address}, err
-	}
-	code := flattenSource(sc.SourceCode)
-	if code == "" {
+	if err == nil {
+		code := flattenSource(sc.SourceCode)
 		for _, extra := range sc.AdditionalSources {
-			if extra.SourceCode != "" {
-				code += fmt.Sprintf("// file: %s\n%s\n", extra.FilePath, extra.SourceCode)
+			if extra.SourceCode == "" {
+				continue
+			}
+			name := extra.FilePath
+			if name == "" {
+				name = "source"
+			}
+			code += fmt.Sprintf("// file: %s\n%s\n", name, extra.SourceCode)
+		}
+		verified := sc.IsVerified || sc.IsFullyVerified || sc.IsPartiallyVerified || sc.IsVerifiedViaSourcify
+		if verified && code != "" {
+			return VerifiedSource{
+				Address:        address,
+				Source:         code,
+				Verified:       true,
+				Implementation: sc.MinimalProxyAddressHash,
+				IsProxy:        sc.MinimalProxyAddressHash != "",
+			}, nil
+		}
+		if src, ok := sourcifySource(ee.ChainID, address); ok {
+			return src, nil
+		}
+		twin := strings.TrimSpace(sc.VerifiedTwinAddressHash)
+		if twin != "" && depth == 0 && !sameHexAddr(twin, address) {
+			if got, terr := ee.getVerifiedSource(twin, depth+1); terr == nil && got.Verified && got.Source != "" {
+				got.Address = address
+				return got, nil
 			}
 		}
+		return VerifiedSource{Address: address}, nil
 	}
-	verified := sc.IsVerified || sc.IsFullyVerified || sc.IsPartiallyVerified
-	return VerifiedSource{
-		Address:        address,
-		Source:         code,
-		Verified:       verified && code != "",
-		Implementation: sc.MinimalProxyAddressHash,
-		IsProxy:        sc.MinimalProxyAddressHash != "",
-	}, nil
+	if src, ok := sourcifySource(ee.ChainID, address); ok {
+		return src, nil
+	}
+	return VerifiedSource{Address: address}, err
 }
 
 func (ee *OptimisticRollupExplorer) GetABIString(address string) (string, error) {
@@ -105,7 +131,7 @@ func (ee *OptimisticRollupExplorer) GetContractInfo(address string) (ContractInf
 		Name:           sc.Name,
 		Implementation: sc.MinimalProxyAddressHash,
 		IsProxy:        sc.MinimalProxyAddressHash != "",
-		IsVerified:     sc.IsVerified || sc.IsFullyVerified || sc.IsPartiallyVerified,
+		IsVerified:     sc.IsVerified || sc.IsFullyVerified || sc.IsPartiallyVerified || sc.IsVerifiedViaSourcify,
 		ABI:            sc.ABI,
 	}, nil
 }
