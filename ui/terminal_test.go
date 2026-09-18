@@ -40,6 +40,40 @@ func TestKeyValueCellsAlignsOnVisibleWidth(t *testing.T) {
 	}
 }
 
+func TestKeyValueCellsWrapsLongAddressName(t *testing.T) {
+	long := "0x2515ec2104d30a073c0ea99d916b9e20b14fc7e0 (Lumen Main Multisig (Mike, Victor, Loi) – Eth, Bsc, Arb, Opt, Base, Pol, Robin, Avax, Bera, S, Plasma, Monad)"
+	var buf bytes.Buffer
+	u := NewTerminalUIWithWriter(&buf, false)
+	u.width = 64
+	u.KeyValueCells([][2]TableCell{
+		{TCS("Network", SeverityMuted), TC("mainnet")},
+		{TCS("Multisig", SeverityMuted), TCS(long, SeveritySuccess)},
+	})
+	plain := stripANSI(buf.String())
+	lines := strings.Split(strings.TrimRight(plain, "\n"), "\n")
+	if len(lines) < 3 {
+		t.Fatalf("expected wrapped Multisig value, got %d lines:\n%s", len(lines), plain)
+	}
+	for i, line := range lines {
+		if VisibleWidth(line) > 64 {
+			t.Fatalf("line %d is %d cols, want ≤ 64:\n%q", i, VisibleWidth(line), line)
+		}
+	}
+	valueCol := strings.Index(lines[0], "mainnet")
+	if valueCol < 0 {
+		t.Fatalf("network value missing:\n%s", plain)
+	}
+	for _, line := range lines[1:] {
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		start := len(line) - len(strings.TrimLeft(line, " "))
+		if start != valueCol {
+			t.Fatalf("continuation not hung under the value column (%d vs %d):\n%s", start, valueCol, plain)
+		}
+	}
+}
+
 func TestSubsectionAndRewriteOffTTY(t *testing.T) {
 	var buf bytes.Buffer
 	u := NewTerminalUIWithWriter(&buf, false)
