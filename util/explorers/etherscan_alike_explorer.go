@@ -65,8 +65,14 @@ func (ee *EtherscanLikeExplorer) label() string {
 	return fmt.Sprintf("%s (chain %d)", ee.Domain, ee.ChainID)
 }
 
-func isRateLimited(msg string) bool {
-	return strings.Contains(strings.ToLower(msg), "rate limit")
+func isRateLimited(body []byte) bool {
+	// Verified multi-file source is often hundreds of KB and can mention
+	// "rate limit" in comments (Paxos USDG does). Real explorer rate-limit
+	// payloads are short JSON errors.
+	if len(body) == 0 || len(body) > 4096 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(body)), "rate limit")
 }
 
 func (ee *EtherscanLikeExplorer) GetABIString(address string) (string, error) {
@@ -118,7 +124,7 @@ func (ee *EtherscanLikeExplorer) getABIStringOnce(u string) (result, impl string
 	if err != nil {
 		return "", "", true, err
 	}
-	if status == http.StatusTooManyRequests || isRateLimited(string(body)) {
+	if status == http.StatusTooManyRequests || isRateLimited(body) {
 		return "", "", true, fmt.Errorf("%s: %s", ee.label(), strings.TrimSpace(string(body)))
 	}
 	if abiStr, ok := parseABIFromBody(body); ok {
@@ -130,7 +136,7 @@ func (ee *EtherscanLikeExplorer) getABIStringOnce(u string) (result, impl string
 		if msg == "" {
 			msg = abiresp.Message
 		}
-		return "", "", isRateLimited(msg), fmt.Errorf("%s: %s", ee.label(), msg)
+		return "", "", isRateLimited([]byte(msg)), fmt.Errorf("%s: %s", ee.label(), msg)
 	}
 	if status >= 400 {
 		return "", "", false, fmt.Errorf("%s: HTTP %d", ee.label(), status)
@@ -214,7 +220,7 @@ func (ee *EtherscanLikeExplorer) getContractInfoOnce(u string) (ContractInfo, fe
 	if err != nil {
 		return ContractInfo{}, fetchRetry, err
 	}
-	if status == http.StatusTooManyRequests || isRateLimited(string(body)) {
+	if status == http.StatusTooManyRequests || isRateLimited(body) {
 		return ContractInfo{}, fetchRetry, fmt.Errorf("%s: rate limited", ee.label())
 	}
 	if info, ok := parseEtherscanContractInfo(body); ok {

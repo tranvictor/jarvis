@@ -142,13 +142,7 @@ func measureUnverified(req Request) []Finding {
 		}
 	}
 	var out []Finding
-	if !src.Verified || src.Code == "" {
-		out = append(out, Finding{
-			Code: CodeUnverified,
-			Risk: RiskDanger,
-			Text: fmt.Sprintf("%s has no verified source; vet cannot read the code that will run", common.HexToAddress(dest).Hex()),
-		})
-	}
+	destUnverified := !src.Verified || src.Code == ""
 	if impl != "" && !sameAddr(impl, dest) {
 		implSrc, err := req.Chain.Source(impl)
 		if err != nil {
@@ -165,7 +159,17 @@ func measureUnverified(req Request) []Finding {
 				Risk: RiskDanger,
 				Text: fmt.Sprintf("proxy %s delegates to unverified implementation %s", common.HexToAddress(dest).Hex(), common.HexToAddress(impl).Hex()),
 			})
+		} else {
+			// The code that will run is the verified implementation.
+			destUnverified = false
 		}
+	}
+	if destUnverified {
+		out = append(out, Finding{
+			Code: CodeUnverified,
+			Risk: RiskDanger,
+			Text: fmt.Sprintf("%s has no verified source; vet cannot read the code that will run", common.HexToAddress(dest).Hex()),
+		})
 	}
 	return out
 }
