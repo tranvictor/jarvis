@@ -18,16 +18,16 @@ jarvis wallet / addr      the keys you sign with, the names you trust
 ## ☕ Support Jarvis
 
 <p align="center">
-  <a href="https://etherscan.io/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb"><img src="https://img.shields.io/badge/Buy_me_a_coffee-ETH_·_BSC_·_any_token-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=white" alt="Buy me a coffee"></a>
+  <a href="https://etherscan.io/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb"><img src="https://img.shields.io/badge/Buy_me_a_coffee-any_token_·_any_EVM_chain-FFDD00?style=for-the-badge&logo=buymeacoffee&logoColor=white" alt="Buy me a coffee"></a>
 </p>
 
 <p align="center">
-  <img src="docs/images/donate-qr.png" width="180" alt="QR code — scan to send any token">
+  <img src="docs/images/donate-qr.png" width="180" alt="QR code of the donation address. Scan it from any wallet send screen.">
 </p>
 
 <p align="center">
   <b>If Jarvis saved you a headache, buy me a coffee.</b><br>
-  Send <em>any</em> token on Ethereum or BNB Smart Chain — ETH, BNB, USDC, whatever you have.
+  Send <em>any</em> token on <em>any</em> EVM chain. ETH, BNB, USDC, a memecoin — same address everywhere.
 </p>
 
 ```text
@@ -35,13 +35,21 @@ jarvis wallet / addr      the keys you sign with, the names you trust
 ```
 
 <p align="center">
-  <a href="https://etherscan.io/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb"><img src="https://img.shields.io/badge/Ethereum-Etherscan-627EEA?style=for-the-badge&logo=ethereum&logoColor=white" alt="View on Etherscan"></a>
-  &nbsp;
-  <a href="https://bscscan.com/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb"><img src="https://img.shields.io/badge/BNB_Smart_Chain-BscScan-F0B90B?style=for-the-badge&logo=binance&logoColor=black" alt="View on BscScan"></a>
+  <a href="https://etherscan.io/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb">Etherscan</a>
+  ·
+  <a href="https://bscscan.com/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb">BscScan</a>
+  ·
+  <a href="https://basescan.org/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb">Basescan</a>
+  ·
+  <a href="https://arbiscan.io/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb">Arbiscan</a>
+  ·
+  <a href="https://optimistic.etherscan.io/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb">Optimism</a>
+  ·
+  <a href="https://polygonscan.com/address/0xe4d747cbdd6e8e5dd57db6735b6410a29f5027eb">Polygonscan</a>
 </p>
 
-Same address on both chains. Scan the QR from a wallet, or use the
-copy button on the address above.
+One address on every EVM chain. The QR is that plain address, so scan it
+from any wallet's send screen, or copy it above.
 
 ## Install
 
