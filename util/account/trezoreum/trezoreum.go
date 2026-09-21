@@ -519,7 +519,7 @@ func (self *Trezoreum) Sign(
 	} else if tx.Type() == types.DynamicFeeTxType {
 		addr, signed, err = self.SignDynamicFeeTx(path, tx, chainId)
 	} else {
-		return common.Address{}, nil, fmt.Errorf("not supported type - trezoreum can't sign")
+		return common.Address{}, nil, fmt.Errorf("Trezor cannot sign EIP-7702 type-4 transactions (tx type %d)", tx.Type())
 	}
 	if err != nil {
 		self.tryCancelSigning()

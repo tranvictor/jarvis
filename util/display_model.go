@@ -94,6 +94,15 @@ type NetEffectDisplay struct {
 	Deltas []string `json:"deltas"`
 }
 
+// AuthDisplay is one EIP-7702 authorization_list entry.
+type AuthDisplay struct {
+	Authority ui.StyledText `json:"authority"`
+	Address   ui.StyledText `json:"address"`
+	ChainID   string        `json:"chain_id,omitempty"`
+	Nonce     string        `json:"nonce,omitempty"`
+	Revoke    bool          `json:"revoke,omitempty"`
+}
+
 // TxDisplay is the complete human-readable view-model for a single analyzed
 // transaction. StyledText fields carry Severity annotations used only by the
 // terminal print phase; JSON consumers receive clean plain strings.
@@ -113,6 +122,10 @@ type TxDisplay struct {
 
 	TxType       string               `json:"tx_type"`
 	FunctionCall *FunctionCallDisplay `json:"function_call,omitempty"`
+	// Delegation is dest's EIP-7702 target when dest is a delegated EOA.
+	Delegation ui.StyledText `json:"delegation,omitempty"`
+	// Authorizations is the type-4 authorization_list.
+	Authorizations []AuthDisplay `json:"authorizations,omitempty"`
 	// Transfers is kept for --json-output; the terminal no longer prints a
 	// per-hop list (Events at the bottom already has every movement).
 	Transfers []TransferDisplay `json:"transfers,omitempty"`

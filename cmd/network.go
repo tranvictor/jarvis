@@ -16,6 +16,7 @@ import (
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/util/explorers"
 )
 
 var (
@@ -127,6 +128,19 @@ func PromptNetwork() networks.Network {
 		return nil
 	})
 
+	inferredKind := explorers.InferKind(blockExplorerAPIURL)
+	explorerKindStr := cmdutil.PromptInputWithValidation(appUI, fmt.Sprintf("Please enter the explorer class (etherscan, blockscout, routescan, robinscan). Leave empty to use inferred %s", inferredKind), func(v string) error {
+		if strings.TrimSpace(v) == "" {
+			return nil
+		}
+		_, err := explorers.ParseKind(v)
+		return err
+	})
+	explorerKind, _ := explorers.ParseKind(explorerKindStr)
+	if explorerKind == "" {
+		explorerKind = inferredKind
+	}
+
 	multiCallContractAddress := cmdutil.PromptInputWithValidation(appUI, "Please enter the multi call contract address of the network", func(v string) error {
 		if v == "" {
 			return fmt.Errorf("multi call contract address cannot be empty")
@@ -158,6 +172,7 @@ func PromptNetwork() networks.Network {
 		DefaultNodes:                    defaultNodes,
 		BlockExplorerAPIKeyVariableName: blockExplorerAPIKeyVariableName,
 		BlockExplorerAPIURL:             blockExplorerAPIURL,
+		ExplorerKind:                    string(explorerKind),
 		MultiCallContractAddress:        common.HexToAddress(multiCallContractAddress),
 		SafeTxServiceURL:                strings.TrimSpace(safeTxServiceURL),
 	}
@@ -183,9 +198,14 @@ var addNetworkCmd = &cobra.Command{
 		},
 		"block_explorer_api_key_variable_name": "JARVIS_ETHERSCAN_API_KEY",
 		"block_explorer_api_url": "https://api.etherscan.io/api",
+		"explorer_kind": "etherscan",
 		"multi_call_contract_address": "0x5394753688800000000000000000000000000000000000000000000000000000",
 		"safe_tx_service_url": "https://safe-transaction.example.com"
 	}
+
+"explorer_kind" is optional: etherscan, blockscout, routescan, or robinscan.
+Empty infers the class from block_explorer_api_url. Robinscan is Robinhood-only
+(not a generic fallback). Sourcify is always tried as a chain-agnostic overlay.
 
 "safe_tx_service_url" is optional. Set it for chains Safe doesn't list in its own
 registry so 'jarvis msig' can propose, approve and execute through a (usually

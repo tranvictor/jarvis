@@ -7,6 +7,10 @@ import (
 	"math/big"
 	"strconv"
 	"strings"
+
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 )
 
 // parseSendTxParams pulls the single-element array argument most
@@ -75,6 +79,13 @@ func parseSendTxParams(raw json.RawMessage) (*RawTx, error) {
 		}
 		rawTx.Nonce = n
 		rawTx.NonceProvided = true
+	}
+	if len(p.AuthorizationList) > 0 && string(p.AuthorizationList) != "null" && string(p.AuthorizationList) != "[]" {
+		auths, err := parseAuthorizationList(p.AuthorizationList)
+		if err != nil {
+			return nil, fmt.Errorf("bad authorizationList: %w", err)
+		}
+		rawTx.Authorizations = auths
 	}
 	return rawTx, nil
 }
@@ -208,4 +219,94 @@ func parseSwitchChainParams(raw json.RawMessage) (uint64, error) {
 		return 0, fmt.Errorf("wallet_switchEthereumChain expects 1 argument, got %d", len(arr))
 	}
 	return parseUint(arr[0].ChainID)
+}
+
+type authWire struct {
+	ChainID string `json:"chainId"`
+	Address string `json:"address"`
+	Nonce   string `json:"nonce"`
+	YParity string `json:"yParity"`
+	V       string `json:"v"`
+	R       string `json:"r"`
+	S       string `json:"s"`
+}
+
+func parseAuthorizationList(raw json.RawMessage) ([]types.SetCodeAuthorization, error) {
+	var geth []types.SetCodeAuthorization
+	if err := json.Unmarshal(raw, &geth); err == nil && len(geth) > 0 {
+		return geth, nil
+	}
+	var wires []authWire
+	if err := json.Unmarshal(raw, &wires); err != nil {
+		return nil, err
+	}
+	out := make([]types.SetCodeAuthorization, 0, len(wires))
+	for i, w := range wires {
+		auth, err := parseAuthWire(w)
+		if err != nil {
+			return nil, fmt.Errorf("authorization %d: %w", i, err)
+		}
+		out = append(out, auth)
+	}
+	return out, nil
+}
+
+func parseAuthWire(w authWire) (types.SetCodeAuthorization, error) {
+	chainID, err := parseQuantity(w.ChainID)
+	if err != nil {
+		return types.SetCodeAuthorization{}, fmt.Errorf("chainId: %w", err)
+	}
+	if w.Address == "" || !common.IsHexAddress(w.Address) {
+		return types.SetCodeAuthorization{}, fmt.Errorf("bad address %q", w.Address)
+	}
+	nonce, err := parseUint(w.Nonce)
+	if err != nil {
+		return types.SetCodeAuthorization{}, fmt.Errorf("nonce: %w", err)
+	}
+	parityStr := w.YParity
+	if parityStr == "" {
+		parityStr = w.V
+	}
+	parity, err := parseUint(parityStr)
+	if err != nil {
+		return types.SetCodeAuthorization{}, fmt.Errorf("yParity: %w", err)
+	}
+	if parity == 27 || parity == 28 {
+		parity -= 27
+	}
+	if parity > 1 {
+		return types.SetCodeAuthorization{}, fmt.Errorf("yParity %d not in {0,1}", parity)
+	}
+	r, err := parseQuantity(w.R)
+	if err != nil || r == nil {
+		return types.SetCodeAuthorization{}, fmt.Errorf("r: %w", err)
+	}
+	s, err := parseQuantity(w.S)
+	if err != nil || s == nil {
+		return types.SetCodeAuthorization{}, fmt.Errorf("s: %w", err)
+	}
+	ru, overflow := uint256.FromBig(r)
+	if overflow {
+		return types.SetCodeAuthorization{}, fmt.Errorf("r overflows uint256")
+	}
+	su, overflow := uint256.FromBig(s)
+	if overflow {
+		return types.SetCodeAuthorization{}, fmt.Errorf("s overflows uint256")
+	}
+	cu := uint256.NewInt(0)
+	if chainID != nil {
+		var ovr bool
+		cu, ovr = uint256.FromBig(chainID)
+		if ovr {
+			return types.SetCodeAuthorization{}, fmt.Errorf("chainId overflows uint256")
+		}
+	}
+	return types.SetCodeAuthorization{
+		ChainID: *cu,
+		Address: common.HexToAddress(w.Address),
+		Nonce:   nonce,
+		V:       uint8(parity),
+		R:       *ru,
+		S:       *su,
+	}, nil
 }

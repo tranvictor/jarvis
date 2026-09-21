@@ -34,10 +34,14 @@ func TestConvertToBigAcceptsIntegerSpellings(t *testing.T) {
 
 func TestIsDelegationDesignator(t *testing.T) {
 	addr := make([]byte, 20)
+	addr[19] = 0x42
 	if !IsDelegationDesignator(append([]byte{0xef, 0x01, 0x00}, addr...)) {
 		t.Fatal("0xef0100||address is a 7702 designator")
 	}
 	if IsDelegationDesignator([]byte{0x60, 0x80, 0x60, 0x40}) || IsDelegationDesignator(nil) {
 		t.Fatal("ordinary bytecode / empty code are not designators")
+	}
+	if IsDelegationDesignator(append([]byte{0xef, 0x01, 0x00}, addr[:19]...)) {
+		t.Fatal("short designator must not parse")
 	}
 }

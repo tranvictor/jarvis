@@ -3,6 +3,8 @@ package walletconnect
 import (
 	"context"
 	"math/big"
+
+	"github.com/ethereum/go-ethereum/core/types"
 )
 
 // Gateway is the wallet-shaped adapter the session loop talks to when
@@ -120,6 +122,10 @@ type RawTx struct {
 	// explicitly supplied a nonce — distinguishes "nonce=0 because
 	// unset" from "nonce=0 intentionally".
 	NonceProvided bool
+	// Authorizations is the EIP-7702 authorization_list. Empty for
+	// every non-type-4 request. Already-signed; jarvis does not
+	// construct these.
+	Authorizations []types.SetCodeAuthorization
 }
 
 // SupportedMethods is the canonical set of JSON-RPC method strings
@@ -128,17 +134,17 @@ type RawTx struct {
 // typos from drifting between gateway.Methods() implementations and
 // the session-layer dispatcher.
 var SupportedMethods = struct {
-	SendTransaction     string
-	PersonalSign        string
-	SignTypedDataV4     string
-	SwitchChain         string
-	AddChain            string
+	SendTransaction string
+	PersonalSign    string
+	SignTypedDataV4 string
+	SwitchChain     string
+	AddChain        string
 	// Read-only methods we forward without prompting. Added here so
 	// the session layer has a single source of truth for the
 	// distinction, even though individual gateways also list them.
-	ChainID       string
-	Accounts      string
-	BlockNumber   string
+	ChainID     string
+	Accounts    string
+	BlockNumber string
 }{
 	SendTransaction: "eth_sendTransaction",
 	PersonalSign:    "personal_sign",

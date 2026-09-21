@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -107,6 +109,22 @@ type getCodeResponse struct {
 }
 
 func (er *EthReader) GetCode(address string) (code []byte, err error) {
+	// PrefetchContractName, vet HasCode, and Implementation all GetCode
+	// the same address on one --careful card. Key by explorer (the network)
+	// so separately constructed EthReaders still share the bytecode.
+	key := fmt.Sprintf("%p|%s", er.be, strings.ToLower(strings.TrimSpace(address)))
+	if v, ok := codeCache.Load(key); ok {
+		cached := v.([]byte)
+		return append([]byte(nil), cached...), nil
+	}
+	code, err = er.fetchCode(address)
+	if err == nil {
+		codeCache.Store(key, append([]byte(nil), code...))
+	}
+	return code, err
+}
+
+func (er *EthReader) fetchCode(address string) (code []byte, err error) {
 	resCh := make(chan getCodeResponse, len(er.nodes))
 	for i := range er.nodes {
 		n := er.nodes[i]
@@ -130,9 +148,31 @@ func (er *EthReader) GetCode(address string) (code []byte, err error) {
 }
 
 func (er *EthReader) TxInfoFromHash(tx string) (jarviscommon.TxInfo, error) {
-	txObj, isPending, err := er.TransactionByHash(tx)
+	type txRes struct {
+		tx        *jarviscommon.Transaction
+		isPending bool
+		err       error
+	}
+	type recRes struct {
+		receipt *types.Receipt
+		err     error
+	}
+	txCh := make(chan txRes, 1)
+	recCh := make(chan recRes, 1)
+	go func() {
+		t, pending, e := er.TransactionByHash(tx)
+		txCh <- txRes{tx: t, isPending: pending, err: e}
+	}()
+	go func() {
+		r, e := er.TransactionReceipt(tx)
+		recCh <- recRes{receipt: r, err: e}
+	}()
+
+	tres := <-txCh
+	txObj, isPending, err := tres.tx, tres.isPending, tres.err
 
 	if err != nil {
+		<-recCh
 		return jarviscommon.TxInfo{
 			Status:      "error",
 			Tx:          nil,
@@ -141,6 +181,7 @@ func (er *EthReader) TxInfoFromHash(tx string) (jarviscommon.TxInfo, error) {
 		}, err
 	}
 	if txObj == nil {
+		<-recCh
 		return jarviscommon.TxInfo{
 			Status:      "notfound",
 			Tx:          nil,
@@ -149,6 +190,7 @@ func (er *EthReader) TxInfoFromHash(tx string) (jarviscommon.TxInfo, error) {
 		}, nil
 	}
 	if isPending {
+		<-recCh
 		return jarviscommon.TxInfo{
 			Status:      "pending",
 			Tx:          txObj,
@@ -157,7 +199,8 @@ func (er *EthReader) TxInfoFromHash(tx string) (jarviscommon.TxInfo, error) {
 		}, nil
 	}
 
-	receipt, err := er.TransactionReceipt(tx)
+	rres := <-recCh
+	receipt, err := rres.receipt, rres.err
 
 	if receipt == nil {
 		return jarviscommon.TxInfo{
@@ -844,11 +887,23 @@ func (er *EthReader) GetABIString(address string) (string, error) {
 	return er.be.GetABIString(address)
 }
 
+var (
+	contractInfoCache sync.Map
+	codeCache         sync.Map
+)
+
 // GetContractInfo returns the verified-contract metadata reported by the
-// network's block explorer (name, proxy flag, underlying implementation).
-// When the explorer reports the source as unverified, the returned
-// ContractInfo has IsVerified=false and an empty Name; callers should treat
-// that as "no name available" rather than as an error.
+// network's block explorer (name, proxy flag, underlying implementation, ABI).
+// Results are memoised for the process lifetime so PrefetchContractName and
+// followProxyImplementation share one explorer round-trip per address.
 func (er *EthReader) GetContractInfo(address string) (jarvisnetworks.ContractInfo, error) {
-	return er.be.GetContractInfo(address)
+	key := fmt.Sprintf("%p|%s", er.be, strings.ToLower(strings.TrimSpace(address)))
+	if v, ok := contractInfoCache.Load(key); ok {
+		return v.(jarvisnetworks.ContractInfo), nil
+	}
+	info, err := er.be.GetContractInfo(address)
+	if err == nil {
+		contractInfoCache.Store(key, info)
+	}
+	return info, err
 }

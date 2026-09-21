@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/tranvictor/jarvis/config"
 )
 
 func TestShortAddress(t *testing.T) {
@@ -42,6 +44,30 @@ func TestNameFirst(t *testing.T) {
 		if got := NameFirst(c.addr, c.full); got != c.want {
 			t.Errorf("NameFirst(%v, %v) = %q, want %q", c.addr, c.full, got, c.want)
 		}
+	}
+}
+
+func TestMaskNamesRewritesResolvedNames(t *testing.T) {
+	prev := config.MaskNames
+	config.MaskNames = true
+	t.Cleanup(func() { config.MaskNames = prev })
+
+	hex := "0x9642b23Ed1E01Df1092B92641051881a322F5D4E"
+	named := Address{Address: hex, Desc: "me"}
+	unknown := Address{Address: hex, Desc: "unknown"}
+	token := Address{Address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", Desc: "USDC token", Decimal: 6}
+
+	if got := NameFirst(named, false); got != "••• (0x9642…5D4E)" {
+		t.Errorf("NameFirst = %q", got)
+	}
+	if got := PlainAddress(named); got != hex+" (•••)" {
+		t.Errorf("PlainAddress = %q", got)
+	}
+	if got := NameFirst(unknown, false); got != "0x9642…5D4E" {
+		t.Errorf("unknown must stay unnamed, got %q", got)
+	}
+	if got := PlainAddress(token); got != "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 (••• - 6)" {
+		t.Errorf("PlainAddress token = %q", got)
 	}
 }
 

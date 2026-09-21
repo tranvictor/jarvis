@@ -7,22 +7,30 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
+// EtherscanLikeExplorer is the shared HTTP client for every explorer Kind.
+// URL shapes are Kind-specific (see abiURLs / contractInfoURLs); parsers
+// understand Etherscan module=contract JSON, Blockscout REST, and Robinscan
+// /api/contracts JSON.
 type EtherscanLikeExplorer struct {
+	Kind    Kind
 	ChainID uint64
-
-	Domain string
-	APIKey string
+	Domain  string
+	APIKey  string
 }
 
 func NewEtherscanLikeExplorer(domain string, apiKey string, chainID uint64) *EtherscanLikeExplorer {
-	return &EtherscanLikeExplorer{
-		Domain:  domain,
-		APIKey:  apiKey,
-		ChainID: chainID,
+	return New(KindEtherscan, domain, apiKey, chainID)
+}
+
+func (ee *EtherscanLikeExplorer) kind() Kind {
+	if ee.Kind != "" {
+		return ee.Kind
 	}
+	return KindEtherscan
 }
 
 func (ee *EtherscanLikeExplorer) GetABIStringAPIURL(address string) string {
@@ -62,11 +70,17 @@ var (
 // label names the explorer in errors without echoing the request URL, which
 // carries the API key.
 func (ee *EtherscanLikeExplorer) label() string {
-	return fmt.Sprintf("%s (chain %d)", ee.Domain, ee.ChainID)
+	return fmt.Sprintf("%s %s (chain %d)", ee.kind(), ee.Domain, ee.ChainID)
 }
 
-func isRateLimited(msg string) bool {
-	return strings.Contains(strings.ToLower(msg), "rate limit")
+func isRateLimited(body []byte) bool {
+	// Verified multi-file source is often hundreds of KB and can mention
+	// "rate limit" in comments (Paxos USDG does). Real explorer rate-limit
+	// payloads are short JSON errors.
+	if len(body) == 0 || len(body) > 4096 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(body)), "rate limit")
 }
 
 func (ee *EtherscanLikeExplorer) GetABIString(address string) (string, error) {
@@ -118,7 +132,7 @@ func (ee *EtherscanLikeExplorer) getABIStringOnce(u string) (result, impl string
 	if err != nil {
 		return "", "", true, err
 	}
-	if status == http.StatusTooManyRequests || isRateLimited(string(body)) {
+	if status == http.StatusTooManyRequests || isRateLimited(body) {
 		return "", "", true, fmt.Errorf("%s: %s", ee.label(), strings.TrimSpace(string(body)))
 	}
 	if abiStr, ok := parseABIFromBody(body); ok {
@@ -130,7 +144,7 @@ func (ee *EtherscanLikeExplorer) getABIStringOnce(u string) (result, impl string
 		if msg == "" {
 			msg = abiresp.Message
 		}
-		return "", "", isRateLimited(msg), fmt.Errorf("%s: %s", ee.label(), msg)
+		return "", "", isRateLimited([]byte(msg)), fmt.Errorf("%s: %s", ee.label(), msg)
 	}
 	if status >= 400 {
 		return "", "", false, fmt.Errorf("%s: HTTP %d", ee.label(), status)
@@ -168,21 +182,27 @@ func (ee *EtherscanLikeExplorer) getSourceCodeAPIURLNoChainID(address string) st
 }
 
 // sourceCodeResponse is the v2 Etherscan-multichain getsourcecode shape.
-// Many fields are omitted; we only keep what's needed to build ContractInfo.
-// Note: Etherscan returns numeric flag fields ("1" / "0") as JSON strings.
+// Result is raw because Etherscan returns an array, Blockscout sometimes
+// returns a single object, and error payloads return a string.
 type sourceCodeResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-	Result  []struct {
-		ContractName    string `json:"ContractName"`
-		ABI             string `json:"ABI"`
-		Proxy           string `json:"Proxy"`
-		Implementation  string `json:"Implementation"`
-		CompilerVersion string `json:"CompilerVersion"`
-	} `json:"result"`
+	Status  string          `json:"status"`
+	Message string          `json:"message"`
+	Result  json.RawMessage `json:"result"`
 }
 
+var contractInfoMemo sync.Map // resultKey -> ContractInfo
+
 func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, error) {
+	key := ee.resultKey(address)
+	if v, ok := contractInfoMemo.Load(key); ok {
+		return v.(ContractInfo), nil
+	}
+	info := ee.fetchContractInfo(address)
+	contractInfoMemo.Store(key, info)
+	return info, nil
+}
+
+func (ee *EtherscanLikeExplorer) fetchContractInfo(address string) ContractInfo {
 	for _, u := range ee.contractInfoURLs(address) {
 		for attempt := 0; attempt < abiFetchAttempts; attempt++ {
 			if attempt > 0 {
@@ -190,13 +210,13 @@ func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, 
 			}
 			info, kind, err := ee.getContractInfoOnce(u)
 			if kind == fetchOK {
-				return info, nil
+				return info
 			}
 			if kind == fetchUnverified {
 				// Etherscan returns Status="0" / Message="NOTOK" for unverified
 				// contracts. That's not an error from jarvis's POV — we simply
 				// don't have a name to display.
-				return ContractInfo{}, nil
+				return ContractInfo{}
 			}
 			if kind == fetchRetry {
 				_ = err
@@ -205,7 +225,7 @@ func (ee *EtherscanLikeExplorer) GetContractInfo(address string) (ContractInfo, 
 			break
 		}
 	}
-	return ContractInfo{}, nil
+	return ContractInfo{}
 }
 
 func (ee *EtherscanLikeExplorer) getContractInfoOnce(u string) (ContractInfo, fetchKind, error) {
@@ -213,7 +233,7 @@ func (ee *EtherscanLikeExplorer) getContractInfoOnce(u string) (ContractInfo, fe
 	if err != nil {
 		return ContractInfo{}, fetchRetry, err
 	}
-	if status == http.StatusTooManyRequests || isRateLimited(string(body)) {
+	if status == http.StatusTooManyRequests || isRateLimited(body) {
 		return ContractInfo{}, fetchRetry, fmt.Errorf("%s: rate limited", ee.label())
 	}
 	if info, ok := parseEtherscanContractInfo(body); ok {

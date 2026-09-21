@@ -19,6 +19,7 @@ import (
 	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/vet"
 )
 
 const (
@@ -250,10 +251,13 @@ func buildEOASigningCard(
 		if len(tx.Data()) > 0 {
 			card.RawData = "0x" + ethcommon.Bytes2Hex(tx.Data())
 		}
-		card.Warnings = SigningWarnings(WarningInput{
+		warn := WarningInput{
 			Value: tx.Value(), NativeSymbol: symbol, NativeDecimals: network.GetNativeTokenDecimal(),
 			SignerBalance: balance, MaxCost: maxCost,
-		})
+		}
+		card.Warnings = SigningWarnings(warn)
+		warn.HasData = len(tx.Data()) > 0
+		attachVetCreate(card, warn, network, tx.Data())
 		card.Prompt = fmt.Sprintf("Sign and broadcast contract creation (%s)?", gasCostOnly(card.Gas))
 		return card, nil
 	}
@@ -277,6 +281,7 @@ func buildEOASigningCard(
 		NativeDecimals: network.GetNativeTokenDecimal(),
 		HasData:        len(tx.Data()) > 0, SignerBalance: balance, MaxCost: maxCost,
 	}
+	fill7702(card, &warn, toHex, tx, network)
 
 	var fc *jarviscommon.FunctionCall
 	if len(tx.Data()) > 0 {
@@ -285,7 +290,7 @@ func buildEOASigningCard(
 		// lookup used to dump the raw 36 bytes instead of the built-in ABI.
 		fc = analyzer.AnalyzeFunctionCallRecursively(util.GetABI, tx.Value(), toHex, tx.Data(), customABIs)
 		warn.Call = fc
-		if fc != nil && (fc.Method != "" || isContract) {
+		if fc != nil && (fc.Method != "" || isContract || warn.Delegation != "") {
 			card.Call = util.NewFunctionCallDisplay(fc, network)
 			if fc.Method != "" {
 				card.ClearSign = func(cu ui.UI) { renderContractClearSign(cu, tx, fc, network, customABIs) }
@@ -313,6 +318,7 @@ func buildEOASigningCard(
 	}
 
 	card.Warnings = SigningWarnings(warn)
+	attachVet(card, warn, network)
 	card.Prompt = fmt.Sprintf("Sign and broadcast (%s)?", gasCostOnly(card.Gas))
 	return card, nil
 }
@@ -323,6 +329,43 @@ func gasCostOnly(gas string) string {
 		return gas[:i]
 	}
 	return gas
+}
+
+func fill7702(card *SigningCard, warn *WarningInput, toHex string, tx *types.Transaction, network jarvisnetworks.Network) {
+	if d, ok, err := util.DelegationOf(toHex, network); err == nil && ok {
+		da := util.GetJarvisAddress(d.Hex(), network)
+		card.Delegation = util.StyledAddress(da)
+		warn.Delegation = d.Hex()
+	}
+	auths := vet.AuthorizationsFromTx(tx)
+	if len(auths) == 0 {
+		return
+	}
+	warn.Authorizations = auths
+	card.Authorizations = authCardRows(auths, network)
+}
+
+func authCardRows(auths []vet.Authorization, network jarvisnetworks.Network) []AuthCardRow {
+	out := make([]AuthCardRow, 0, len(auths))
+	for _, a := range auths {
+		row := AuthCardRow{
+			Nonce:   fmt.Sprintf("%d", a.Nonce),
+			ChainID: fmt.Sprintf("%d", a.ChainID),
+		}
+		if a.Authority != "" {
+			row.Authority = util.StyledAddress(util.GetJarvisAddress(a.Authority, network))
+		} else {
+			row.Authority = ui.StyledText{Text: "unknown signer", Severity: ui.SeverityWarn}
+		}
+		if a.Address == "" || ethcommon.HexToAddress(a.Address) == (ethcommon.Address{}) {
+			row.Revoke = true
+			row.Target = ui.StyledText{Text: "revoke"}
+		} else {
+			row.Target = util.StyledAddress(util.GetJarvisAddress(a.Address, network))
+		}
+		out = append(out, row)
+	}
+	return out
 }
 
 // PromptTxData guides the user through selecting a method and filling its
@@ -546,7 +589,7 @@ func RenderContractClearSign(
 	params []jarviscommon.ParamResult,
 	customABIs map[string]*abi.ABI,
 ) bool {
-	return renderMatchedContract(u, network, to, value, data, params, customABIs, erc7730.Render)
+	return renderMatchedContract(u, network, to, value, data, params, customABIs, erc7730.Render, true)
 }
 
 func renderMatchedContract(
@@ -558,6 +601,7 @@ func renderMatchedContract(
 	params []jarviscommon.ParamResult,
 	customABIs map[string]*abi.ABI,
 	paint func(ui.UI, *erc7730.ClearSignedView),
+	autoSync bool,
 ) bool {
 	if to == "" || len(data) < 4 {
 		return false
@@ -572,6 +616,9 @@ func renderMatchedContract(
 		}
 	}
 	engine := erc7730.DefaultEngine()
+	if !autoSync {
+		engine.AutoSyncEvery = 0
+	}
 	view, err := engine.ContractView(
 		context.Background(),
 		network.GetChainID(),
@@ -618,7 +665,7 @@ func renderInfoClearSign(
 		if call.Method == "" {
 			return
 		}
-		renderMatchedContract(u, network, call.Destination.Address, call.Value, call.Data, call.Params, customABIs, erc7730.RenderInfo)
+		renderMatchedContract(u, network, call.Destination.Address, call.Value, call.Data, call.Params, customABIs, erc7730.RenderInfo, false)
 	})
 }
 

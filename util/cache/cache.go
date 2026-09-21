@@ -3,8 +3,8 @@ package cache
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
+	"os"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -15,6 +15,7 @@ import (
 var (
 	CACHE_PATH string = filepath.Join(getHomeDir(), ".jarvis", "cache.json")
 	cache      *simpleCache
+	dirty      bool
 	mu         sync.Mutex
 )
 
@@ -30,12 +31,23 @@ type simpleCache struct {
 	Data map[string]string `json:"Data"`
 }
 
-func (self *simpleCache) Persist() error {
-	jsonData, err := json.MarshalIndent(self, "", "  ")
+func (self *simpleCache) snapshot() *simpleCache {
+	cp := &simpleCache{Data: make(map[string]string, len(self.Data))}
+	for k, v := range self.Data {
+		cp.Data[k] = v
+	}
+	return cp
+}
+
+func persistTo(path string, c *simpleCache) error {
+	jsonData, err := json.Marshal(c)
 	if err != nil {
 		return err
 	}
-	return ioutil.WriteFile(CACHE_PATH, jsonData, 0644)
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, jsonData, 0644)
 }
 
 func loadSimpleCache() *simpleCache {
@@ -45,17 +57,47 @@ func loadSimpleCache() *simpleCache {
 	cache = &simpleCache{
 		Data: map[string]string{},
 	}
-	content, err := ioutil.ReadFile(CACHE_PATH)
+	content, err := os.ReadFile(CACHE_PATH)
 	if err != nil {
-		// WARNING: swallow error here
 		return cache
 	}
 	err = json.Unmarshal(content, cache)
 	if err != nil {
-		// WARNING: swallow error here
 		return cache
 	}
 	return cache
+}
+
+// Flush writes dirty cache entries to disk. SetCache only updates
+// memory so a command that looks up many ABIs or contract names does
+// not rewrite ~/.jarvis/cache.json on every hit. cmd.Execute defers
+// Flush so a normal process exit still persists.
+func Flush() error {
+	mu.Lock()
+	if !dirty || cache == nil {
+		mu.Unlock()
+		return nil
+	}
+	snap := cache.snapshot()
+	path := CACHE_PATH
+	dirty = false
+	mu.Unlock()
+
+	if err := persistTo(path, snap); err != nil {
+		mu.Lock()
+		dirty = true
+		mu.Unlock()
+		return err
+	}
+	return nil
+}
+
+func resetForTest(path string) {
+	mu.Lock()
+	defer mu.Unlock()
+	CACHE_PATH = path
+	cache = nil
+	dirty = false
 }
 
 func GetBoolCache(key string) (bool, bool) {
@@ -110,5 +152,6 @@ func SetCache(key, value string) error {
 	defer mu.Unlock()
 	c := loadSimpleCache()
 	c.Data[strings.ToLower(key)] = value
-	return cache.Persist()
+	dirty = true
+	return nil
 }

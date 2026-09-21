@@ -32,6 +32,7 @@ import (
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util/account/ledgereum"
+	"github.com/tranvictor/jarvis/util/cache"
 )
 
 // appUI is the package-level UI used by all cmd/* files. It is initialised
@@ -52,6 +53,7 @@ keystores, Ledger and Trezor, and drives Gnosis Safe / classic multisigs.
   jarvis contract read|tx        call or write any verified contract
   jarvis msig                    propose, approve and execute multisig txs
   jarvis wallet / addr           the keys you sign with, the names you trust
+  jarvis vet                     review a call for scam risk before signing
 
 Networks (pick one with -k/--network):
 %s
@@ -61,6 +63,10 @@ overridden with the network's node env var (e.g. ETHEREUM_MAINNET_NODE).
 
 Block-explorer API keys (set your own for reliable ABI lookups):
 %s
+
+AI review (--careful / jarvis vet) uses OpenAI-compatible Chat Completions.
+Set JARVIS_AI_KEY (XAI_API_KEY still works). Optional JARVIS_AI_URL and
+JARVIS_AI_MODEL; defaults are xAI. See jarvis vet --help.
 
 For more information or support, reach me at https://github.com/tranvictor.`,
 		wrapList(strings.Split(networks.SupportedNetworkNamesHelp(), ", "), "  ", 76),
@@ -112,6 +118,8 @@ func blockExplorerKeyVariables() []string {
 // Execute adds all child commands to the root command and sets flags appropriately.
 // This is called by main.main(). It only needs to happen once to the rootCmd.
 func Execute() {
+	defer cache.Flush()
+
 	// Hardware-wallet waits (Ledger not yet connected) report through the
 	// same status spinner as the rest of the app.
 	ledgereum.ProgressUI = appUI
@@ -135,6 +143,13 @@ func Execute() {
 		"show full addresses, uncollapsed arrays, gas/nonce details and the event table",
 	)
 
+	rootCmd.PersistentFlags().BoolVar(
+		&config.MaskNames,
+		"mask-names",
+		false,
+		"replace resolved address names with ••• so copied output does not leak labels",
+	)
+
 	rootCmd.PersistentFlags().BoolVarP(
 		&config.YesToAllPrompt,
 		"yes",
@@ -149,6 +164,14 @@ func Execute() {
 		"B",
 		false,
 		"print debug logs to screen, helpful to diagnose performance issues",
+	)
+
+	rootCmd.PersistentFlags().BoolVarP(
+		&config.Careful,
+		"careful",
+		"C",
+		false,
+		"run vet analysis before signing (source review, extra warnings, AI when JARVIS_AI_KEY is set)",
 	)
 
 	if err := rootCmd.Execute(); err != nil {

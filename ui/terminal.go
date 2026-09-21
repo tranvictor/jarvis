@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/briandowns/spinner"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/logrusorgru/aurora"
 	indent "github.com/openconfig/goyang/pkg/indent"
 	"golang.org/x/term"
@@ -36,6 +37,10 @@ type TerminalUI struct {
 	// movement and animation; colours are gated separately through au so a
 	// caller can force colours into a buffer without enabling animation.
 	tty bool
+	// width is the max visual columns this UI may occupy, including the
+	// indent prefix. 0 means "use the terminal width" (or no cap when
+	// stdout is not a TTY).
+	width int
 }
 
 // NewTerminalUI creates a TerminalUI that writes to os.Stdout and reads from
@@ -82,12 +87,17 @@ func (u *TerminalUI) endsWithBlankLine() bool {
 }
 
 func (u *TerminalUI) child(indentLevel int, out io.Writer, tty bool) *TerminalUI {
+	return u.childSized(indentLevel, out, tty, u.width)
+}
+
+func (u *TerminalUI) childSized(indentLevel int, out io.Writer, tty bool, width int) *TerminalUI {
 	return &TerminalUI{
 		indentLevel: indentLevel,
 		out:         out,
 		in:          u.in,
 		au:          u.au,
 		tty:         tty,
+		width:       width,
 	}
 }
 
@@ -95,9 +105,36 @@ func (u *TerminalUI) prefix() string {
 	return strings.Repeat(indentUnit, u.indentLevel)
 }
 
+// contentWidth is the visual columns available for a line after the indent
+// prefix. 0 means no wrap cap.
+func (u *TerminalUI) contentWidth() int {
+	w := u.width
+	if w <= 0 {
+		w = detectTerminalWidth()
+	}
+	if w <= 0 {
+		return 0
+	}
+	p := runeLen(u.prefix())
+	if w <= p {
+		return 0
+	}
+	return w - p
+}
+
 // writeLine writes a single line to the output with the current indent prefix.
+// Long unstyled lines wrap to contentWidth so a long address-book name
+// cannot blow past the terminal (or a BoxedSection's inner width). Styled
+// lines keep their SGR intact; BoxedSection's lipgloss Width wraps those.
 func (u *TerminalUI) writeLine(line string) {
-	fmt.Fprintf(u.out, "%s%s\n", u.prefix(), line)
+	w := u.contentWidth()
+	if w <= 0 || ansi.Strip(line) != line {
+		fmt.Fprintf(u.out, "%s%s\n", u.prefix(), line)
+		return
+	}
+	for _, part := range wrapCell(line, w) {
+		fmt.Fprintf(u.out, "%s%s\n", u.prefix(), part)
+	}
 }
 
 func (u *TerminalUI) Style(t StyledText) string {
@@ -118,27 +155,29 @@ func (u *TerminalUI) Style(t StyledText) string {
 }
 
 func (u *TerminalUI) Info(format string, args ...any) {
-	u.writeLine(fmt.Sprintf(format, args...))
+	u.writeWrapped(fmt.Sprintf(format, args...), func(s string) string { return s })
 }
 
 func (u *TerminalUI) Success(format string, args ...any) {
-	msg := fmt.Sprintf(format, args...)
-	u.writeLine(u.au.Green(msg).String())
+	u.writeWrapped(fmt.Sprintf(format, args...), func(s string) string { return u.au.Green(s).String() })
 }
 
 func (u *TerminalUI) Warn(format string, args ...any) {
-	msg := fmt.Sprintf(format, args...)
-	u.writeLine(u.au.Yellow(msg).String())
+	u.writeWrapped(fmt.Sprintf(format, args...), func(s string) string { return u.au.Yellow(s).String() })
 }
 
 func (u *TerminalUI) Error(format string, args ...any) {
-	msg := fmt.Sprintf(format, args...)
-	u.writeLine(u.au.Red(msg).String())
+	u.writeWrapped(fmt.Sprintf(format, args...), func(s string) string { return u.au.Red(s).String() })
 }
 
 func (u *TerminalUI) Critical(format string, args ...any) {
-	msg := fmt.Sprintf(format, args...)
-	u.writeLine(u.au.Bold(msg).String())
+	u.writeWrapped(fmt.Sprintf(format, args...), func(s string) string { return u.au.Bold(s).String() })
+}
+
+func (u *TerminalUI) writeWrapped(msg string, style func(string) string) {
+	for _, line := range wrapCell(msg, u.contentWidth()) {
+		u.writeLine(style(line))
+	}
 }
 
 // Section prints a separator line centred around the title, surrounded by
@@ -162,12 +201,16 @@ func (u *TerminalUI) Section(title string) {
 	fmt.Fprintf(u.out, "\n%s%s\n\n", u.prefix(), line)
 }
 
-// Subsection prints a bold heading after a blank line.
+// Subsection prints a bold heading after a blank line. A title that is
+// wider than the remaining line (payment headlines with a long address
+// name) wraps at a word boundary so it cannot stretch a surrounding box.
 func (u *TerminalUI) Subsection(title string) {
 	if !u.endsWithBlankLine() {
 		fmt.Fprint(u.out, "\n")
 	}
-	fmt.Fprintf(u.out, "%s%s\n", u.prefix(), u.au.Bold(title).String())
+	for _, line := range wrapCell(title, u.contentWidth()) {
+		fmt.Fprintf(u.out, "%s%s\n", u.prefix(), u.au.Bold(line).String())
+	}
 }
 
 // RewriteLastLine moves the cursor up one line, clears it and writes line
@@ -188,9 +231,10 @@ func (u *TerminalUI) RewriteLastLine(line string) {
 // writer with this UI's indent prefix preserved.
 func (u *TerminalUI) BoxedSection(severity Severity, title string, body func(UI)) {
 	var buf bytes.Buffer
+	inner := boxedInnerWidth(u.contentWidth())
 	// The buffer is not a terminal: no cursor movement or animation inside.
-	body(u.child(0, &buf, false))
-	writeBoxed(u.out, u.prefix(), severity, title, buf.String())
+	body(u.childSized(0, &buf, false, inner))
+	writeBoxed(u.out, u.prefix(), severity, title, buf.String(), inner)
 }
 
 // Interpret shows what Jarvis understood from the user's last input.
@@ -286,12 +330,27 @@ func (u *TerminalUI) KeyValueCells(rows [][2]TableCell) {
 			maxLabel = w
 		}
 	}
+	valueWidth := 0
+	if avail := u.contentWidth(); avail > 0 {
+		valueWidth = avail - maxLabel - 2
+		if valueWidth < 1 {
+			valueWidth = 1
+		}
+	}
 	p := u.prefix()
+	hang := strings.Repeat(" ", maxLabel)
 	for _, r := range rows {
 		label := u.Style(StyledText{Text: r[0].Text, Severity: r[0].Severity})
 		pad := strings.Repeat(" ", maxLabel-runeLen(r[0].Text))
-		value := u.Style(StyledText{Text: r[1].Text, Severity: r[1].Severity})
-		fmt.Fprintf(u.out, "%s%s%s  %s\n", p, label, pad, value)
+		lines := wrapCell(r[1].Text, valueWidth)
+		for i, line := range lines {
+			value := u.Style(StyledText{Text: line, Severity: r[1].Severity})
+			if i == 0 {
+				fmt.Fprintf(u.out, "%s%s%s  %s\n", p, label, pad, value)
+				continue
+			}
+			fmt.Fprintf(u.out, "%s%s  %s\n", p, hang, value)
+		}
 	}
 }
 
@@ -306,7 +365,7 @@ func (u *TerminalUI) Table(headers []string, rows [][]string) {
 		}
 	}
 	t := &Table{Headers: headers, Groups: [][][]TableCell{group}}
-	renderTable(u.out, u.prefix(), t, func(cell TableCell) string { return cell.Text })
+	renderTable(u.out, u.prefix(), t, func(cell TableCell) string { return cell.Text }, u.contentWidth())
 }
 
 // PrintTable renders t as a bordered table with Aurora colour applied per cell.
@@ -314,7 +373,7 @@ func (u *TerminalUI) Table(headers []string, rows [][]string) {
 func (u *TerminalUI) PrintTable(t *Table) {
 	renderTable(u.out, u.prefix(), t, func(cell TableCell) string {
 		return u.Style(StyledText{Text: cell.Text, Severity: cell.Severity})
-	})
+	}, u.contentWidth())
 }
 
 // Spinner starts a live status line. On a terminal it animates and appends

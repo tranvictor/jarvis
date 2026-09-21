@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
+	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	"github.com/tranvictor/jarvis/ui"
@@ -122,6 +123,20 @@ func TestInfoLayoutOrdersByImportance(t *testing.T) {
 	}
 }
 
+func TestInfoLayoutMaskNamesHidesResolvedNames(t *testing.T) {
+	prev := config.MaskNames
+	config.MaskNames = true
+	t.Cleanup(func() { config.MaskNames = prev })
+
+	out := render(t, swapTxResult(), util.LayoutInfo, hashHex)
+	if strings.Contains(out, "me (") || strings.Contains(out, "Uniswap V2 Router") {
+		t.Fatalf("resolved names leaked:\n%s", out)
+	}
+	if !strings.Contains(out, "•••") {
+		t.Fatalf("expected masked name:\n%s", out)
+	}
+}
+
 func TestFullLayoutKeepsFullAddressesAndEventTable(t *testing.T) {
 	out := render(t, swapTxResult(), util.LayoutInfoFull, hashHex)
 
@@ -228,6 +243,44 @@ func TestPlainTransferIsHeadlineOnly(t *testing.T) {
 	}
 }
 
+func Test7702DelegationAndSetCode(t *testing.T) {
+	r := jarviscommon.NewTxResult()
+	r.Status = "done"
+	r.TxType = "normal"
+	r.From = addr(meHex, "me")
+	r.To = addr(meHex, "me")
+	r.Value = "0"
+	r.GasCost = "0.00031500"
+	r.Nonce = "8"
+	r.Delegation = addr(routerHex, "BatchCaller")
+	r.Authorizations = []jarviscommon.TxAuthorization{{
+		Authority: addr(meHex, "me"),
+		Address:   addr(routerHex, "BatchCaller"),
+		ChainID:   "1",
+		Nonce:     "8",
+	}}
+
+	out := render(t, r, util.LayoutInfo, hashHex)
+	if !strings.Contains(out, "set-code") {
+		t.Fatalf("type-4 empty-value tx should read as set-code:\n%s", out)
+	}
+	if !strings.Contains(out, "delegates to") || !strings.Contains(out, "7702 auth") {
+		t.Fatalf("details should name the 7702 dest and auth:\n%s", out)
+	}
+
+	full := render(t, r, util.LayoutInfoFull, hashHex)
+	if !strings.Contains(full, "Delegates") || !strings.Contains(full, "7702 auth") {
+		t.Fatalf("full card missing 7702 rows:\n%s", full)
+	}
+
+	r.Authorizations[0].Revoke = true
+	r.Authorizations[0].Address = addr("0x0000000000000000000000000000000000000000", "")
+	revoke := render(t, r, util.LayoutInfoFull, hashHex)
+	if !strings.Contains(revoke, "revokes delegation") {
+		t.Fatalf("revoke row missing:\n%s", revoke)
+	}
+}
+
 func TestZeroAddressNeverShowsAddressBookName(t *testing.T) {
 	r := swapTxResult()
 	zero := "0x0000000000000000000000000000000000000000"
@@ -294,6 +347,28 @@ func TestTxDisplayJSONIsAdditiveAndPlain(t *testing.T) {
 	first := transfers[0].(map[string]any)
 	if first["token"] != "USDC" || first["amount"] != "1000" {
 		t.Fatalf("unexpected transfer json: %v", first)
+	}
+}
+
+func TestTxDisplayJSONMaskNames(t *testing.T) {
+	prev := config.MaskNames
+	config.MaskNames = true
+	t.Cleanup(func() { config.MaskNames = prev })
+
+	d := util.DisplayTxResult(ui.NewRecordingUI(), swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex)
+	raw, err := json.Marshal(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatal(err)
+	}
+	if m["from"] != meHex+" (•••)" {
+		t.Fatalf("json must mask names, got %v", m["from"])
+	}
+	if m["to"] != routerHex+" (•••)" {
+		t.Fatalf("json must mask names, got %v", m["to"])
 	}
 }
 

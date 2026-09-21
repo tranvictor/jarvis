@@ -7,7 +7,25 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 )
+
+// httpClient bounds every explorer request so a hung API cannot stall
+// a jarvis command indefinitely. 8s is long enough for a cold CDN and
+// short enough that a dead explorer fails the lookup instead of hanging.
+var httpClient = &http.Client{Timeout: 8 * time.Second}
+
+// httpCache stores non-rate-limited explorer/Sourcify responses for the
+// process lifetime. GetABIString, GetContractInfo, and GetVerifiedSource
+// share URL shapes on Blockscout/Robinscan REST, and vet calls Source
+// more than once for the same address on one --careful card.
+type cachedHTTP struct {
+	status int
+	body   []byte
+}
+
+var httpCache sync.Map // string URL -> cachedHTTP
 
 // fetchKind classifies one explorer HTTP response so callers can decide
 // whether to retry, stop, or try a different URL shape.
@@ -39,9 +57,9 @@ func (ee *EtherscanLikeExplorer) apiEndpoint() string {
 	return d + "/api"
 }
 
-// origin is the explorer host without a trailing /api or /api/v2, used for
-// JSON REST paths such as Robinscan /api/contracts/:address and Blockscout
-// /api/v2/smart-contracts/:address.
+// origin is the explorer host without a trailing /api or /api/v2, used by
+// Blockscout and Robinscan REST paths. Etherscan/Routescan never append
+// those REST paths onto origin.
 func (ee *EtherscanLikeExplorer) origin() string {
 	d := ee.trimmedDomain()
 	lower := strings.ToLower(d)
@@ -55,33 +73,99 @@ func (ee *EtherscanLikeExplorer) origin() string {
 
 func (ee *EtherscanLikeExplorer) abiURLs(address string) []string {
 	addr := strings.TrimSpace(address)
-	return []string{
-		ee.GetABIStringAPIURL(addr),
-		ee.getABIStringAPIURLNoChainID(addr),
-		ee.origin() + "/api/contracts/" + addr,
-		ee.origin() + "/api/v2/smart-contracts/" + addr,
-	}
+	return ee.familyURLs(addr, ee.GetABIStringAPIURL(addr), ee.getABIStringAPIURLNoChainID(addr))
 }
 
 func (ee *EtherscanLikeExplorer) contractInfoURLs(address string) []string {
 	addr := strings.TrimSpace(address)
-	return []string{
-		ee.getSourceCodeAPIURL(addr),
-		ee.getSourceCodeAPIURLNoChainID(addr),
-		ee.origin() + "/api/contracts/" + addr,
-		ee.origin() + "/api/v2/smart-contracts/" + addr,
+	return ee.familyURLs(addr, ee.getSourceCodeAPIURL(addr), ee.getSourceCodeAPIURLNoChainID(addr))
+}
+
+// familyURLs is the per-Kind lookup list. withChain / withoutChain are the
+// Etherscan-compat module=contract URLs for this action (getabi or
+// getsourcecode). Other families ignore them or append them as a last try.
+func (ee *EtherscanLikeExplorer) familyURLs(addr, withChain, withoutChain string) []string {
+	switch ee.kind() {
+	case KindRobinscan:
+		return []string{ee.origin() + "/api/contracts/" + addr}
+	case KindBlockscout:
+		return ee.blockscoutURLs(addr, withChain, withoutChain)
+	case KindRoutescan:
+		// Chain id is already in the Routescan path; extra chainid is a
+		// harmless fallback if a gateway requires it.
+		return dedupeStrings([]string{withoutChain, withChain})
+	default:
+		if ee.etherscanV2() {
+			return []string{withChain}
+		}
+		return dedupeStrings([]string{withoutChain, withChain})
 	}
 }
 
+func (ee *EtherscanLikeExplorer) blockscoutURLs(addr, withChain, withoutChain string) []string {
+	origin := ee.origin()
+	urls := []string{origin + "/api/v2/smart-contracts/" + addr}
+	d := ee.trimmedDomain()
+	lower := strings.ToLower(d)
+	// Bitfi and some OP-stack Blockscout builds put REST at Domain/api/v2
+	// and the singular /smart-contract/:addr path. Do not hit that path
+	// on a bare host — it is the HTML contract page, not the API.
+	if strings.HasSuffix(lower, "/api/v2") || strings.HasSuffix(lower, "/api/v1") {
+		urls = append(urls, d+"/smart-contract/"+addr)
+	}
+	return dedupeStrings(append(urls, withoutChain, withChain))
+}
+
+func (ee *EtherscanLikeExplorer) etherscanV2() bool {
+	d := strings.ToLower(ee.trimmedDomain())
+	if !etherscanHost(hostOf(d), d) {
+		return false
+	}
+	return strings.Contains(d, "/v2")
+}
+
+func dedupeStrings(in []string) []string {
+	seen := make(map[string]bool, len(in))
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}
+
 func (ee *EtherscanLikeExplorer) get(u string) (int, []byte, error) {
-	resp, err := http.Get(u)
+	return getURL(ee.label(), u)
+}
+
+func getURL(label, u string) (int, []byte, error) {
+	if v, ok := httpCache.Load(u); ok {
+		c := v.(cachedHTTP)
+		return c.status, c.body, nil
+	}
+	resp, err := httpClient.Get(u)
 	if err != nil {
-		return 0, nil, fmt.Errorf("%s: %w", ee.label(), redactURLError(err))
+		wrapped := redactURLError(err)
+		if label != "" {
+			return 0, nil, fmt.Errorf("%s: %w", label, wrapped)
+		}
+		return 0, nil, wrapped
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return resp.StatusCode, nil, fmt.Errorf("%s: reading response: %w", ee.label(), err)
+		if label != "" {
+			return resp.StatusCode, nil, fmt.Errorf("%s: reading response: %w", label, err)
+		}
+		return resp.StatusCode, nil, fmt.Errorf("reading response: %w", err)
+	}
+	// Do not cache 429 / rate-limit JSON: the retry loop must re-hit the
+	// network after abiRetryDelay, not replay the limited payload.
+	if resp.StatusCode != http.StatusTooManyRequests && !isRateLimited(body) {
+		httpCache.Store(u, cachedHTTP{status: resp.StatusCode, body: body})
 	}
 	return resp.StatusCode, body, nil
 }
@@ -185,18 +269,34 @@ func parseEtherscanContractInfo(body []byte) (etherscanContractParse, bool) {
 	if sc.Status != "1" && sc.Status != "0" {
 		return etherscanContractParse{}, false
 	}
-	if sc.Status != "1" || len(sc.Result) == 0 {
+	if sc.Status != "1" {
+		if isUnverifiedMessage(string(bytes.TrimSpace(sc.Result))) {
+			return etherscanContractParse{ok: false}, true
+		}
+		return etherscanContractParse{}, false
+	}
+	records := parseSourceRecords(sc.Result)
+	if len(records) == 0 {
 		return etherscanContractParse{ok: false}, true
 	}
-	r := sc.Result[0]
+	r := records[0]
+	verified := r.ABI != "" && r.ABI != "Contract source code not verified"
+	impl := strings.TrimSpace(r.Implementation)
+	if impl == "" {
+		impl = strings.TrimSpace(r.ImplementationAddress)
+	}
+	info := ContractInfo{
+		Name:           r.ContractName,
+		Implementation: impl,
+		IsProxy:        r.Proxy == "1" || jsonBool(r.IsProxy),
+		IsVerified:     verified,
+	}
+	if verified {
+		info.ABI = r.ABI
+	}
 	return etherscanContractParse{
-		info: ContractInfo{
-			Name:           r.ContractName,
-			Implementation: r.Implementation,
-			IsProxy:        r.Proxy == "1",
-			IsVerified:     r.ABI != "" && r.ABI != "Contract source code not verified",
-		},
-		ok: true,
+		info: info,
+		ok:   true,
 	}, true
 }
 
@@ -218,8 +318,18 @@ func parseJSONContractInfo(body []byte) (ContractInfo, bool) {
 	info := ContractInfo{
 		Name:           jsonString(raw["name"]),
 		Implementation: parseImplementation(raw["implementation"]),
-		IsVerified:     jsonBool(raw["isVerified"]) || jsonBool(raw["is_verified"]),
-		IsProxy:        jsonBool(raw["is_proxy"]),
+		IsVerified: jsonBool(raw["isVerified"]) ||
+			jsonBool(raw["is_verified"]) ||
+			jsonBool(raw["is_fully_verified"]) ||
+			jsonBool(raw["is_partially_verified"]) ||
+			jsonBool(raw["is_verified_via_sourcify"]),
+		IsProxy: jsonBool(raw["is_proxy"]),
+	}
+	if abiStr, ok := abiFieldToString(raw["abi"]); ok {
+		info.ABI = abiStr
+		if !info.IsVerified {
+			info.IsVerified = true
+		}
 	}
 	if proxyType := jsonString(raw["proxyType"]); proxyType != "" && !strings.EqualFold(proxyType, "null") {
 		info.IsProxy = true

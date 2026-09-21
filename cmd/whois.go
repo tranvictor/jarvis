@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -25,7 +26,7 @@ var whoisCmd = &cobra.Command{
 				appUI.Info("%s  %s", address, appUI.Style(ui.StyledText{Text: "not in address book", Severity: ui.SeverityMuted}))
 				continue
 			}
-			appUI.Info("%s  %s", addrs[0], names[0])
+			appUI.Info("%s  %s", addrs[0], jarviscommon.DisplayDesc(jarviscommon.Address{Desc: names[0]}))
 		}
 	},
 }

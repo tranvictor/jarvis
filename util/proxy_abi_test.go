@@ -111,6 +111,7 @@ func TestGetABIFollowsExplorerReportedImplementation(t *testing.T) {
 		BlockTime:           2,
 		DefaultNodes:        map[string]string{"dummy": "http://127.0.0.1:9"},
 		BlockExplorerAPIURL: srv.URL,
+		ExplorerKind:        "robinscan",
 	})
 	a, err := GetABI(proxy, n)
 	if err != nil {

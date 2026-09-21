@@ -7,8 +7,11 @@ import (
 )
 
 var (
-	Debug     bool = true
+	Debug     bool = false
 	DegenMode bool
+	// MaskNames replaces resolved address names with "•••" in printed
+	// output so a copied transcript does not leak labels.
+	MaskNames bool
 )
 
 var (
@@ -73,4 +76,8 @@ var (
 	JSONOutputFile string
 
 	Simulate bool
+
+	Careful      bool
+	VetCalldata  string
+	VetTypedData string
 )

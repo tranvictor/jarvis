@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -74,7 +75,7 @@ func runeLen(s string) int {
 	return runewidth.StringWidth(ansi.Strip(s))
 }
 
-func colWidths(t *Table) []int {
+func colWidths(t *Table, available int) []int {
 	// Infer column count from the data when no headers are supplied.
 	n := len(t.Headers)
 	for _, row := range t.Rows {
@@ -126,7 +127,7 @@ func colWidths(t *Table) []int {
 	// to several thousand columns wide and ruins readability. The
 	// rendering path below will wrap any cell whose content exceeds
 	// its column width, so no information is lost.
-	shrinkToTerminal(widths)
+	shrinkToWidth(widths, available)
 	return widths
 }
 
@@ -135,14 +136,12 @@ func colWidths(t *Table) []int {
 // become a scroll of 10-char fragments with more border than content.
 const minWrapWidth = 20
 
-// shrinkToTerminal adjusts widths in place so that the total rendered
-// row width fits within the current terminal columns. It preferentially
-// shrinks the widest column, repeating until the budget is satisfied
-// or every column is at minWrapWidth (in which case the table will
-// still overflow, but by as little as possible).
-func shrinkToTerminal(widths []int) {
-	termCols := detectTerminalWidth()
-	if termCols <= 0 {
+// shrinkToWidth adjusts widths in place so the rendered row fits within
+// available columns. available is the budget for the table itself (indent
+// prefix already subtracted). 0 means no cap. The widest column shrinks
+// first until the budget is met or every column is at minWrapWidth.
+func shrinkToWidth(widths []int, available int) {
+	if available <= 0 {
 		return
 	}
 	// Each column renders as " content " plus one separator glyph; a
@@ -151,7 +150,7 @@ func shrinkToTerminal(widths []int) {
 	n := len(widths)
 	const safetyMargin = 1 // avoid writing into the very last column
 	overhead := 3*n + 1 + safetyMargin
-	budget := termCols - overhead
+	budget := available - overhead
 	if budget <= 0 {
 		return
 	}
@@ -175,9 +174,6 @@ func shrinkToTerminal(widths []int) {
 	}
 }
 
-// detectTerminalWidth returns os.Stdout's current column count, or 0
-// if we can't determine it (not a TTY, error, etc.) — callers treat 0
-// as "no cap".
 // TerminalWidth returns the current column count of stdout, or 0 when it is
 // not a terminal. Callers use 0 as "do not wrap".
 func TerminalWidth() int {
@@ -196,10 +192,10 @@ func detectTerminalWidth() int {
 // source line is wrapped independently so explicit newlines stay aligned
 // with the original content.
 //
-// Wrapping is char-based (no word boundaries) because cell content in
-// jarvis is usually long hex strings with no natural break points; for
-// human-readable text this still looks acceptable because most such
-// content is short enough not to wrap at all.
+// When the text contains spaces (address-book names, labels), the break
+// prefers the last space in the window so a long "(Foo – Eth, Bsc, …)"
+// does not split mid-word. Hex and other unspaced strings still wrap
+// on a column boundary.
 func wrapCell(s string, maxWidth int) []string {
 	if maxWidth <= 0 {
 		return []string{s}
@@ -213,33 +209,49 @@ func wrapCell(s string, maxWidth int) []string {
 			lines = append(lines, "")
 			continue
 		}
-		runes := []rune(src)
-		start := 0
-		for start < len(runes) {
-			end := start
-			width := 0
-			for end < len(runes) {
-				rw := runewidth.RuneWidth(runes[end])
-				if rw == 0 {
-					rw = 1
-				}
-				if width+rw > maxWidth {
-					break
-				}
-				width += rw
-				end++
-			}
-			if end == start {
-				// Single rune wider than maxWidth — take it anyway
-				// so we make forward progress.
-				end = start + 1
-			}
-			lines = append(lines, string(runes[start:end]))
-			start = end
-		}
+		lines = append(lines, wrapLine(src, maxWidth)...)
 	}
 	if len(lines) == 0 {
 		lines = []string{""}
+	}
+	return lines
+}
+
+func wrapLine(src string, maxWidth int) []string {
+	runes := []rune(src)
+	var lines []string
+	start := 0
+	for start < len(runes) {
+		end := start
+		width := 0
+		lastSpace := -1
+		for end < len(runes) {
+			rw := runewidth.RuneWidth(runes[end])
+			if rw == 0 {
+				rw = 1
+			}
+			if width+rw > maxWidth {
+				break
+			}
+			if unicode.IsSpace(runes[end]) {
+				lastSpace = end
+			}
+			width += rw
+			end++
+		}
+		if end == start {
+			end = start + 1
+		} else if end < len(runes) && lastSpace > start {
+			end = lastSpace
+		}
+		lines = append(lines, string(runes[start:end]))
+		start = end
+		for start < len(runes) && unicode.IsSpace(runes[start]) {
+			start++
+		}
+	}
+	if len(lines) == 0 {
+		return []string{""}
 	}
 	return lines
 }
@@ -253,8 +265,8 @@ func wrapCell(s string, maxWidth int) []string {
 // styleCell is called for each data cell (not headers) and may inject ANSI
 // escape codes; padding is computed from the plain-text width so ANSI codes
 // never break column alignment.
-func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCell) string) {
-	widths := colWidths(t)
+func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCell) string, available int) {
+	widths := colWidths(t, available)
 	n := len(widths)
 	if n == 0 {
 		return

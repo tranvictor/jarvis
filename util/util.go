@@ -369,29 +369,51 @@ func AnalyzeAndPrint(
 	if customABIs == nil {
 		customABIs = map[string]*abi.ABI{}
 	}
+	defer cache.Flush()
 
 	txinfo, err := reader.TxInfoFromHash(tx)
 	if err != nil {
 		u.Error("getting tx info failed: %s", err)
 		return nil
 	}
+	if txinfo.Tx == nil {
+		u.Error("transaction not found: %s", tx)
+		return nil
+	}
 
 	// A contract creation has no destination to classify or fetch an ABI
 	// for; the analyzer reports it from the receipt.
 	if txinfo.Tx.To() == nil {
+		prefetchTxAddresses(&txinfo, network)
 		result := analyzer.AnalyzeOffline(&txinfo, GetABI, customABIs, false)
 		return displayTxResultAfter(u, result, network, layout, tx, customABIs, after)
 	}
 	contractAddress := txinfo.Tx.To().Hex()
 
-	isContract, err := IsContract(contractAddress, network)
-	if err != nil {
-		u.Error("checking tx type failed: %s", err)
+	// Explorer name/ABI lookups and eth_getCode are independent. Starting
+	// them together hides the getCode RTT behind the first explorer call
+	// and means AnalyzeOffline's per-address Resolve/GetABI hits are warm.
+	var isContract bool
+	var isContractErr error
+	jarviscommon.RunParallel(
+		func() error {
+			prefetchTxAddresses(&txinfo, network)
+			return nil
+		},
+		func() error {
+			isContract, isContractErr = IsContract(contractAddress, network)
+			return nil
+		},
+	)
+	if isContractErr != nil {
+		u.Error("checking tx type failed: %s", isContractErr)
 		return nil
 	}
 
 	lookup := GetABI
-	if isContract {
+	delegatedTo, is7702, _ := DelegationOf(contractAddress, network)
+	decode := isContract || (is7702 && len(txinfo.Tx.Data()) > 0)
+	if decode {
 		if a == nil {
 			// An unavailable ABI (unverified contract, explorer outage) must
 			// not hide the transaction: the analyzer falls back to the ERC-20
@@ -413,7 +435,10 @@ func AnalyzeAndPrint(
 			customABIs[strings.ToLower(txinfo.Tx.To().Hex())] = a
 		}
 	}
-	result := analyzer.AnalyzeOffline(&txinfo, lookup, customABIs, isContract)
+	result := analyzer.AnalyzeOffline(&txinfo, lookup, customABIs, decode)
+	if is7702 {
+		result.Delegation = GetJarvisAddress(delegatedTo.Hex(), network)
+	}
 
 	return displayTxResultAfter(u, result, network, layout, tx, customABIs, after)
 }
@@ -476,7 +501,8 @@ func isRealAddress(value string) bool {
 }
 
 // GetJarvisAddress resolves addr using the default (production) address
-// resolver. Call sites that already have a resolver (e.g. txanalyzer via
+// resolver, then names it if Jarvis controls a local wallet for that
+// address. Call sites that already have a resolver (e.g. txanalyzer via
 // AnalysisContext) should use that resolver directly so the implementation
 // can be swapped in tests.
 func GetJarvisAddress(addr string, network networks.Network) jarviscommon.Address {
@@ -508,14 +534,18 @@ func NewEnrichedResolver(network networks.Network) *EnrichedResolver {
 	}
 }
 
-// Resolve first consults the local address book / ERC20 cache. If that
-// comes back as "unknown", it best-effort prefetches a verified
-// contract name from the explorer and retries the lookup. Failures are
-// silent: network errors, rate limits, or unverified contracts all
-// just fall back to the original "unknown" result, and the in-memory
-// probed-set guarantees we don't retry within the same process.
+// Resolve first consults the local address book / ERC20 cache, then local
+// Jarvis wallets (~/.jarvis/<address>.json). If that still comes back as
+// "unknown", it best-effort prefetches a verified contract name from the
+// explorer and retries the lookup. Failures are silent: network errors,
+// rate limits, or unverified contracts all just fall back to the original
+// "unknown" result, and the in-memory probed-set guarantees we don't retry
+// within the same process.
 func (r *EnrichedResolver) Resolve(addr string) jarviscommon.Address {
 	a := r.inner.Resolve(addr)
+	if desc, kind, ok := lookupWallet(addr); ok {
+		a = applyWalletLabel(a, desc, kind)
+	}
 	if a.Desc != "unknown" {
 		return a
 	}
@@ -558,23 +588,114 @@ func PrefetchContractName(addr string, network networks.Network) {
 	if err != nil {
 		return
 	}
+	if code, cerr := r.GetCode(addr); cerr == nil {
+		if d, ok := types.ParseDelegation(code); ok && d != (common.Address{}) {
+			prefetch7702Name(r, cacheKey, d)
+			return
+		}
+	}
 	info, err := r.GetContractInfo(addr)
-	if err != nil || !info.IsVerified || info.Name == "" {
+	if err != nil || !info.IsVerified {
 		return
 	}
-	label := info.Name
+	if info.ABI != "" {
+		_ = cache.SetCache(fmt.Sprintf("%s_abi", addrLower), info.ABI)
+	}
 
+	label := info.Name
 	if info.IsProxy && info.Implementation != "" {
 		implInfo, err := r.GetContractInfo(info.Implementation)
-		if err == nil && implInfo.IsVerified && implInfo.Name != "" && implInfo.Name != info.Name {
-			label = fmt.Sprintf("%s -> %s", info.Name, implInfo.Name)
+		if err == nil && implInfo.IsVerified {
+			implLower := strings.ToLower(info.Implementation)
+			if implInfo.ABI != "" {
+				_ = cache.SetCache(fmt.Sprintf("%s_abi", implLower), implInfo.ABI)
+			}
+			if implInfo.Name != "" && implInfo.Name != info.Name {
+				label = fmt.Sprintf("%s -> %s", info.Name, implInfo.Name)
+			} else if implInfo.Name != "" {
+				label = implInfo.Name
+			}
+			if implInfo.Name != "" {
+				_ = cache.SetCache(
+					fmt.Sprintf("%s_contract_name", implLower),
+					implInfo.Name,
+				)
+			}
+			if implInfo.ABI != "" {
+				_ = cache.SetCache(fmt.Sprintf("%s_abi", addrLower), implInfo.ABI)
+			}
 		}
-		_ = cache.SetCache(
-			fmt.Sprintf("%s_contract_name", strings.ToLower(info.Implementation)),
-			implInfo.Name,
-		)
+	}
+	if label == "" {
+		return
 	}
 	_ = cache.SetCache(cacheKey, label)
+}
+
+// prefetch7702Name labels an EIP-7702 EOA as "delegates to <Name>" using the
+// first-hop target's explorer name. D itself is not followed if it is also
+// a 7702 designator.
+func prefetch7702Name(r *reader.EthReader, destCacheKey string, d common.Address) {
+	implLower := strings.ToLower(d.Hex())
+	implInfo, err := r.GetContractInfo(d.Hex())
+	name := d.Hex()
+	if err == nil && implInfo.IsVerified {
+		if implInfo.ABI != "" {
+			_ = cache.SetCache(fmt.Sprintf("%s_abi", implLower), implInfo.ABI)
+		}
+		if implInfo.Name != "" {
+			name = implInfo.Name
+			_ = cache.SetCache(fmt.Sprintf("%s_contract_name", implLower), implInfo.Name)
+		}
+	}
+	_ = cache.SetCache(destCacheKey, "delegates to "+name)
+}
+
+// prefetchTxAddresses warms explorer names/ABIs for the addresses in
+// txinfo so later Resolve/GetABI calls hit cache.
+func prefetchTxAddresses(txinfo *jarviscommon.TxInfo, network networks.Network) {
+	if txinfo == nil {
+		return
+	}
+	seen := map[string]struct{}{}
+	var fns []func() error
+	add := func(addr string) {
+		addr = strings.TrimSpace(addr)
+		if addr == "" || jarviscommon.IsZeroAddress(addr) {
+			return
+		}
+		key := strings.ToLower(addr)
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		fns = append(fns, func() error {
+			PrefetchContractName(addr, network)
+			return nil
+		})
+	}
+	if txinfo.Tx != nil {
+		if txinfo.Tx.Extra.From != nil {
+			add(txinfo.Tx.Extra.From.Hex())
+		}
+		if to := txinfo.Tx.To(); to != nil {
+			add(to.Hex())
+		}
+		for _, auth := range txinfo.Tx.SetCodeAuthorizations() {
+			add(auth.Address.Hex())
+		}
+	}
+	if txinfo.Receipt != nil {
+		if txinfo.Receipt.ContractAddress != (common.Address{}) {
+			add(txinfo.Receipt.ContractAddress.Hex())
+		}
+		for _, l := range txinfo.Receipt.Logs {
+			if l != nil {
+				add(l.Address.Hex())
+			}
+		}
+	}
+	jarviscommon.RunParallel(fns...)
 }
 
 // contractNameProbed tracks (network, address) pairs whose explorer
@@ -689,11 +810,34 @@ func GetABIStringBypassCache(addr string, network networks.Network) (string, err
 // IsDelegationDesignator reports whether code is an EIP-7702 delegation
 // designator: exactly 0xef0100 followed by a 20-byte address.
 func IsDelegationDesignator(code []byte) bool {
-	return len(code) == 23 && code[0] == 0xef && code[1] == 0x01 && code[2] == 0x00
+	_, ok := types.ParseDelegation(code)
+	return ok
+}
+
+// DelegationOf reads eth_getCode and returns the first-hop EIP-7702 target.
+// ok is false when the account is not delegated (including a zero target).
+// Only the first hop is followed: if D is itself a 7702 EOA, D is still returned.
+func DelegationOf(addr string, network networks.Network) (common.Address, bool, error) {
+	if addr == "" || jarviscommon.IsZeroAddress(addr) {
+		return common.Address{}, false, nil
+	}
+	reader, err := EthReader(network)
+	if err != nil {
+		return common.Address{}, false, err
+	}
+	code, err := reader.GetCode(addr)
+	if err != nil {
+		return common.Address{}, false, err
+	}
+	d, ok := types.ParseDelegation(code)
+	if !ok || d == (common.Address{}) {
+		return common.Address{}, false, nil
+	}
+	return d, true, nil
 }
 
 func IsContract(addr string, network networks.Network) (bool, error) {
-	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network)
+	cacheKey := fmt.Sprintf("%s_%s_is_contract", strings.ToLower(addr), network.GetName())
 	_, found := cache.GetCache(cacheKey)
 	if found {
 		return true, nil
@@ -945,8 +1089,18 @@ func IsGnosisMsigCallData(data []byte) bool {
 
 func GetABI(addr string, network networks.Network) (*abi.ABI, error) {
 	a, err := fetchABI(addr, network)
-	if err != nil {
-		return a, err
+	if err != nil || isMethodlessABI(a) {
+		if d, ok, derr := DelegationOf(addr, network); derr == nil && ok {
+			da, derr := fetchABI(d.Hex(), network)
+			if derr == nil {
+				a, err = da, nil
+				addr = d.Hex()
+			} else if err != nil {
+				return a, err
+			}
+		} else if err != nil {
+			return a, err
+		}
 	}
 	implABI, followed, err := followProxyImplementation(addr, a, network)
 	if followed {

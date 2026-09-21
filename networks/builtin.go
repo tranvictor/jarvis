@@ -139,6 +139,7 @@ var Avalanche Network = NewGenericEtherscanNetwork(GenericEtherscanNetworkConfig
 	},
 	BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
 	BlockExplorerAPIURL:             "https://api.routescan.io/v2/network/mainnet/evm/43114/etherscan/",
+	ExplorerKind:                    "routescan",
 	MultiCallContractAddress:        common.HexToAddress("0xa00FB557AA68d2e98A830642DBbFA534E8512E5f"),
 })
 
@@ -301,5 +302,6 @@ var BitfiTestnet = NewGenericOptimismNetwork(GenericEtherscanNetworkConfig{
 	},
 	BlockExplorerAPIKeyVariableName: "BITFI_TESTNET_SCAN_API_KEY",
 	BlockExplorerAPIURL:             "https://bitfi-ledger-testnet-explorer.alt.technology/api/v2",
+	ExplorerKind:                    "blockscout",
 	MultiCallContractAddress:        common.HexToAddress("0xcA11bde05977b3631167028862bE2a173976CA11"),
 })

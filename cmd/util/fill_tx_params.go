@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/ethereum/go-ethereum/core/types"
 
@@ -20,39 +21,72 @@ import (
 // cross-network batch construction can inject their own.
 func FillSigningTxParams(u ui.UI, tc *TxContext, network jarvisnetworks.Network) error {
 	reader := tc.Reader
-	var err error
 
-	if config.GasPrice == 0 {
-		tc.GasPrice, err = reader.RecommendedGasPrice()
-		if err != nil {
+	var (
+		price    float64
+		nonce    uint64
+		txType   uint8
+		priceErr error
+		nonceErr error
+		typeErr  error
+	)
+
+	needPrice := config.GasPrice == 0
+	needNonce := config.Nonce == 0
+
+	var wg sync.WaitGroup
+	if needPrice {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			price, priceErr = reader.RecommendedGasPrice()
+		}()
+	}
+	if needNonce {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			nonce, nonceErr = reader.GetMinedNonce(tc.From)
+		}()
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		txType, typeErr = ValidTxType(reader, network)
+	}()
+	wg.Wait()
+
+	if needPrice {
+		if priceErr != nil {
 			if u != nil {
 				showNodeErrorGuidance(u, network)
 			}
-			return fmt.Errorf("getting recommended gas price failed: %w", err)
+			return fmt.Errorf("getting recommended gas price failed: %w", priceErr)
 		}
+		tc.GasPrice = price
 	} else {
 		tc.GasPrice = config.GasPrice
 	}
 
-	if config.Nonce == 0 {
-		tc.Nonce, err = reader.GetMinedNonce(tc.From)
-		if err != nil {
+	if needNonce {
+		if nonceErr != nil {
 			if u != nil {
 				showNodeErrorGuidance(u, network)
 			}
-			return fmt.Errorf("getting nonce failed: %w", err)
+			return fmt.Errorf("getting nonce failed: %w", nonceErr)
 		}
+		tc.Nonce = nonce
 	} else {
 		tc.Nonce = config.Nonce
 	}
 
-	tc.TxType, err = ValidTxType(reader, network)
-	if err != nil {
+	if typeErr != nil {
 		if u != nil {
 			showNodeErrorGuidance(u, network)
 		}
-		return fmt.Errorf("couldn't determine proper tx type: %w", err)
+		return fmt.Errorf("couldn't determine proper tx type: %w", typeErr)
 	}
+	tc.TxType = txType
 
 	if tc.TxType == types.LegacyTxType {
 		if config.TipGas > 0 && u != nil {
@@ -60,13 +94,14 @@ func FillSigningTxParams(u ui.UI, tc *TxContext, network jarvisnetworks.Network)
 		}
 	} else if tc.TxType == types.DynamicFeeTxType {
 		if config.TipGas == 0 {
-			tc.TipGas, err = reader.GetSuggestedGasTipCap()
+			tip, err := reader.GetSuggestedGasTipCap()
 			if err != nil {
 				if u != nil {
 					showNodeErrorGuidance(u, network)
 				}
 				return fmt.Errorf("couldn't estimate recommended gas price: %w", err)
 			}
+			tc.TipGas = tip
 		} else {
 			tc.TipGas = config.TipGas
 		}

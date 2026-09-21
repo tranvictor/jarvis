@@ -12,6 +12,7 @@ import (
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/vet"
 )
 
 // SigningCard is everything shown to the user right before they sign. The
@@ -59,7 +60,25 @@ type SigningCard struct {
 	ClearSign func(ui.UI)
 
 	Warnings []string
-	Prompt   string
+	// Vet is extra findings from package vet. DELEGATECALL and EIP-7702
+	// are always present when applicable; the rest require --careful.
+	Vet    []vet.Finding
+	Prompt string
+
+	// Delegation is the first-hop EIP-7702 target of dest when dest is a
+	// delegated EOA. Empty Text hides the row.
+	Delegation ui.StyledText
+	// Authorizations are type-4 authorization_list rows.
+	Authorizations []AuthCardRow
+}
+
+// AuthCardRow is one EIP-7702 authorization shown on the signing card.
+type AuthCardRow struct {
+	Authority ui.StyledText
+	Target    ui.StyledText
+	Nonce     string
+	ChainID   string
+	Revoke    bool
 }
 
 // SafeCardFields are the SafeTx parameters that have no EOA equivalent.
@@ -205,6 +224,9 @@ func renderSigningCardBody(u ui.UI, c *SigningCard) {
 		}
 		rows = append(rows, [2]ui.TableCell{label(toLabel), ui.TCS(c.To.Text, c.To.Severity)})
 	}
+	if c.Delegation.Text != "" {
+		rows = append(rows, [2]ui.TableCell{label("Delegates"), ui.TCS(c.Delegation.Text, ui.SeverityWarn)})
+	}
 	if c.Value != "" {
 		rows = append(rows, [2]ui.TableCell{label("Value"), ui.TC(c.Value)})
 	}
@@ -260,6 +282,26 @@ func renderSigningCardBody(u ui.UI, c *SigningCard) {
 		}
 		rows = append(rows, [2]ui.TableCell{label("Status"), ui.TCS(status, sev)})
 	}
+	for i, a := range c.Authorizations {
+		labelText := "7702 auth"
+		if len(c.Authorizations) > 1 {
+			labelText = fmt.Sprintf("7702 auth %d", i+1)
+		}
+		var body string
+		if a.Revoke {
+			body = fmt.Sprintf("%s revokes delegation", a.Authority.Text)
+		} else {
+			body = fmt.Sprintf("%s → %s", a.Authority.Text, a.Target.Text)
+		}
+		if a.Nonce != "" || a.ChainID != "" {
+			body += fmt.Sprintf("   nonce %s   chain %s", a.Nonce, a.ChainID)
+		}
+		sev := ui.SeverityWarn
+		if a.Revoke {
+			sev = ui.SeverityInfo
+		}
+		rows = append(rows, [2]ui.TableCell{label(labelText), ui.TCS(body, sev)})
+	}
 	if body {
 		u.Info("")
 	}
@@ -284,10 +326,21 @@ func renderSigningCardBody(u ui.UI, c *SigningCard) {
 		}
 	}
 
-	if len(c.Warnings) > 0 {
+	if len(c.Warnings) > 0 || len(c.Vet) > 0 {
 		u.Info("")
 		for _, w := range c.Warnings {
 			u.Warn("! %s", w)
+		}
+		for _, f := range c.Vet {
+			text := f.Text
+			if f.GrokReconfirm {
+				text += " — AI reconfirms"
+			}
+			if f.Risk == vet.RiskDanger {
+				u.Error("! %s", text)
+			} else {
+				u.Warn("! %s", text)
+			}
 		}
 	}
 	u.Info("")
@@ -359,6 +412,7 @@ func attachMultisigInnerCall(
 		}
 	}
 	card.Warnings = SigningWarnings(*warn)
+	attachVet(card, *warn, network)
 }
 
 // WarningInput is what SigningWarnings looks at. It is deliberately a plain
@@ -380,6 +434,10 @@ type WarningInput struct {
 	// nil skips it. MaxCost is value + gasLimit × max fee.
 	SignerBalance *big.Int
 	MaxCost       *big.Int
+	// Delegation is dest's current EIP-7702 target (hex). Empty if none.
+	Delegation string
+	// Authorizations are type-4 authorization_list entries.
+	Authorizations []vet.Authorization
 }
 
 func (in WarningInput) nativeDecimals() uint64 {
@@ -421,13 +479,6 @@ func SigningWarnings(in WarningInput) []string {
 		out = append(out, fmt.Sprintf("balance %s %s does not cover value + max gas (%s %s); the tx would be rejected",
 			in.nativeAmount(in.SignerBalance), in.NativeSymbol,
 			in.nativeAmount(in.MaxCost), in.NativeSymbol))
-	}
-	if in.DelegateCall {
-		if in.MultiSend {
-			out = append(out, "DELEGATECALL into MultiSend: every inner call below runs with the Safe's full authority")
-		} else {
-			out = append(out, "DELEGATECALL: the target's code runs in the Safe's own context")
-		}
 	}
 	if in.HasData && (in.Call == nil || in.Call.Method == "") {
 		dest := in.To.Address
