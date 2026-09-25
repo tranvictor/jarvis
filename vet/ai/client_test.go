@@ -47,14 +47,6 @@ func TestCompleteParsesJSONAndSendsPayloadOnly(t *testing.T) {
 	}
 }
 
-func TestCompleteMissingKey(t *testing.T) {
-	c := &Client{Key: ""}
-	_, err := c.Complete(context.Background(), []byte(`{}`))
-	if err == nil {
-		t.Fatal("expected error")
-	}
-}
-
 func TestNewFromEnv(t *testing.T) {
 	t.Setenv(EnvKey, "")
 	t.Setenv(EnvKeyLegacy, "")

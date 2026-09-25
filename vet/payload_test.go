@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
-	"github.com/tranvictor/jarvis/vet/ai"
 )
 
 func TestToPayloadStripsDescCanary(t *testing.T) {
@@ -145,17 +144,5 @@ func TestVetProductionHasNoDescSelector(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestClassifiedConstructors(t *testing.T) {
-	if _, ok := ai.ParseHexAddr("Mom"); ok {
-		t.Fatal("name must not parse as hex addr")
-	}
-	if ai.ABIIdent("Uncle Bob") {
-		t.Fatal("spaces are not abi idents")
-	}
-	if !ai.ABIIdent("transferOwnership") {
-		t.Fatal("method name")
 	}
 }

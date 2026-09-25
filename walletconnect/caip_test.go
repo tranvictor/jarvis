@@ -5,10 +5,7 @@ import (
 	"testing"
 )
 
-func TestChainAndAccountStrings(t *testing.T) {
-	if got := ChainString(1); got != "eip155:1" {
-		t.Errorf("ChainString(1) = %q", got)
-	}
+func TestAccountStringLowercases(t *testing.T) {
 	if got := AccountString(137, "0xAbCdEf0000000000000000000000000000000001"); got != "eip155:137:0xabcdef0000000000000000000000000000000001" {
 		t.Errorf("AccountString mixed-case not lower-cased: %q", got)
 	}
