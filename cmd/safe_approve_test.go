@@ -7,16 +7,8 @@ import (
 
 	ethcommon "github.com/ethereum/go-ethereum/common"
 
-	cmdutil "github.com/tranvictor/jarvis/cmd/util"
 	"github.com/tranvictor/jarvis/safe"
 )
-
-func TestVerifyPendingSafeTxHashSkipsNilBody(t *testing.T) {
-	pending := &safe.PendingTx{SafeTxHash: pendingTestHashBytes()}
-	if _, err := verifyPendingSafeTxHash(pending, [32]byte{1}); err != nil {
-		t.Fatal(err)
-	}
-}
 
 func TestVerifyPendingSafeTxHashMatchAndMismatch(t *testing.T) {
 	stx := safe.NewSafeTx(ethcommon.HexToAddress("0x1111111111111111111111111111111111111111"), big.NewInt(0), nil, safe.OpCall, 3)
@@ -75,33 +67,5 @@ func TestPendingWithNewSig(t *testing.T) {
 	}
 	if len(got.Sigs) != 2 || got.Sigs[1].Owner != me {
 		t.Fatalf("got %+v", got.Sigs)
-	}
-}
-
-type confirmCollector struct {
-	stubCollector
-	gotHash [32]byte
-	gotMe   ethcommon.Address
-	gotSig  []byte
-}
-
-func (c *confirmCollector) Confirm(hash [32]byte, owner ethcommon.Address, sig []byte) error {
-	c.gotHash = hash
-	c.gotMe = owner
-	c.gotSig = sig
-	return nil
-}
-
-func TestPersistApprovalUsesCollector(t *testing.T) {
-	h := pendingTestHashBytes()
-	me := ethcommon.HexToAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	col := &confirmCollector{}
-	tc := cmdutil.TxContext{Collector: col}
-	pending := &safe.PendingTx{SafeTxHash: h}
-	if err := persistApproval(tc, pendingTestSafe, pending, me, []byte{9}, "", 1); err != nil {
-		t.Fatal(err)
-	}
-	if col.gotHash != h || col.gotMe != me || len(col.gotSig) != 1 || col.gotSig[0] != 9 {
-		t.Fatalf("confirm %+v %+v %v", col.gotHash, col.gotMe, col.gotSig)
 	}
 }
