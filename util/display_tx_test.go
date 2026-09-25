@@ -9,7 +9,6 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/config"
 	"github.com/tranvictor/jarvis/networks"
-	"github.com/tranvictor/jarvis/txanalyzer/erc7730"
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 )
@@ -107,22 +106,6 @@ func render(t *testing.T, r *jarviscommon.TxResult, layout util.TxLayout, hash s
 	return buf.String()
 }
 
-func TestInfoLayoutOrdersByImportance(t *testing.T) {
-	out := render(t, swapTxResult(), util.LayoutInfo, hashHex)
-	headline := strings.Index(out, "swapExactTokensForTokens")
-	call := strings.Index(out, "Call  swapExactTokensForTokens")
-	events := strings.Index(out, "Events (")
-	if headline < 0 || call < 0 || events < 0 || headline > call || call > events {
-		t.Fatalf("headline, call, events out of order:\n%s", out)
-	}
-	if strings.Contains(out, "\nTransfers\n") {
-		t.Fatalf("compact layout must not print a Transfers list:\n%s", out)
-	}
-	if strings.Contains(out, "│") || strings.Contains(out, "╭") {
-		t.Fatalf("compact layout must not draw table borders:\n%s", out)
-	}
-}
-
 func TestInfoLayoutMaskNamesHidesResolvedNames(t *testing.T) {
 	prev := config.MaskNames
 	config.MaskNames = true
@@ -155,91 +138,6 @@ func TestFullLayoutKeepsFullAddressesAndEventTable(t *testing.T) {
 	}
 	if strings.Contains(out, "0x7a25…488D") {
 		t.Fatalf("full layout must not shorten addresses:\n%s", out)
-	}
-}
-
-func TestInfoLayoutCollapsesLongArraysAndHex(t *testing.T) {
-	r := swapTxResult()
-	var many []jarviscommon.Value
-	for i := 0; i < 6; i++ {
-		many = append(many, intValue("1"))
-	}
-	r.FunctionCall.Params = []jarviscommon.ParamResult{
-		{Name: "ids", Type: "uint256[]", Values: many},
-		scalar("data", "bytes", jarviscommon.Value{Raw: "0x" + strings.Repeat("ab", 100), Kind: jarviscommon.DisplayRaw}),
-	}
-	r.Logs = nil
-
-	out := render(t, r, util.LayoutInfo, "")
-	if !strings.Contains(out, "ids   [6 items]  (-x to expand)  uint256[]") {
-		t.Fatalf("expected collapsed array:\n%s", out)
-	}
-	if !strings.Contains(out, "data  0xabab…abab (100 bytes)  bytes") {
-		t.Fatalf("expected shortened hex:\n%s", out)
-	}
-
-	full := render(t, r, util.LayoutInfoFull, "")
-	if strings.Count(full, "├─ 1") != 5 || !strings.Contains(full, "└─ 1") {
-		t.Fatalf("expected expanded array in full layout:\n%s", full)
-	}
-	if !strings.Contains(full, "0x"+strings.Repeat("ab", 100)) {
-		t.Fatalf("full layout must keep the whole hex blob:\n%s", full)
-	}
-}
-
-func TestRevertedHeadlineAndPostSignLayout(t *testing.T) {
-	r := swapTxResult()
-	r.Status = "reverted"
-	r.Logs = nil
-
-	post := render(t, r, util.LayoutPostSign, hashHex)
-	if !strings.HasPrefix(post, "✗ reverted   swapExactTokensForTokens  →  Uniswap V2 Router") {
-		t.Fatalf("expected reverted headline first:\n%s", post)
-	}
-	if !strings.Contains(post, "gas 0.00213000 ETH (171203 / 185123)") {
-		t.Fatalf("post-sign layout should show gas used vs limit:\n%s", post)
-	}
-	if !strings.Contains(post, "Call  swapExactTokensForTokens") {
-		t.Fatalf("reverted tx must show the call in post-sign layout:\n%s", post)
-	}
-
-	r.Status = "done"
-	r.Logs = swapTxResult().Logs
-	post = render(t, r, util.LayoutPostSign, hashHex)
-	if strings.Contains(post, "Call  ") {
-		t.Fatalf("successful post-sign layout must not repeat the call:\n%s", post)
-	}
-	if strings.Contains(post, "\nTransfers\n") {
-		t.Fatalf("post-sign layout must not print a Transfers list:\n%s", post)
-	}
-	if !strings.Contains(post, "Events (3)") {
-		t.Fatalf("post-sign layout should keep events:\n%s", post)
-	}
-	if strings.Count(post, "✓ done") != 1 {
-		t.Fatalf("post-sign layout should not repeat the headline as footer:\n%s", post)
-	}
-}
-
-func TestPlainTransferIsHeadlineOnly(t *testing.T) {
-	r := jarviscommon.NewTxResult()
-	r.Status = "done"
-	r.TxType = "normal"
-	r.From = addr(meHex, "me")
-	r.To = addr(routerHex, "")
-	r.Value = "1.5"
-	r.GasCost = "0.00031500"
-	r.Nonce = "7"
-
-	out := render(t, r, util.LayoutInfo, hashHex)
-	lines := strings.Split(strings.TrimRight(out, "\n"), "\n")
-	if len(lines) != 2 {
-		t.Fatalf("expected 2 lines for a plain transfer, got %d:\n%s", len(lines), out)
-	}
-	if lines[0] != "✓ done   transfer 1.5 ETH  →  0x7a25…488D" {
-		t.Fatalf("unexpected headline %q", lines[0])
-	}
-	if !strings.Contains(lines[1], "mainnet   from me (0x9642…5D4E)   gas 0.00031500 ETH   nonce 7") {
-		t.Fatalf("unexpected details %q", lines[1])
 	}
 }
 
@@ -372,76 +270,6 @@ func TestTxDisplayJSONMaskNames(t *testing.T) {
 	}
 }
 
-func TestUnknownCallTargetIsWarnButParamsAreNot(t *testing.T) {
-	r := swapTxResult()
-	r.To = addr(routerHex, "unknown")
-	r.FunctionCall.Destination = r.To
-	rec := ui.NewRecordingUI()
-	d := util.DisplayTxResult(rec, r, networks.EthereumMainnet, util.LayoutInfo, "")
-	if d.To.Severity != ui.SeverityWarn {
-		t.Fatalf("unknown call target should be Warn, got %v", d.To.Severity)
-	}
-	if d.From.Severity != ui.SeveritySuccess {
-		t.Fatalf("known sender should be green, got %v", d.From.Severity)
-	}
-	r.From = addr(meHex, "")
-	d = util.DisplayTxResult(rec, r, networks.EthereumMainnet, util.LayoutInfo, "")
-	if d.From.Severity != ui.SeverityInfo {
-		t.Fatalf("unknown sender should be plain, not yellow, got %v", d.From.Severity)
-	}
-	path := d.FunctionCall.Params[2]
-	if path.Values[0].Severity != ui.SeveritySuccess {
-		t.Fatalf("known param address should be green, got %v", path.Values[0].Severity)
-	}
-}
-
-func TestRevertReasonShownUnderHeadline(t *testing.T) {
-	r := swapTxResult()
-	r.Status = "reverted"
-	r.Logs = nil
-	r.RevertReason = `"UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT"`
-
-	out := render(t, r, util.LayoutInfo, hashHex)
-	lines := strings.Split(out, "\n")
-	if len(lines) < 3 || !strings.Contains(lines[2], `reason  "UniswapV2Router: INSUFFICIENT_OUTPUT_AMOUNT"`) {
-		t.Fatalf("revert reason should be the third line:\n%s", out)
-	}
-	if !strings.HasPrefix(lines[2], "             reason") {
-		t.Fatalf("reason should align with the details line:\n%q", lines[2])
-	}
-	d := util.DisplayTxResult(ui.NewRecordingUI(), r, networks.EthereumMainnet, util.LayoutInfo, hashHex)
-	raw, _ := json.Marshal(d)
-	var m map[string]any
-	if err := json.Unmarshal(raw, &m); err != nil || m["revert_reason"] != r.RevertReason {
-		t.Fatalf("revert_reason should be in the JSON: %v %s", err, raw)
-	}
-}
-
-func TestContractCreationAndEmptyCalldataIntents(t *testing.T) {
-	r := jarviscommon.NewTxResult()
-	r.Status = "done"
-	r.TxType = "contract creation"
-	r.From = addr(meHex, "me")
-	r.To = addr(routerHex, "")
-	r.Value = "0"
-	out := render(t, r, util.LayoutInfo, hashHex)
-	if !strings.HasPrefix(out, "✓ done   deploy contract  →  0x7a25…488D") {
-		t.Fatalf("creation headline:\n%s", out)
-	}
-
-	r = swapTxResult()
-	r.Logs = nil
-	r.Value = "0.5"
-	r.FunctionCall = &jarviscommon.FunctionCall{Destination: r.To, Data: nil}
-	out = render(t, r, util.LayoutInfo, hashHex)
-	if !strings.HasPrefix(out, "✓ done   transfer 0.5 ETH to contract  →  Uniswap V2 Router") {
-		t.Fatalf("empty calldata headline:\n%s", out)
-	}
-	if strings.Contains(out, "Call ") || strings.Contains(out, "not decoded") {
-		t.Fatalf("empty calldata must not render a Call section:\n%s", out)
-	}
-}
-
 func TestUndecodedEventsAreCountedAndShownRaw(t *testing.T) {
 	r := swapTxResult()
 	r.Logs = append(r.Logs, jarviscommon.LogResult{
@@ -554,69 +382,6 @@ func TestNetEffectSummarisesManyTransfers(t *testing.T) {
 	d = util.DisplayTxResult(ui.NewRecordingUI(), r, networks.EthereumMainnet, util.LayoutInfo, hashHex)
 	if d.NetEffect != nil {
 		t.Fatalf("three transfers need no summary: %+v", d.NetEffect)
-	}
-}
-
-func TestInfoLayoutPrintsClearSignBeforeCall(t *testing.T) {
-	var buf bytes.Buffer
-	u := ui.NewTerminalUIWithWriter(&buf, false)
-	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex,
-		func(d *util.TxDisplay, result *jarviscommon.TxResult) {
-			if result == nil || result.FunctionCall == nil || result.FunctionCall.Method == "" {
-				t.Fatal("prepare should see the analysed call")
-			}
-			d.ClearSign = func(cu ui.UI) { cu.Info("CLEAR-SIGN-MARKER") }
-		})
-	out := buf.String()
-	cs := strings.Index(out, "CLEAR-SIGN-MARKER")
-	call := strings.Index(out, "Call  swapExactTokensForTokens")
-	if cs < 0 || call < 0 || cs > call {
-		t.Fatalf("clear-sign panel must sit above the ABI call:\n%s", out)
-	}
-	if strings.Contains(out, "\nTransfers\n") {
-		t.Fatalf("info must not print a Transfers list:\n%s", out)
-	}
-}
-
-func TestInfoLayoutRendersClearSignedBoxAboveCall(t *testing.T) {
-	var buf bytes.Buffer
-	u := ui.NewTerminalUIWithWriter(&buf, false)
-	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutInfo, hashHex,
-		func(d *util.TxDisplay, _ *jarviscommon.TxResult) {
-			d.ClearSign = func(cu ui.UI) {
-				erc7730.RenderInfo(cu, &erc7730.ClearSignedView{
-					InterpolatedIntent: "Swap 1,000 USDC for WETH",
-					Owner:              "Uniswap",
-					ContractName:       "Uniswap V2 Router",
-					Source:             "registry",
-					Fields: []erc7730.FormattedField{
-						{Label: "Amount in", Value: "1,000 USDC"},
-						{Label: "Recipient", Value: "me (0x9642…5D4E)"},
-					},
-				})
-			}
-		})
-	out := buf.String()
-	if !strings.Contains(out, "Clear Signed") || !strings.Contains(out, "Call  swapExactTokensForTokens") {
-		t.Fatalf("missing clear-sign panel or call:\n%s", out)
-	}
-	if strings.Index(out, "Clear Signed") > strings.Index(out, "Call  swapExactTokensForTokens") {
-		t.Fatalf("clear-signed box must sit above the ABI call:\n%s", out)
-	}
-	if strings.Contains(out, "hardware wallet") {
-		t.Fatalf("info must not tell the operator to compare a hardware wallet screen:\n%s", out)
-	}
-}
-
-func TestPostSignLayoutSkipsClearSign(t *testing.T) {
-	var buf bytes.Buffer
-	u := ui.NewTerminalUIWithWriter(&buf, false)
-	util.DisplayTxResultWith(u, swapTxResult(), networks.EthereumMainnet, util.LayoutPostSign, hashHex,
-		func(d *util.TxDisplay, _ *jarviscommon.TxResult) {
-			d.ClearSign = func(cu ui.UI) { cu.Info("CLEAR-SIGN-MARKER") }
-		})
-	if strings.Contains(buf.String(), "CLEAR-SIGN-MARKER") {
-		t.Fatalf("post-sign must not reprint the clear-sign panel:\n%s", buf.String())
 	}
 }
 

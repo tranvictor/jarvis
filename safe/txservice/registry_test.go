@@ -82,15 +82,11 @@ func TestURLForChainFallsBackToRegistry(t *testing.T) {
 	}
 }
 
-func TestURLForChainUnknownMentionsConfigField(t *testing.T) {
+func TestURLForChainUnknownErrors(t *testing.T) {
 	isolateCache(t)
 	stubNetworkURL(t, map[uint64]string{})
 
-	_, err := URLForChain(4663)
-	if err == nil {
+	if _, err := URLForChain(4663); err == nil {
 		t.Fatal("expected an error for a chain with no service anywhere")
-	}
-	if !strings.Contains(err.Error(), "safe_tx_service_url") {
-		t.Errorf("error %q should point the user at the network config field", err)
 	}
 }

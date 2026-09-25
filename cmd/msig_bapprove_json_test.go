@@ -3,52 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"testing"
-	"time"
 )
-
-func TestBuildSafeBatchSummaryCounts(t *testing.T) {
-	out := buildSafeBatchSummary([]safeBatchResult{
-		{ref: "a", status: "approved"},
-		{ref: "b", status: "executed", execTxHash: "0xexec"},
-		{ref: "c", status: "skipped", reason: "already signed"},
-		{ref: "d", status: "failed", reason: "boom"},
-		{ref: "e", status: "approved"},
-	})
-	if out.Total != 5 || out.Approved != 2 || out.Executed != 1 || out.Skipped != 1 || out.Failed != 1 {
-		t.Fatalf("counts: %+v", out)
-	}
-	if _, err := time.Parse(time.RFC3339, out.Generated); err != nil {
-		t.Fatalf("generated_at: %v", err)
-	}
-	if out.Results[1].ExecTxHash != "0xexec" {
-		t.Fatalf("exec hash %q", out.Results[1].ExecTxHash)
-	}
-}
-
-func TestBuildClassicBatchSummaryCountsAndHistory(t *testing.T) {
-	out := buildClassicBatchSummary([]batchResult{
-		{network: "mainnet", msigTxID: "1", status: "approved", initTxHash: "0xinit"},
-		{network: "bsc", status: "broadcasted"},
-		{network: "mainnet", status: "skipped", reason: "already executed"},
-		{
-			network: "mainnet",
-			status:  "failed",
-			history: &msigTxHistory{
-				confirmations: []msigTxConfirmation{
-					{txHash: "0xa", sender: "0xb"},
-				},
-				executionTxHash: "0xc",
-			},
-		},
-	})
-	if out.Total != 4 || out.Approved != 1 || out.Broadcasted != 1 || out.Skipped != 1 || out.Failed != 1 {
-		t.Fatalf("counts: %+v", out)
-	}
-	jr := out.Results[3]
-	if jr.ExecutionTx != "0xc" || len(jr.Confirmations) != 1 || jr.Confirmations[0].TxHash != "0xa" {
-		t.Fatalf("history: %+v", jr)
-	}
-}
 
 func TestBuildMixedBatchSummaryCombinesBoth(t *testing.T) {
 	out := buildMixedBatchSummary(

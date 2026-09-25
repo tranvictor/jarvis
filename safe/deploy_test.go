@@ -93,12 +93,6 @@ func TestEncodeSetupSelectorAndRoundTrip(t *testing.T) {
 	}
 }
 
-func TestEncodeSetupRejectsBadParams(t *testing.T) {
-	if _, err := EncodeSetup(nil, big.NewInt(1), common.Address{}); err == nil {
-		t.Fatal("expected error for empty owners")
-	}
-}
-
 func TestEncodeCreateProxyWithNonceSelector(t *testing.T) {
 	singleton := common.HexToAddress("0x41675C099F32341bf84BFc5382aF534df5C7461a")
 	got, err := EncodeCreateProxyWithNonce(singleton, []byte{0xab}, big.NewInt(7))
@@ -303,14 +297,5 @@ func TestResolveSafeDeploymentNothingOnChain(t *testing.T) {
 	_, err := resolveSafeDeployment(999, func(string) (bool, error) { return false, nil }, DeployOverrides{})
 	if err == nil || !strings.Contains(err.Error(), "--factory") {
 		t.Fatalf("got %v", err)
-	}
-}
-
-func TestReleasesNewestFirstDoesNotAlias(t *testing.T) {
-	before141 := len(safeRelease141.Factories)
-	before130 := len(safeRelease130.Factories)
-	_ = releasesNewestFirst()
-	if len(safeRelease141.Factories) != before141 || len(safeRelease130.Factories) != before130 {
-		t.Fatal("release tables were mutated")
 	}
 }

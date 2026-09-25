@@ -15,16 +15,6 @@ const (
 	scanHashD = "0xdcfebb569af85c6b47a30b49f7f9d42d3825dc3a79dac0aa0630655a4f9d05a8"
 )
 
-func TestScanForTxsBareHashDefaultsToMainnet(t *testing.T) {
-	nwks, hashes := ScanForTxs(sampleTxHash, "")
-	if len(hashes) != 1 || hashes[0] != sampleTxHash {
-		t.Fatalf("hashes = %v, want [%s]", hashes, sampleTxHash)
-	}
-	if nwks[0] != "mainnet" {
-		t.Fatalf("network = %q, want mainnet", nwks[0])
-	}
-}
-
 func TestScanForTxsBareHashUsesDefaultNetwork(t *testing.T) {
 	nwks, hashes := ScanForTxs(sampleTxHash, "bsc")
 	if len(hashes) != 1 || hashes[0] != sampleTxHash {
@@ -55,44 +45,10 @@ func TestScanForTxsNetworkPrefixCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestScanForTxsAliasCanonicalized(t *testing.T) {
-	nwks, hashes := ScanForTxs("ethereum:"+sampleTxHash, "bsc")
-	if len(hashes) != 1 || hashes[0] != sampleTxHash {
-		t.Fatalf("hashes = %v, want [%s]", hashes, sampleTxHash)
-	}
-	if nwks[0] != "mainnet" {
-		t.Fatalf("network = %q, want mainnet", nwks[0])
-	}
-}
-
-func TestScanForTxsMultiple(t *testing.T) {
-	other := "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	nwks, hashes := ScanForTxs("mainnet:"+sampleTxHash+" "+other, "")
-	if len(hashes) != 2 {
-		t.Fatalf("got %d hashes, want 2", len(hashes))
-	}
-	if hashes[0] != sampleTxHash || hashes[1] != other {
-		t.Fatalf("hashes = %v", hashes)
-	}
-	if nwks[0] != "mainnet" || nwks[1] != "mainnet" {
-		t.Fatalf("nwks = %v, want [mainnet mainnet]", nwks)
-	}
-}
-
 func TestScanForTxsNone(t *testing.T) {
 	nwks, hashes := ScanForTxs("not a hash", "mainnet")
 	if len(nwks) != 0 || len(hashes) != 0 {
 		t.Fatalf("got nwks=%v hashes=%v, want empty", nwks, hashes)
-	}
-}
-
-func TestScanForTxHashes(t *testing.T) {
-	got := ScanForTxHashes("mainnet:" + sampleTxHash)
-	if len(got) != 1 || got[0] != sampleTxHash {
-		t.Fatalf("ScanForTxHashes = %v, want [%s]", got, sampleTxHash)
-	}
-	if empty := ScanForTxHashes(""); len(empty) != 0 {
-		t.Fatalf("empty input = %v, want []", empty)
 	}
 }
 

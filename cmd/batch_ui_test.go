@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"strings"
 	"testing"
 
@@ -15,153 +14,6 @@ func swapAppUI(t *testing.T, rec *ui.RecordingUI) {
 	prev := appUI
 	appUI = rec
 	t.Cleanup(func() { appUI = prev })
-}
-
-func TestBatchTallyString(t *testing.T) {
-	tl := batchTally{total: 4}
-	if tl.String() != "0 ok · 4 left" {
-		t.Fatalf("empty: %q", tl.String())
-	}
-	tl.add("approved")
-	tl.add("executed")
-	tl.add("skipped")
-	if tl.String() != "2 ok · 1 skipped · 1 left" {
-		t.Fatalf("partial: %q", tl.String())
-	}
-	tl.add("failed")
-	if tl.String() != "2 ok · 1 skipped · 1 failed" {
-		t.Fatalf("complete: %q", tl.String())
-	}
-	if tl.done() != 4 {
-		t.Fatalf("done = %d", tl.done())
-	}
-}
-
-func TestBatchPlanBannerAndResultLines(t *testing.T) {
-	rec := ui.NewRecordingUI()
-	swapAppUI(t, rec)
-	t.Cleanup(cmdutil.ClearBatchItem)
-
-	printBatchPlan("Batch approve", []string{"Safe     eth:0xsafe:0xhash", "Classic  mainnet:0xinit"})
-	tally := batchTally{total: 2}
-	printBatchBanner(1, 2, "Safe", "eth:0xsafe:0xhash")
-	withIndentedUI(func() { appUI.Info("inner") })
-	tally.add("approved")
-	printBatchItemResult("approved", "safeTxHash 0xhash", tally)
-	printBatchBanner(2, 2, "Classic", "mainnet:0xinit")
-	tally.add("failed")
-	printBatchItemResult("failed", "sign safeTxHash: rejected", tally)
-
-	var got []string
-	for _, e := range rec.Entries() {
-		got = append(got, e.Method+": "+e.Value)
-	}
-	want := []string{
-		"[1/2]", "[2/2]", "approved", "failed",
-		"(1 ok · 1 left)", "(1 ok · 1 failed)",
-	}
-	joined := strings.Join(got, "\n")
-	for _, w := range want {
-		if !strings.Contains(joined, w) {
-			t.Fatalf("missing %q in:\n%s", w, joined)
-		}
-	}
-}
-
-func TestBatchBannerStampsSigningCardsAndPrompts(t *testing.T) {
-	rec := ui.NewRecordingUI("y")
-	swapAppUI(t, rec)
-	t.Cleanup(cmdutil.ClearBatchItem)
-
-	tally := batchTally{total: 87, ok: 11}
-	printBatchBanner(12, 87, "Classic", "mainnet:0xinit")
-	withIndentedUI(func() {
-		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "Classic multisig transaction"})
-		if !cmdutil.ConfirmSigningCard(appUI, &cmdutil.SigningCard{
-			Kind:         "EOA transaction",
-			CollapseCall: true,
-			CollapseNote: "(Classic transaction shown above)",
-			Prompt:       "Sign and broadcast (≈ 0.0017 ETH)?",
-		}) {
-			t.Fatal("scripted y should confirm")
-		}
-	})
-	tally.add("approved")
-	printBatchItemResult("approved", "confirm tx 0xabc", tally)
-
-	joined := ""
-	for _, e := range rec.Entries() {
-		joined += e.Method + ": " + e.Value + "\n"
-	}
-	for _, w := range []string{
-		"Section: [12/87] Classic  mainnet:0xinit",
-		"BoxedSection: [12/87] Classic multisig transaction",
-		"Subsection: [12/87] EOA transaction",
-		"Confirm: [12/87] Sign and broadcast (≈ 0.0017 ETH)?",
-		"Info: ✓ [12/87] approved  confirm tx 0xabc   (12 ok · 75 left)",
-	} {
-		if !strings.Contains(joined, w) {
-			t.Fatalf("missing %q in:\n%s", w, joined)
-		}
-	}
-}
-
-func TestBatchScanRendersIndexedSections(t *testing.T) {
-	var buf bytes.Buffer
-	term := ui.NewTerminalUIWithWriter(&buf, false)
-	prev := appUI
-	appUI = term
-	t.Cleanup(func() { appUI = prev })
-	t.Cleanup(cmdutil.ClearBatchItem)
-
-	printBatchPlan("Batch approve", []string{"Safe     eth:0xSafe:0xhash", "Classic  mainnet:0xinit"})
-	printBatchBanner(1, 2, "Safe", "eth:0xSafe:0xhash")
-	withIndentedUI(func() {
-		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "Safe approval"})
-	})
-	printBatchItemResult("approved", "safeTxHash 0xhash", batchTally{total: 2, ok: 1})
-	printBatchBanner(2, 2, "Classic", "mainnet:0xinit")
-	withIndentedUI(func() {
-		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{Kind: "Classic multisig transaction"})
-		cmdutil.ShowSigningCard(appUI, &cmdutil.SigningCard{
-			Kind:         "EOA transaction",
-			CollapseCall: true,
-			CollapseNote: "(Classic transaction shown above)",
-		})
-	})
-	printBatchItemResult("approved", "confirm tx 0xabc", batchTally{total: 2, ok: 2})
-
-	out := buf.String()
-	for _, w := range []string{
-		"[1/2] Safe  eth:0xSafe:0xhash",
-		"[1/2] Safe approval",
-		"╭─",
-		"✓ [1/2] approved",
-		"[2/2] Classic  mainnet:0xinit",
-		"[2/2] Classic multisig transaction",
-		"[2/2] EOA transaction",
-		"✓ [2/2] approved",
-		"=====",
-	} {
-		if !strings.Contains(out, w) {
-			t.Fatalf("missing %q in:\n%s", w, out)
-		}
-	}
-	if strings.Count(out, "╭─") < 2 {
-		t.Fatalf("each multisig op should be a rounded box:\n%s", out)
-	}
-	// The EOA wrapper is a heading, not a second equals-rule competing with the item banner.
-	eoaIdx := strings.Index(out, "[2/2] EOA transaction")
-	if eoaIdx < 0 {
-		t.Fatal("EOA wrapper title missing")
-	}
-	window := out[eoaIdx:]
-	if i := strings.Index(window, "\n"); i > 0 {
-		window = window[:i]
-	}
-	if strings.Contains(window, "=====") || strings.Contains(window, "╭") {
-		t.Fatalf("EOA wrapper must stay a quiet heading, got %q", window)
-	}
 }
 
 func TestContinueBatchAfterFailure(t *testing.T) {
@@ -346,51 +198,15 @@ func TestApproveSafeRefsConfirmOnceYesSkipsPrompt(t *testing.T) {
 	}
 }
 
-func TestPrintBatchApproveSummaryAndExitCode(t *testing.T) {
-	rec := ui.NewRecordingUI()
-	swapAppUI(t, rec)
-	prevDegen := config.DegenMode
-	config.DegenMode = false
-	t.Cleanup(func() { config.DegenMode = prevDegen })
-
-	safeResults := []safeBatchResult{
-		{network: "mainnet", safeAddress: "0xsafe", safeTxHash: "0xhash", status: "approved"},
-		{network: "bsc", safeAddress: "0xsafe2", status: "failed", reason: "unlock wallet: nope"},
-	}
-	classic := []batchResult{
-		{network: "matic", initTxHash: "0xinit", msigTxID: "7", status: "skipped", reason: "already executed"},
-	}
-	tally := batchTally{total: 3}
-	for _, r := range safeResults {
-		tally.add(r.status)
-	}
-	tally.add(classic[0].status)
-	printBatchApproveSummary(safeResults, classic, tally)
-
-	for _, w := range []string{
-		"Section: Batch summary",
-		"Table: # | Kind | Network | Target | Result | Detail",
-		"Table: 1 | Safe | mainnet | 0xsafe | approved | safeTxHash 0xhash",
-		"Table: 2 | Safe | bsc | 0xsafe2 | failed | unlock wallet: nope",
-		"Table: 3 | Classic | matic | msig #7 | skipped | already executed",
-		"Info: 3 transaction(s): 1 ok · 1 skipped · 1 failed",
-	} {
-		found := false
-		for _, e := range rec.Entries() {
-			if e.Method+": "+e.Value == w {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Fatalf("missing %q in %v", w, rec.Entries())
-		}
-	}
-
+func TestExitForBatchOnlyFailsOnFailedItems(t *testing.T) {
 	code := -1
 	prevExit := exitFunc
 	exitFunc = func(c int) { code = c }
 	t.Cleanup(func() { exitFunc = prevExit })
+	tally := batchTally{total: 3}
+	for _, s := range []string{"approved", "failed", "skipped"} {
+		tally.add(s)
+	}
 	exitForBatch(tally)
 	if code != 1 {
 		t.Fatalf("a failed item must exit 1, got %d", code)

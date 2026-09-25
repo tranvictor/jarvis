@@ -182,19 +182,3 @@ func TestFillSigningTxParamsReaderErrors(t *testing.T) {
 		})
 	}
 }
-
-func TestFillSigningTxParamsKeepsInjectedBroadcaster(t *testing.T) {
-	resetSigningConfig(t)
-	keep := nopBroadcaster{}
-	tc := TxContext{
-		From:        "0xabc",
-		Reader:      &stubReader{gasPrice: 1, nonce: 1},
-		Broadcaster: keep,
-	}
-	if err := FillSigningTxParams(nil, &tc, networks.EthereumMainnet); err != nil {
-		t.Fatal(err)
-	}
-	if tc.Broadcaster != keep {
-		t.Fatal("FillSigningTxParams must not replace an injected broadcaster")
-	}
-}

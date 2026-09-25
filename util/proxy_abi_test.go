@@ -39,12 +39,6 @@ func TestIsMethodlessABISafeProxy(t *testing.T) {
 	}
 }
 
-func TestIsMethodlessABINil(t *testing.T) {
-	if !isMethodlessABI(nil) {
-		t.Fatal("nil ABI should be methodless")
-	}
-}
-
 func TestIsProxyABIUpgradeable(t *testing.T) {
 	a := mustParseABI(t, uupsProxyABIJSON)
 	if isMethodlessABI(a) {

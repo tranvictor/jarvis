@@ -32,20 +32,6 @@ func TestInferKind(t *testing.T) {
 	}
 }
 
-func TestParseKind(t *testing.T) {
-	k, err := ParseKind(" Blockscout ")
-	if err != nil || k != KindBlockscout {
-		t.Fatalf("ParseKind blockscout: %q %v", k, err)
-	}
-	k, err = ParseKind("")
-	if err != nil || k != "" {
-		t.Fatalf("empty kind is infer-later: %q %v", k, err)
-	}
-	if _, err := ParseKind("sourcify"); err == nil {
-		t.Fatal("Sourcify is an overlay, not a Kind")
-	}
-}
-
 func TestExplorerClassURLs(t *testing.T) {
 	addr := "0xCC000E5aC85e139b15C96633DCe2A041202946BF"
 

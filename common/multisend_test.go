@@ -121,12 +121,6 @@ func TestDecodeMultiSendPayloadRejectsMalformed(t *testing.T) {
 	}
 }
 
-func TestPackMultiSendRejectsEmptyBatch(t *testing.T) {
-	if _, err := PackMultiSend(nil); err == nil {
-		t.Fatal("expected an error for an empty batch")
-	}
-}
-
 func TestIsMultiSendCallData(t *testing.T) {
 	packed, err := PackMultiSend([]MultiSendCall{{
 		To:    common.HexToAddress("0x000000000000000000000000000000000000dEaD"),

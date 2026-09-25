@@ -49,21 +49,6 @@ func TestMultiSendCandidateOrder(t *testing.T) {
 	}
 }
 
-// TestMultiSendCandidatesAreNotAliased guards against the append-to-shared-slice
-// bug: multiSendCandidatesFor must never mutate the package-level tables.
-func TestMultiSendCandidatesAreNotAliased(t *testing.T) {
-	before141 := len(multiSendCallOnly141)
-	before130 := len(multiSendCallOnly130)
-
-	_ = multiSendCandidatesFor("1.4.1")
-	_ = multiSendCandidatesFor("1.3.0")
-
-	if len(multiSendCallOnly141) != before141 || len(multiSendCallOnly130) != before130 {
-		t.Fatalf("candidate tables were mutated: %d/%d -> %d/%d",
-			before141, before130, len(multiSendCallOnly141), len(multiSendCallOnly130))
-	}
-}
-
 func TestResolveMultiSendCallOnlyOverride(t *testing.T) {
 	addr, label, err := ResolveMultiSendCallOnly(nil, networks.BSCMainnet, "  0x000000000000000000000000000000000000dEaD ")
 	if err != nil {

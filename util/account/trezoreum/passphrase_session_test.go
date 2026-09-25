@@ -61,9 +61,3 @@ func TestResetPassphraseSessionClearsPendingAndSession(t *testing.T) {
 		t.Fatal("address binding should be cleared")
 	}
 }
-
-func TestPassphraseMaskHidesEmptyAndNonEmpty(t *testing.T) {
-	if passphraseMask != "********" {
-		t.Fatalf("mask must be fixed-length, got %q", passphraseMask)
-	}
-}

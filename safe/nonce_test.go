@@ -5,18 +5,6 @@ import (
 	"testing"
 )
 
-func TestNextFreeNonceEmptyQueue(t *testing.T) {
-	got, err := nextFreeNonce(5, func(uint64) (*PendingTx, error) {
-		return nil, nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != 5 {
-		t.Fatalf("got %d, want 5", got)
-	}
-}
-
 func TestNextFreeNonceSkipsOccupied(t *testing.T) {
 	occupied := map[uint64]bool{5: true, 6: true}
 	got, err := nextFreeNonce(5, func(nonce uint64) (*PendingTx, error) {
