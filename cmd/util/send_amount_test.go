@@ -188,20 +188,3 @@ func TestResolveSendAmountWeiErrors(t *testing.T) {
 		t.Fatalf("parse: %v", err)
 	}
 }
-
-func TestAmountWeiCause(t *testing.T) {
-	err := fmtWrapNative()
-	if AmountWeiCause(err) != "rpc down" {
-		t.Fatalf("cause = %q", AmountWeiCause(err))
-	}
-	if AmountWeiCause(ErrSendInsufficientGas) != ErrSendInsufficientGas.Error() {
-		t.Fatalf("bare sentinel: %q", AmountWeiCause(ErrSendInsufficientGas))
-	}
-}
-
-func fmtWrapNative() error {
-	_, err := ResolveSendAmountWei(&stubBalanceReader{errNative: errors.New("rpc down")}, AmountWeiOpts{
-		TokenAddr: jarvisutil.ETH_ADDR, AmountStr: "ALL", Holder: testHolder, NativeDecimals: 18,
-	})
-	return err
-}

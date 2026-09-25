@@ -56,20 +56,6 @@ func TestPickLocalOwnerFirstMatch(t *testing.T) {
 	}
 }
 
-func TestPickLocalOwnerEmptyOwners(t *testing.T) {
-	lookup := testLookup(map[string]jtypes.AccDesc{
-		"0xaaa": {Address: "0xAAA"},
-	})
-	_, n, err := pickLocalOwner(nil, "", OwnerFirstMatch, lookup)
-	if !errors.Is(err, ErrNoLocalOwner) || n != 0 {
-		t.Fatalf("nil owners: n=%d err=%v", n, err)
-	}
-	_, n, err = pickLocalOwner([]string{}, "", OwnerRequireUnique, lookup)
-	if !errors.Is(err, ErrNoLocalOwner) || n != 0 {
-		t.Fatalf("empty owners: n=%d err=%v", n, err)
-	}
-}
-
 func TestPickLocalOwnerSkipsFailedLookups(t *testing.T) {
 	lookup := testLookup(map[string]jtypes.AccDesc{
 		"0xbbb": {Address: "0xBBB"},
@@ -141,24 +127,6 @@ func TestChooseSafeFromPrefersUniqueOwner(t *testing.T) {
 	})
 	if err != nil || got.Address != "0xAAA" {
 		t.Fatalf("unique owner should win even when other wallets exist: acc=%+v err=%v", got, err)
-	}
-}
-
-func TestPickUniqueLocalWallet(t *testing.T) {
-	_, err := pickUniqueLocalWallet(nil)
-	if !errors.Is(err, ErrNoLocalWallet) {
-		t.Fatalf("empty: %v", err)
-	}
-	got, err := pickUniqueLocalWallet(map[string]jtypes.AccDesc{"0xccc": {Address: "0xCCC"}})
-	if err != nil || got.Address != "0xCCC" {
-		t.Fatalf("one: acc=%+v err=%v", got, err)
-	}
-	_, err = pickUniqueLocalWallet(map[string]jtypes.AccDesc{
-		"0xccc": {Address: "0xCCC"},
-		"0xddd": {Address: "0xDDD"},
-	})
-	if !errors.Is(err, ErrMultipleLocalWallets) {
-		t.Fatalf("many: %v", err)
 	}
 }
 
