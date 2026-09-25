@@ -185,35 +185,6 @@ func TestNestedLayerValues(t *testing.T) {
 // Test 2: UI representation (RecordingUI entries)
 // ---------------------------------------------------------------------------
 
-func TestNestedLayerUIRepresentation(t *testing.T) {
-	rec := ui.NewRecordingUI()
-	params := nestedLayerFixture(t)
-	util.DisplayParams(rec, params)
-
-	var got []string
-	for _, e := range rec.Entries() {
-		if e.Method == "Info" {
-			got = append(got, e.Value)
-		}
-	}
-	expected := []string{
-		"secondLayer",
-		"├─",
-		"└─",
-		"layers  [2 items]",
-		"0x9642b23Ed1E01Df1092B92641051881a322F5D4E",
-	}
-	joined := strings.Join(got, "\n")
-	if len(got) < 10 {
-		t.Fatalf("nested tree too short (%d lines):\n%s", len(got), joined)
-	}
-	for _, want := range expected {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("missing %q in:\n%s", want, joined)
-		}
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

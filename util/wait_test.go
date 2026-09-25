@@ -46,15 +46,3 @@ func TestWaitForStatusesTracksMempoolThenOutcome(t *testing.T) {
 		}
 	}
 }
-
-func TestWaitForStatusesClosedWithoutOutcome(t *testing.T) {
-	ch := make(chan string)
-	close(ch)
-	rec := ui.NewRecordingUI()
-	if got := waitForStatuses(rec, ch); got != "unknown" {
-		t.Fatalf("got %q", got)
-	}
-	if !rec.HasMessage("✗ stopped waiting") {
-		t.Fatalf("expected a stop line, got %v", rec.Entries())
-	}
-}

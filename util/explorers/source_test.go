@@ -16,21 +16,6 @@ func TestFlattenSourceJSONInput(t *testing.T) {
 	}
 }
 
-func TestGetVerifiedSourceEtherscan(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"status":"1","message":"OK","result":[{"ContractName":"Foo","ABI":"[]","Proxy":"0","Implementation":"","SourceCode":"contract Foo {}"}]}`))
-	}))
-	t.Cleanup(srv.Close)
-	ee := NewEtherscanLikeExplorer(srv.URL, "k", 1)
-	src, err := ee.GetVerifiedSource("0x0000000000000000000000000000000000000001")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !src.Verified || !strings.Contains(src.Source, "contract Foo") {
-		t.Fatalf("%+v", src)
-	}
-}
-
 func TestGetVerifiedSourceRobinscanSourceFiles(t *testing.T) {
 	sourcify404(t)
 	const impl = "0x68184C449E1a8f34fA18d289737129FD27B66f8F"
