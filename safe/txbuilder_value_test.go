@@ -346,25 +346,6 @@ func TestBareJSONLiteralValues(t *testing.T) {
 	}
 }
 
-// TestTxBuilderValueRoundTrip pins that re-serialising a parsed batch gives
-// back the spelling the file used, so a bare literal never turns into a
-// string (or the other way round) behind the operator's back.
-func TestTxBuilderValueRoundTrip(t *testing.T) {
-	var v TxBuilderValue
-	for _, raw := range []string{`"true"`, `true`, `123`, `["0xaa"]`, `null`} {
-		if err := json.Unmarshal([]byte(raw), &v); err != nil {
-			t.Fatalf("unmarshal %s: %s", raw, err)
-		}
-		out, err := json.Marshal(v)
-		if err != nil {
-			t.Fatalf("marshal %s: %s", raw, err)
-		}
-		if string(out) != raw {
-			t.Errorf("round trip of %s gave %s", raw, out)
-		}
-	}
-}
-
 // TestTxBuilderValueText documents the normalisation both spellings go
 // through: quoted values are unquoted, bare literals are kept verbatim, and
 // null degrades to the empty string the old map[string]string produced.

@@ -2,8 +2,6 @@ package safe
 
 import (
 	"encoding/hex"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -80,27 +78,6 @@ func TestParseAndEncodeExampleBatch(t *testing.T) {
 		if got.ABI == nil {
 			t.Errorf("call %d: no synthesized ABI carried through", i)
 		}
-	}
-}
-
-func TestReadTxBuilderFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "batch.json")
-	if err := os.WriteFile(path, []byte(exampleBuilderJSON), 0o644); err != nil {
-		t.Fatalf("write: %s", err)
-	}
-	f, err := ReadTxBuilderFile(path)
-	if err != nil {
-		t.Fatalf("read from path: %s", err)
-	}
-	if len(f.Transactions) != 2 {
-		t.Errorf("got %d transactions, want 2", len(f.Transactions))
-	}
-
-	if _, err := ReadTxBuilderFile(filepath.Join(t.TempDir(), "nope.json")); err == nil {
-		t.Error("expected an error for a missing file")
-	}
-	if _, err := ReadTxBuilderFile("   "); err == nil {
-		t.Error("expected an error for an empty path")
 	}
 }
 

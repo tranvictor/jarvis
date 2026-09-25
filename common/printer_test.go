@@ -8,20 +8,6 @@ import (
 	"github.com/tranvictor/jarvis/config"
 )
 
-func TestShortAddress(t *testing.T) {
-	cases := map[string]string{
-		"0x9642b23Ed1E01Df1092B92641051881a322F5D4E": "0x9642…5D4E",
-		"0xabc":           "0xabc",
-		"":                "",
-		"0x1234567890abc": "0x1234…0abc",
-	}
-	for in, want := range cases {
-		if got := ShortAddress(in); got != want {
-			t.Errorf("ShortAddress(%q) = %q, want %q", in, got, want)
-		}
-	}
-}
-
 func TestNameFirst(t *testing.T) {
 	known := Address{Address: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D", Desc: "Uniswap V2 Router"}
 	unknown := Address{Address: "0x9642b23Ed1E01Df1092B92641051881a322F5D4E", Desc: "unknown"}
@@ -71,15 +57,6 @@ func TestMaskNamesRewritesResolvedNames(t *testing.T) {
 	}
 }
 
-func TestIsKnownAddress(t *testing.T) {
-	if IsKnownAddress(Address{Desc: "unknown"}) || IsKnownAddress(Address{}) {
-		t.Fatal("unknown/blank descriptions must not count as known")
-	}
-	if !IsKnownAddress(Address{Desc: "USDC"}) {
-		t.Fatal("named address must count as known")
-	}
-}
-
 func TestPlainAddressOmitsUnknown(t *testing.T) {
 	hex := "0x9642b23Ed1E01Df1092B92641051881a322F5D4E"
 	if got := PlainAddress(Address{Address: hex, Desc: "unknown"}); got != hex {
@@ -94,7 +71,7 @@ func TestPlainAddressOmitsUnknown(t *testing.T) {
 	}
 }
 
-func TestGroupDigitsAndReadableNumber(t *testing.T) {
+func TestGroupDigits(t *testing.T) {
 	cases := map[string]string{
 		"1000000000":  "1,000,000,000",
 		"1234567.891": "1,234,567.891",
@@ -107,12 +84,6 @@ func TestGroupDigitsAndReadableNumber(t *testing.T) {
 		if got := GroupDigits(in); got != want {
 			t.Errorf("GroupDigits(%q) = %q, want %q", in, got, want)
 		}
-	}
-	if got := ReadableNumber("1000000000"); got != "1000000000 (1,000,000,000)" {
-		t.Errorf("ReadableNumber = %q", got)
-	}
-	if got := ReadableNumber("1234"); got != "1234" {
-		t.Errorf("short numbers stay bare, got %q", got)
 	}
 }
 

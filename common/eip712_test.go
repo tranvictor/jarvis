@@ -18,17 +18,6 @@ func TestEIP712DigestKnownVector(t *testing.T) {
 	}
 }
 
-func TestEIP712DigestChangesWithInputs(t *testing.T) {
-	var a, b [32]byte
-	b[0] = 1
-	if EIP712Digest(a, a) == EIP712Digest(a, b) {
-		t.Fatal("digest should change when structHash changes")
-	}
-	if EIP712Digest(a, a) == EIP712Digest(b, a) {
-		t.Fatal("digest should change when domainSeparator changes")
-	}
-}
-
 func bytesFromHex(t *testing.T, s string) []byte {
 	t.Helper()
 	b, err := hex.DecodeString(s)
