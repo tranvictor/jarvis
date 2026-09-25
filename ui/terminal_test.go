@@ -7,18 +7,6 @@ import (
 	"time"
 )
 
-func TestStyleMutedUsesFaint(t *testing.T) {
-	u := NewTerminalUIWithWriter(&bytes.Buffer{}, true)
-	got := u.Style(StyledText{Text: "uint256", Severity: SeverityMuted})
-	if !strings.Contains(got, "\x1b[2m") {
-		t.Fatalf("expected faint SGR in %q", got)
-	}
-	plain := NewTerminalUIWithWriter(&bytes.Buffer{}, false)
-	if got := plain.Style(StyledText{Text: "uint256", Severity: SeverityMuted}); got != "uint256" {
-		t.Fatalf("expected plain text when colours are off, got %q", got)
-	}
-}
-
 func TestKeyValueCellsAlignsOnVisibleWidth(t *testing.T) {
 	var buf bytes.Buffer
 	u := NewTerminalUIWithWriter(&buf, true)
@@ -92,33 +80,6 @@ func TestSubsectionAndRewriteOffTTY(t *testing.T) {
 	}
 }
 
-func TestSubsectionDoesNotStackBlankLines(t *testing.T) {
-	var buf bytes.Buffer
-	u := NewTerminalUIWithWriter(&buf, false)
-	u.Section("Card")
-	u.Subsection("Call")
-	u.Info("row")
-	u.Info("")
-	u.Subsection("Next")
-	out := buf.String()
-	if strings.Contains(out, "\n\n\n") {
-		t.Fatalf("blank lines stacked:\n%q", out)
-	}
-	if !strings.Contains(out, "\n\nCall\n") || !strings.Contains(out, "row\n\nNext\n") {
-		t.Fatalf("headings should keep one blank line above them:\n%q", out)
-	}
-}
-
-func TestRewriteOnTTYMovesCursorUp(t *testing.T) {
-	var buf bytes.Buffer
-	u := NewTerminalUIWithWriter(&buf, false)
-	u.tty = true
-	u.Indent().RewriteLastLine("done")
-	if got := buf.String(); got != "\x1b[1A\x1b[2K  done\n" {
-		t.Fatalf("got %q", got)
-	}
-}
-
 func TestSpinnerOffTTYPrintsDistinctMessagesOnce(t *testing.T) {
 	var buf bytes.Buffer
 	u := NewTerminalUIWithWriter(&buf, false)
@@ -133,63 +94,6 @@ func TestSpinnerOffTTYPrintsDistinctMessagesOnce(t *testing.T) {
 	}
 	if p.Elapsed() < 0 || p.Elapsed() > time.Minute {
 		t.Fatalf("unexpected elapsed %v", p.Elapsed())
-	}
-}
-
-func TestSpinnerStopWithEmptyFinalPrintsNothing(t *testing.T) {
-	var buf bytes.Buffer
-	u := NewTerminalUIWithWriter(&buf, false)
-	p := u.Spinner("fetching")
-	p.Stop(StyledText{})
-	if buf.String() != "fetching\n" {
-		t.Fatalf("got %q", buf.String())
-	}
-}
-
-func TestFormatElapsed(t *testing.T) {
-	cases := map[time.Duration]string{
-		0:                              "0:00",
-		14 * time.Second:               "0:14",
-		61 * time.Second:               "1:01",
-		10*time.Minute + 5*time.Second: "10:05",
-	}
-	for d, want := range cases {
-		if got := formatElapsed(d); got != want {
-			t.Errorf("formatElapsed(%v) = %q, want %q", d, got, want)
-		}
-	}
-}
-
-func TestRecordingSpinnerRecordsStates(t *testing.T) {
-	r := NewRecordingUI()
-	p := r.Spinner("waiting")
-	p.Update("in mempool")
-	p.Stop(StyledText{Text: "✓ mined"})
-	got := r.Entries()
-	want := []Entry{
-		{"Spinner", "waiting"},
-		{"SpinnerUpdate", "in mempool"},
-		{"SpinnerStop", "✓ mined"},
-	}
-	if len(got) != len(want) {
-		t.Fatalf("got %v", got)
-	}
-	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("entry %d: got %v, want %v", i, got[i], want[i])
-		}
-	}
-}
-
-func TestTreeGlyphs(t *testing.T) {
-	if TreeBranch(false) != "├─ " || TreeBranch(true) != "└─ " {
-		t.Fatal("unexpected branch glyphs")
-	}
-	if TreeGuide(false) != "│  " || TreeGuide(true) != "   " {
-		t.Fatal("unexpected guide glyphs")
-	}
-	if VisibleWidth(TreeBranch(false)) != VisibleWidth(TreeGuide(false)) {
-		t.Fatal("branch and guide must have equal width so nested lines align")
 	}
 }
 

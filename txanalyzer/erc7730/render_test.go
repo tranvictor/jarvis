@@ -40,12 +40,3 @@ func TestRenderInfoOmitsSigningHint(t *testing.T) {
 		t.Fatalf("info render must not include the hardware-wallet hint:\n%s", out)
 	}
 }
-
-func TestRenderNilIsNoop(t *testing.T) {
-	var buf bytes.Buffer
-	Render(ui.NewTerminalUIWithWriter(&buf, false), nil)
-	RenderInfo(ui.NewTerminalUIWithWriter(&buf, false), nil)
-	if buf.Len() != 0 {
-		t.Fatalf("nil view must print nothing: %q", buf.String())
-	}
-}

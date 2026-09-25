@@ -57,6 +57,13 @@ func TestParseFormatKey(t *testing.T) {
 			wantTypes:  []string{"address[]", "uint256[3]"},
 			wantSelHex: "",
 		},
+		{
+			key:        "swap((address callTarget, address approveTarget, bytes targetData, (address srcToken, address dstToken, address[] srcReceivers, uint256[] srcAmounts, address[] feeReceivers, uint256[] feeAmounts, address dstReceiver, uint256 amount, uint256 minReturnAmount, uint256 flags, bytes permit) desc, bytes clientData) execution)",
+			wantName:   "swap",
+			wantNames:  []string{"execution"},
+			wantTypes:  []string{"(address,address,bytes,(address,address,address[],uint256[],address[],uint256[],address,uint256,uint256,uint256,bytes),bytes)"},
+			wantSelHex: "e21fd0e9",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.key, func(t *testing.T) {
