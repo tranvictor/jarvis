@@ -8,7 +8,7 @@
   Signed-by rows. A long address name that wraps keeps its green on every
   line, and wrapping no longer counts colour escape codes as columns, so a
   headline like `Send … from <name> → <recipient>` no longer breaks early.
-  `scripts/e2e-msig-card.sh` checks both against a real mainnet multisig.
+  `scripts/e2e-msig-card.sh <msig> <txid>` checks both against a live tx.
 
 - `--mask-names` replaces resolved address names with `•••` in printed
   output (and `--json-output`) so a copied transcript does not leak labels.

@@ -1,27 +1,34 @@
 #!/usr/bin/env bash
-# End-to-end check of the Classic multisig signing card against mainnet.
+# End-to-end check of the Classic multisig signing card.
 #
-# Builds jarvis, runs `jarvis msig info` on a real Classic multisig tx inside
-# a pseudo-terminal (so colours are on) at several widths, with an address
-# book that gives the multisig and one signer very long names. Asserts that:
-#   - every wrapped piece of a long address name is still green,
-#   - addresses missing from the address book carry "(not in address book)",
+# Usage: scripts/e2e-msig-card.sh <classic-msig-address> <txid> [network]
+#
+# Builds jarvis and runs `jarvis msig info` inside a pseudo-terminal (so
+# colours are on) at several widths, with a throwaway address book that gives
+# the multisig a long synthetic name. Asserts that:
+#   - every wrapped piece of that name is still green,
+#   - every address on the card without a name carries "(not in address book)",
 #   - every box line has the same visible width.
 #
-# The raw ANSI transcripts are written to $OUT (default ./e2e-out) so the
-# result can be inspected or replayed with `cat`.
+# No real address or name is stored here: the multisig comes from the
+# command line and its fixture name is a placeholder. The raw ANSI
+# transcripts are written to $OUT (default ./e2e-out); keep them private if
+# the multisig is yours.
 #
 # jarvis reads ~/addresses.json from the OS user's home, so this refuses to
 # run when one already exists rather than touch a real address book.
 set -euo pipefail
 
-MSIG=0x2515ec2104d30a073c0ea99d916b9e20b14fc7e0
-TXID=3
-SIGNER=0xbe2f0354d970265bfc36d383af77f72736b81b54
-RECIPIENT=0x54C8330f90BE8493fAc27995605E4ADBd25393BC
-UNKNOWN_SIGNER=0x8180a5CA4E3B94045e05A9313777955f7518D757
+if [[ $# -lt 2 ]]; then
+	echo "usage: $0 <classic-msig-address> <txid> [network]" >&2
+	exit 2
+fi
+MSIG=$1
+TXID=$2
+NETWORK=${3:-mainnet}
 WIDTHS=${WIDTHS:-"120 210"}
 OUT=${OUT:-$PWD/e2e-out}
+NAME="Placeholder Multisig Name (Alpha, Bravo, Charlie) - Delta, Echo, Foxtrot, Golf, Hotel, India, Juliett, Kilo, Lima, Mike, Oscar"
 
 home=$(getent passwd "$(id -u)" | cut -d: -f6)
 book="$home/addresses.json"
@@ -30,12 +37,7 @@ if [[ -e "$book" ]]; then
 	exit 2
 fi
 trap 'rm -f "$book"' EXIT
-cat >"$book" <<EOF
-{
-  "$MSIG": "Lumen Main Multisig (Mike, Victor, Loi) - Eth, Bsc, Arb, Opt, Base, Pol, Robin, Avax, Bera, S, Plasma, Monad",
-  "$SIGNER": "Victor Ledger Nano X - main signer for Lumen multisigs on every chain"
-}
-EOF
+printf '{\n  "%s": "%s"\n}\n' "$MSIG" "$NAME" >"$book"
 
 mkdir -p "$OUT"
 repo=$(cd "$(dirname "$0")/.." && pwd)
@@ -45,10 +47,10 @@ bin="$OUT/jarvis"
 fail=0
 for w in $WIDTHS; do
 	raw="$OUT/msig-info-${w}cols.ansi"
-	script -qfec "stty cols $w rows 60; $bin msig info $MSIG $TXID -k mainnet" /dev/null >"$raw" </dev/null
-	if ! python3 - "$raw" "$w" "$RECIPIENT" "$UNKNOWN_SIGNER" <<'PY'; then
+	script -qfec "stty cols $w rows 60; $bin msig info $MSIG $TXID -k $NETWORK" /dev/null >"$raw" </dev/null
+	if ! python3 - "$raw" "$w" <<'PY'; then
 import re, sys, unicodedata
-raw, width, recipient, unknown_signer = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
+raw, width = sys.argv[1], int(sys.argv[2])
 text = open(raw, encoding="utf-8").read().replace("\r", "")
 sgr = re.compile(r"\x1b\[[0-9;]*m")
 def vis(s):
@@ -68,32 +70,28 @@ if max(widths) > width:
 def green_at(line, idx):
     green = False
     for m in sgr.finditer(line[:idx]):
-        params = m.group()[2:-1].split(";")
-        for p in params:
+        for p in m.group()[2:-1].split(";"):
             if p in ("", "0", "39"):
                 green = False
             elif p == "32":
                 green = True
     return green
-seen = 0
-for frag in ("Lumen", "Plasma", "Victor Ledger", "chain)"):
+seen = set()
+for frag in ("Placeholder", "Juliett", "Oscar)"):
     for l in box:
         idx = l.find(frag)
         if idx < 0:
             continue
-        seen += 1
+        seen.add(frag)
         if not green_at(l, idx):
-            errors.append(f"name fragment {frag!r} is not green: {l!r}")
-if seen < 4:
-    errors.append("long names were not found on the card")
-plain = sgr.sub("", "\n".join(box))
-flat = re.sub(r"\s*│\s*\n\s*│\s*", " ", plain)
-for addr in (recipient, unknown_signer):
-    if f"{addr} (not in address book)" not in flat:
-        errors.append(f"{addr} is not marked as missing from the address book")
-for l in box:
-    if f"Recipient  {recipient}" in sgr.sub("", l) and "\x1b[33m" not in l:
-        errors.append(f"recipient row is not yellow: {l!r}")
+            errors.append(f"name fragment {frag!r} is not green: {sgr.sub('', l)!r}")
+if len(seen) < 3:
+    errors.append("the fixture name was not found on the card")
+body = [l for l in box if not sgr.sub("", l).strip("│ ").startswith("!")]
+flat = re.sub(r"\s*│\s*\n\s*│\s*", " ", sgr.sub("", "\n".join(body)))
+for m in re.finditer(r"0x[0-9a-fA-F]{40}(?![0-9a-fA-F])", flat):
+    if not flat[m.end():].startswith(" ("):
+        errors.append(f"{m.group()} has neither a name nor the not-in-address-book mark")
 if errors:
     print(f"FAIL at {width} cols:")
     for e in errors:
