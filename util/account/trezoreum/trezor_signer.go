@@ -128,7 +128,7 @@ func unlockWithWait(unlock func() error, timeout time.Duration) error {
 		if time.Now().After(deadline) {
 			if busy {
 				return fmt.Errorf(
-					"trezor is in use by another program after %s (last error: %w). Close Trezor Suite or other wallet apps and try again",
+					"trezor is still in use after %s (last error: %w). Close Trezor Suite or other wallet apps and try again",
 					timeout, err)
 			}
 			return fmt.Errorf(
@@ -138,17 +138,17 @@ func unlockWithWait(unlock func() error, timeout time.Duration) error {
 		switch {
 		case attempt == 1 && busy:
 			fmt.Printf(
-				"Trezor is connected but in use by another program. Close Trezor Suite or other wallet apps within %s...\n",
-				timeout,
+				"Trezor is connected but in use. Close Trezor Suite or other wallet apps within %s... (%s)\n",
+				timeout, err,
 			)
 		case attempt == 1:
 			fmt.Printf(
-				"Trezor not detected. Please connect and unlock it within %s...\n",
-				timeout,
+				"Trezor not detected. Please connect and unlock it within %s... (%s)\n",
+				timeout, err,
 			)
 		case attempt%5 == 0:
 			remaining := time.Until(deadline).Round(time.Second)
-			fmt.Printf("  ...still waiting for Trezor (~%s left)\n", remaining)
+			fmt.Printf("  ...still waiting for Trezor (~%s left) (%s)\n", remaining, err)
 		}
 		time.Sleep(deviceWaitPoll)
 	}
