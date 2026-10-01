@@ -124,17 +124,29 @@ func unlockWithWait(unlock func() error, timeout time.Duration) error {
 		if !isTrezorNotConnected(err) {
 			return err
 		}
+		busy := isTrezorBusy(err)
 		if time.Now().After(deadline) {
+			if busy {
+				return fmt.Errorf(
+					"trezor is in use by another program after %s (last error: %w). Close Trezor Suite or other wallet apps and try again",
+					timeout, err)
+			}
 			return fmt.Errorf(
 				"trezor not connected after %s (last error: %w). Plug it in and try again",
 				timeout, err)
 		}
-		if attempt == 1 {
+		switch {
+		case attempt == 1 && busy:
+			fmt.Printf(
+				"Trezor is connected but in use by another program. Close Trezor Suite or other wallet apps within %s...\n",
+				timeout,
+			)
+		case attempt == 1:
 			fmt.Printf(
 				"Trezor not detected. Please connect and unlock it within %s...\n",
 				timeout,
 			)
-		} else if attempt%5 == 0 {
+		case attempt%5 == 0:
 			remaining := time.Until(deadline).Round(time.Second)
 			fmt.Printf("  ...still waiting for Trezor (~%s left)\n", remaining)
 		}
@@ -161,6 +173,13 @@ func isTrezorNotConnected(err error) bool {
 		}
 	}
 	return false
+}
+
+// isTrezorBusy reports whether the Trezor was found but its USB interface
+// is claimed by another handle.
+func isTrezorBusy(err error) bool {
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "busy") || strings.Contains(msg, "failed to claim interface")
 }
 
 // SignTypedDataHash signs a Gnosis-Safe EIP-712 digest. We try the native
