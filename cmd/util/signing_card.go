@@ -170,11 +170,64 @@ func ShowSigningCard(u ui.UI, c *SigningCard) {
 	}
 }
 
+// unknownAddressMark sits where an address-book name would be, so an
+// unnamed address on the card reads as missing rather than as plain hex.
+const unknownAddressMark = "(not in address book)"
+
+// markUnknown tags st when it ends in a bare hex address: StyledAddress
+// renders a known address as "0x… (name)" and the zero address with its
+// own suffix, so a trailing bare address is one the address book lacks.
+func markUnknown(st ui.StyledText) ui.StyledText {
+	fields := strings.Fields(st.Text)
+	if len(fields) == 0 || !jarviscommon.LooksLikeAddress(fields[len(fields)-1]) {
+		return st
+	}
+	return ui.StyledText{Text: st.Text + " " + unknownAddressMark, Severity: ui.SeverityWarn}
+}
+
+func markUnknownCall(d *util.FunctionCallDisplay) {
+	if d == nil {
+		return
+	}
+	d.Destination = markUnknown(d.Destination)
+	if d.Payment != nil {
+		d.Payment.To = markUnknown(d.Payment.To)
+		d.Payment.From = markUnknown(d.Payment.From)
+	}
+	for _, inner := range d.InnerCalls {
+		markUnknownCall(inner)
+	}
+}
+
+func markUnknownAddresses(c *SigningCard) {
+	c.Signer = markUnknown(c.Signer)
+	c.To = markUnknown(c.To)
+	c.Delegation = markUnknown(c.Delegation)
+	for i := range c.Authorizations {
+		c.Authorizations[i].Authority = markUnknown(c.Authorizations[i].Authority)
+		c.Authorizations[i].Target = markUnknown(c.Authorizations[i].Target)
+	}
+	if s := c.Safe; s != nil {
+		s.Address = markUnknown(s.Address)
+		for i := range s.Signatures {
+			s.Signatures[i] = markUnknown(s.Signatures[i])
+		}
+	}
+	if cl := c.Classic; cl != nil {
+		cl.Multisig = markUnknown(cl.Multisig)
+		for i := range cl.Signatures {
+			cl.Signatures[i] = markUnknown(cl.Signatures[i])
+		}
+	}
+	markUnknownCall(c.Call)
+}
+
 func renderSigningCardBody(u ui.UI, c *SigningCard) {
 	if c.ClearSign != nil {
 		c.ClearSign(u)
 	}
 
+	markUnknownAddresses(c)
 	if from := signingCardPayer(c); from.Text != "" {
 		util.AnnotatePaymentFrom(c.Call, from)
 	}
