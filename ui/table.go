@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -217,38 +218,96 @@ func wrapCell(s string, maxWidth int) []string {
 	return lines
 }
 
+// wrapToken is one rune of visible text or one whole ANSI escape sequence.
+// Escapes take no columns and are never split across lines.
+type wrapToken struct {
+	text   string
+	width  int
+	space  bool
+	escape bool
+}
+
+func tokenizeWrap(src string) []wrapToken {
+	var toks []wrapToken
+	for i := 0; i < len(src); {
+		if src[i] == 0x1b {
+			j := i + 1
+			if j < len(src) && src[j] == '[' {
+				j++
+				for j < len(src) && (src[j] < 0x40 || src[j] > 0x7e) {
+					j++
+				}
+			}
+			if j < len(src) {
+				j++
+			}
+			toks = append(toks, wrapToken{text: src[i:j], escape: true})
+			i = j
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(src[i:])
+		rw := runewidth.RuneWidth(r)
+		if rw == 0 {
+			rw = 1
+		}
+		toks = append(toks, wrapToken{text: src[i : i+size], width: rw, space: unicode.IsSpace(r)})
+		i += size
+	}
+	return toks
+}
+
+func isSGRReset(seq string) bool {
+	return seq == "\x1b[0m" || seq == "\x1b[m"
+}
+
+// wrapLine breaks src at maxWidth visible columns. SGR colour that is open
+// at a break is closed at the end of the line and re-opened on the next,
+// so a long styled address name keeps its colour on every wrapped line
+// (a box border between them would otherwise reset it).
 func wrapLine(src string, maxWidth int) []string {
-	runes := []rune(src)
+	toks := tokenizeWrap(src)
 	var lines []string
+	var active []string
 	start := 0
-	for start < len(runes) {
+	for start < len(toks) {
 		end := start
 		width := 0
 		lastSpace := -1
-		for end < len(runes) {
-			rw := runewidth.RuneWidth(runes[end])
-			if rw == 0 {
-				rw = 1
-			}
-			if width+rw > maxWidth {
+		for end < len(toks) {
+			if width+toks[end].width > maxWidth {
 				break
 			}
-			if unicode.IsSpace(runes[end]) {
+			if toks[end].space {
 				lastSpace = end
 			}
-			width += rw
+			width += toks[end].width
 			end++
 		}
 		if end == start {
 			end = start + 1
-		} else if end < len(runes) && lastSpace > start {
+		} else if end < len(toks) && lastSpace > start {
 			end = lastSpace
 		}
-		lines = append(lines, string(runes[start:end]))
+		var b strings.Builder
+		b.WriteString(strings.Join(active, ""))
+		for _, t := range toks[start:end] {
+			b.WriteString(t.text)
+			if t.escape && strings.HasSuffix(t.text, "m") {
+				if isSGRReset(t.text) {
+					active = nil
+				} else {
+					active = append(active, t.text)
+				}
+			}
+		}
 		start = end
-		for start < len(runes) && unicode.IsSpace(runes[start]) {
+		for start < len(toks) && toks[start].space {
 			start++
 		}
+		if len(active) > 0 && start < len(toks) {
+			b.WriteString("\x1b[0m")
+		}
+		lines = append(lines, b.String())
 	}
 	if len(lines) == 0 {
 		return []string{""}
