@@ -8,6 +8,13 @@
   analysis, so they still never reach the AI review. `jarvis vet` also names
   the "Delegates to" line.
 
+- A Trezor or Ledger is unlocked once per run and reused. Previously each
+  signature built a new signer that could not claim the USB interface the
+  first one still held, so a Safe approval followed by the execute tx (also
+  `send` to a Safe and multi-item `bapprove`) sat on "Trezor not detected"
+  with the device plugged in. A Trezor held by another program is now
+  reported as in use rather than not detected.
+
 - Signing cards (Classic, Safe, EOA) tag every address that has no
   address-book name with a yellow `(not in address book)` where the name
   would be: the destination, Send headline, multisig/Safe, signer and
