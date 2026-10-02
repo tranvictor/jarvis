@@ -147,7 +147,9 @@ func runVetCall(cmd *cobra.Command) {
 	}
 	req := cmdutil.FullVetRequest(config.Network(), dest, tc.Value, data, fc)
 	if req.Delegation != "" {
-		appUI.Info("Delegates to: %s", common.HexToAddress(req.Delegation).Hex())
+		delegate := util.GetJarvisAddress(req.Delegation, config.Network())
+		delegate.Address = common.HexToAddress(req.Delegation).Hex()
+		appUI.Info("Delegates to: %s", jarviscommon.PlainAddress(delegate))
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
 	defer cancel()
