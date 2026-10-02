@@ -8,6 +8,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	gethkeystore "github.com/ethereum/go-ethereum/accounts/keystore"
@@ -94,7 +95,61 @@ func StoreAccountRecord(accDesc types.AccDesc) error {
 	return err
 }
 
+// unlocked holds hardware-wallet accounts for the life of the process. A
+// hardware signer keeps its USB interface claimed after first use, so a
+// second signer for the same device cannot open it (a Safe approval
+// followed by the execute tx hung waiting for a "missing" Trezor). Reusing
+// the signer also skips a second PIN / passphrase prompt.
+var (
+	unlockedMu sync.Mutex
+	unlocked   = map[string]*account.Account{}
+)
+
+// unlockCacheKey identifies one key on one device. Keystores are not
+// cached so every unlock still asks for the password.
+func unlockCacheKey(ad types.AccDesc) (string, bool) {
+	switch ad.Kind {
+	case "trezor", "ledger", "ledger-live":
+		return ad.Kind + "|" + ad.Derpath + "|" + strings.ToLower(ad.Address), true
+	default:
+		return "", false
+	}
+}
+
+// ForgetUnlockedAccounts drops every cached hardware-wallet account.
+func ForgetUnlockedAccounts() {
+	unlockedMu.Lock()
+	defer unlockedMu.Unlock()
+	unlocked = map[string]*account.Account{}
+}
+
+func unlockedCount() int {
+	unlockedMu.Lock()
+	defer unlockedMu.Unlock()
+	return len(unlocked)
+}
+
+// UnlockAccount returns a signing account for ad. Hardware wallets are
+// created once per process and reused on later calls.
 func UnlockAccount(ad types.AccDesc) (*account.Account, error) {
+	key, cacheable := unlockCacheKey(ad)
+	if !cacheable {
+		return newAccount(ad)
+	}
+	unlockedMu.Lock()
+	defer unlockedMu.Unlock()
+	if acc, ok := unlocked[key]; ok {
+		return acc, nil
+	}
+	acc, err := newAccount(ad)
+	if err != nil {
+		return nil, err
+	}
+	unlocked[key] = acc
+	return acc, nil
+}
+
+func newAccount(ad types.AccDesc) (*account.Account, error) {
 	var fromAcc *account.Account
 	var err error
 
