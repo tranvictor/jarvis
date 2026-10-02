@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Vet warnings (signing card, `jarvis vet`, WalletConnect typed data) name
+  every address that is in the address book, e.g. the EIP-7702 delegate in
+  "destination delegates execution to 0x… (name)". Names are added after
+  analysis, so they still never reach the AI review. `jarvis vet` also names
+  the "Delegates to" line.
+
 - A Trezor or Ledger is unlocked once per run and reused. Previously each
   signature built a new signer that could not claim the USB interface the
   first one still held, so a Safe approval followed by the execute tx (also

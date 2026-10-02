@@ -3,6 +3,8 @@ package util
 import (
 	"context"
 	"math/big"
+	"regexp"
+	"strings"
 	"time"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
@@ -29,7 +31,56 @@ func runVet(card *SigningCard, req vet.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Second)
 	defer cancel()
 	report := vet.Analyze(ctx, req)
-	card.Vet = report.Findings
+	card.Vet = nameFindings(report.Findings, db.AllAddresses())
+}
+
+// findingAddress matches a bare 20-byte hex address that is not part of a
+// longer hex run and is not already followed by a " (name)".
+var findingAddress = regexp.MustCompile(`0x[0-9a-fA-F]{40}`)
+
+// nameFindings appends the address-book name to every address in the
+// findings' text. vet itself stays label-free (labels never reach the AI);
+// names are added only for display. book is keyed by lower-case hex.
+func nameFindings(findings []vet.Finding, book map[string]string) []vet.Finding {
+	out := make([]vet.Finding, len(findings))
+	for i, f := range findings {
+		f.Text = nameAddresses(f.Text, book)
+		out[i] = f
+	}
+	return out
+}
+
+func nameAddresses(text string, book map[string]string) string {
+	locs := findingAddress.FindAllStringIndex(text, -1)
+	if len(locs) == 0 {
+		return text
+	}
+	var b strings.Builder
+	last := 0
+	for _, loc := range locs {
+		start, end := loc[0], loc[1]
+		b.WriteString(text[last:end])
+		last = end
+		if start > 0 && isHexByte(text[start-1]) || end < len(text) && isHexByte(text[end]) {
+			continue
+		}
+		if strings.HasPrefix(text[end:], " (") {
+			continue
+		}
+		hex := text[start:end]
+		label, ok := book[strings.ToLower(hex)]
+		if !ok {
+			continue
+		}
+		named := jarviscommon.PlainAddress(jarviscommon.Address{Address: hex, Desc: label})
+		b.WriteString(strings.TrimPrefix(named, hex))
+	}
+	b.WriteString(text[last:])
+	return b.String()
+}
+
+func isHexByte(c byte) bool {
+	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F' || c == 'x'
 }
 
 func vetRequest(warn WarningInput, network jarvisnetworks.Network, create bool, data []byte) vet.Request {
@@ -106,7 +157,7 @@ func PrintVetReport(u ui.UI, report vet.Report) {
 		u.Success("vet: no findings")
 		return
 	}
-	for _, f := range report.Findings {
+	for _, f := range nameFindings(report.Findings, db.AllAddresses()) {
 		text := f.Text
 		if f.GrokReconfirm {
 			text += " — AI reconfirms"
