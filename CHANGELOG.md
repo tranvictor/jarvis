@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- `msig gov` recognizes a multisig that answers `getOwners` and `required`
+  even when `domainSeparator` and `transactionCount` do not, including an
+  EIP-7702 account delegated to that code. An empty `eth_call` success from
+  one RPC no longer hides a real answer from another node.
+- Repeated addresses in an on-chain owner list are shown once. `msig gov`
+  and the signing card warn that the contract still counts each repeat
+  toward the threshold, and `msig bapprove` no longer treats one local
+  wallet listed twice as two signers.
+
 - Vet warnings (signing card, `jarvis vet`, WalletConnect typed data) name
   every address that is in the address book, e.g. the EIP-7702 delegate in
   "destination delegates execution to 0x… (name)". Names are added after

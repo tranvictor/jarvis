@@ -239,8 +239,12 @@ the on-chain transaction count.`,
 			return
 		}
 		appUI.Info("Address          : %s", appUI.Style(util.StyledAddress(util.GetJarvisAddress(msigAddress, config.Network()))))
-		appUI.Info("Owners (%d):", len(owners))
-		for i, owner := range owners {
+		uniqueOwners, ownerWarn := cmdutil.OwnerListWarning(owners)
+		if ownerWarn != "" {
+			appUI.Warn("%s", ownerWarn)
+		}
+		appUI.Info("Owners (%d):", len(uniqueOwners))
+		for i, owner := range uniqueOwners {
 			ja := util.GetJarvisAddress(owner, config.Network())
 			appUI.Info("  %d. %s", i+1, appUI.Style(util.StyledAddress(ja)))
 		}
@@ -249,7 +253,7 @@ the on-chain transaction count.`,
 			appUI.Error("Couldn't get vote requirements of the multisig: %s", err)
 			return
 		}
-		appUI.Info("Vote requirement : %d/%d", voteRequirement, len(owners))
+		appUI.Info("Vote requirement : %d/%d", voteRequirement, len(uniqueOwners))
 		noTxs, err := multisigContract.NOTransactions()
 		if err != nil {
 			appUI.Error("Couldn't get number of transactions of the multisig: %s", err)

@@ -48,19 +48,61 @@ func PickLocalOwner(owners []string, fromFlag string, policy OwnerPickPolicy) (j
 	return pickLocalOwner(owners, fromFlag, policy, accounts.GetAccount)
 }
 
+// DedupeAddresses drops case-insensitive repeats, keeping the first
+// occurrence. repeated is true when the input listed an address twice.
+// Gnosis constructors reject duplicate owners; a repeated entry means the
+// on-chain list is wrong and must not be treated as an extra signer.
+func DedupeAddresses(in []string) (out []string, repeated bool) {
+	seen := make(map[string]struct{}, len(in))
+	out = make([]string, 0, len(in))
+	for _, a := range in {
+		key := strings.ToLower(strings.TrimSpace(a))
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			repeated = true
+			continue
+		}
+		seen[key] = struct{}{}
+		out = append(out, a)
+	}
+	return out, repeated
+}
+
+// OwnerListWarning returns the unique addresses and a warning when the
+// on-chain list counts one address more than once.
+func OwnerListWarning(raw []string) (unique []string, warning string) {
+	unique, repeated := DedupeAddresses(raw)
+	if !repeated {
+		return unique, ""
+	}
+	return unique, fmt.Sprintf(
+		"owner list repeats addresses (%d entries, %d unique); the contract counts each repeat as another signer",
+		len(raw), len(unique),
+	)
+}
+
 func pickLocalOwner(
 	owners []string,
 	_ string,
 	policy OwnerPickPolicy,
 	lookup accountLookup,
 ) (jtypes.AccDesc, int, error) {
+	owners, _ = DedupeAddresses(owners)
 	var first jtypes.AccDesc
+	seen := map[string]struct{}{}
 	n := 0
 	for _, owner := range owners {
 		acc, err := lookup(owner)
 		if err != nil {
 			continue
 		}
+		key := strings.ToLower(acc.Address)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
 		if n == 0 {
 			first = acc
 		}

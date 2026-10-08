@@ -59,24 +59,67 @@ func DetectMultisigType(network jarvisnetworks.Network, address string) (Multisi
 		}
 	}
 
-	if sc, err := safe.NewSafeContract(address, network); err == nil {
-		if _, err := sc.DomainSeparator(); err == nil {
-			_ = cache.SetCache(cacheKey, string(MultisigSafe))
-			return MultisigSafe, nil
+	var probeErr error
+	remember := func(err error) {
+		if err != nil && probeErr == nil {
+			probeErr = err
 		}
 	}
 
-	if mc, err := msig.NewMultisigContract(address, network); err == nil {
-		// NOTransactions is unique to the Gnosis Classic ABI; combined
-		// with the Safe probe failure above this is a strong signal we're
-		// looking at a classic MultiSigWallet rather than something else
-		// that merely exposes getOwners().
-		if _, err := mc.NOTransactions(); err == nil {
+	if sc, err := safe.NewSafeContract(address, network); err != nil {
+		remember(err)
+	} else if sep, err := sc.DomainSeparator(); err == nil && sep != ([32]byte{}) {
+		// A zero separator is an empty eth_call, not a Safe. Real
+		// separators mix the chain id and the contract address.
+		_ = cache.SetCache(cacheKey, string(MultisigSafe))
+		return MultisigSafe, nil
+	} else {
+		remember(err)
+	}
+
+	if mc, err := msig.NewMultisigContract(address, network); err != nil {
+		remember(err)
+	} else if _, err := mc.NOTransactions(); err == nil {
+		// transactionCount is unique to the Gnosis Classic ABI.
+		_ = cache.SetCache(cacheKey, string(MultisigClassic))
+		return MultisigClassic, nil
+	} else if owners, oerr := mc.Owners(); oerr == nil && len(owners) > 0 {
+		// Some delegations expose getOwners/required without
+		// transactionCount. That is still a Classic wallet.
+		if _, rerr := mc.VoteRequirement(); rerr == nil {
 			_ = cache.SetCache(cacheKey, string(MultisigClassic))
 			return MultisigClassic, nil
+		} else {
+			remember(err)
+			remember(rerr)
+		}
+	} else {
+		remember(err)
+		remember(oerr)
+	}
+
+	// Safe deployments that predate domainSeparator(), or whose
+	// domainSeparator() call comes back empty from a node that did not
+	// execute the code, still answer getOwners + getThreshold.
+	if sc, err := safe.NewSafeContract(address, network); err == nil {
+		if owners, oerr := sc.Owners(); oerr == nil && len(owners) > 0 {
+			if _, terr := sc.Threshold(); terr == nil {
+				_ = cache.SetCache(cacheKey, string(MultisigSafe))
+				return MultisigSafe, nil
+			} else {
+				remember(terr)
+			}
+		} else {
+			remember(oerr)
 		}
 	}
 
+	if probeErr != nil {
+		return MultisigUnknown, fmt.Errorf(
+			"%s is neither a Gnosis Safe nor a Gnosis Classic multisig on %s: %w",
+			address, network.GetName(), probeErr,
+		)
+	}
 	return MultisigUnknown, fmt.Errorf(
 		"%s is neither a Gnosis Safe nor a Gnosis Classic multisig on %s",
 		address, network.GetName(),

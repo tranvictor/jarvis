@@ -26,8 +26,12 @@ func showSafeInfo(s *safe.SafeContract) {
 		appUI.Info("Threshold    : %d", t)
 	}
 	if owners, err := s.Owners(); err == nil {
-		appUI.Info("Owners (%d):", len(owners))
-		for i, o := range owners {
+		unique, ownerWarn := cmdutil.OwnerListWarning(owners)
+		if ownerWarn != "" {
+			appUI.Warn("%s", ownerWarn)
+		}
+		appUI.Info("Owners (%d):", len(unique))
+		for i, o := range unique {
 			jarvisAddr := util.GetJarvisAddress(o, config.Network())
 			appUI.Info("  %d. %s", i+1, appUI.Style(util.StyledAddress(jarvisAddr)))
 		}
