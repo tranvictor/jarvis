@@ -405,26 +405,12 @@ func (er *EthReader) ReadContractToBytes(
 		}()
 	}
 	errs := []error{}
-	var empty []byte
-	sawEmpty := false
 	for i := 0; i < len(er.nodes); i++ {
 		result := <-resCh
-		if result.Error != nil {
-			errs = append(errs, result.Error)
-			continue
+		if result.Error == nil {
+			return result.Data, result.Error
 		}
-		// An empty success is not an ABI return. A node that does not
-		// execute EIP-7702 delegation often answers eth_call with "0x".
-		// Keep looking so a node that actually ran the code can win.
-		if len(result.Data) == 0 {
-			sawEmpty = true
-			empty = result.Data
-			continue
-		}
-		return result.Data, nil
-	}
-	if sawEmpty {
-		return empty, nil
+		errs = append(errs, result.Error)
 	}
 	return nil, fmt.Errorf("couldn't read from any nodes: %w", errors.Join(errs...))
 }

@@ -1,7 +1,6 @@
 package util
 
 import (
-	"fmt"
 	"math/big"
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
@@ -53,8 +52,7 @@ func buildClassicMsigCard(
 		card.Value = jarviscommon.BigToFloatString(value, network.GetNativeTokenDecimal()) +
 			" " + network.GetNativeTokenSymbol()
 	}
-	signers, repeated := DedupeAddresses(confirmations)
-	for _, c := range signers {
+	for _, c := range confirmations {
 		card.Classic.Signatures = append(card.Classic.Signatures, util.StyledAddress(util.GetJarvisAddress(c, network)))
 	}
 
@@ -68,12 +66,6 @@ func buildClassicMsigCard(
 	}
 	fillDestinationWarn(&warn, to, network)
 	attachMultisigInnerCall(card, &warn, toJarvis, value, data, fc, network, true)
-	if repeated {
-		card.Warnings = append(card.Warnings, fmt.Sprintf(
-			"signer list repeats addresses (%d confirmations, %d unique); the contract counts each repeat toward the threshold",
-			len(confirmations), len(signers),
-		))
-	}
 	return card
 }
 
