@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Contract ABI and source lookups on an Etherscan-family explorer use
+  `https://api.etherscan.io/v2/api` with `chainid`. A configured website
+  such as `https://etherscan.io/`, or a retired per-chain host such as
+  `api.bscscan.com`, is no longer called directly. Etherscan rejects those
+  with "Invalid API URL endpoint, use api.etherscan.io".
+
 - `msig gov` recognizes a multisig that answers `getOwners` and `required`
   even when `domainSeparator` and `transactionCount` do not, including an
   EIP-7702 account delegated to that code. A zero `domainSeparator` is not

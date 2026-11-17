@@ -1,6 +1,7 @@
 package explorers
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -47,19 +48,40 @@ func TestExplorerClassURLs(t *testing.T) {
 		assertNoOtherFamilyPaths(t, urls)
 	})
 
-	t.Run("etherscan v1 tries no-chainid then chainid", func(t *testing.T) {
-		ee := New(KindEtherscan, "https://api.bscscan.com/api", "k", 56)
+	t.Run("etherscan website and retired hosts use v2", func(t *testing.T) {
+		cases := []struct {
+			domain  string
+			chainID uint64
+		}{
+			{"https://etherscan.io/", 1},
+			{"https://api.bscscan.com/api", 56},
+			{"https://berascan.com/", 80094},
+			{"https://api.etherscan.io/v2/api?chainid=143", 143},
+		}
+		for _, tc := range cases {
+			ee := New(KindEtherscan, tc.domain, "k", tc.chainID)
+			urls := ee.contractInfoURLs(addr)
+			if len(urls) != 1 {
+				t.Fatalf("%s URLs: %v", tc.domain, urls)
+			}
+			want := fmt.Sprintf("https://api.etherscan.io/v2/api?chainid=%d&module=contract&action=getsourcecode", tc.chainID)
+			if !strings.HasPrefix(urls[0], want) {
+				t.Fatalf("%s URL: %s", tc.domain, urls[0])
+			}
+			if strings.Contains(urls[0], "etherscan.io/api") || strings.Contains(urls[0], "bscscan.com") || strings.Contains(urls[0], "/api/api") {
+				t.Fatalf("%s still targets a retired host: %s", tc.domain, urls[0])
+			}
+			assertNoOtherFamilyPaths(t, urls)
+		}
+
+		ee := New(KindEtherscan, "https://scan.example/api", "k", 56)
 		urls := ee.contractInfoURLs(addr)
-		if len(urls) != 2 {
-			t.Fatalf("v1 URLs: %v", urls)
+		if len(urls) != 2 || strings.Contains(urls[0], "chainid=") || !strings.Contains(urls[1], "chainid=56") {
+			t.Fatalf("non-etherscan clone should keep its own host: %v", urls)
 		}
-		if strings.Contains(urls[0], "chainid=") {
-			t.Fatalf("v1 should try no-chainid first: %s", urls[0])
+		if strings.Contains(urls[0], "api.etherscan.io") {
+			t.Fatalf("non-etherscan clone was rewritten: %v", urls)
 		}
-		if !strings.Contains(urls[1], "chainid=56") {
-			t.Fatalf("v1 fallback should send chainid: %s", urls[1])
-		}
-		assertNoOtherFamilyPaths(t, urls)
 	})
 
 	t.Run("routescan prefers path-embedded chain, no REST shotgun", func(t *testing.T) {

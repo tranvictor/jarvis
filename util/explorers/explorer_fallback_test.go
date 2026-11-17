@@ -21,6 +21,10 @@ func TestApiEndpointDoesNotDoubleAPI(t *testing.T) {
 	if got := ee.apiEndpoint(); got != "https://api.etherscan.io/v2/api" {
 		t.Fatalf("etherscan v2 apiEndpoint = %q", got)
 	}
+	ee = NewEtherscanLikeExplorer("https://etherscan.io/", "", 1)
+	if got := ee.apiEndpoint(); got != "https://api.etherscan.io/v2/api" {
+		t.Fatalf("etherscan website apiEndpoint = %q", got)
+	}
 }
 
 func TestGetABIStringFallsBackToJSONContractEndpoint(t *testing.T) {

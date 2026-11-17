@@ -17,8 +17,10 @@ type Kind string
 
 const (
 	// KindEtherscan is Etherscan and Etherscan-clone module=contract APIs.
-	// v2 unified (api.etherscan.io/v2) requires chainid; v1 per-host APIs
-	// (api.bscscan.com, …) do not.
+	// Hosts Etherscan still operates — the public websites (etherscan.io,
+	// bscscan.com, …) and the retired per-chain API hosts — are called at
+	// https://api.etherscan.io/v2/api with chainid. Other clones keep the
+	// configured host.
 	KindEtherscan Kind = "etherscan"
 	// KindBlockscout is Blockscout REST (/api/v2/smart-contracts/:addr,
 	// and /api/v2/smart-contract/:addr when the configured domain already
@@ -92,6 +94,61 @@ func etherscanHost(host, lowerURL string) bool {
 		strings.Contains(host, "etherscan.com") ||
 		strings.Contains(lowerURL, "etherscan.io") ||
 		strings.Contains(lowerURL, "etherscan.com")
+}
+
+// etherscanV2API is the only contract endpoint Etherscan accepts.
+// https://docs.etherscan.io/api-reference/endpoint/getabi
+const etherscanV2API = "https://api.etherscan.io/v2/api"
+
+// etherscanUnifiedDomains are the registrable domains from
+// https://api.etherscan.io/v2/chainlist (blockexplorer). The public site,
+// its chain subdomains, and the old api.<domain> hosts all answer
+// "Invalid API URL endpoint, use api.etherscan.io" unless the call goes
+// to etherscanV2API with chainid.
+var etherscanUnifiedDomains = map[string]struct{}{
+	"etherscan.io":    {},
+	"etherscan.com":   {},
+	"bscscan.com":     {},
+	"polygonscan.com": {},
+	"basescan.org":    {},
+	"arbiscan.io":     {},
+	"lineascan.build": {},
+	"bttcscan.com":    {},
+	"celoscan.io":     {},
+	"fraxscan.com":    {},
+	"gnosisscan.io":   {},
+	"mantlescan.xyz":  {},
+	"memecorescan.io": {},
+	"taikoscan.io":    {},
+	"xdcscan.com":     {},
+	"worldscan.org":   {},
+	"sonicscan.org":   {},
+	"uniscan.xyz":     {},
+	"abscan.org":      {},
+	"berascan.com":    {},
+	"monadscan.com":   {},
+	"hyperevmscan.io": {},
+	"katanascan.com":  {},
+	"seiscan.io":      {},
+	"stablescan.xyz":  {},
+	"plasmascan.to":   {},
+	"snowscan.xyz":    {},
+}
+
+func isEtherscanUnifiedHost(host string) bool {
+	host = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(host)), ".")
+	if host == "" {
+		return false
+	}
+	if _, ok := etherscanUnifiedDomains[host]; ok {
+		return true
+	}
+	for d := range etherscanUnifiedDomains {
+		if strings.HasSuffix(host, "."+d) {
+			return true
+		}
+	}
+	return false
 }
 
 // New builds an explorer of the given family. An empty kind is inferred
