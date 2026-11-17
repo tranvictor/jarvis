@@ -197,7 +197,7 @@ var addNetworkCmd = &cobra.Command{
 			"node_name_2": "node_url_2"
 		},
 		"block_explorer_api_key_variable_name": "JARVIS_ETHERSCAN_API_KEY",
-		"block_explorer_api_url": "https://api.etherscan.io/api",
+		"block_explorer_api_url": "https://api.etherscan.io/v2",
 		"explorer_kind": "etherscan",
 		"multi_call_contract_address": "0x5394753688800000000000000000000000000000000000000000000000000000",
 		"safe_tx_service_url": "https://safe-transaction.example.com"

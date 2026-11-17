@@ -46,8 +46,15 @@ func (ee *EtherscanLikeExplorer) trimmedDomain() string {
 // store "https://api.etherscan.io/v2" and we append "/api". Custom networks
 // often store the URL the operator copied from the explorer, which already
 // ends in "/api" or "/api/v2" — appending another "/api" 404s.
+//
+// Etherscan-family websites and retired per-chain hosts (https://etherscan.io/,
+// https://api.bscscan.com/api, …) are rewritten to etherscanV2API. Calling
+// the website returns "Invalid API URL endpoint, use api.etherscan.io".
 func (ee *EtherscanLikeExplorer) apiEndpoint() string {
 	d := ee.trimmedDomain()
+	if ee.kind() == KindEtherscan && isEtherscanUnifiedHost(hostOf(d)) {
+		return etherscanV2API
+	}
 	lower := strings.ToLower(d)
 	if strings.HasSuffix(lower, "/api") ||
 		strings.HasSuffix(lower, "/api/v1") ||
@@ -117,11 +124,15 @@ func (ee *EtherscanLikeExplorer) blockscoutURLs(addr, withChain, withoutChain st
 }
 
 func (ee *EtherscanLikeExplorer) etherscanV2() bool {
-	d := strings.ToLower(ee.trimmedDomain())
-	if !etherscanHost(hostOf(d), d) {
+	d := ee.trimmedDomain()
+	if ee.kind() == KindEtherscan && isEtherscanUnifiedHost(hostOf(d)) {
+		return true
+	}
+	lower := strings.ToLower(d)
+	if !etherscanHost(hostOf(lower), lower) {
 		return false
 	}
-	return strings.Contains(d, "/v2")
+	return strings.Contains(lower, "/v2")
 }
 
 func dedupeStrings(in []string) []string {
