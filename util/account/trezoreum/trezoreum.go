@@ -227,21 +227,32 @@ func (self *Trezoreum) GetDevice() ([]usb.DeviceInfo, error) {
 }
 
 func (self *Trezoreum) Init() (*trezor.Features, TrezorState, error) {
-	devices, err := self.GetDevice()
-	if err != nil {
-		return nil, Unexpected, err
-	}
-	if len(devices) == 0 {
-		return nil, Unexpected, fmt.Errorf("Couldn't find any trezor devices")
-	}
+	var driver usb.Device
+	if addr := emulatorAddr(); addr != "" {
+		self.closeDevice()
+		d, err := openUDP(addr)
+		if err != nil {
+			return nil, Unexpected, err
+		}
+		driver = d
+	} else {
+		devices, err := self.GetDevice()
+		if err != nil {
+			return nil, Unexpected, err
+		}
+		if len(devices) == 0 {
+			return nil, Unexpected, fmt.Errorf("Couldn't find any trezor devices")
+		}
 
-	// assume we only have 1 valid device
-	self.closeDevice()
-	device := devices[0]
-	driver, err := device.Open()
-	if err != nil {
-		return nil, Unexpected, fmt.Errorf("Couldn't open trezor device: %s", err)
+		// assume we only have 1 valid device
+		self.closeDevice()
+		device := devices[0]
+		driver, err = device.Open()
+		if err != nil {
+			return nil, Unexpected, fmt.Errorf("Couldn't open trezor device: %s", err)
+		}
 	}
+	var err error
 	self.dev = driver
 	self.core.SetDevice(driver)
 	drainDevice(driver)
