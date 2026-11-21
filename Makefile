@@ -16,6 +16,12 @@ test:
 	go test ./...
 .PHONY: test
 
+# End-to-end test of `jarvis btc` against a real bitcoind regtest node
+# (downloads a checksum-pinned Bitcoin Core). See docs/bitcoin.md.
+e2e-btc:
+	@bash scripts/e2e-btc.sh
+.PHONY: e2e-btc
+
 # Interactive release: draft notes from git/PRs, let you edit them, commit
 # leftovers, prompt for the version, then tag + push + goreleaser-cross.
 # Requires a TTY and GITHUB_TOKEN (repo + homebrew-tranvictor tap/Scoop bucket).

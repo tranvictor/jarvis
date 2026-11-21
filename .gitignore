@@ -27,3 +27,6 @@ RELEASE.md
 .release-notes.md
 .DS_Store
 /tags
+
+# E2E reports
+btc/e2e/artifacts/

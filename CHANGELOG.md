@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- `jarvis btc` sends and reads bitcoin natively: `wallet add|list`, `balance`,
+  `fees` and `send`, with native-segwit (BIP-84 `bc1q`) wallets backed by an
+  encrypted keystore, a raw private key (hex or WIF), a Trezor or a Ledger.
+  Coins and fee estimates come from an Esplora API (mempool.space by default,
+  `--esplora` or `JARVIS_BTC_ESPLORA` for your own). Bitcoin wallets are stored
+  separately in `~/.jarvis/btc/` and do not appear in the EVM wallet list. See
+  `docs/bitcoin.md`.
+
 - Contract ABI and source lookups on an Etherscan-family explorer use
   `https://api.etherscan.io/v2/api` with `chainid`. A configured website
   such as `https://etherscan.io/`, or a retired per-chain host such as
