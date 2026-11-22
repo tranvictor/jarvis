@@ -35,9 +35,6 @@ A node can carry tags. Jarvis broadcasts a transaction to every node tagged
   jarvis node tag mainnet my-node mev-protected
   jarvis node untag mainnet my-node mev-protected
 
-Built-in kyber-protection endpoints already have the mev-protected tag, including
-after they are copied into your node file, for as long as the URL is unchanged.
-
 Sharing configs: use "jarvis node export" to produce a JSON file you can send to
 others, and "jarvis node import <file>" to apply a shared config (nodes are merged,
 never replaced).`,

@@ -16,9 +16,6 @@ var EthereumMainnet Network = NewGenericEtherscanNetwork(GenericEtherscanNetwork
 		"mainnet-kyber":    "https://ethereum-rpc.kyberswap.com",
 		"kyber-protection": "https://ethereum-rpc-mev-protection.kyberswap.com",
 	},
-	DefaultNodeTags: map[string][]string{
-		"kyber-protection": {"mev-protected"},
-	},
 	BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
 	BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
 	MultiCallContractAddress:        common.HexToAddress("0xeefba1e63905ef1d7acba5a8513c70307c1ce441"),
@@ -85,9 +82,6 @@ var BSCMainnet Network = NewGenericEtherscanNetwork(GenericEtherscanNetworkConfi
 		"binance":          "https://bsc-dataseed.binance.org",
 		"defibit":          "https://bsc-dataseed1.defibit.io",
 		"ninicoin":         "https://bsc-dataseed1.ninicoin.io",
-	},
-	DefaultNodeTags: map[string][]string{
-		"kyber-protection": {"mev-protected"},
 	},
 	BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
 	BlockExplorerAPIURL:             "https://api.etherscan.io/v2",
@@ -256,9 +250,6 @@ var BaseMainnet Network = NewGenericEtherscanNetwork(GenericEtherscanNetworkConf
 		"kyber":            "https://base-rpc.kyberswap.com",
 		"kyber-protection": "https://base-rpc-mev-protection.kyberswap.com",
 		"public-base":      "https://mainnet.base.org",
-	},
-	DefaultNodeTags: map[string][]string{
-		"kyber-protection": {"mev-protected"},
 	},
 	BlockExplorerAPIKeyVariableName: "ETHERSCAN_API_KEY",
 	BlockExplorerAPIURL:             "https://api.etherscan.io/v2",

@@ -96,32 +96,34 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		}
 	})
 
-	t.Run("builtin protection tag", func(t *testing.T) {
-		sc := mevScenario{Name: "builtin kyber-protection tag"}
+	t.Run("kyber-protection is not tagged", func(t *testing.T) {
+		sc := mevScenario{Name: "kyber-protection has no built-in mev-protected tag"}
 		defer func() {
 			sc.Passed = !t.Failed()
 			report.add(sc)
 		}()
 		for _, n := range []networks.Network{networks.EthereumMainnet, networks.BSCMainnet, networks.BaseMainnet} {
-			tags := n.GetDefaultNodeTags()["kyber-protection"]
-			if len(tags) != 1 || tags[0] != broadcaster.TagMEVProtected {
-				t.Fatalf("%s kyber-protection tags = %v", n.GetName(), tags)
+			if broadcaster.HasMEVTag(n.GetDefaultNodeTags()["kyber-protection"]) {
+				t.Fatalf("%s tags kyber-protection by default: %v", n.GetName(), n.GetDefaultNodeTags())
 			}
 			url := n.GetDefaultNodes()["kyber-protection"]
 			got := EffectiveTags("kyber-protection", url, nil, n.GetDefaultNodeTags(), n.GetDefaultNodes())
-			if !broadcaster.HasMEVTag(got) {
+			if broadcaster.HasMEVTag(got) {
 				t.Fatalf("%s effective tags = %v", n.GetName(), got)
 			}
-			changed := EffectiveTags("kyber-protection", "https://public.example/rpc", nil, n.GetDefaultNodeTags(), n.GetDefaultNodes())
-			if broadcaster.HasMEVTag(changed) {
-				t.Fatalf("%s kept the tag after the URL changed: %v", n.GetName(), changed)
-			}
-			cleared := EffectiveTags("kyber-protection", url, map[string][]string{"kyber-protection": {}}, n.GetDefaultNodeTags(), n.GetDefaultNodes())
-			if len(cleared) != 0 {
-				t.Fatalf("%s explicit empty tags = %v", n.GetName(), cleared)
-			}
 		}
-		sc.Note = "mainnet, bsc and base kyber-protection are mev-protected until the URL changes or the tag is cleared"
+		defaults := map[string][]string{"private": {broadcaster.TagMEVProtected}}
+		nodes := map[string]string{"private": "https://private.example/rpc"}
+		if !broadcaster.HasMEVTag(EffectiveTags("private", nodes["private"], nil, defaults, nodes)) {
+			t.Fatal("a configured default tag was dropped")
+		}
+		if broadcaster.HasMEVTag(EffectiveTags("private", "https://other.example", nil, defaults, nodes)) {
+			t.Fatal("a default tag survived a URL change")
+		}
+		cleared := EffectiveTags("private", nodes["private"], map[string][]string{"private": {}}, defaults, nodes)
+		if len(cleared) != 0 {
+			t.Fatalf("explicit empty tags = %v", cleared)
+		}
 	})
 
 	t.Run("legacy node file", func(t *testing.T) {
