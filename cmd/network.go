@@ -196,6 +196,9 @@ var addNetworkCmd = &cobra.Command{
 			"node_name_1": "node_url_1",
 			"node_name_2": "node_url_2"
 		},
+		"default_node_tags": {
+			"node_name_1": ["mev-protected"]
+		},
 		"block_explorer_api_key_variable_name": "JARVIS_ETHERSCAN_API_KEY",
 		"block_explorer_api_url": "https://api.etherscan.io/v2",
 		"explorer_kind": "etherscan",
@@ -206,6 +209,10 @@ var addNetworkCmd = &cobra.Command{
 "explorer_kind" is optional: etherscan, blockscout, routescan, or robinscan.
 Empty infers the class from block_explorer_api_url. Robinscan is Robinhood-only
 (not a generic fallback). Sourcify is always tried as a chain-agnostic overlay.
+
+"default_node_tags" is optional. A node tagged mev-protected is where Jarvis
+broadcasts a transaction first. Other nodes are used only if every
+mev-protected node rejects it.
 
 "safe_tx_service_url" is optional. Set it for chains Safe doesn't list in its own
 registry so 'jarvis msig' can propose, approve and execute through a (usually

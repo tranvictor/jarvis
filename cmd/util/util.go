@@ -25,6 +25,7 @@ import (
 	"github.com/tranvictor/jarvis/ui"
 	"github.com/tranvictor/jarvis/util"
 	"github.com/tranvictor/jarvis/util/account/trezoreum"
+	"github.com/tranvictor/jarvis/util/broadcaster"
 	utilreader "github.com/tranvictor/jarvis/util/reader"
 )
 
@@ -303,13 +304,13 @@ func HandlePostSign(
 		_, broadcasted, err := broadcaster.BroadcastTx(signedTx)
 		if config.DontWaitToBeMined {
 			util.DisplayBroadcastedTx(u, signedTx, broadcasted, err, config.Network())
-			return broadcasted, err
+			return broadcasted, withoutMEVFallback(broadcasted, err)
 		}
 		util.DisplayWaitAnalyze(
 			u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
 			a, nil, util.PostSignLayout(config.DegenMode),
 		)
-		return broadcasted, err
+		return broadcasted, withoutMEVFallback(broadcasted, err)
 	}
 
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -336,14 +337,24 @@ func HandlePostSign(
 	<-broadcastedCh
 	if config.DontWaitToBeMined {
 		util.DisplayBroadcastedTx(u, signedTx, broadcasted, err, config.Network())
-		return broadcasted, err
+		return broadcasted, withoutMEVFallback(broadcasted, err)
 	}
 
 	util.DisplayWaitAnalyze(
 		u, reader, analyzer, signedTx, broadcasted, err, config.Network(),
 		a, nil, util.PostSignLayout(config.DegenMode),
 	)
-	return broadcasted, err
+	return broadcasted, withoutMEVFallback(broadcasted, err)
+}
+
+// withoutMEVFallback drops the fallback notice once the broadcast has
+// succeeded. The notice is already printed by DisplayBroadcastedTx;
+// returning it would look like the send failed.
+func withoutMEVFallback(broadcasted bool, err error) error {
+	if broadcasted && errors.Is(err, broadcaster.ErrMEVFallback) {
+		return nil
+	}
+	return err
 }
 
 // StringParamToBytes converts a hex-prefixed or raw string to bytes.

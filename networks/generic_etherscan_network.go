@@ -14,16 +14,19 @@ import (
 const defaultAPIKey = "UBB257TI824FC7HUSPT66KZUMGBPRN3IWV"
 
 type GenericEtherscanNetworkConfig struct {
-	Name                            string            `json:"name"`
-	AlternativeNames                []string          `json:"alternative_names"`
-	ChainID                         uint64            `json:"chain_id"`
-	NativeTokenSymbol               string            `json:"native_token_symbol"`
-	NativeTokenDecimal              uint64            `json:"native_token_decimal"`
-	BlockTime                       uint64            `json:"block_time"`
-	NodeVariableName                string            `json:"node_variable_name"`
-	DefaultNodes                    map[string]string `json:"default_nodes"`
-	BlockExplorerAPIKeyVariableName string            `json:"block_explorer_api_key_variable_name"`
-	BlockExplorerAPIURL             string            `json:"block_explorer_api_url"`
+	Name               string            `json:"name"`
+	AlternativeNames   []string          `json:"alternative_names"`
+	ChainID            uint64            `json:"chain_id"`
+	NativeTokenSymbol  string            `json:"native_token_symbol"`
+	NativeTokenDecimal uint64            `json:"native_token_decimal"`
+	BlockTime          uint64            `json:"block_time"`
+	NodeVariableName   string            `json:"node_variable_name"`
+	DefaultNodes       map[string]string `json:"default_nodes"`
+	// DefaultNodeTags tags built-in nodes by name. "mev-protected" nodes
+	// are broadcast to before any other node.
+	DefaultNodeTags                 map[string][]string `json:"default_node_tags,omitempty"`
+	BlockExplorerAPIKeyVariableName string              `json:"block_explorer_api_key_variable_name"`
+	BlockExplorerAPIURL             string              `json:"block_explorer_api_url"`
 	// ExplorerKind is the explorer family used to look up ABI and verified
 	// source: etherscan, blockscout, routescan, or robinscan. Empty means
 	// infer from BlockExplorerAPIURL. Sourcify is always tried as a
@@ -74,6 +77,10 @@ func (m *networkMeta) GetNodeVariableName() string {
 
 func (m *networkMeta) GetDefaultNodes() map[string]string {
 	return m.Config.DefaultNodes
+}
+
+func (m *networkMeta) GetDefaultNodeTags() map[string][]string {
+	return m.Config.DefaultNodeTags
 }
 
 func (m *networkMeta) GetBlockExplorerAPIKeyVariableName() string {

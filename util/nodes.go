@@ -12,6 +12,7 @@ import (
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
+	"github.com/tranvictor/jarvis/util/broadcaster"
 	"github.com/tranvictor/jarvis/util/reader"
 )
 
@@ -24,10 +25,21 @@ type NodeConfig struct {
 	// included alongside the user's custom nodes. It defaults to true so that
 	// adding a custom node doesn't silently remove the built-in fallbacks.
 	UseDefaults bool `json:"use_defaults"`
+	// Tags maps a node name to its tags. A present key replaces built-in
+	// tags for that name, including an empty list, which clears them.
+	// The tag "mev-protected" is tried first when a transaction is broadcast.
+	Tags map[string][]string `json:"tags,omitempty"`
 }
+
+// nodeConfigDirForTest, when set, replaces ~/.jarvis/nodes. Tests in this
+// package use it so they never write the real home directory.
+var nodeConfigDirForTest func() (string, error)
 
 // NodeConfigDir returns ~/.jarvis/nodes/, creating it when necessary.
 func NodeConfigDir() (string, error) {
+	if nodeConfigDirForTest != nil {
+		return nodeConfigDirForTest()
+	}
 	usr, err := user.Current()
 	if err != nil {
 		return "", fmt.Errorf("couldn't get current user: %w", err)
@@ -85,6 +97,161 @@ func normalizeRPCURL(u string) string {
 	return strings.TrimRight(jarviscommon.CanonicalRPCURL(strings.TrimSpace(u)), "/")
 }
 
+// NormalizeTag trims a tag and canonicalizes the mev-protected tag.
+// The boolean is false when tag is empty.
+func NormalizeTag(tag string) (string, bool) {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return "", false
+	}
+	if strings.EqualFold(tag, broadcaster.TagMEVProtected) {
+		return broadcaster.TagMEVProtected, true
+	}
+	return tag, true
+}
+
+// NormalizeTags trims tags, canonicalizes mev-protected, and drops
+// duplicates. Comparison is case-insensitive.
+func NormalizeTags(tags []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, tag := range tags {
+		norm, ok := NormalizeTag(tag)
+		if !ok {
+			continue
+		}
+		key := strings.ToLower(norm)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, norm)
+	}
+	return out
+}
+
+// UnionTags returns the case-insensitive union of a and b.
+func UnionTags(a, b []string) []string {
+	return NormalizeTags(append(append([]string{}, a...), b...))
+}
+
+// SubtractTags returns have without any tag listed in remove.
+// The result is an empty non-nil slice when nothing remains, so callers
+// can store it and suppress a built-in tag.
+func SubtractTags(have, remove []string) []string {
+	drop := map[string]bool{}
+	for _, tag := range remove {
+		norm, ok := NormalizeTag(tag)
+		if !ok {
+			continue
+		}
+		drop[strings.ToLower(norm)] = true
+	}
+	var kept []string
+	for _, tag := range NormalizeTags(have) {
+		if !drop[strings.ToLower(tag)] {
+			kept = append(kept, tag)
+		}
+	}
+	if kept == nil {
+		return []string{}
+	}
+	return kept
+}
+
+// SameTags reports whether a and b carry the same tags, ignoring case,
+// surrounding space, and order.
+func SameTags(a, b []string) bool {
+	left := map[string]bool{}
+	for _, tag := range NormalizeTags(a) {
+		left[strings.ToLower(tag)] = true
+	}
+	right := NormalizeTags(b)
+	if len(left) != len(right) {
+		return false
+	}
+	for _, tag := range right {
+		if !left[strings.ToLower(tag)] {
+			return false
+		}
+	}
+	return true
+}
+
+func cloneTags(tags []string) []string {
+	if tags == nil {
+		return nil
+	}
+	out := make([]string, len(tags))
+	copy(out, tags)
+	return out
+}
+
+// EffectiveTags returns the tags for one resolved node.
+// A key in userTags replaces built-in tags for that name, and an empty
+// list clears them. Otherwise a built-in tag applies when url still
+// matches the built-in node of the same name.
+func EffectiveTags(name, url string, userTags, defaultTags map[string][]string, defaultNodes map[string]string) []string {
+	if userTags != nil {
+		if tags, ok := userTags[name]; ok {
+			return cloneTags(tags)
+		}
+	}
+	if defaultNodes == nil {
+		return nil
+	}
+	defURL, ok := defaultNodes[name]
+	if !ok || normalizeRPCURL(defURL) != normalizeRPCURL(url) {
+		return nil
+	}
+	return cloneTags(defaultTags[name])
+}
+
+// EffectiveTagMap resolves tags for the active node set. Names with no
+// tags are omitted.
+func EffectiveTagMap(network jarvisnetworks.Network, nodes map[string]string) map[string][]string {
+	var userTags map[string][]string
+	if cfg, err := LoadNodeConfig(network.GetName()); err == nil {
+		userTags = cfg.Tags
+	}
+	var defaultTags map[string][]string
+	var defaultNodes map[string]string
+	if network != nil {
+		defaultTags = network.GetDefaultNodeTags()
+		defaultNodes = network.GetDefaultNodes()
+	}
+	out := map[string][]string{}
+	for name, url := range nodes {
+		tags := EffectiveTags(name, url, userTags, defaultTags, defaultNodes)
+		if len(tags) == 0 {
+			continue
+		}
+		out[name] = tags
+	}
+	return out
+}
+
+// BuiltinNodeTags copies built-in tags for the nodes in the map.
+// Used when seeding a node config from the built-in defaults.
+func BuiltinNodeTags(network jarvisnetworks.Network, nodes map[string]string) map[string][]string {
+	if network == nil || len(nodes) == 0 {
+		return nil
+	}
+	defaults := network.GetDefaultNodeTags()
+	var tags map[string][]string
+	for name := range nodes {
+		t := defaults[name]
+		if len(t) == 0 {
+			continue
+		}
+		if tags == nil {
+			tags = map[string][]string{}
+		}
+		tags[name] = append([]string{}, t...)
+	}
+	return tags
+}
+
 // FindNodeNameByURL returns the configured name whose RPC URL matches url
 // (trailing slashes, surrounding space and a missing http(s) scheme ignored).
 func FindNodeNameByURL(nodes map[string]string, url string) (string, bool) {
@@ -112,7 +279,7 @@ func bootstrapNodeConfig(network jarvisnetworks.Network) NodeConfig {
 	for k, v := range network.GetDefaultNodes() {
 		nodes[k] = v
 	}
-	cfg := NodeConfig{Nodes: nodes, UseDefaults: false}
+	cfg := NodeConfig{Nodes: nodes, UseDefaults: false, Tags: BuiltinNodeTags(network, nodes)}
 	// Ignore write errors — the caller can still proceed with the in-memory config.
 	_ = SaveNodeConfig(network.GetName(), cfg)
 	return cfg

@@ -2,6 +2,7 @@ package gateways
 
 import (
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"math/big"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
 	jarvisutil "github.com/tranvictor/jarvis/util"
+	"github.com/tranvictor/jarvis/util/broadcaster"
 	"github.com/tranvictor/jarvis/walletconnect"
 )
 
@@ -33,6 +35,14 @@ func networkForChain(chain string) (jarvisnetworks.Network, error) {
 		return nil, errChainUnknown(chain)
 	}
 	return net, nil
+}
+
+// warnMEVFallback tells the operator when a transaction was accepted
+// only after every mev-protected node rejected it.
+func warnMEVFallback(ui walletconnect.UI, err error) {
+	if errors.Is(err, broadcaster.ErrMEVFallback) {
+		ui.Warn("%s", err)
+	}
 }
 
 // allKnownEip155Chains returns the CAIP-2 strings for every network

@@ -2,6 +2,7 @@ package util
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -281,6 +282,9 @@ func DisplayBroadcastedTx(u ui.UI, t *types.Transaction, broadcasted bool, err e
 		u.Info("Check each URL with your chain id (e.g. cast chain-id --rpc-url <url>). Remove or fix nodes that return the wrong chain.")
 	} else {
 		u.Success("✓ broadcast  %s  %s", network.GetName(), t.Hash().Hex())
+		if errors.Is(err, broadcaster.ErrMEVFallback) {
+			u.Warn("%s", err)
+		}
 	}
 }
 
@@ -472,7 +476,7 @@ func EthBroadcaster(network networks.Network) (*broadcaster.Broadcaster, error) 
 	if err != nil {
 		return nil, err
 	}
-	return broadcaster.NewGenericBroadcaster(nodes), nil
+	return broadcaster.NewGenericBroadcaster(nodes, EffectiveTagMap(network, nodes)), nil
 }
 
 func EthReader(network networks.Network) (*reader.EthReader, error) {
