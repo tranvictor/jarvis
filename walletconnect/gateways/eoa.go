@@ -280,6 +280,7 @@ func (g *EOAGateway) SendTransaction(
 	if !ok {
 		return "", fmt.Errorf("broadcast rejected: %w", err)
 	}
+	warnMEVFallback(g.ui, err)
 	g.ui.Success("Broadcasted. Tx hash: %s", hash)
 
 	// Wait for the tx to be mined and print the full jarvis receipt

@@ -2,6 +2,7 @@ package broadcaster
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,11 +13,25 @@ import (
 	"github.com/tranvictor/jarvis/common"
 )
 
-// Broadcaster sends a signed tx to all managed nodes in parallel and
-// returns success as soon as at least one node accepts it.
+// ErrMEVFallback is returned alongside a successful broadcast when every
+// mev-protected node rejected the transaction and it was then accepted by
+// another node. errors.Is matches it through the wrapped per-node errors.
+var ErrMEVFallback = errors.New("mev-protected nodes rejected the transaction; broadcast continued on the other nodes")
+
+// Broadcaster sends a signed transaction to the nodes it could dial.
+// Nodes marked mev-protected are tried together first. Every other node
+// is tried together only when each mev-protected node has rejected the
+// transaction. With no mev-protected node available, every node is tried
+// together.
 type Broadcaster struct {
-	clients map[string]*rpc.Client
-	urls    map[string]string // node name -> RPC URL (for error messages)
+	nodes []rpcNode
+}
+
+type rpcNode struct {
+	name   string
+	url    string
+	client *rpc.Client
+	mev    bool
 }
 
 func (b *Broadcaster) broadcast(
@@ -36,43 +51,82 @@ func (b *Broadcaster) BroadcastTx(tx *types.Transaction) (string, bool, error) {
 
 // data must be hex encoded of the signed tx
 func (b *Broadcaster) Broadcast(data string) (string, bool, error) {
-	parallelTasks := []func() error{}
+	hash := common.RawTxToHash(data)
+	if len(b.nodes) == 0 {
+		return hash, true, nil
+	}
+
+	var protected, normal []rpcNode
+	for _, node := range b.nodes {
+		if node.mev {
+			protected = append(protected, node)
+			continue
+		}
+		normal = append(normal, node)
+	}
+
+	if len(protected) == 0 {
+		ok, err := b.broadcastAll(normal, data)
+		return hash, ok, err
+	}
+
+	ok, err := b.broadcastAll(protected, data)
+	if ok {
+		return hash, true, nil
+	}
+	if len(normal) == 0 {
+		return hash, false, err
+	}
+	ok, errNormal := b.broadcastAll(normal, data)
+	if ok {
+		if err == nil {
+			err = errors.New("rejected")
+		}
+		return hash, true, fmt.Errorf("%w: %w", ErrMEVFallback, err)
+	}
+	return hash, false, errors.Join(err, errNormal)
+}
+
+// broadcastAll contacts every node in the set at once. ok is false only
+// when every node returns an error.
+func (b *Broadcaster) broadcastAll(nodes []rpcNode, data string) (bool, error) {
+	if len(nodes) == 0 {
+		return false, nil
+	}
 	timeout, cancel := context.WithTimeout(context.Background(), 4*time.Second)
 	defer cancel()
-	for id := range b.clients {
-		nodeName := id
-		cli := b.clients[id]
-		rpcURL := b.urls[nodeName]
-		parallelTasks = append(parallelTasks, func() error {
-			err := b.broadcast(timeout, cli, data)
+	tasks := make([]func() error, 0, len(nodes))
+	for _, node := range nodes {
+		node := node
+		tasks = append(tasks, func() error {
+			err := b.broadcast(timeout, node.client, data)
 			if err != nil {
-				return fmt.Errorf("node %q at %s: %w", nodeName, rpcURL, err)
+				return fmt.Errorf("node %q at %s: %w", node.name, node.url, err)
 			}
 			return nil
 		})
 	}
-	err, numErrs := common.RunParallel(parallelTasks...)
-	if numErrs == len(b.clients) {
-		return common.RawTxToHash(data), false, err
+	err, numErrs := common.RunParallel(tasks...)
+	if numErrs == len(nodes) {
+		return false, err
 	}
-
-	return common.RawTxToHash(data), true, nil
+	return true, nil
 }
 
-func NewGenericBroadcaster(nodes map[string]string) *Broadcaster {
-	clients := map[string]*rpc.Client{}
-	urls := make(map[string]string, len(nodes))
-	for name, c := range nodes {
-		c = common.CanonicalRPCURL(c)
-		urls[name] = c
-		client, err := rpc.Dial(c)
+func NewGenericBroadcaster(nodes map[string]string, mevProtected map[string]bool) *Broadcaster {
+	out := make([]rpcNode, 0, len(nodes))
+	for name, rawURL := range nodes {
+		url := common.CanonicalRPCURL(rawURL)
+		client, err := rpc.Dial(url)
 		if err != nil {
 			continue
 		}
-		clients[name] = client
+		out = append(out, rpcNode{
+			name:   name,
+			url:    url,
+			client: client,
+			mev:    mevProtected[name],
+		})
 	}
-	return &Broadcaster{
-		clients: clients,
-		urls:    urls,
-	}
+	return &Broadcaster{nodes: out}
 }

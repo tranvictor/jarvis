@@ -211,6 +211,7 @@ func (g *ClassicGateway) SendTransaction(
 	if !ok {
 		return "", fmt.Errorf("broadcast rejected: %w", err)
 	}
+	warnMEVFallback(g.ui, err)
 	g.ui.Success("Broadcasted submitTransaction. Outer tx hash: %s", hash)
 	g.ui.Info(
 		"Other owners approve with:  jarvis msig approve %s %s",
