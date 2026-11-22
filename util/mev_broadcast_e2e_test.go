@@ -32,9 +32,9 @@ import (
 //  9. A mev-protected node that cannot be dialed is waited on, or the
 //     remaining nodes are skipped.
 //  10. A broadcaster with no dialable nodes stops returning success.
-//  11. A node file drops a stored true, or treats a stored false as protected.
-//  12. A node file without a mev_protected field fails to load.
-//  13. The mev_protected field saved in the node file is not the set the
+//  11. A node file drops mev_protected from the node it saved.
+//  12. A node file that still stores a URL string fails to load.
+//  13. The mev_protected value saved on the node is not the value the
 //     broadcaster uses.
 
 type mevHit struct {
@@ -101,17 +101,18 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 			sc.Passed = !t.Failed()
 			report.add(sc)
 		}()
-		got := mevProtectedSet(map[string]bool{
-			"protected": true,
-			"public":    false,
-		})
-		if !got["protected"] || got["public"] || len(got) != 1 {
-			t.Fatalf("mev = %v", got)
+		var cfg NodeConfig
+		raw := []byte(`{"nodes":{"protected":{"url":"https://p.example","mev_protected":true},"public":{"url":"https://q.example","mev_protected":false}}}`)
+		if err := json.Unmarshal(raw, &cfg); err != nil {
+			t.Fatal(err)
+		}
+		if !cfg.Nodes["protected"].MEVProtected || cfg.Nodes["public"].MEVProtected {
+			t.Fatalf("nodes = %+v", cfg.Nodes)
 		}
 	})
 
 	t.Run("legacy node file", func(t *testing.T) {
-		sc := mevScenario{Name: "node file without mev_protected"}
+		sc := mevScenario{Name: "node file stores a URL string"}
 		defer func() {
 			sc.Passed = !t.Failed()
 			report.add(sc)
@@ -121,10 +122,7 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		if err := json.Unmarshal(raw, &cfg); err != nil {
 			t.Fatal(err)
 		}
-		if cfg.MEVProtected != nil {
-			t.Fatalf("mev_protected = %#v", cfg.MEVProtected)
-		}
-		if cfg.Nodes["public"] != "https://public.example" || cfg.UseDefaults {
+		if cfg.Nodes["public"].URL != "https://public.example" || cfg.Nodes["public"].MEVProtected || cfg.UseDefaults {
 			t.Fatalf("cfg = %+v", cfg)
 		}
 		if err := SaveNodeConfig("legacy-net", cfg); err != nil {
@@ -134,7 +132,7 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if loaded.MEVProtected != nil || loaded.Nodes["public"] != cfg.Nodes["public"] {
+		if loaded.Nodes["public"].URL != cfg.Nodes["public"].URL || loaded.Nodes["public"].MEVProtected {
 			t.Fatalf("reloaded = %+v", loaded)
 		}
 	})
@@ -425,12 +423,11 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 			"public": func() (bool, string) { return true, "ok" },
 		})
 		cfg := NodeConfig{
-			Nodes:       nodes,
-			UseDefaults: false,
-			MEVProtected: map[string]bool{
-				"protected": true,
-				"public":    false,
+			Nodes: map[string]Node{
+				"protected": {URL: nodes["protected"], MEVProtected: true},
+				"public":    {URL: nodes["public"], MEVProtected: false},
 			},
+			UseDefaults: false,
 		}
 		if err := SaveNodeConfig("mainnet", cfg); err != nil {
 			t.Fatal(err)
@@ -491,8 +488,8 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !reloaded.MEVProtected["protected"] || reloaded.MEVProtected["public"] {
-			t.Fatalf("saved mev_protected = %v", reloaded.MEVProtected)
+		if !reloaded.Nodes["protected"].MEVProtected || reloaded.Nodes["public"].MEVProtected {
+			t.Fatalf("saved nodes = %+v", reloaded.Nodes)
 		}
 	})
 }

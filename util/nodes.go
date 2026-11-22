@@ -1,6 +1,7 @@
 package util
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,18 +16,43 @@ import (
 	"github.com/tranvictor/jarvis/util/reader"
 )
 
+// Node is one RPC endpoint. MEVProtected nodes are tried first when a
+// transaction is broadcast.
+type Node struct {
+	URL          string `json:"url"`
+	MEVProtected bool   `json:"mev_protected"`
+}
+
+// UnmarshalJSON accepts the current object form and the older
+// name → URL string form.
+func (n *Node) UnmarshalJSON(data []byte) error {
+	data = bytes.TrimSpace(data)
+	if len(data) > 0 && data[0] == '"' {
+		var url string
+		if err := json.Unmarshal(data, &url); err != nil {
+			return err
+		}
+		*n = Node{URL: url}
+		return nil
+	}
+	type nodeJSON Node
+	var parsed nodeJSON
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return err
+	}
+	*n = Node(parsed)
+	return nil
+}
+
 // NodeConfig holds per-network RPC node configuration stored in
 // ~/.jarvis/nodes/<network>.json.
 type NodeConfig struct {
-	// Nodes is the user's custom node set: name → URL.
-	Nodes map[string]string `json:"nodes"`
+	// Nodes is the user's custom node set: name → node.
+	Nodes map[string]Node `json:"nodes"`
 	// UseDefaults controls whether the network's built-in default nodes are
 	// included alongside the user's custom nodes. It defaults to true so that
 	// adding a custom node doesn't silently remove the built-in fallbacks.
 	UseDefaults bool `json:"use_defaults"`
-	// MEVProtected marks node names that keep a transaction off the public
-	// mempool. Broadcast tries those nodes before the others.
-	MEVProtected map[string]bool `json:"mev_protected,omitempty"`
 }
 
 // nodeConfigDirForTest, when set, replaces ~/.jarvis/nodes. Tests in this
@@ -73,7 +99,7 @@ func LoadNodeConfig(networkName string) (NodeConfig, error) {
 		return NodeConfig{}, fmt.Errorf("malformed node config for %s: %w", networkName, err)
 	}
 	if cfg.Nodes == nil {
-		cfg.Nodes = map[string]string{}
+		cfg.Nodes = map[string]Node{}
 	}
 	return cfg, nil
 }
@@ -95,8 +121,7 @@ func normalizeRPCURL(u string) string {
 	return strings.TrimRight(jarviscommon.CanonicalRPCURL(strings.TrimSpace(u)), "/")
 }
 
-// NodeMEVProtected returns the nodes marked mev-protected. A stored false
-// is omitted.
+// NodeMEVProtected returns the nodes whose declaration sets mev_protected.
 func NodeMEVProtected(network jarvisnetworks.Network) map[string]bool {
 	if network == nil {
 		return nil
@@ -105,21 +130,24 @@ func NodeMEVProtected(network jarvisnetworks.Network) map[string]bool {
 	if err != nil {
 		return nil
 	}
-	return mevProtectedSet(cfg.MEVProtected)
+	var out map[string]bool
+	for name, node := range cfg.Nodes {
+		if !node.MEVProtected {
+			continue
+		}
+		if out == nil {
+			out = map[string]bool{}
+		}
+		out[name] = true
+	}
+	return out
 }
 
-func mevProtectedSet(flags map[string]bool) map[string]bool {
-	if len(flags) == 0 {
-		return nil
-	}
-	out := make(map[string]bool)
-	for name, on := range flags {
-		if on {
-			out[name] = true
-		}
-	}
-	if len(out) == 0 {
-		return nil
+// NodeURLs returns the URL of each node.
+func NodeURLs(nodes map[string]Node) map[string]string {
+	out := make(map[string]string, len(nodes))
+	for name, node := range nodes {
+		out[name] = node.URL
 	}
 	return out
 }
@@ -147,9 +175,9 @@ var migrateOnce sync.Once
 // list at runtime. The file is written best-effort; the in-memory config is
 // returned regardless of whether the write succeeded.
 func bootstrapNodeConfig(network jarvisnetworks.Network) NodeConfig {
-	nodes := make(map[string]string, len(network.GetDefaultNodes()))
+	nodes := make(map[string]Node, len(network.GetDefaultNodes()))
 	for k, v := range network.GetDefaultNodes() {
-		nodes[k] = v
+		nodes[k] = Node{URL: v}
 	}
 	cfg := NodeConfig{Nodes: nodes, UseDefaults: false}
 	// Ignore write errors — the caller can still proceed with the in-memory config.
@@ -180,7 +208,7 @@ func GetNodes(network jarvisnetworks.Network) (map[string]string, error) {
 
 	nodes := make(map[string]string, len(cfg.Nodes))
 	for k, v := range cfg.Nodes {
-		nodes[k] = jarviscommon.CanonicalRPCURL(v)
+		nodes[k] = jarviscommon.CanonicalRPCURL(v.URL)
 	}
 	if cfg.UseDefaults {
 		for k, v := range network.GetDefaultNodes() {
@@ -230,8 +258,12 @@ func MigrateFromLegacyNodesJSON() {
 
 	migrated := 0
 	for networkName, nodeMap := range legacy {
+		nodes := make(map[string]Node, len(nodeMap))
+		for name, url := range nodeMap {
+			nodes[name] = Node{URL: url}
+		}
 		cfg := NodeConfig{
-			Nodes:       nodeMap,
+			Nodes:       nodes,
 			UseDefaults: false, // legacy behaviour replaced defaults entirely
 		}
 		if err := SaveNodeConfig(networkName, cfg); err != nil {
