@@ -17,7 +17,7 @@ import (
 
 var nodeOutputFile string
 var nodeListIncludeDefaults bool
-var nodeAddTag string
+var nodeAddMEVProtected bool
 
 var nodeCmd = &cobra.Command{
 	Use:   "node",
@@ -28,12 +28,12 @@ Node configurations are stored in ~/.jarvis/nodes/<network>.json.
 Each network config has a list of custom nodes and a use_defaults flag that
 controls whether the built-in fallback nodes are used alongside your custom ones.
 
-A node has one tag. Jarvis broadcasts a transaction to every node tagged
-"mev-protected" first, and uses the other nodes only when all of those reject it.
+A node can be marked mev-protected. Jarvis broadcasts a transaction to every
+mev-protected node first, and uses the other nodes only when all of those reject it.
 
-  jarvis node add mainnet flashbots https://rpc.flashbots.net --tag mev-protected
-  jarvis node tag mainnet my-node mev-protected
-  jarvis node untag mainnet my-node
+  jarvis node add mainnet flashbots https://rpc.flashbots.net --mev-protected
+  jarvis node mev-protected mainnet my-node on
+  jarvis node mev-protected mainnet my-node off
 
 Sharing configs: use "jarvis node export" to produce a JSON file you can send to
 others, and "jarvis node import <file>" to apply a shared config (nodes are merged,
@@ -69,7 +69,7 @@ Add --include-defaults to also show built-in default nodes and probe each one.`,
 				appUI.Info("  Run 'jarvis node list %s' to see all configured nodes.", networkName)
 				return
 			}
-			userTags := loadedNodeTags(network)
+			mev := loadedNodeMEV(network)
 			nodeType := resolveNodeType(network, nodeName)
 			row := nodeRow{
 				networkName: networkName,
@@ -77,7 +77,7 @@ Add --include-defaults to also show built-in default nodes and probe each one.`,
 				name:        nodeName,
 				url:         nodeURL,
 				nodeType:    nodeType,
-				tags:        tagList(userTags, nodeName),
+				mev:         mev[nodeName],
 			}
 			// Always probe in detail view — one node is fast.
 			rows := probeNodeRows([]nodeRow{row})
@@ -121,7 +121,7 @@ Add --include-defaults to also show built-in default nodes and probe each one.`,
 								name:        name,
 								url:         url,
 								nodeType:    "custom",
-								tags:        tagList(cfg.Tags, name),
+								mev:         cfg.MEVProtected[name],
 							})
 						}
 					}
@@ -172,7 +172,7 @@ func printNodeDetail(r nodeRow) {
 	appUI.Info("Node Name: %s", r.name)
 	appUI.Info("RPC URL:   %s", r.url)
 	appUI.Info("Type:      %s", r.nodeType)
-	appUI.Info("Tags:      %s", displayTags(r.tags))
+	appUI.Info("MEV:       %s", displayMEV(r.mev))
 	if r.probed {
 		if r.probeErr != nil {
 			appUI.Error("Status:    ✗ %s", r.probeErr)
@@ -192,7 +192,7 @@ type nodeRow struct {
 	name        string
 	url         string
 	nodeType    string // "default", "custom", "env-override"
-	tags        string
+	mev         bool
 	probed      bool
 	latencyMs   int64
 	probeErr    error
@@ -208,7 +208,7 @@ func networkDisplayName(network networks.Network) string {
 	return fmt.Sprintf("%s (%s)", network.GetName(), strings.Join(alts, ", "))
 }
 
-func loadedNodeTags(network networks.Network) map[string]string {
+func loadedNodeMEV(network networks.Network) map[string]bool {
 	if network == nil {
 		return nil
 	}
@@ -216,22 +216,14 @@ func loadedNodeTags(network networks.Network) map[string]string {
 	if err != nil {
 		return nil
 	}
-	return cfg.Tags
+	return cfg.MEVProtected
 }
 
-func tagList(tags map[string]string, name string) string {
-	tag, ok := util.NormalizeTag(tags[name])
-	if !ok {
-		return ""
-	}
-	return tag
-}
-
-func displayTags(tags string) string {
-	if tags == "" {
+func displayMEV(on bool) string {
+	if !on {
 		return "—"
 	}
-	return tags
+	return "yes"
 }
 
 func knownNode(network networks.Network, cfg util.NodeConfig, name string) bool {
@@ -248,32 +240,34 @@ func knownNode(network networks.Network, cfg util.NodeConfig, name string) bool 
 	return ok
 }
 
-func setNodeTag(cfg *util.NodeConfig, name, tag string) {
-	if tag == "" {
+func setNodeMEV(cfg *util.NodeConfig, name string, on bool) {
+	if !on {
+		delete(cfg.MEVProtected, name)
 		return
 	}
-	if cfg.Tags == nil {
-		cfg.Tags = map[string]string{}
+	if cfg.MEVProtected == nil {
+		cfg.MEVProtected = map[string]bool{}
 	}
-	cfg.Tags[name] = tag
+	cfg.MEVProtected[name] = true
 }
 
-func moveNodeTags(cfg *util.NodeConfig, from, to string) {
-	if from == to || cfg.Tags == nil {
+func moveNodeMEV(cfg *util.NodeConfig, from, to string) {
+	if from == to || cfg.MEVProtected == nil {
 		return
 	}
-	if tags, ok := cfg.Tags[from]; ok {
-		cfg.Tags[to] = tags
-		delete(cfg.Tags, from)
+	on := cfg.MEVProtected[from]
+	delete(cfg.MEVProtected, from)
+	if on {
+		setNodeMEV(cfg, to, true)
 	}
 }
 
-func warnIfTaggedNodeInactive(network networks.Network, cfg util.NodeConfig, name string) {
+func warnIfMEVNodeInactive(network networks.Network, cfg util.NodeConfig, name string) {
 	if _, inCfg := cfg.Nodes[name]; inCfg || network == nil {
 		return
 	}
 	if _, isDefault := network.GetDefaultNodes()[name]; isDefault && !cfg.UseDefaults {
-		appUI.Warn("Built-in defaults are off, so %q is not in the active set. The tag applies if you turn defaults on.", name)
+		appUI.Warn("Built-in defaults are off, so %q is not in the active set. The mark applies if you turn defaults on.", name)
 	}
 }
 
@@ -286,9 +280,9 @@ func collectNetworkNodes(network networks.Network, includeDefaults bool) []nodeR
 	var rows []nodeRow
 
 	display := networkDisplayName(network)
-	userTags := map[string]string{}
+	mev := map[string]bool{}
 	if cfgErr == nil {
-		userTags = cfg.Tags
+		mev = cfg.MEVProtected
 	}
 
 	if includeDefaults && useDefaults {
@@ -300,7 +294,7 @@ func collectNetworkNodes(network networks.Network, includeDefaults bool) []nodeR
 				name:        name,
 				url:         url,
 				nodeType:    "default",
-				tags:        tagList(userTags, name),
+				mev:         mev[name],
 			})
 		}
 	}
@@ -314,7 +308,7 @@ func collectNetworkNodes(network networks.Network, includeDefaults bool) []nodeR
 				name:        name,
 				url:         url,
 				nodeType:    "custom",
-				tags:        tagList(userTags, name),
+				mev:         mev[name],
 			})
 		}
 	}
@@ -327,7 +321,7 @@ func collectNetworkNodes(network networks.Network, includeDefaults bool) []nodeR
 			name:        "custom-node",
 			url:         envNode,
 			nodeType:    "env-override",
-			tags:        tagList(userTags, "custom-node"),
+			mev:         mev["custom-node"],
 		})
 	}
 
@@ -372,7 +366,7 @@ func probeNodeRows(rows []nodeRow) []nodeRow {
 // because collectNetworkNodes sets displayName uniformly per network.
 func buildNodeTable(rows []nodeRow, showStatus bool) *ui.Table {
 	t := &ui.Table{
-		Headers:      []string{"Network", "Node Name", "RPC URL", "Type", "Tags", "Status"},
+		Headers:      []string{"Network", "Node Name", "RPC URL", "Type", "MEV", "Status"},
 		MaxCellWidth: 55, // cap long URLs and error messages so the table stays readable
 	}
 	for _, r := range rows {
@@ -395,7 +389,7 @@ func buildNodeTable(rows []nodeRow, showStatus bool) *ui.Table {
 			ui.TC(r.name),
 			ui.TC(r.url),
 			ui.TC(r.nodeType),
-			ui.TC(displayTags(r.tags)),
+			ui.TC(displayMEV(r.mev)),
 			statusCell,
 		)
 	}
@@ -420,15 +414,7 @@ var nodeAddCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		networkArg, name, nodeURL := args[0], args[1], jarviscommon.CanonicalRPCURL(args[2])
 		networkName := canonicalNodeNetworkName(networkArg)
-		var addTag string
-		if nodeAddTag != "" {
-			norm, ok := util.NormalizeTag(nodeAddTag)
-			if !ok {
-				appUI.Error("No valid tag given.")
-				return
-			}
-			addTag = norm
-		}
+		mevChanged := cmd.Flags().Changed("mev-protected")
 		if _, err := networks.GetNetwork(networkArg); err != nil {
 			appUI.Warn("Network %q is not in the built-in list, but adding the node anyway.", networkArg)
 		} else if networkName != networkArg {
@@ -444,16 +430,16 @@ var nodeAddCmd = &cobra.Command{
 
 		if existing, ok := util.FindNodeNameByURL(cfg.Nodes, nodeURL); ok {
 			if existing == name {
-				if addTag == "" {
+				if !mevChanged {
 					appUI.Info("Node %q already exists with this URL for %q. Nothing to change.", name, networkName)
 					return
 				}
-				setNodeTag(&cfg, name, addTag)
+				setNodeMEV(&cfg, name, nodeAddMEVProtected)
 				if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 					appUI.Error("Couldn't save node config: %s", err)
 					return
 				}
-				appUI.Success("Updated tag on node %q for %q: %s", name, networkName, addTag)
+				appUI.Success("Updated node %q for %q. MEV protected: %s", name, networkName, displayMEV(nodeAddMEVProtected))
 				return
 			}
 			if oldURL, taken := cfg.Nodes[name]; taken {
@@ -461,28 +447,28 @@ var nodeAddCmd = &cobra.Command{
 			}
 			delete(cfg.Nodes, existing)
 			cfg.Nodes[name] = nodeURL
-			if addTag != "" {
-				if cfg.Tags != nil {
-					delete(cfg.Tags, existing)
-				}
-				setNodeTag(&cfg, name, addTag)
+			if mevChanged {
+				delete(cfg.MEVProtected, existing)
+				setNodeMEV(&cfg, name, nodeAddMEVProtected)
 			} else {
-				moveNodeTags(&cfg, existing, name)
+				moveNodeMEV(&cfg, existing, name)
 			}
 			if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 				appUI.Error("Couldn't save node config: %s", err)
 				return
 			}
 			appUI.Success("Node %q already used this URL. Renamed to %q for network %q.", existing, name, networkName)
-			if addTag != "" {
-				appUI.Info("  tag: %s", addTag)
+			if mevChanged {
+				appUI.Info("  MEV protected: %s", displayMEV(nodeAddMEVProtected))
 			}
 			return
 		}
 
 		if oldURL, exists := cfg.Nodes[name]; exists {
 			cfg.Nodes[name] = nodeURL
-			setNodeTag(&cfg, name, addTag)
+			if mevChanged {
+				setNodeMEV(&cfg, name, nodeAddMEVProtected)
+			}
 			if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 				appUI.Error("Couldn't save node config: %s", err)
 				return
@@ -490,21 +476,23 @@ var nodeAddCmd = &cobra.Command{
 			appUI.Success("Updated node %q for network %q.", name, networkName)
 			appUI.Info("  %s", oldURL)
 			appUI.Info("  → %s", nodeURL)
-			if addTag != "" {
-				appUI.Info("  tag: %s", addTag)
+			if mevChanged {
+				appUI.Info("  MEV protected: %s", displayMEV(nodeAddMEVProtected))
 			}
 			return
 		}
 
 		cfg.Nodes[name] = nodeURL
-		setNodeTag(&cfg, name, addTag)
+		if mevChanged {
+			setNodeMEV(&cfg, name, nodeAddMEVProtected)
+		}
 		if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 			appUI.Error("Couldn't save node config: %s", err)
 			return
 		}
 		appUI.Success("Added node %q (%s) for network %q.", name, nodeURL, networkName)
-		if addTag != "" {
-			appUI.Info("  tag: %s", addTag)
+		if nodeAddMEVProtected {
+			appUI.Info("  MEV protected: yes")
 		}
 		if cfg.UseDefaults {
 			appUI.Info("Built-in default nodes are still included. To disable: jarvis node defaults %s off", networkName)
@@ -530,9 +518,7 @@ var nodeRemoveCmd = &cobra.Command{
 			return
 		}
 		delete(cfg.Nodes, name)
-		if cfg.Tags != nil {
-			delete(cfg.Tags, name)
-		}
+		delete(cfg.MEVProtected, name)
 		if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 			appUI.Error("Couldn't save node config: %s", err)
 			return
@@ -541,7 +527,7 @@ var nodeRemoveCmd = &cobra.Command{
 	},
 }
 
-func loadTagTarget(networkArg, name string) (string, networks.Network, util.NodeConfig, bool) {
+func loadNodeTarget(networkArg, name string) (string, networks.Network, util.NodeConfig, bool) {
 	networkName := canonicalNodeNetworkName(networkArg)
 	var network networks.Network
 	if n, err := networks.GetNetwork(networkArg); err == nil {
@@ -561,58 +547,52 @@ func loadTagTarget(networkArg, name string) (string, networks.Network, util.Node
 	return networkName, network, cfg, true
 }
 
-var nodeTagCmd = &cobra.Command{
-	Use:   "tag <network> <name> <tag>",
-	Short: "Set a node's tag",
-	Long: `Set the single tag on a node. A later tag replaces the previous one.
-
-The tag "mev-protected" makes Jarvis broadcast a transaction to that node
-before any node without the tag. Other nodes are used only if every
+var nodeMEVCmd = &cobra.Command{
+	Use:   "mev-protected <network> <name> <on|off>",
+	Short: "Mark a node as mev-protected, or clear that mark",
+	Long: `Mark a node so Jarvis broadcasts a transaction to it before any node
+that is not mev-protected. The other nodes are used only if every
 mev-protected node rejects the transaction.
 
-  jarvis node tag mainnet flashbots mev-protected`,
+  jarvis node mev-protected mainnet flashbots on
+  jarvis node mev-protected mainnet flashbots off`,
 	Args: cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
-		networkName, network, cfg, ok := loadTagTarget(args[0], args[1])
+		networkName, network, cfg, ok := loadNodeTarget(args[0], args[1])
 		if !ok {
 			return
 		}
-		tag, ok := util.NormalizeTag(args[2])
-		if !ok {
-			appUI.Error("No valid tag given.")
+		var on bool
+		switch args[2] {
+		case "on":
+			on = true
+		case "off":
+			on = false
+		default:
+			appUI.Error("Third argument must be \"on\" or \"off\".")
 			return
 		}
-		setNodeTag(&cfg, args[1], tag)
+		if cfg.MEVProtected[args[1]] == on {
+			appUI.Info("Node %q on %q is already %s.", args[1], networkName, mevState(on))
+			return
+		}
+		setNodeMEV(&cfg, args[1], on)
 		if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 			appUI.Error("Couldn't save node config: %s", err)
 			return
 		}
-		appUI.Success("Tagged node %q on %q: %s", args[1], networkName, tag)
-		warnIfTaggedNodeInactive(network, cfg, args[1])
+		appUI.Success("Node %q on %q is %s.", args[1], networkName, mevState(on))
+		if on {
+			warnIfMEVNodeInactive(network, cfg, args[1])
+		}
 	},
 }
 
-var nodeUntagCmd = &cobra.Command{
-	Use:   "untag <network> <name>",
-	Short: "Clear a node's tag",
-	Args:  cobra.ExactArgs(2),
-	Run: func(cmd *cobra.Command, args []string) {
-		networkName, _, cfg, ok := loadTagTarget(args[0], args[1])
-		if !ok {
-			return
-		}
-		name := args[1]
-		if _, exists := cfg.Tags[name]; !exists {
-			appUI.Info("Node %q on %q has no tag.", name, networkName)
-			return
-		}
-		delete(cfg.Tags, name)
-		if err := util.SaveNodeConfig(networkName, cfg); err != nil {
-			appUI.Error("Couldn't save node config: %s", err)
-			return
-		}
-		appUI.Success("Removed the tag from node %q on %q.", name, networkName)
-	},
+func mevState(on bool) string {
+	if on {
+		return "mev-protected"
+	}
+	return "not mev-protected"
 }
 
 // ── test ─────────────────────────────────────────────────────────────────────
@@ -645,7 +625,7 @@ var nodeTestCmd = &cobra.Command{
 		}
 
 		appUI.Info("Testing %d node(s) for %s...", len(allNodes), network.GetName())
-		userTags := loadedNodeTags(network)
+		mev := loadedNodeMEV(network)
 		var rows []nodeRow
 		for name, nodeURL := range allNodes {
 			rows = append(rows, nodeRow{
@@ -654,7 +634,7 @@ var nodeTestCmd = &cobra.Command{
 				name:        name,
 				url:         nodeURL,
 				nodeType:    "active",
-				tags:        tagList(userTags, name),
+				mev:         mev[name],
 			})
 		}
 		rows = probeNodeRows(rows)
@@ -670,10 +650,10 @@ var nodeExportCmd = &cobra.Command{
 	Long:  "Outputs the custom node config for a network (or all networks) to stdout or a file (-o flag).",
 	Run: func(cmd *cobra.Command, args []string) {
 		type exportEntry struct {
-			Network     string            `json:"network"`
-			Nodes       map[string]string `json:"nodes"`
-			UseDefaults bool              `json:"use_defaults"`
-			Tags        map[string]string `json:"tags,omitempty"`
+			Network      string            `json:"network"`
+			Nodes        map[string]string `json:"nodes"`
+			UseDefaults  bool              `json:"use_defaults"`
+			MEVProtected map[string]bool   `json:"mev_protected,omitempty"`
 		}
 
 		var entries []exportEntry
@@ -686,10 +666,10 @@ var nodeExportCmd = &cobra.Command{
 				cfg, err := util.LoadNodeConfig(networkName)
 				if err == nil {
 					entries = append(entries, exportEntry{
-						Network:     networkName,
-						Nodes:       cfg.Nodes,
-						UseDefaults: cfg.UseDefaults,
-						Tags:        cfg.Tags,
+						Network:      networkName,
+						Nodes:        cfg.Nodes,
+						UseDefaults:  cfg.UseDefaults,
+						MEVProtected: cfg.MEVProtected,
 					})
 				}
 			}
@@ -701,10 +681,10 @@ var nodeExportCmd = &cobra.Command{
 				return
 			}
 			entries = append(entries, exportEntry{
-				Network:     networkName,
-				Nodes:       cfg.Nodes,
-				UseDefaults: cfg.UseDefaults,
-				Tags:        cfg.Tags,
+				Network:      networkName,
+				Nodes:        cfg.Nodes,
+				UseDefaults:  cfg.UseDefaults,
+				MEVProtected: cfg.MEVProtected,
 			})
 		}
 
@@ -761,10 +741,10 @@ var nodeImportCmd = &cobra.Command{
 		}
 
 		type importEntry struct {
-			Network     string            `json:"network"`
-			Nodes       map[string]string `json:"nodes"`
-			UseDefaults *bool             `json:"use_defaults"`
-			Tags        map[string]string `json:"tags,omitempty"`
+			Network      string            `json:"network"`
+			Nodes        map[string]string `json:"nodes"`
+			UseDefaults  *bool             `json:"use_defaults"`
+			MEVProtected map[string]bool   `json:"mev_protected,omitempty"`
 		}
 
 		importOne := func(e importEntry) {
@@ -789,19 +769,11 @@ var nodeImportCmd = &cobra.Command{
 			if e.UseDefaults != nil {
 				cfg.UseDefaults = *e.UseDefaults
 			}
-			for name, tag := range e.Tags {
-				norm, ok := util.NormalizeTag(tag)
-				if !ok {
+			for name, on := range e.MEVProtected {
+				if !on || cfg.MEVProtected[name] {
 					continue
 				}
-				if cfg.Tags == nil {
-					cfg.Tags = map[string]string{}
-				}
-				if cur, exists := cfg.Tags[name]; exists && cur != "" {
-					appUI.Warn("  Node %q on %q already has tag %q — skipping %q.", name, e.Network, cur, norm)
-					continue
-				}
-				cfg.Tags[name] = norm
+				setNodeMEV(&cfg, name, true)
 			}
 			if err := util.SaveNodeConfig(e.Network, cfg); err != nil {
 				appUI.Error("Couldn't save config for %q: %s", e.Network, err)
@@ -919,9 +891,9 @@ var nodeDefaultsCmd = &cobra.Command{
 
 func init() {
 	nodeListCmd.Flags().BoolVar(&nodeListIncludeDefaults, "include-defaults", false, "Show built-in default nodes alongside custom ones, and probe each node for connectivity")
-	nodeAddCmd.Flags().StringVar(&nodeAddTag, "tag", "", "Single tag for this node. mev-protected is broadcast to before other nodes")
+	nodeAddCmd.Flags().BoolVar(&nodeAddMEVProtected, "mev-protected", false, "Broadcast to this node before nodes that are not mev-protected")
 	nodeExportCmd.Flags().StringVarP(&nodeOutputFile, "output", "o", "", "Write output to this file instead of stdout")
 	nodeBootstrapCmd.Flags().BoolVar(&nodeBootstrapOverwrite, "overwrite", false, "Replace existing config files with the current built-in defaults")
-	nodeCmd.AddCommand(nodeListCmd, nodeAddCmd, nodeRemoveCmd, nodeTagCmd, nodeUntagCmd, nodeTestCmd, nodeExportCmd, nodeImportCmd, nodeDefaultsCmd, nodeBootstrapCmd)
+	nodeCmd.AddCommand(nodeListCmd, nodeAddCmd, nodeRemoveCmd, nodeMEVCmd, nodeTestCmd, nodeExportCmd, nodeImportCmd, nodeDefaultsCmd, nodeBootstrapCmd)
 	rootCmd.AddCommand(nodeCmd)
 }

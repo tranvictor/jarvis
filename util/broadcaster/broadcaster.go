@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -14,18 +13,13 @@ import (
 	"github.com/tranvictor/jarvis/common"
 )
 
-// TagMEVProtected marks an RPC node that keeps a transaction off the
-// public mempool. Broadcast tries every node with this tag before any
-// other node.
-const TagMEVProtected = "mev-protected"
-
 // ErrMEVFallback is returned alongside a successful broadcast when every
 // mev-protected node rejected the transaction and it was then accepted by
 // another node. errors.Is matches it through the wrapped per-node errors.
 var ErrMEVFallback = errors.New("mev-protected nodes rejected the transaction; broadcast continued on the other nodes")
 
 // Broadcaster sends a signed transaction to the nodes it could dial.
-// Nodes tagged mev-protected are tried together first. Every other node
+// Nodes marked mev-protected are tried together first. Every other node
 // is tried together only when each mev-protected node has rejected the
 // transaction. With no mev-protected node available, every node is tried
 // together.
@@ -119,11 +113,7 @@ func (b *Broadcaster) broadcastAll(nodes []rpcNode, data string) (bool, error) {
 	return true, nil
 }
 
-func HasMEVTag(tag string) bool {
-	return strings.EqualFold(strings.TrimSpace(tag), TagMEVProtected)
-}
-
-func NewGenericBroadcaster(nodes map[string]string, tags map[string]string) *Broadcaster {
+func NewGenericBroadcaster(nodes map[string]string, mevProtected map[string]bool) *Broadcaster {
 	out := make([]rpcNode, 0, len(nodes))
 	for name, rawURL := range nodes {
 		url := common.CanonicalRPCURL(rawURL)
@@ -135,7 +125,7 @@ func NewGenericBroadcaster(nodes map[string]string, tags map[string]string) *Bro
 			name:   name,
 			url:    url,
 			client: client,
-			mev:    HasMEVTag(tags[name]),
+			mev:    mevProtected[name],
 		})
 	}
 	return &Broadcaster{nodes: out}

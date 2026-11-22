@@ -28,14 +28,14 @@ import (
 //  6. Both tiers reject, and the error drops one of the tiers.
 //  7. One mev-protected node accepts, another rejects, and the normal tier is
 //     still used.
-//  8. A tag other than mev-protected opens a preferred tier.
-//  9. "MEV-Protected" with surrounding space is not recognised.
-//  10. A mev-protected node that cannot be dialed is waited on, or the
+//  8. A stored false opens a preferred tier.
+//  9. A mev-protected node that cannot be dialed is waited on, or the
 //     remaining nodes are skipped.
-//  11. A broadcaster with no dialable nodes stops returning success.
-//  12. A node file stores more than one tag on a node, or drops the tag it saved.
-//  13. A node file without a tags field fails to load.
-//  14. Tags saved in the node file are not the tags the broadcaster uses.
+//  10. A broadcaster with no dialable nodes stops returning success.
+//  11. A node file drops a stored true, or treats a stored false as protected.
+//  12. A node file without a mev_protected field fails to load.
+//  13. The mev_protected field saved in the node file is not the set the
+//     broadcaster uses.
 
 type mevHit struct {
 	Node   string    `json:"node"`
@@ -95,30 +95,23 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		}
 	})
 
-	t.Run("one tag per node", func(t *testing.T) {
-		sc := mevScenario{Name: "a node stores one tag"}
+	t.Run("false is not protected", func(t *testing.T) {
+		sc := mevScenario{Name: "a stored false is not mev-protected"}
 		defer func() {
 			sc.Passed = !t.Failed()
 			report.add(sc)
 		}()
-		got, ok := NormalizeTag("  MEV-Protected ")
-		if !ok || got != broadcaster.TagMEVProtected {
-			t.Fatalf("NormalizeTag = %q %v", got, ok)
-		}
-		if _, ok := NormalizeTag(" "); ok {
-			t.Fatal("blank tag was accepted")
-		}
-		tags := normalizeTagMap(map[string]string{
-			"protected": "MEV-Protected",
-			"blank":     " ",
+		got := mevProtectedSet(map[string]bool{
+			"protected": true,
+			"public":    false,
 		})
-		if tags["protected"] != broadcaster.TagMEVProtected || tags["blank"] != "" || len(tags) != 1 {
-			t.Fatalf("tags = %v", tags)
+		if !got["protected"] || got["public"] || len(got) != 1 {
+			t.Fatalf("mev = %v", got)
 		}
 	})
 
 	t.Run("legacy node file", func(t *testing.T) {
-		sc := mevScenario{Name: "node file without tags"}
+		sc := mevScenario{Name: "node file without mev_protected"}
 		defer func() {
 			sc.Passed = !t.Failed()
 			report.add(sc)
@@ -128,8 +121,8 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		if err := json.Unmarshal(raw, &cfg); err != nil {
 			t.Fatal(err)
 		}
-		if cfg.Tags != nil {
-			t.Fatalf("tags = %#v", cfg.Tags)
+		if cfg.MEVProtected != nil {
+			t.Fatalf("mev_protected = %#v", cfg.MEVProtected)
 		}
 		if cfg.Nodes["public"] != "https://public.example" || cfg.UseDefaults {
 			t.Fatalf("cfg = %+v", cfg)
@@ -141,7 +134,7 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if loaded.Tags != nil || loaded.Nodes["public"] != cfg.Nodes["public"] {
+		if loaded.MEVProtected != nil || loaded.Nodes["public"] != cfg.Nodes["public"] {
 			t.Fatalf("reloaded = %+v", loaded)
 		}
 	})
@@ -183,7 +176,7 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		bc := broadcaster.NewGenericBroadcaster(map[string]string{
 			"a": srv["a"].URL,
 			"b": srv["b"].URL,
-		}, map[string]string{"a": "fast"})
+		}, map[string]bool{"a": false})
 		_, ok, err := bc.Broadcast("0xdeadbeef")
 		sc := mevScenario{Name: "untagged nodes are contacted together", OK: ok, Hits: hits}
 		if err != nil {
@@ -191,7 +184,7 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		}
 		defer func() {
 			sc.Passed = !t.Failed()
-			sc.Note = "a tag other than mev-protected does not create a preferred tier"
+			sc.Note = "a stored false does not create a preferred tier"
 			report.add(sc)
 		}()
 		if !ok || err != nil {
@@ -210,8 +203,8 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 			"protected": func() (bool, string) { return true, "ok" },
 			"public":    func() (bool, string) { return true, "ok" },
 		})
-		bc := broadcaster.NewGenericBroadcaster(nodes, map[string]string{
-			"protected": "  MEV-Protected  ",
+		bc := broadcaster.NewGenericBroadcaster(nodes, map[string]bool{
+			"protected": true,
 		})
 		_, ok, err := bc.Broadcast("0xdeadbeef")
 		sc := mevScenario{Name: "mev-protected acceptance skips normal nodes", OK: ok, Hits: snapshotHits(hits)}
@@ -279,9 +272,9 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 			"p1":     servers["p1"].URL,
 			"p2":     servers["p2"].URL,
 			"public": servers["public"].URL,
-		}, map[string]string{
-			"p1": broadcaster.TagMEVProtected,
-			"p2": broadcaster.TagMEVProtected,
+		}, map[string]bool{
+			"p1": true,
+			"p2": true,
 		})
 		_, ok, err := bc.Broadcast("0xdeadbeef")
 		sc := mevScenario{Name: "protected nodes together, then normal fallback", OK: ok, Hits: append([]mevHit(nil), hits...)}
@@ -320,9 +313,9 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 			"bad":    func() (bool, string) { return false, "rejected" },
 			"public": func() (bool, string) { return true, "ok" },
 		})
-		bc := broadcaster.NewGenericBroadcaster(nodes, map[string]string{
-			"good": broadcaster.TagMEVProtected,
-			"bad":  broadcaster.TagMEVProtected,
+		bc := broadcaster.NewGenericBroadcaster(nodes, map[string]bool{
+			"good": true,
+			"bad":  true,
 		})
 		_, ok, err := bc.Broadcast("0xdeadbeef")
 		sc := mevScenario{Name: "one protected acceptance skips the normal tier", OK: ok, Hits: snapshotHits(hits)}
@@ -346,8 +339,8 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 			"protected": func() (bool, string) { return false, "protected-down" },
 			"public":    func() (bool, string) { return false, "public-down" },
 		})
-		bc := broadcaster.NewGenericBroadcaster(nodes, map[string]string{
-			"protected": broadcaster.TagMEVProtected,
+		bc := broadcaster.NewGenericBroadcaster(nodes, map[string]bool{
+			"protected": true,
 		})
 		_, ok, err := bc.Broadcast("0xdeadbeef")
 		sc := mevScenario{Name: "both tiers reject", OK: ok, Hits: snapshotHits(hits)}
@@ -375,8 +368,8 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 			"public": func() (bool, string) { return true, "ok" },
 		})
 		nodes["ghost"] = filepath.Join(t.TempDir(), "missing.ipc")
-		bc := broadcaster.NewGenericBroadcaster(nodes, map[string]string{
-			"ghost": broadcaster.TagMEVProtected,
+		bc := broadcaster.NewGenericBroadcaster(nodes, map[string]bool{
+			"ghost": true,
 		})
 		start := time.Now()
 		_, ok, err := bc.Broadcast("0xdeadbeef")
@@ -434,8 +427,9 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		cfg := NodeConfig{
 			Nodes:       nodes,
 			UseDefaults: false,
-			Tags: map[string]string{
-				"protected": broadcaster.TagMEVProtected,
+			MEVProtected: map[string]bool{
+				"protected": true,
+				"public":    false,
 			},
 		}
 		if err := SaveNodeConfig("mainnet", cfg); err != nil {
@@ -456,11 +450,11 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		if len(loaded) != 2 {
 			t.Fatalf("active nodes = %v", loaded)
 		}
-		tags := NodeTags(networks.EthereumMainnet)
-		if !broadcaster.HasMEVTag(tags["protected"]) || len(tags["public"]) != 0 {
-			t.Fatalf("tags = %v", tags)
+		mev := NodeMEVProtected(networks.EthereumMainnet)
+		if !mev["protected"] || mev["public"] || len(mev) != 1 {
+			t.Fatalf("mev = %v", mev)
 		}
-		bc := broadcaster.NewGenericBroadcaster(loaded, tags)
+		bc := broadcaster.NewGenericBroadcaster(loaded, mev)
 
 		_, ok, err := bc.Broadcast("0xdeadbeef")
 		first := mevScenario{Name: "config file: protected node accepts", OK: ok, Hits: snapshotHits(hits)}
@@ -497,8 +491,8 @@ func TestMEVProtectedBroadcast(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !broadcaster.HasMEVTag(reloaded.Tags["protected"]) {
-			t.Fatalf("saved tags = %v", reloaded.Tags)
+		if !reloaded.MEVProtected["protected"] || reloaded.MEVProtected["public"] {
+			t.Fatalf("saved mev_protected = %v", reloaded.MEVProtected)
 		}
 	})
 }

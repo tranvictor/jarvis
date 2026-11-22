@@ -12,7 +12,6 @@ import (
 
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	jarvisnetworks "github.com/tranvictor/jarvis/networks"
-	"github.com/tranvictor/jarvis/util/broadcaster"
 	"github.com/tranvictor/jarvis/util/reader"
 )
 
@@ -25,9 +24,9 @@ type NodeConfig struct {
 	// included alongside the user's custom nodes. It defaults to true so that
 	// adding a custom node doesn't silently remove the built-in fallbacks.
 	UseDefaults bool `json:"use_defaults"`
-	// Tags maps a node name to its single tag. The tag "mev-protected"
-	// is tried first when a transaction is broadcast.
-	Tags map[string]string `json:"tags,omitempty"`
+	// MEVProtected marks node names that keep a transaction off the public
+	// mempool. Broadcast tries those nodes before the others.
+	MEVProtected map[string]bool `json:"mev_protected,omitempty"`
 }
 
 // nodeConfigDirForTest, when set, replaces ~/.jarvis/nodes. Tests in this
@@ -96,22 +95,9 @@ func normalizeRPCURL(u string) string {
 	return strings.TrimRight(jarviscommon.CanonicalRPCURL(strings.TrimSpace(u)), "/")
 }
 
-// NormalizeTag trims a tag and canonicalizes the mev-protected tag.
-// The boolean is false when tag is empty.
-func NormalizeTag(tag string) (string, bool) {
-	tag = strings.TrimSpace(tag)
-	if tag == "" {
-		return "", false
-	}
-	if strings.EqualFold(tag, broadcaster.TagMEVProtected) {
-		return broadcaster.TagMEVProtected, true
-	}
-	return tag, true
-}
-
-// NodeTags returns the single tag configured for each node. Nodes with
-// no tag are omitted.
-func NodeTags(network jarvisnetworks.Network) map[string]string {
+// NodeMEVProtected returns the nodes marked mev-protected. A stored false
+// is omitted.
+func NodeMEVProtected(network jarvisnetworks.Network) map[string]bool {
 	if network == nil {
 		return nil
 	}
@@ -119,20 +105,18 @@ func NodeTags(network jarvisnetworks.Network) map[string]string {
 	if err != nil {
 		return nil
 	}
-	return normalizeTagMap(cfg.Tags)
+	return mevProtectedSet(cfg.MEVProtected)
 }
 
-func normalizeTagMap(tags map[string]string) map[string]string {
-	if len(tags) == 0 {
+func mevProtectedSet(flags map[string]bool) map[string]bool {
+	if len(flags) == 0 {
 		return nil
 	}
-	out := make(map[string]string, len(tags))
-	for name, tag := range tags {
-		norm, ok := NormalizeTag(tag)
-		if !ok {
-			continue
+	out := make(map[string]bool)
+	for name, on := range flags {
+		if on {
+			out[name] = true
 		}
-		out[name] = norm
 	}
 	if len(out) == 0 {
 		return nil

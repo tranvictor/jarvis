@@ -476,7 +476,7 @@ func EthBroadcaster(network networks.Network) (*broadcaster.Broadcaster, error) 
 	if err != nil {
 		return nil, err
 	}
-	return broadcaster.NewGenericBroadcaster(nodes, NodeTags(network)), nil
+	return broadcaster.NewGenericBroadcaster(nodes, NodeMEVProtected(network)), nil
 }
 
 func EthReader(network networks.Network) (*reader.EthReader, error) {
