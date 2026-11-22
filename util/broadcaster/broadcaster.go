@@ -119,16 +119,11 @@ func (b *Broadcaster) broadcastAll(nodes []rpcNode, data string) (bool, error) {
 	return true, nil
 }
 
-func HasMEVTag(tags []string) bool {
-	for _, tag := range tags {
-		if strings.EqualFold(strings.TrimSpace(tag), TagMEVProtected) {
-			return true
-		}
-	}
-	return false
+func HasMEVTag(tag string) bool {
+	return strings.EqualFold(strings.TrimSpace(tag), TagMEVProtected)
 }
 
-func NewGenericBroadcaster(nodes map[string]string, tags map[string][]string) *Broadcaster {
+func NewGenericBroadcaster(nodes map[string]string, tags map[string]string) *Broadcaster {
 	out := make([]rpcNode, 0, len(nodes))
 	for name, rawURL := range nodes {
 		url := common.CanonicalRPCURL(rawURL)

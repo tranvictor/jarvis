@@ -16,9 +16,6 @@ type Network interface {
 
 	GetNodeVariableName() string
 	GetDefaultNodes() map[string]string
-	// GetDefaultNodeTags returns tags for built-in nodes, keyed by node
-	// name. A node tagged "mev-protected" is tried first when broadcasting.
-	GetDefaultNodeTags() map[string][]string
 
 	GetBlockExplorerAPIKeyVariableName() string
 	GetBlockExplorerAPIURL() string

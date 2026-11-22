@@ -17,7 +17,7 @@ import (
 
 var nodeOutputFile string
 var nodeListIncludeDefaults bool
-var nodeAddTags []string
+var nodeAddTag string
 
 var nodeCmd = &cobra.Command{
 	Use:   "node",
@@ -28,12 +28,12 @@ Node configurations are stored in ~/.jarvis/nodes/<network>.json.
 Each network config has a list of custom nodes and a use_defaults flag that
 controls whether the built-in fallback nodes are used alongside your custom ones.
 
-A node can carry tags. Jarvis broadcasts a transaction to every node tagged
+A node has one tag. Jarvis broadcasts a transaction to every node tagged
 "mev-protected" first, and uses the other nodes only when all of those reject it.
 
   jarvis node add mainnet flashbots https://rpc.flashbots.net --tag mev-protected
   jarvis node tag mainnet my-node mev-protected
-  jarvis node untag mainnet my-node mev-protected
+  jarvis node untag mainnet my-node
 
 Sharing configs: use "jarvis node export" to produce a JSON file you can send to
 others, and "jarvis node import <file>" to apply a shared config (nodes are merged,
@@ -77,7 +77,7 @@ Add --include-defaults to also show built-in default nodes and probe each one.`,
 				name:        nodeName,
 				url:         nodeURL,
 				nodeType:    nodeType,
-				tags:        tagList(network, userTags, nodeName, nodeURL),
+				tags:        tagList(userTags, nodeName),
 			}
 			// Always probe in detail view — one node is fast.
 			rows := probeNodeRows([]nodeRow{row})
@@ -121,7 +121,7 @@ Add --include-defaults to also show built-in default nodes and probe each one.`,
 								name:        name,
 								url:         url,
 								nodeType:    "custom",
-								tags:        tagList(nil, cfg.Tags, name, url),
+								tags:        tagList(cfg.Tags, name),
 							})
 						}
 					}
@@ -208,7 +208,7 @@ func networkDisplayName(network networks.Network) string {
 	return fmt.Sprintf("%s (%s)", network.GetName(), strings.Join(alts, ", "))
 }
 
-func loadedNodeTags(network networks.Network) map[string][]string {
+func loadedNodeTags(network networks.Network) map[string]string {
 	if network == nil {
 		return nil
 	}
@@ -219,18 +219,12 @@ func loadedNodeTags(network networks.Network) map[string][]string {
 	return cfg.Tags
 }
 
-func tagList(network networks.Network, userTags map[string][]string, name, url string) string {
-	var defaultTags map[string][]string
-	var defaultNodes map[string]string
-	if network != nil {
-		defaultTags = network.GetDefaultNodeTags()
-		defaultNodes = network.GetDefaultNodes()
-	}
-	tags := util.EffectiveTags(name, url, userTags, defaultTags, defaultNodes)
-	if len(tags) == 0 {
+func tagList(tags map[string]string, name string) string {
+	tag, ok := util.NormalizeTag(tags[name])
+	if !ok {
 		return ""
 	}
-	return strings.Join(tags, ",")
+	return tag
 }
 
 func displayTags(tags string) string {
@@ -254,24 +248,14 @@ func knownNode(network networks.Network, cfg util.NodeConfig, name string) bool 
 	return ok
 }
 
-func nodeURL(network networks.Network, cfg util.NodeConfig, name string) string {
-	if url := cfg.Nodes[name]; url != "" {
-		return url
-	}
-	if network == nil {
-		return ""
-	}
-	return network.GetDefaultNodes()[name]
-}
-
-func applyNodeTags(cfg *util.NodeConfig, name string, tags []string) {
-	if len(tags) == 0 {
+func setNodeTag(cfg *util.NodeConfig, name, tag string) {
+	if tag == "" {
 		return
 	}
 	if cfg.Tags == nil {
-		cfg.Tags = map[string][]string{}
+		cfg.Tags = map[string]string{}
 	}
-	cfg.Tags[name] = tags
+	cfg.Tags[name] = tag
 }
 
 func moveNodeTags(cfg *util.NodeConfig, from, to string) {
@@ -302,7 +286,7 @@ func collectNetworkNodes(network networks.Network, includeDefaults bool) []nodeR
 	var rows []nodeRow
 
 	display := networkDisplayName(network)
-	userTags := map[string][]string{}
+	userTags := map[string]string{}
 	if cfgErr == nil {
 		userTags = cfg.Tags
 	}
@@ -316,7 +300,7 @@ func collectNetworkNodes(network networks.Network, includeDefaults bool) []nodeR
 				name:        name,
 				url:         url,
 				nodeType:    "default",
-				tags:        tagList(network, userTags, name, url),
+				tags:        tagList(userTags, name),
 			})
 		}
 	}
@@ -330,7 +314,7 @@ func collectNetworkNodes(network networks.Network, includeDefaults bool) []nodeR
 				name:        name,
 				url:         url,
 				nodeType:    "custom",
-				tags:        tagList(network, userTags, name, url),
+				tags:        tagList(userTags, name),
 			})
 		}
 	}
@@ -343,7 +327,7 @@ func collectNetworkNodes(network networks.Network, includeDefaults bool) []nodeR
 			name:        "custom-node",
 			url:         envNode,
 			nodeType:    "env-override",
-			tags:        tagList(network, userTags, "custom-node", envNode),
+			tags:        tagList(userTags, "custom-node"),
 		})
 	}
 
@@ -436,13 +420,14 @@ var nodeAddCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		networkArg, name, nodeURL := args[0], args[1], jarviscommon.CanonicalRPCURL(args[2])
 		networkName := canonicalNodeNetworkName(networkArg)
-		var addTags []string
-		if len(nodeAddTags) > 0 {
-			addTags = util.NormalizeTags(nodeAddTags)
-			if len(addTags) == 0 {
-				appUI.Error("No valid tags given.")
+		var addTag string
+		if nodeAddTag != "" {
+			norm, ok := util.NormalizeTag(nodeAddTag)
+			if !ok {
+				appUI.Error("No valid tag given.")
 				return
 			}
+			addTag = norm
 		}
 		if _, err := networks.GetNetwork(networkArg); err != nil {
 			appUI.Warn("Network %q is not in the built-in list, but adding the node anyway.", networkArg)
@@ -459,16 +444,16 @@ var nodeAddCmd = &cobra.Command{
 
 		if existing, ok := util.FindNodeNameByURL(cfg.Nodes, nodeURL); ok {
 			if existing == name {
-				if len(addTags) == 0 {
+				if addTag == "" {
 					appUI.Info("Node %q already exists with this URL for %q. Nothing to change.", name, networkName)
 					return
 				}
-				applyNodeTags(&cfg, name, addTags)
+				setNodeTag(&cfg, name, addTag)
 				if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 					appUI.Error("Couldn't save node config: %s", err)
 					return
 				}
-				appUI.Success("Updated tags on node %q for %q: %s", name, networkName, strings.Join(addTags, ", "))
+				appUI.Success("Updated tag on node %q for %q: %s", name, networkName, addTag)
 				return
 			}
 			if oldURL, taken := cfg.Nodes[name]; taken {
@@ -476,11 +461,11 @@ var nodeAddCmd = &cobra.Command{
 			}
 			delete(cfg.Nodes, existing)
 			cfg.Nodes[name] = nodeURL
-			if len(addTags) > 0 {
+			if addTag != "" {
 				if cfg.Tags != nil {
 					delete(cfg.Tags, existing)
 				}
-				applyNodeTags(&cfg, name, addTags)
+				setNodeTag(&cfg, name, addTag)
 			} else {
 				moveNodeTags(&cfg, existing, name)
 			}
@@ -489,15 +474,15 @@ var nodeAddCmd = &cobra.Command{
 				return
 			}
 			appUI.Success("Node %q already used this URL. Renamed to %q for network %q.", existing, name, networkName)
-			if len(addTags) > 0 {
-				appUI.Info("  tags: %s", strings.Join(addTags, ", "))
+			if addTag != "" {
+				appUI.Info("  tag: %s", addTag)
 			}
 			return
 		}
 
 		if oldURL, exists := cfg.Nodes[name]; exists {
 			cfg.Nodes[name] = nodeURL
-			applyNodeTags(&cfg, name, addTags)
+			setNodeTag(&cfg, name, addTag)
 			if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 				appUI.Error("Couldn't save node config: %s", err)
 				return
@@ -505,21 +490,21 @@ var nodeAddCmd = &cobra.Command{
 			appUI.Success("Updated node %q for network %q.", name, networkName)
 			appUI.Info("  %s", oldURL)
 			appUI.Info("  → %s", nodeURL)
-			if len(addTags) > 0 {
-				appUI.Info("  tags: %s", strings.Join(addTags, ", "))
+			if addTag != "" {
+				appUI.Info("  tag: %s", addTag)
 			}
 			return
 		}
 
 		cfg.Nodes[name] = nodeURL
-		applyNodeTags(&cfg, name, addTags)
+		setNodeTag(&cfg, name, addTag)
 		if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 			appUI.Error("Couldn't save node config: %s", err)
 			return
 		}
 		appUI.Success("Added node %q (%s) for network %q.", name, nodeURL, networkName)
-		if len(addTags) > 0 {
-			appUI.Info("  tags: %s", strings.Join(addTags, ", "))
+		if addTag != "" {
+			appUI.Info("  tag: %s", addTag)
 		}
 		if cfg.UseDefaults {
 			appUI.Info("Built-in default nodes are still included. To disable: jarvis node defaults %s off", networkName)
@@ -577,80 +562,56 @@ func loadTagTarget(networkArg, name string) (string, networks.Network, util.Node
 }
 
 var nodeTagCmd = &cobra.Command{
-	Use:   "tag <network> <name> <tag> [tag...]",
-	Short: "Add tags to a node",
-	Long: `Add one or more tags to a node.
+	Use:   "tag <network> <name> <tag>",
+	Short: "Set a node's tag",
+	Long: `Set the single tag on a node. A later tag replaces the previous one.
 
 The tag "mev-protected" makes Jarvis broadcast a transaction to that node
 before any node without the tag. Other nodes are used only if every
 mev-protected node rejects the transaction.
 
   jarvis node tag mainnet flashbots mev-protected`,
-	Args: cobra.MinimumNArgs(3),
+	Args: cobra.ExactArgs(3),
 	Run: func(cmd *cobra.Command, args []string) {
 		networkName, network, cfg, ok := loadTagTarget(args[0], args[1])
 		if !ok {
 			return
 		}
-		name := args[1]
-		url := nodeURL(network, cfg, name)
-		var defaultTags map[string][]string
-		var defaultNodes map[string]string
-		if network != nil {
-			defaultTags = network.GetDefaultNodeTags()
-			defaultNodes = network.GetDefaultNodes()
-		}
-		merged := util.UnionTags(util.EffectiveTags(name, url, cfg.Tags, defaultTags, defaultNodes), args[2:])
-		if len(merged) == 0 {
-			appUI.Error("No valid tags given.")
+		tag, ok := util.NormalizeTag(args[2])
+		if !ok {
+			appUI.Error("No valid tag given.")
 			return
 		}
-		applyNodeTags(&cfg, name, merged)
+		setNodeTag(&cfg, args[1], tag)
 		if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 			appUI.Error("Couldn't save node config: %s", err)
 			return
 		}
-		appUI.Success("Tagged node %q on %q: %s", name, networkName, strings.Join(merged, ", "))
-		warnIfTaggedNodeInactive(network, cfg, name)
+		appUI.Success("Tagged node %q on %q: %s", args[1], networkName, tag)
+		warnIfTaggedNodeInactive(network, cfg, args[1])
 	},
 }
 
 var nodeUntagCmd = &cobra.Command{
-	Use:   "untag <network> <name> <tag> [tag...]",
-	Short: "Remove tags from a node",
-	Args:  cobra.MinimumNArgs(3),
+	Use:   "untag <network> <name>",
+	Short: "Clear a node's tag",
+	Args:  cobra.ExactArgs(2),
 	Run: func(cmd *cobra.Command, args []string) {
-		networkName, network, cfg, ok := loadTagTarget(args[0], args[1])
+		networkName, _, cfg, ok := loadTagTarget(args[0], args[1])
 		if !ok {
 			return
 		}
 		name := args[1]
-		url := nodeURL(network, cfg, name)
-		var defaultTags map[string][]string
-		var defaultNodes map[string]string
-		if network != nil {
-			defaultTags = network.GetDefaultNodeTags()
-			defaultNodes = network.GetDefaultNodes()
-		}
-		current := util.EffectiveTags(name, url, cfg.Tags, defaultTags, defaultNodes)
-		remaining := util.SubtractTags(current, args[2:])
-		if util.SameTags(current, remaining) {
-			appUI.Info("Node %q on %q does not have those tags.", name, networkName)
+		if _, exists := cfg.Tags[name]; !exists {
+			appUI.Info("Node %q on %q has no tag.", name, networkName)
 			return
 		}
-		if cfg.Tags == nil {
-			cfg.Tags = map[string][]string{}
-		}
-		cfg.Tags[name] = remaining
+		delete(cfg.Tags, name)
 		if err := util.SaveNodeConfig(networkName, cfg); err != nil {
 			appUI.Error("Couldn't save node config: %s", err)
 			return
 		}
-		if len(remaining) == 0 {
-			appUI.Success("Removed tags from node %q on %q.", name, networkName)
-			return
-		}
-		appUI.Success("Node %q on %q now tagged: %s", name, networkName, strings.Join(remaining, ", "))
+		appUI.Success("Removed the tag from node %q on %q.", name, networkName)
 	},
 }
 
@@ -693,7 +654,7 @@ var nodeTestCmd = &cobra.Command{
 				name:        name,
 				url:         nodeURL,
 				nodeType:    "active",
-				tags:        tagList(network, userTags, name, nodeURL),
+				tags:        tagList(userTags, name),
 			})
 		}
 		rows = probeNodeRows(rows)
@@ -709,10 +670,10 @@ var nodeExportCmd = &cobra.Command{
 	Long:  "Outputs the custom node config for a network (or all networks) to stdout or a file (-o flag).",
 	Run: func(cmd *cobra.Command, args []string) {
 		type exportEntry struct {
-			Network     string              `json:"network"`
-			Nodes       map[string]string   `json:"nodes"`
-			UseDefaults bool                `json:"use_defaults"`
-			Tags        map[string][]string `json:"tags,omitempty"`
+			Network     string            `json:"network"`
+			Nodes       map[string]string `json:"nodes"`
+			UseDefaults bool              `json:"use_defaults"`
+			Tags        map[string]string `json:"tags,omitempty"`
 		}
 
 		var entries []exportEntry
@@ -800,10 +761,10 @@ var nodeImportCmd = &cobra.Command{
 		}
 
 		type importEntry struct {
-			Network     string              `json:"network"`
-			Nodes       map[string]string   `json:"nodes"`
-			UseDefaults *bool               `json:"use_defaults"`
-			Tags        map[string][]string `json:"tags,omitempty"`
+			Network     string            `json:"network"`
+			Nodes       map[string]string `json:"nodes"`
+			UseDefaults *bool             `json:"use_defaults"`
+			Tags        map[string]string `json:"tags,omitempty"`
 		}
 
 		importOne := func(e importEntry) {
@@ -828,17 +789,17 @@ var nodeImportCmd = &cobra.Command{
 			if e.UseDefaults != nil {
 				cfg.UseDefaults = *e.UseDefaults
 			}
-			for name, tags := range e.Tags {
-				norm := util.NormalizeTags(tags)
-				if cfg.Tags == nil {
-					cfg.Tags = map[string][]string{}
-				}
-				if cur, exists := cfg.Tags[name]; exists {
-					cfg.Tags[name] = util.UnionTags(cur, norm)
+			for name, tag := range e.Tags {
+				norm, ok := util.NormalizeTag(tag)
+				if !ok {
 					continue
 				}
-				if norm == nil {
-					norm = []string{}
+				if cfg.Tags == nil {
+					cfg.Tags = map[string]string{}
+				}
+				if cur, exists := cfg.Tags[name]; exists && cur != "" {
+					appUI.Warn("  Node %q on %q already has tag %q — skipping %q.", name, e.Network, cur, norm)
+					continue
 				}
 				cfg.Tags[name] = norm
 			}
@@ -907,7 +868,7 @@ replace them with the current built-in defaults.`,
 			for k, v := range n.GetDefaultNodes() {
 				nodes[k] = v
 			}
-			cfg := util.NodeConfig{Nodes: nodes, UseDefaults: false, Tags: util.BuiltinNodeTags(n, nodes)}
+			cfg := util.NodeConfig{Nodes: nodes, UseDefaults: false}
 			if err := util.SaveNodeConfig(n.GetName(), cfg); err != nil {
 				appUI.Error("  %-30s failed: %s", n.GetName(), err)
 				failed++
@@ -958,7 +919,7 @@ var nodeDefaultsCmd = &cobra.Command{
 
 func init() {
 	nodeListCmd.Flags().BoolVar(&nodeListIncludeDefaults, "include-defaults", false, "Show built-in default nodes alongside custom ones, and probe each node for connectivity")
-	nodeAddCmd.Flags().StringArrayVar(&nodeAddTags, "tag", nil, "Tag for this node (repeatable). mev-protected is broadcast to before other nodes")
+	nodeAddCmd.Flags().StringVar(&nodeAddTag, "tag", "", "Single tag for this node. mev-protected is broadcast to before other nodes")
 	nodeExportCmd.Flags().StringVarP(&nodeOutputFile, "output", "o", "", "Write output to this file instead of stdout")
 	nodeBootstrapCmd.Flags().BoolVar(&nodeBootstrapOverwrite, "overwrite", false, "Replace existing config files with the current built-in defaults")
 	nodeCmd.AddCommand(nodeListCmd, nodeAddCmd, nodeRemoveCmd, nodeTagCmd, nodeUntagCmd, nodeTestCmd, nodeExportCmd, nodeImportCmd, nodeDefaultsCmd, nodeBootstrapCmd)
