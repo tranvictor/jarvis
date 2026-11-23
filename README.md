@@ -12,6 +12,7 @@ jarvis send               move ETH or tokens from a wallet or a Safe
 jarvis contract read|tx   call or write any verified contract
 jarvis msig               propose, approve and execute multisig txs
 jarvis wc                 drive a dApp over WalletConnect v2
+jarvis portfolio <wallet>  one wallet's book, priced from Kyber
 jarvis wallet / addr      the keys you sign with, the names you trust
 ```
 
