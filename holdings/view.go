@@ -23,7 +23,7 @@ func Render(u ui.UI, b *Book) {
 		if b.Degen {
 			headers = append(headers, "address", "raw", "spread", "age", "1h")
 		}
-		u.PrintTable(&ui.Table{Headers: headers, Rows: rows})
+		u.PrintTable(&ui.Table{Headers: headers, Rows: rows, Align: columnAlign(headers)})
 	}
 	if omitted > 0 {
 		u.Info("%s", u.Style(ui.StyledText{
@@ -51,6 +51,18 @@ func Render(u ui.UI, b *Book) {
 	if b.Live {
 		u.Info("%s", u.Style(ui.StyledText{Text: liveStatus(b, now), Severity: ui.SeverityMuted}))
 	}
+}
+
+// columnAlign right-aligns the value column so the cents share an edge.
+// Other columns stay left-aligned.
+func columnAlign(headers []string) []ui.ColAlign {
+	align := make([]ui.ColAlign, len(headers))
+	for i, h := range headers {
+		if h == "value" {
+			align[i] = ui.AlignRight
+		}
+	}
+	return align
 }
 
 func renderHeader(u ui.UI, b *Book) {

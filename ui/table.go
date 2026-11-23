@@ -14,6 +14,17 @@ import (
 	"golang.org/x/term"
 )
 
+// ColAlign is how text sits inside a table column.
+type ColAlign int
+
+const (
+	// AlignLeft pads on the right. It is the zero value so existing tables
+	// stay left-aligned.
+	AlignLeft ColAlign = iota
+	// AlignRight pads on the left so numeric columns share a right edge.
+	AlignRight
+)
+
 // TableCell is a single cell in a Table with optional severity styling.
 type TableCell struct {
 	Text     string
@@ -63,6 +74,12 @@ type Table struct {
 	// curated content like ERC-7730 clear-signed fields, SeverityWarn /
 	// SeverityError for highlighted warning/error tables, etc.
 	BorderSeverity Severity
+
+	// Align is per-column alignment, indexed like Headers. A missing entry
+	// stays left-aligned. Right alignment pads on the left of each visual
+	// line, measured after ANSI codes are stripped, so coloured numbers
+	// still share a right edge.
+	Align []ColAlign
 }
 
 // AddRow appends a row to Rows (first-column auto-grouping mode).
@@ -74,6 +91,27 @@ func (t *Table) AddRow(cells ...TableCell) {
 // first so that colour sequences don't inflate the measurement.
 func runeLen(s string) int {
 	return runewidth.StringWidth(ansi.Strip(s))
+}
+
+func (t *Table) alignAt(i int) ColAlign {
+	if t == nil || i < 0 || i >= len(t.Align) {
+		return AlignLeft
+	}
+	return t.Align[i]
+}
+
+// sidePad splits the spare columns of a cell. Padding is computed from the
+// visible width so a coloured number and a plain one of the same text share
+// a column edge.
+func sidePad(text string, width int, align ColAlign) (left, right int) {
+	pad := width - runeLen(text)
+	if pad < 0 {
+		pad = 0
+	}
+	if align == AlignRight {
+		return pad, 0
+	}
+	return 0, pad
 }
 
 func colWidths(t *Table, available int) []int {
@@ -382,11 +420,8 @@ func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCel
 					plain = cols[i].lines[li]
 				}
 				styled := styleCell(TableCell{Text: plain, Severity: cols[i].severity})
-				pad := w - runeLen(plain)
-				if pad < 0 {
-					pad = 0
-				}
-				cells[i] = " " + styled + strings.Repeat(" ", pad) + " "
+				left, right := sidePad(plain, w, t.alignAt(i))
+				cells[i] = " " + strings.Repeat(" ", left) + styled + strings.Repeat(" ", right) + " "
 			}
 			fmt.Fprintf(out, "%s%s\n", prefix,
 				bdr("│")+strings.Join(cells, bdr("│"))+bdr("│"))
@@ -417,11 +452,8 @@ func renderTable(out io.Writer, prefix string, t *Table, styleCell func(TableCel
 				if li < len(headerLines[i]) {
 					h = headerLines[i][li]
 				}
-				pad := w - runeLen(h)
-				if pad < 0 {
-					pad = 0
-				}
-				cells[i] = " " + h + strings.Repeat(" ", pad) + " "
+				left, right := sidePad(h, w, t.alignAt(i))
+				cells[i] = " " + strings.Repeat(" ", left) + h + strings.Repeat(" ", right) + " "
 			}
 			fmt.Fprintf(out, "%s%s\n", prefix,
 				bdr("│")+strings.Join(cells, bdr("│"))+bdr("│"))
