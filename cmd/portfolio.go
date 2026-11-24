@@ -41,16 +41,19 @@ Set JARVIS_KYBER_KEY. Create a key at https://apigw-admin.kyberswap.com/
 JARVIS_KYBER_URL overrides the API base (default https://api.kyberswap.com/data/v1).
 
   jarvis portfolio vitalik.eth
-  jarvis portfolio 0xd8da…6045 --chain mainnet --chain base --min-usd 10
+  jarvis portfolio 0xd8da…6045 -k base --min-usd 10
+  jarvis portfolio me -k mainnet --chain base
   jarvis portfolio me --watch
 
---chain limits the book to those networks or chain ids. The global -k
-flag does not. --watch redraws on live prices: a green ▲ is up and a
-red ▼ is down, on the 24h column and on a value that just ticked.
+-k/--network limits the book to that network. --chain does the same and
+can be repeated. Pass both to include each of them. With neither flag
+the book covers every chain. --watch redraws on live prices: a green ▲
+is up and a red ▼ is down, on the 24h column and on a value that just
+ticked.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
-		if err := runPortfolio(args[0]); err != nil {
+		if err := runPortfolio(cmd, args[0]); err != nil {
 			appUI.Error("%s", err)
 			_ = cache.Flush()
 			os.Exit(1)
@@ -58,11 +61,11 @@ red ▼ is down, on the 24h column and on a value that just ticked.
 	},
 }
 
-func runPortfolio(input string) error {
+func runPortfolio(cmd *cobra.Command, input string) error {
 	if portfolioWatch && portfolioJSON != "" {
 		return fmt.Errorf("--watch writes a live screen; leave out --json-output for a snapshot file")
 	}
-	chains, err := parsePortfolioChains(portfolioChains)
+	chains, err := selectPortfolioChains(cmd.Flags().Changed("network"), config.NetworkString, portfolioChains)
 	if err != nil {
 		return err
 	}
@@ -99,12 +102,23 @@ func runPortfolio(input string) error {
 }
 
 func init() {
-	portfolioCmd.Flags().StringSliceVar(&portfolioChains, "chain", nil, "network name or chain id to include (repeatable; default is every chain)")
+	portfolioCmd.Flags().StringSliceVar(&portfolioChains, "chain", nil, "network name or chain id to include (repeatable). Combines with -k/--network. With neither, every chain is included")
 	portfolioCmd.Flags().Float64Var(&portfolioMinUSD, "min-usd", 1, "hide holdings worth less than this many USD")
 	portfolioCmd.Flags().Float64Var(&portfolioExitMin, "exit-min", 1000, "quote an exit tier for holdings at or above this many USD")
 	portfolioCmd.Flags().BoolVar(&portfolioWatch, "watch", false, "redraw as Kyber pushes prices")
 	portfolioCmd.Flags().StringVarP(&portfolioJSON, "json-output", "o", "", "write the portfolio to a JSON file")
 	rootCmd.AddCommand(portfolioCmd)
+}
+
+// selectPortfolioChains turns -k/--network and --chain into the chain
+// set the loader keeps. An unset -k keeps its cobra default and does not
+// narrow the book; an explicit -k is one more chain, unioned with --chain.
+func selectPortfolioChains(networkSet bool, network string, chains []string) (map[int]struct{}, error) {
+	values := append([]string{}, chains...)
+	if networkSet {
+		values = append(values, network)
+	}
+	return parsePortfolioChains(values)
 }
 
 func parsePortfolioChains(values []string) (map[int]struct{}, error) {
