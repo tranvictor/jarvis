@@ -53,6 +53,7 @@ keystores, Ledger and Trezor, and drives Gnosis Safe / classic multisigs.
   jarvis contract read|tx        call or write any verified contract
   jarvis msig                    propose, approve and execute multisig txs
   jarvis wallet / addr           the keys you sign with, the names you trust
+  jarvis portfolio <wallet>      one wallet's book, priced from Kyber
   jarvis vet                     review a call for scam risk before signing
 
 Networks (pick one with -k/--network):
@@ -63,6 +64,9 @@ overridden with the network's node env var (e.g. ETHEREUM_MAINNET_NODE).
 
 Block-explorer API keys (set your own for reliable ABI lookups):
 %s
+
+Portfolio (jarvis portfolio) reads balances, prices and token risk from
+the Kyber Data API. Set JARVIS_KYBER_KEY. See jarvis portfolio --help.
 
 AI review (--careful / jarvis vet) uses OpenAI-compatible Chat Completions.
 Set JARVIS_AI_KEY (XAI_API_KEY still works). Optional JARVIS_AI_URL and
