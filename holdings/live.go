@@ -99,7 +99,7 @@ func streamsFor(b *Book) []string {
 	}
 	var items []item
 	for _, p := range b.Positions {
-		if p.Value == nil || *p.Value < b.MinUSD {
+		if p.honeypot() || p.Value == nil || *p.Value < b.MinUSD {
 			continue
 		}
 		items = append(items, item{p, *p.Value})

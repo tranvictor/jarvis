@@ -402,7 +402,7 @@ func (l *Loader) exits(ctx context.Context, ps []*Position) {
 	sem := make(chan struct{}, 4)
 	var wg sync.WaitGroup
 	for _, p := range ps {
-		if p.Native || p.Value == nil || *p.Value < l.ExitMin || l.ExitMin == 0 {
+		if p.honeypot() || p.Native || p.Value == nil || *p.Value < l.ExitMin || l.ExitMin == 0 {
 			continue
 		}
 		native := l.native[p.ChainID]

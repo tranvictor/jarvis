@@ -19,8 +19,10 @@
 //   - No RPC node for a chain, a multicall miss, or a balanceOf revert:
 //     that holding keeps the Kyber amount. The header names those chains.
 //   - A chain read of zero replaces a stale Kyber amount.
-//   - Rebasing tokens can move without a transfer. That is a warning, and
-//     the amount is still the chain read.
+//   - A catalog honeypot (isHoneypot, or the HONEYPOT reason) is dropped
+//     after the token batch. It is not listed, not priced into the total,
+//     and not quoted for an exit. HONEYPOT_UNCHECKED stays. The header
+//     counts the ones removed. A failed token batch leaves them in.
 //   - Exit tier is asked only for a holding at or above the exit minimum,
 //     quoted into the chain native. The native holding itself has no tier.
 //     A failed quote leaves the cell blank.
