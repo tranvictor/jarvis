@@ -127,6 +127,7 @@ type Book struct {
 	ChangeUSD   *float64
 	ChangePct   *float64
 	Hidden      int
+	Honeypots   int
 	Unpriced    int
 	Priced      int
 	ChainCount  int
@@ -172,7 +173,12 @@ func (b *Book) recomputeTotals() {
 	hidden, unpriced, priced := 0, 0, 0
 	chains := map[int]bool{}
 	kyber := map[string]bool{}
+	honeypots := 0
 	for _, p := range b.Positions {
+		if p.honeypot() {
+			honeypots++
+			continue
+		}
 		if p.Value == nil {
 			unpriced++
 			chains[p.ChainID] = true
@@ -199,6 +205,7 @@ func (b *Book) recomputeTotals() {
 	}
 	b.Total = total
 	b.Hidden = hidden
+	b.Honeypots = honeypots
 	b.Unpriced = unpriced
 	b.Priced = priced
 	b.ChainCount = len(chains)
@@ -221,6 +228,9 @@ func (b *Book) recomputeTotals() {
 func (b *Book) sortPositions() {
 	chainTotal := map[int]float64{}
 	for _, p := range b.Positions {
+		if p.honeypot() {
+			continue
+		}
 		if p.Value != nil && *p.Value >= b.MinUSD {
 			chainTotal[p.ChainID] += *p.Value
 		}
@@ -270,6 +280,9 @@ func (b *Book) warningLines() []string {
 		lines = append(lines, "! "+name+"  "+strings.Join(what, ", ")+" degraded")
 	}
 	for _, p := range b.Positions {
+		if p.honeypot() {
+			continue
+		}
 		if p.Value != nil && *p.Value < b.MinUSD {
 			continue
 		}
@@ -301,6 +314,23 @@ func positionWarnings(p *Position) []string {
 		lines = append(lines, "! "+label+"  "+into)
 	}
 	return lines
+}
+
+// honeypot is the catalog verdict that the token can be bought and not sold.
+// HONEYPOT_UNCHECKED is a missing check, not a verdict.
+func (p *Position) honeypot() bool {
+	if p == nil {
+		return false
+	}
+	if p.IsHoneypot != nil && *p.IsHoneypot {
+		return true
+	}
+	for _, r := range p.RiskReasons {
+		if r == "HONEYPOT" {
+			return true
+		}
+	}
+	return false
 }
 
 func riskText(p *Position) string {

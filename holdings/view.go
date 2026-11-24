@@ -82,6 +82,13 @@ func renderHeader(u ui.UI, b *Book) {
 	if b.Hidden > 0 {
 		meta += fmt.Sprintf(" · %d under %s hidden", b.Hidden, formatUSD(b.MinUSD))
 	}
+	if b.Honeypots > 0 {
+		label := "honeypots"
+		if b.Honeypots == 1 {
+			label = "honeypot"
+		}
+		meta += fmt.Sprintf(" · %d %s hidden", b.Honeypots, label)
+	}
 	if b.Unpriced > 0 {
 		meta += fmt.Sprintf(" · %d unpriced", b.Unpriced)
 	}
@@ -104,6 +111,9 @@ func allKyber(b *Book) bool {
 	n := 0
 	kyber := 0
 	for _, p := range b.Positions {
+		if p.honeypot() {
+			continue
+		}
 		if p.Value != nil && *p.Value < b.MinUSD {
 			continue
 		}
@@ -127,6 +137,9 @@ func visibleRows(b *Book, now time.Time) ([][]ui.TableCell, int) {
 	var rows [][]ui.TableCell
 	var unpriced []*Position
 	for _, p := range b.Positions {
+		if p.honeypot() {
+			continue
+		}
 		if p.Value == nil {
 			unpriced = append(unpriced, p)
 			continue

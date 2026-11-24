@@ -17,6 +17,7 @@ type Snapshot struct {
 	Change24hPercent  *float64      `json:"change24hPercent,omitempty"`
 	MinUSD            float64       `json:"minUsd"`
 	HiddenBelowMin    int           `json:"hiddenBelowMin"`
+	HiddenHoneypots   int           `json:"hiddenHoneypots,omitempty"`
 	Unpriced          int           `json:"unpriced"`
 	Warnings          []string      `json:"warnings"`
 	Positions         []snapshotPos `json:"positions"`
@@ -64,6 +65,7 @@ func (b *Book) Snapshot() Snapshot {
 		Change24hPercent:  b.ChangePct,
 		MinUSD:            b.MinUSD,
 		HiddenBelowMin:    b.Hidden,
+		HiddenHoneypots:   b.Honeypots,
 		Unpriced:          b.Unpriced,
 		Warnings:          b.warningLines(),
 		KyberAmountChains: append([]string(nil), b.KyberChains...),
@@ -73,6 +75,9 @@ func (b *Book) Snapshot() Snapshot {
 		s.Warnings = []string{}
 	}
 	for _, p := range b.Positions {
+		if p.honeypot() {
+			continue
+		}
 		sp := snapshotPos{
 			ChainID:          p.ChainID,
 			Chain:            p.ChainName,

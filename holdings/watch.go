@@ -29,7 +29,7 @@ func Watch(ctx context.Context, u ui.UI, l *Loader, b *Book) error {
 		b.TotalTick = 0
 		if havePrev {
 			for _, p := range b.Positions {
-				if p.Value == nil {
+				if p.honeypot() || p.Value == nil {
 					continue
 				}
 				old, ok := prev[p.Key()]
@@ -52,9 +52,10 @@ func Watch(ctx context.Context, u ui.UI, l *Loader, b *Book) error {
 		Render(u, b)
 		prev = map[string]float64{}
 		for _, p := range b.Positions {
-			if p.Value != nil {
-				prev[p.Key()] = *p.Value
+			if p.honeypot() || p.Value == nil {
+				continue
 			}
+			prev[p.Key()] = *p.Value
 		}
 		prevTotal = b.Total
 		havePrev = true
