@@ -33,6 +33,7 @@
 //     snapshot is read.
 //   - More than 200 streams: both kinds stay on the largest holdings and
 //     the rest wait for the REST refresh.
-//   - --watch on a pipe: the command stops. A snapshot is the transcript.
+//   - --watch on a terminal rewrites only the lines that changed. A pipe,
+//     TERM=dumb, or a line wider than the screen prints the whole frame.
 //   - JSON carries signed percents and full addresses, and no glyphs.
 package holdings

@@ -47,9 +47,10 @@ JARVIS_KYBER_URL overrides the API base (default https://api.kyberswap.com/data/
 
 -k/--network limits the book to that network. --chain does the same and
 can be repeated. Pass both to include each of them. With neither flag
-the book covers every chain. --watch redraws on live prices: a green ▲
-is up and a red ▼ is down, on the 24h column and on a value that just
-ticked.
+the book covers every chain. --watch follows live prices and rewrites
+the lines that changed. A green ▲ is up and a red ▼ is down, on the
+24h column and on a value that just ticked. A pipe or a terminal that
+cannot move the cursor prints the whole book instead.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -105,7 +106,7 @@ func init() {
 	portfolioCmd.Flags().StringSliceVar(&portfolioChains, "chain", nil, "network name or chain id to include (repeatable). Combines with -k/--network. With neither, every chain is included")
 	portfolioCmd.Flags().Float64Var(&portfolioMinUSD, "min-usd", 1, "hide holdings worth less than this many USD")
 	portfolioCmd.Flags().Float64Var(&portfolioExitMin, "exit-min", 1000, "quote an exit tier for holdings at or above this many USD")
-	portfolioCmd.Flags().BoolVar(&portfolioWatch, "watch", false, "redraw as Kyber pushes prices")
+	portfolioCmd.Flags().BoolVar(&portfolioWatch, "watch", false, "follow live prices, updating changed lines in place")
 	portfolioCmd.Flags().StringVarP(&portfolioJSON, "json-output", "o", "", "write the portfolio to a JSON file")
 	rootCmd.AddCommand(portfolioCmd)
 }

@@ -1,6 +1,7 @@
 package holdings
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -13,12 +14,12 @@ import (
 )
 
 // Watch redraws the book as prices move. It returns when ctx is cancelled.
-func Watch(ctx context.Context, u ui.UI, l *Loader, b *Book) error {
-	if !term.IsTerminal(int(os.Stdout.Fd())) {
-		return fmt.Errorf("--watch needs a terminal")
+func Watch(ctx context.Context, _ ui.UI, l *Loader, b *Book) error {
+	screen := newLiveScreen(os.Stdout)
+	if screen.cursor {
+		fmt.Fprint(os.Stdout, "\033[?25l")
+		defer fmt.Fprint(os.Stdout, "\033[?25h")
 	}
-	fmt.Fprint(os.Stdout, "\033[?25l")
-	defer fmt.Fprint(os.Stdout, "\033[?25h")
 
 	b.Live = true
 	prev := map[string]float64{}
@@ -48,8 +49,15 @@ func Watch(ctx context.Context, u ui.UI, l *Loader, b *Book) error {
 				b.TotalTick = -1
 			}
 		}
-		fmt.Fprint(os.Stdout, "\033[H\033[2J")
-		Render(u, b)
+		var frame bytes.Buffer
+		Render(ui.NewTerminalUIWithWriter(&frame, screen.cursor), b)
+		cols := 0
+		if screen.cursor {
+			if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+				cols = w
+			}
+		}
+		screen.paint(frame.String(), cols)
 		prev = map[string]float64{}
 		for _, p := range b.Positions {
 			if p.honeypot() || p.Value == nil {
