@@ -26,7 +26,8 @@
 //   - Exit tier is asked only for a holding at or above the exit minimum,
 //     quoted into the chain native. The native holding itself has no tier.
 //     A failed quote leaves the cell blank. The tier string is stored as
-//     returned. -x prints tier, score and venueCount for each quoted row.
+//     returned. -x prints the liquidity request and the raw response body
+//     for each quoted row.
 //   - The socket sends no resume cursor. A dead connection (45s of silence,
 //     a dropped heartbeat, a close) reconnects with backoff and subscribes
 //     again. An event is applied only when it is newer for that stream.

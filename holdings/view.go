@@ -1,7 +1,6 @@
 package holdings
 
 import (
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -173,31 +172,27 @@ func listedPositions(b *Book) ([]*Position, int) {
 
 func exitPayloadLines(b *Book) []string {
 	listed, _ := listedPositions(b)
-	lines := make([]string, 0, len(listed))
+	var lines []string
 	for _, p := range listed {
-		lines = append(lines, exitPayloadLine(p))
+		lines = append(lines, exitPayloadLinesFor(p)...)
 	}
 	return lines
 }
 
-func exitPayloadLine(p *Position) string {
+func exitPayloadLinesFor(p *Position) []string {
 	label := p.ChainName + " " + displaySymbol(p)
 	if !p.ExitQuoted {
-		return label + "  not quoted"
+		return []string{label + "  not quoted"}
 	}
-	raw, err := json.Marshal(struct {
-		Tier       string  `json:"tier"`
-		Score      float64 `json:"score"`
-		VenueCount int     `json:"venueCount"`
-	}{
-		Tier:       p.ExitTier,
-		Score:      p.ExitScore,
-		VenueCount: p.ExitVenues,
-	})
-	if err != nil {
-		return label + "  not quoted"
+	req := strings.TrimSpace(p.ExitMethod + " " + p.ExitURL)
+	if req == "" {
+		req = "quoted"
 	}
-	return label + "  " + string(raw)
+	out := []string{label + "  " + req}
+	if strings.TrimSpace(p.ExitRaw) != "" {
+		out = append(out, p.ExitRaw)
+	}
+	return out
 }
 
 func rowFor(b *Book, p *Position, now time.Time) []ui.TableCell {

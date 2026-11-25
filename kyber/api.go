@@ -3,6 +3,7 @@ package kyber
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -133,15 +134,17 @@ func (c *Client) Market(ctx context.Context, byChain map[int][]string, windows [
 	return out, firstErr
 }
 
-// PairLiquidity returns the exit tier for tokenIn into tokenOut.
-func (c *Client) PairLiquidity(ctx context.Context, chainID int, tokenIn, tokenOut string) (PairLiquidity, error) {
+// PairLiquidity calls GET /liquidity/{chainId}/pair. The Exchange is the
+// request URL and the raw response body, including fields this struct
+// does not decode.
+func (c *Client) PairLiquidity(ctx context.Context, chainID int, tokenIn, tokenOut string) (PairLiquidity, Exchange, error) {
 	q := url.Values{}
 	q.Set("tokenIn", tokenIn)
 	q.Set("tokenOut", tokenOut)
 	var data PairLiquidity
 	path := fmt.Sprintf("/liquidity/%d/pair", chainID)
-	err := c.get(ctx, path, q, &data)
-	return data, err
+	ex, err := c.doExchange(ctx, http.MethodGet, path, q, nil, &data)
+	return data, ex, err
 }
 
 func chunkChains(byChain map[int][]string) []map[int][]string {

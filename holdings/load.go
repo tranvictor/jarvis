@@ -298,6 +298,9 @@ func copyPrices(dst, src *Position) {
 	dst.ExitQuoted = src.ExitQuoted
 	dst.ExitScore = src.ExitScore
 	dst.ExitVenues = src.ExitVenues
+	dst.ExitMethod = src.ExitMethod
+	dst.ExitURL = src.ExitURL
+	dst.ExitRaw = src.ExitRaw
 }
 
 func applyTokens(ps []*Position, tokens map[int][]kyber.Token) {
@@ -420,7 +423,7 @@ func (l *Loader) exits(ctx context.Context, ps []*Position) {
 		go func(p *Position, native string) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			liq, err := l.Client.PairLiquidity(ctx, p.ChainID, p.TokenAddress, native)
+			liq, ex, err := l.Client.PairLiquidity(ctx, p.ChainID, p.TokenAddress, native)
 			if err != nil || liq.Tier == "" {
 				return
 			}
@@ -428,6 +431,9 @@ func (l *Loader) exits(ctx context.Context, ps []*Position) {
 			p.ExitQuoted = true
 			p.ExitScore = liq.Score
 			p.ExitVenues = liq.VenueCount
+			p.ExitMethod = ex.Method
+			p.ExitURL = ex.URL
+			p.ExitRaw = ex.Raw
 		}(p, native)
 	}
 	wg.Wait()
