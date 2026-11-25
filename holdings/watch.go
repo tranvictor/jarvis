@@ -3,22 +3,24 @@ package holdings
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"math/rand"
 	"os"
 	"time"
 
 	"github.com/tranvictor/jarvis/kyber"
 	"github.com/tranvictor/jarvis/ui"
-	"golang.org/x/term"
 )
 
 // Watch redraws the book as prices move. It returns when ctx is cancelled.
 func Watch(ctx context.Context, _ ui.UI, l *Loader, b *Book) error {
 	screen := newLiveScreen(os.Stdout)
 	if screen.cursor {
-		fmt.Fprint(os.Stdout, "\033[?25l")
-		defer fmt.Fprint(os.Stdout, "\033[?25h")
+		if rows, cols := screen.measure(); rows > 0 && cols > 0 {
+			screen.enter()
+			defer screen.leave()
+		} else {
+			screen.cursor = false
+		}
 	}
 
 	b.Live = true
@@ -50,14 +52,12 @@ func Watch(ctx context.Context, _ ui.UI, l *Loader, b *Book) error {
 			}
 		}
 		var frame bytes.Buffer
-		Render(ui.NewTerminalUIWithWriter(&frame, screen.cursor), b)
-		cols := 0
-		if screen.cursor {
-			if w, _, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
-				cols = w
-			}
+		view := ui.NewTerminalUIWithWriter(&frame, screen.cursor)
+		if _, cols := screen.measure(); cols > 1 {
+			view.LimitWidth(cols - 1)
 		}
-		screen.paint(frame.String(), cols)
+		Render(view, b)
+		screen.paint(frame.String())
 		prev = map[string]float64{}
 		for _, p := range b.Positions {
 			if p.honeypot() || p.Value == nil {
@@ -85,6 +85,8 @@ func Watch(ctx context.Context, _ ui.UI, l *Loader, b *Book) error {
 
 	dirty := true
 	resub := true
+	paint()
+	dirty = false
 
 	for {
 		if sock == nil && !time.Now().Before(retryAt) {

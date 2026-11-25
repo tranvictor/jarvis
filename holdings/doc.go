@@ -33,7 +33,8 @@
 //     snapshot is read.
 //   - More than 200 streams: both kinds stay on the largest holdings and
 //     the rest wait for the REST refresh.
-//   - --watch on a terminal rewrites only the lines that changed. A pipe,
-//     TERM=dumb, or a line wider than the screen prints the whole frame.
+//   - --watch on a terminal takes one screen and rewrites only the lines
+//     that changed. A frame taller than the screen keeps the top and the
+//     status line. A pipe or TERM=dumb prints the whole frame.
 //   - JSON carries signed percents and full addresses, and no glyphs.
 package holdings

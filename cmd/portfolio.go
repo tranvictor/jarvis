@@ -47,10 +47,11 @@ JARVIS_KYBER_URL overrides the API base (default https://api.kyberswap.com/data/
 
 -k/--network limits the book to that network. --chain does the same and
 can be repeated. Pass both to include each of them. With neither flag
-the book covers every chain. --watch follows live prices and rewrites
-the lines that changed. A green ▲ is up and a red ▼ is down, on the
-24h column and on a value that just ticked. A pipe or a terminal that
-cannot move the cursor prints the whole book instead.
+the book covers every chain. --watch follows live prices on one screen
+and rewrites the lines that changed. A green ▲ is up and a red ▼ is
+down, on the 24h column and on a value that just ticked. A short
+terminal keeps the top of the book and the status line. A pipe or a
+terminal that cannot move the cursor prints the whole book instead.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
