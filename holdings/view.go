@@ -1,6 +1,7 @@
 package holdings
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -24,6 +25,11 @@ func Render(u ui.UI, b *Book) {
 			headers = append(headers, "address", "raw", "spread", "age", "1h")
 		}
 		u.PrintTable(&ui.Table{Headers: headers, Rows: rows, Align: columnAlign(headers)})
+	}
+	if b.Degen {
+		for _, line := range exitPayloadLines(b) {
+			u.Info("%s", u.Style(ui.StyledText{Text: line, Severity: ui.SeverityMuted}))
+		}
 	}
 	if omitted > 0 {
 		u.Info("%s", u.Style(ui.StyledText{
@@ -134,8 +140,16 @@ func headerName(b *Book) string {
 }
 
 func visibleRows(b *Book, now time.Time) ([][]ui.TableCell, int) {
-	var rows [][]ui.TableCell
-	var unpriced []*Position
+	listed, omitted := listedPositions(b)
+	rows := make([][]ui.TableCell, 0, len(listed))
+	for _, p := range listed {
+		rows = append(rows, rowFor(b, p, now))
+	}
+	return rows, omitted
+}
+
+func listedPositions(b *Book) ([]*Position, int) {
+	var priced, unpriced []*Position
 	for _, p := range b.Positions {
 		if p.honeypot() {
 			continue
@@ -147,18 +161,43 @@ func visibleRows(b *Book, now time.Time) ([][]ui.TableCell, int) {
 		if *p.Value < b.MinUSD {
 			continue
 		}
-		rows = append(rows, rowFor(b, p, now))
+		priced = append(priced, p)
 	}
-	limit := len(unpriced)
 	omitted := 0
-	if !b.Degen && limit > 8 {
-		omitted = limit - 8
-		limit = 8
+	if !b.Degen && len(unpriced) > 8 {
+		omitted = len(unpriced) - 8
+		unpriced = unpriced[:8]
 	}
-	for i := 0; i < limit; i++ {
-		rows = append(rows, rowFor(b, unpriced[i], now))
+	return append(priced, unpriced...), omitted
+}
+
+func exitPayloadLines(b *Book) []string {
+	listed, _ := listedPositions(b)
+	lines := make([]string, 0, len(listed))
+	for _, p := range listed {
+		lines = append(lines, exitPayloadLine(p))
 	}
-	return rows, omitted
+	return lines
+}
+
+func exitPayloadLine(p *Position) string {
+	label := p.ChainName + " " + displaySymbol(p)
+	if !p.ExitQuoted {
+		return label + "  not quoted"
+	}
+	raw, err := json.Marshal(struct {
+		Tier       string  `json:"tier"`
+		Score      float64 `json:"score"`
+		VenueCount int     `json:"venueCount"`
+	}{
+		Tier:       p.ExitTier,
+		Score:      p.ExitScore,
+		VenueCount: p.ExitVenues,
+	})
+	if err != nil {
+		return label + "  not quoted"
+	}
+	return label + "  " + string(raw)
 }
 
 func rowFor(b *Book, p *Position, now time.Time) []ui.TableCell {

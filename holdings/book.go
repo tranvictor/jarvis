@@ -58,6 +58,9 @@ type Position struct {
 	IsRebasing  *bool
 	IsHoneypot  *bool
 	ExitTier    string
+	ExitQuoted  bool
+	ExitScore   float64
+	ExitVenues  int
 }
 
 // Key identifies a holding inside one book.

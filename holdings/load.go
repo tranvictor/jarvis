@@ -295,6 +295,9 @@ func copyPrices(dst, src *Position) {
 	dst.IsRebasing = src.IsRebasing
 	dst.IsHoneypot = src.IsHoneypot
 	dst.ExitTier = src.ExitTier
+	dst.ExitQuoted = src.ExitQuoted
+	dst.ExitScore = src.ExitScore
+	dst.ExitVenues = src.ExitVenues
 }
 
 func applyTokens(ps []*Position, tokens map[int][]kyber.Token) {
@@ -422,6 +425,9 @@ func (l *Loader) exits(ctx context.Context, ps []*Position) {
 				return
 			}
 			p.ExitTier = liq.Tier
+			p.ExitQuoted = true
+			p.ExitScore = liq.Score
+			p.ExitVenues = liq.VenueCount
 		}(p, native)
 	}
 	wg.Wait()
