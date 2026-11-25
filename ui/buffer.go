@@ -20,6 +20,15 @@ func NewTerminalUIWithWriter(w io.Writer, colorsEnabled bool) *TerminalUI {
 	}
 }
 
+// LimitWidth caps the visual columns this UI may occupy, including indent.
+// 0 clears the cap and falls back to the terminal width.
+func (u *TerminalUI) LimitWidth(cols int) {
+	if cols < 0 {
+		cols = 0
+	}
+	u.width = cols
+}
+
 // VisibleWidth returns the terminal display width of s.
 // It strips ANSI escape sequences first, then uses runewidth to correctly
 // account for multi-byte characters (e.g. box-drawing chars, CJK) that occupy

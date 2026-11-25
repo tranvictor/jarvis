@@ -67,7 +67,7 @@ func columnAlign(headers []string) []ui.ColAlign {
 
 func renderHeader(u ui.UI, b *Book) {
 	name := headerName(b)
-	total, totalSev := moneyText(b.Total, b.TotalTick)
+	total, totalSev := moneyText(b.Total, b.TotalTick, b.Live)
 	head := name + "    " + u.Style(ui.StyledText{Text: total + " USD", Severity: totalSev})
 	if text, sev := pnlText(b.ChangeUSD, b.ChangePct); text != "" {
 		head += "    " + u.Style(ui.StyledText{Text: text, Severity: sev}) + " 24h"
@@ -168,7 +168,7 @@ func rowFor(b *Book, p *Position, now time.Time) []ui.TableCell {
 	}
 	value := ui.TCS("—", ui.SeverityMuted)
 	if p.Value != nil {
-		text, sev := moneyText(*p.Value, tick)
+		text, sev := moneyText(*p.Value, tick, b.Live)
 		value = ui.TCS(text, sev)
 	}
 	pct, pctSev := pctText(p.Change24h)

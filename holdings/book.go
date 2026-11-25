@@ -387,7 +387,7 @@ func pctText(p *float64) (string, ui.Severity) {
 	return glyphDown + " " + strconv.FormatFloat(-*p, 'f', 1, 64) + "%", ui.SeverityError
 }
 
-func moneyText(v float64, tick int) (string, ui.Severity) {
+func moneyText(v float64, tick int, reserve bool) (string, ui.Severity) {
 	text := formatUSD(v)
 	switch tick {
 	case 1:
@@ -395,6 +395,9 @@ func moneyText(v float64, tick int) (string, ui.Severity) {
 	case -1:
 		return glyphDown + " " + text, ui.SeverityError
 	default:
+		if reserve {
+			return "  " + text, ui.SeverityInfo
+		}
 		return text, ui.SeverityInfo
 	}
 }
