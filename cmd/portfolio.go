@@ -51,9 +51,10 @@ can be repeated. Pass both to include each of them. With neither flag
 the book covers every chain. --watch follows live prices on one screen
 and rewrites the lines that changed. A green ▲ is up and a red ▼ is
 down, on the 24h column and on the value and price against 24 hours
-ago. The price column is the mark's price. A short
-terminal keeps the top of the book and the status line. A pipe or a
-terminal that cannot move the cursor prints the whole book instead.
+ago. The price column is the mark's price, lined up on the decimal
+point. A short terminal keeps the top of the book and the status line.
+A pipe or a terminal that cannot move the cursor prints the whole book
+instead.
 -x/--degen prints the liquidity payload behind each exit cell: tier,
 score and venueCount. A row that was not quoted says so.
 `,

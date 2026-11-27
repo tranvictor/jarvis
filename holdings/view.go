@@ -59,8 +59,8 @@ func Render(u ui.UI, b *Book) {
 	}
 }
 
-// columnAlign right-aligns the value column so the cents share an edge.
-// Other columns stay left-aligned.
+// columnAlign right-aligns value and price. Price cells share a fractional
+// width, so the right edge is also the decimal column.
 func columnAlign(headers []string) []ui.ColAlign {
 	align := make([]ui.ColAlign, len(headers))
 	for i, h := range headers {
@@ -141,9 +141,10 @@ func headerName(b *Book) string {
 
 func visibleRows(b *Book, now time.Time) ([][]ui.TableCell, int) {
 	listed, omitted := listedPositions(b)
+	fracWidth := priceFractionWidth(listed)
 	rows := make([][]ui.TableCell, 0, len(listed))
 	for _, p := range listed {
-		rows = append(rows, rowFor(b, p, now))
+		rows = append(rows, rowFor(b, p, now, fracWidth))
 	}
 	return rows, omitted
 }
@@ -200,14 +201,14 @@ func exitPayloadLine(p *Position) string {
 	return label + "  " + string(raw)
 }
 
-func rowFor(b *Book, p *Position, now time.Time) []ui.TableCell {
+func rowFor(b *Book, p *Position, now time.Time, fracWidth int) []ui.TableCell {
 	tick := windowTick(p.Change24h)
 	value := ui.TCS("—", ui.SeverityMuted)
 	if p.Value != nil {
 		text, sev := moneyText(*p.Value, tick, false)
 		value = ui.TCS(text, sev)
 	}
-	px, priceSev := priceText(p.markedPrice(), tick)
+	px, priceSev := priceText(p.markedPrice(), tick, fracWidth)
 	pct, pctSev := pctText(p.Change24h)
 	mark := p.Mark
 	if mark == "" {

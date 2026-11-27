@@ -417,19 +417,75 @@ func pctText(p *float64) (string, ui.Severity) {
 	return glyphDown + " " + strconv.FormatFloat(-*p, 'f', 1, 64) + "%", ui.SeverityError
 }
 
-func priceText(raw string, tick int) (string, ui.Severity) {
-	if strings.TrimSpace(raw) == "" {
+// splitPrice keeps every significant digit. Trailing zeros are padding in
+// the source string, not a smaller price. The integer part is grouped.
+func splitPrice(raw string) (whole, frac string, ok bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", "", false
+	}
+	sign := ""
+	if raw[0] == '+' {
+		raw = raw[1:]
+	} else if raw[0] == '-' {
+		sign = "-"
+		raw = raw[1:]
+	}
+	whole, frac, _ = strings.Cut(raw, ".")
+	if strings.Contains(frac, ".") {
+		return "", "", false
+	}
+	if whole == "" {
+		whole = "0"
+	}
+	for _, c := range whole + frac {
+		if c < '0' || c > '9' {
+			return "", "", false
+		}
+	}
+	whole = strings.TrimLeft(whole, "0")
+	if whole == "" {
+		whole = "0"
+	}
+	frac = strings.TrimRight(frac, "0")
+	return sign + jarviscommon.GroupDigits(whole), frac, true
+}
+
+// priceFractionWidth is the longest fractional part in the listed rows.
+// The price column pads to this width so the decimal points share a column.
+func priceFractionWidth(ps []*Position) int {
+	max := 0
+	for _, p := range ps {
+		_, frac, ok := splitPrice(p.markedPrice())
+		if ok && len(frac) > max {
+			max = len(frac)
+		}
+	}
+	return max
+}
+
+func priceText(raw string, tick int, fracWidth int) (string, ui.Severity) {
+	whole, frac, ok := splitPrice(raw)
+	if !ok {
 		return "—", ui.SeverityMuted
 	}
-	text := jarviscommon.CompactAmount(raw)
+	glyph := "  "
+	sev := ui.SeverityInfo
 	switch tick {
 	case 1:
-		return glyphUp + " " + text, ui.SeveritySuccess
+		glyph = glyphUp + " "
+		sev = ui.SeveritySuccess
 	case -1:
-		return glyphDown + " " + text, ui.SeverityError
-	default:
-		return text, ui.SeverityInfo
+		glyph = glyphDown + " "
+		sev = ui.SeverityError
 	}
+	if fracWidth <= 0 {
+		return glyph + whole, sev
+	}
+	if len(frac) > fracWidth {
+		fracWidth = len(frac)
+	}
+	return glyph + whole + "." + frac + strings.Repeat(" ", fracWidth-len(frac)), sev
 }
 
 func moneyText(v float64, tick int, reserve bool) (string, ui.Severity) {
