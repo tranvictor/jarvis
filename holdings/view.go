@@ -183,6 +183,9 @@ func exitPayloadLines(b *Book) []string {
 
 func exitPayloadLine(p *Position) string {
 	label := p.ChainName + " " + displaySymbol(p)
+	if !p.ExitAsked {
+		return label + "  ignored"
+	}
 	if !p.ExitQuoted {
 		return label + "  not quoted"
 	}
@@ -214,16 +217,7 @@ func rowFor(b *Book, p *Position, now time.Time, fracWidth int) []ui.TableCell {
 	if mark == "" {
 		mark = "—"
 	}
-	exit := p.ExitTier
-	exitSev := ui.SeverityInfo
-	if exit == "" {
-		exit = "—"
-		exitSev = ui.SeverityMuted
-	} else if exit == "thin" {
-		exitSev = ui.SeverityWarn
-	} else if exit == "none" {
-		exitSev = ui.SeverityError
-	}
+	exit, exitSev := exitCell(p)
 	row := []ui.TableCell{
 		ui.TC(p.ChainName),
 		ui.TC(displaySymbol(p)),
@@ -250,6 +244,24 @@ func rowFor(b *Book, p *Position, now time.Time, fracWidth int) []ui.TableCell {
 		ui.TCS(h1, h1Sev),
 	)
 	return row
+}
+
+// exitCell says ignored when the pair endpoint was never called. A dash
+// means the call failed or the body had no tier.
+func exitCell(p *Position) (string, ui.Severity) {
+	if p.ExitTier == "" {
+		if p.ExitAsked {
+			return "—", ui.SeverityMuted
+		}
+		return "ignored", ui.SeverityMuted
+	}
+	sev := ui.SeverityInfo
+	if p.ExitTier == "thin" {
+		sev = ui.SeverityWarn
+	} else if p.ExitTier == "none" {
+		sev = ui.SeverityError
+	}
+	return p.ExitTier, sev
 }
 
 func liveStatus(b *Book, now time.Time) string {

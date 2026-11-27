@@ -57,7 +57,8 @@ A short terminal keeps the top of the book and the status line.
 A pipe or a terminal that cannot move the cursor prints the whole book
 instead.
 -x/--degen prints the liquidity payload behind each exit cell: tier,
-score and venueCount. A row that was not quoted says so.
+score and venueCount. A row that never calls the pair endpoint says
+ignored. A call with no tier says not quoted.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
