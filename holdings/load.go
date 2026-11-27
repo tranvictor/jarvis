@@ -405,7 +405,8 @@ func (l *Loader) exits(ctx context.Context, ps []*Position) {
 	sem := make(chan struct{}, 4)
 	var wg sync.WaitGroup
 	for _, p := range ps {
-		if p.honeypot() || p.Native || p.Value == nil || *p.Value < l.ExitMin || l.ExitMin == 0 {
+		if l.skipExit(p) {
+			p.clearExit()
 			continue
 		}
 		native := l.native[p.ChainID]
@@ -413,6 +414,7 @@ func (l *Loader) exits(ctx context.Context, ps []*Position) {
 			native = nativeSentinel
 		}
 		if strings.EqualFold(native, p.TokenAddress) {
+			p.clearExit()
 			continue
 		}
 		wg.Add(1)
@@ -420,6 +422,8 @@ func (l *Loader) exits(ctx context.Context, ps []*Position) {
 		go func(p *Position, native string) {
 			defer wg.Done()
 			defer func() { <-sem }()
+			p.clearExit()
+			p.ExitAsked = true
 			liq, err := l.Client.PairLiquidity(ctx, p.ChainID, p.TokenAddress, native)
 			if err != nil || liq.Tier == "" {
 				return
@@ -431,6 +435,20 @@ func (l *Loader) exits(ctx context.Context, ps []*Position) {
 		}(p, native)
 	}
 	wg.Wait()
+}
+
+// skipExit is every row that never calls the pair endpoint. The set of
+// quoted rows stays the same.
+func (l *Loader) skipExit(p *Position) bool {
+	return p.honeypot() || p.Native || p.Value == nil || *p.Value < l.ExitMin || l.ExitMin == 0
+}
+
+func (p *Position) clearExit() {
+	p.ExitTier = ""
+	p.ExitQuoted = false
+	p.ExitAsked = false
+	p.ExitScore = 0
+	p.ExitVenues = 0
 }
 
 func addressesOf(ps []*Position) map[int][]string {

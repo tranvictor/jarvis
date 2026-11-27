@@ -61,6 +61,7 @@ type Position struct {
 	IsHoneypot  *bool
 	ExitTier    string
 	ExitQuoted  bool
+	ExitAsked   bool
 	ExitScore   float64
 	ExitVenues  int
 }
