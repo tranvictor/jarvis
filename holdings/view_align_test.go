@@ -24,24 +24,19 @@ func TestValueColumnRightAligns(t *testing.T) {
 		Total:      eth + usdc + dai,
 		Live:       true,
 		Positions: []*Position{
-			{ChainID: 1, ChainName: "Ethereum", TokenAddress: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", Symbol: "ETH", Amount: "0.42", Value: &eth, Mark: "sell", ExitTier: "deep", Change24h: &up},
-			{ChainID: 1, ChainName: "Ethereum", TokenAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Symbol: "USDC", Amount: "12345", Value: &usdc, Mark: "sell", ExitTier: "deep", Change24h: &up},
-			{ChainID: 56, ChainName: "BSC", TokenAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Symbol: "DAI", Amount: "9.5", Value: &dai, Mark: "settle", ExitTier: "thin", Change24h: &down},
+			{ChainID: 1, ChainName: "Ethereum", TokenAddress: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", Symbol: "ETH", Amount: "0.42", Value: &eth, Mark: "sell", SellUSD: "2940.5", ExitTier: "deep", Change24h: &up},
+			{ChainID: 1, ChainName: "Ethereum", TokenAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Symbol: "USDC", Amount: "12345", Value: &usdc, Mark: "buy", BuyUSD: "1.0001", ExitTier: "deep", Change24h: &up},
+			{ChainID: 56, ChainName: "BSC", TokenAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", Symbol: "DAI", Amount: "9.5", Value: &dai, Mark: "settle", SettlementUSD: "0.9998", ExitTier: "thin", Change24h: &down},
 			{ChainID: 56, ChainName: "BSC", TokenAddress: "0xcccccccccccccccccccccccccccccccccccccccc", Symbol: "DUST", Amount: "1", Value: nil},
 		},
 	}
-	book.ValueTicks = map[string]int{
-		book.Positions[1].Key(): 1,
-		book.Positions[2].Key(): -1,
-	}
-
 	plain := renderPlain(t, book, false)
 	values := valueColumn(t, plain)
 	// header, ETH, USDC, DAI, unpriced dash
 	if len(values) != 5 {
 		t.Fatalf("value cells = %d, want 5\n%s", len(values), plain)
 	}
-	want := []string{"value", "1,234.56", "▲ 12,345.00", "▼ 9.50", "—"}
+	want := []string{"value", "▲ 1,234.56", "▲ 12,345.00", "▼ 9.50", "—"}
 	for i, cell := range values {
 		if !strings.HasSuffix(strings.TrimRight(cell, " "), want[i]) {
 			t.Fatalf("cell %d = %q, want suffix %q\n%s", i, cell, want[i], plain)
@@ -53,6 +48,19 @@ func TestValueColumnRightAligns(t *testing.T) {
 	// A repeated chain name is blanked, and the amount column stays left.
 	if !strings.Contains(plain, "USDC") || !strings.Contains(plain, "12,345") {
 		t.Fatalf("row content missing:\n%s", plain)
+	}
+	prices := columnAt(t, plain, 5)
+	priceWant := []string{"price", "▲ 2,940.5", "▲ 1.0001", "▼ 0.9998", "—"}
+	if len(prices) != len(priceWant) {
+		t.Fatalf("price cells = %d, want %d\n%s", len(prices), len(priceWant), plain)
+	}
+	for i, cell := range prices {
+		if !strings.HasSuffix(strings.TrimRight(cell, " "), priceWant[i]) {
+			t.Fatalf("price cell %d = %q, want suffix %q\n%s", i, cell, priceWant[i], plain)
+		}
+		if !cellRightAligned(cell) {
+			t.Fatalf("price cell %d is not flush right: %q\n%s", i, cell, plain)
+		}
 	}
 
 	degen := renderPlain(t, book, true)
@@ -78,14 +86,18 @@ func renderPlain(t *testing.T, book *Book, degen bool) string {
 
 func valueColumn(t *testing.T, plain string) []string {
 	t.Helper()
+	return columnAt(t, plain, 4)
+}
+
+func columnAt(t *testing.T, plain string, index int) []string {
+	t.Helper()
 	var cells []string
 	for _, line := range strings.Split(strings.TrimRight(plain, "\n"), "\n") {
 		parts := strings.Split(line, "│")
-		// chain, token, amount, value are columns 1..4 inside the split.
-		if len(parts) < 5 {
+		if len(parts) <= index {
 			continue
 		}
-		cells = append(cells, parts[4])
+		cells = append(cells, parts[index])
 	}
 	return cells
 }

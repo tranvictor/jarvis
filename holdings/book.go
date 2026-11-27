@@ -97,6 +97,35 @@ func (p *Position) revalue() {
 	p.Value = &v
 }
 
+// markedPrice is the price the mark names: sell, buy, settlement, or the
+// catalog price. The value is amount times this price.
+func (p *Position) markedPrice() string {
+	switch p.Mark {
+	case "sell":
+		return p.SellUSD
+	case "buy":
+		return p.BuyUSD
+	case "settle":
+		return p.SettlementUSD
+	case "indicative":
+		return p.Indicative
+	default:
+		return p.Price
+	}
+}
+
+// windowTick is the 24h direction. A move under half a tenth of a percent
+// is flat, the same cutoff the 24h column uses.
+func windowTick(pct *float64) int {
+	if pct == nil || math.Abs(*pct) < 0.05 {
+		return 0
+	}
+	if *pct > 0 {
+		return 1
+	}
+	return -1
+}
+
 func (p *Position) spreadBps() (float64, bool) {
 	if p.BuyUSD == "" || p.SellUSD == "" {
 		return 0, false
@@ -146,11 +175,9 @@ type Book struct {
 	StatsAt     time.Time
 	HeartbeatAt time.Time
 
-	Degen      bool
-	Live       bool
-	LiveNote   string
-	TotalTick  int
-	ValueTicks map[string]int
+	Degen    bool
+	Live     bool
+	LiveNote string
 }
 
 type pipeline struct {
@@ -388,6 +415,21 @@ func pctText(p *float64) (string, ui.Severity) {
 		return glyphUp + " " + strconv.FormatFloat(*p, 'f', 1, 64) + "%", ui.SeveritySuccess
 	}
 	return glyphDown + " " + strconv.FormatFloat(-*p, 'f', 1, 64) + "%", ui.SeverityError
+}
+
+func priceText(raw string, tick int) (string, ui.Severity) {
+	if strings.TrimSpace(raw) == "" {
+		return "—", ui.SeverityMuted
+	}
+	text := jarviscommon.CompactAmount(raw)
+	switch tick {
+	case 1:
+		return glyphUp + " " + text, ui.SeveritySuccess
+	case -1:
+		return glyphDown + " " + text, ui.SeverityError
+	default:
+		return text, ui.SeverityInfo
+	}
 }
 
 func moneyText(v float64, tick int, reserve bool) (string, ui.Severity) {
