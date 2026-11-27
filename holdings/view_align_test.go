@@ -2,10 +2,12 @@ package holdings
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
+	runewidth "github.com/mattn/go-runewidth"
 	"github.com/tranvictor/jarvis/ui"
 )
 
@@ -50,7 +52,7 @@ func TestValueColumnRightAligns(t *testing.T) {
 		t.Fatalf("row content missing:\n%s", plain)
 	}
 	prices := columnAt(t, plain, 5)
-	priceWant := []string{"price", "▲ 2,940.5", "▲ 1.0001", "▼ 0.9998", "—"}
+	priceWant := []string{"price", "▲ 2,940.500", "▲ 1.000", "▼ 1.000", "—"}
 	if len(prices) != len(priceWant) {
 		t.Fatalf("price cells = %d, want %d\n%s", len(prices), len(priceWant), plain)
 	}
@@ -58,10 +60,8 @@ func TestValueColumnRightAligns(t *testing.T) {
 		if !strings.HasSuffix(strings.TrimRight(cell, " "), priceWant[i]) {
 			t.Fatalf("price cell %d = %q, want suffix %q\n%s", i, cell, priceWant[i], plain)
 		}
-		if !cellRightAligned(cell) {
-			t.Fatalf("price cell %d is not flush right: %q\n%s", i, cell, plain)
-		}
 	}
+	assertPriceDecimalsAlign(t, prices[1:4])
 
 	degen := renderPlain(t, book, true)
 	degenValues := valueColumn(t, degen)
@@ -108,4 +108,87 @@ func cellRightAligned(cell string) bool {
 	}
 	inner := cell[1 : len(cell)-1]
 	return inner == "" || inner[len(inner)-1] != ' '
+}
+
+func TestPriceDecimalsLineUp(t *testing.T) {
+	up := 1.2
+	down := -4.2
+	flat := 0.01
+	vals := []float64{1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+	prices := []struct {
+		mark string
+		sell string
+		pct  *float64
+	}{
+		{"sell", "1679.5979", &flat},
+		{"sell", "0.9994", nil},
+		{"sell", "0.08901", &down},
+		{"sell", "60460.088", &down},
+		{"sell", "1679.5979000", &down},
+		{"sell", "0.000875912345", nil},
+		{"sell", "0.001448", nil},
+		{"sell", "94.4899", &up},
+		{"sell", "598.8456", &up},
+		{"sell", "1.0002", nil},
+		{"buy", "0.002315", &up},
+	}
+	book := &Book{Address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", Name: "vitalik.eth", MinUSD: 0}
+	for i, px := range prices {
+		p := &Position{
+			ChainID: 1, ChainName: "Ethereum", Symbol: "T",
+			TokenAddress: fmt.Sprintf("0x%040x", i+1),
+			Amount:       "1", Value: &vals[0], Mark: px.mark, Change24h: px.pct,
+		}
+		if px.mark == "buy" {
+			p.BuyUSD = px.sell
+		} else {
+			p.SellUSD = px.sell
+		}
+		book.Positions = append(book.Positions, p)
+	}
+	plain := renderPlain(t, book, false)
+	cells := columnAt(t, plain, 5)
+	if len(cells) != len(prices)+1 {
+		t.Fatalf("price cells = %d\n%s", len(cells), plain)
+	}
+	assertPriceDecimalsAlign(t, cells[1:])
+	got := make([]string, len(cells)-1)
+	for i, cell := range cells[1:] {
+		got[i] = strings.TrimSpace(cell)
+	}
+	want := []string{
+		"1,679.598",
+		"0.999",
+		"▼ 0.089",
+		"▼ 60,460.088",
+		"▼ 1,679.598",
+		"0.0₃876",
+		"0.001",
+		"▲ 94.490",
+		"▲ 598.846",
+		"1.000",
+		"▲ 0.002",
+	}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("prices =\n%s\nwant\n%s\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"), plain)
+	}
+}
+
+func assertPriceDecimalsAlign(t *testing.T, cells []string) {
+	t.Helper()
+	col := -1
+	for i, cell := range cells {
+		dot := strings.Index(cell, ".")
+		if dot < 0 {
+			t.Fatalf("price cell %d has no decimal: %q", i, cell)
+		}
+		width := runewidth.StringWidth(cell[:dot])
+		if col < 0 {
+			col = width
+			continue
+		}
+		if width != col {
+			t.Fatalf("decimal column %d, want %d: %q", width, col, cell)
+		}
+	}
 }
