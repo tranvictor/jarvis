@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	runewidth "github.com/mattn/go-runewidth"
+
 	jarviscommon "github.com/tranvictor/jarvis/common"
 	"github.com/tranvictor/jarvis/ui"
 )
@@ -417,14 +419,38 @@ func pctText(p *float64) (string, ui.Severity) {
 	return glyphDown + " " + strconv.FormatFloat(-*p, 'f', 1, 64) + "%", ui.SeverityError
 }
 
-// splitPrice keeps every significant digit. Trailing zeros are padding in
-// the source string, not a smaller price. The integer part is grouped.
-func splitPrice(raw string) (whole, frac string, ok bool) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
+const priceSubdigits = "₀₁₂₃₄₅₆₇₈₉"
+
+// formatPriceParts shows three digits after the dot. A price under 0.001
+// would be 0.000 that way, so the run of zeros is a subscript and three
+// significant digits follow: 0.000875912345 is 0.0₃876.
+func formatPriceParts(raw string) (whole, frac string, ok bool) {
+	sign, wholeDigits, fracDigits, ok := parsePrice(raw)
+	if !ok {
 		return "", "", false
 	}
-	sign := ""
+	if tiny, zeros := tinyZeros(wholeDigits, fracDigits); tiny {
+		sig, overflow := roundDigits(fracDigits[zeros:], 3)
+		if overflow {
+			zeros--
+			if len(sig) > 3 {
+				sig = sig[:3]
+			}
+		}
+		if zeros >= 3 {
+			return sign + "0", "0" + subscript(zeros) + sig, true
+		}
+		wholeDigits, fracDigits = addOne("0"), strings.Repeat("0", zeros)+sig
+	}
+	wholeDigits, fracDigits = roundDecimals(wholeDigits, fracDigits, 3)
+	return sign + jarviscommon.GroupDigits(wholeDigits), fracDigits, true
+}
+
+func parsePrice(raw string) (sign, whole, frac string, ok bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", "", "", false
+	}
 	if raw[0] == '+' {
 		raw = raw[1:]
 	} else if raw[0] == '-' {
@@ -433,14 +459,14 @@ func splitPrice(raw string) (whole, frac string, ok bool) {
 	}
 	whole, frac, _ = strings.Cut(raw, ".")
 	if strings.Contains(frac, ".") {
-		return "", "", false
+		return "", "", "", false
 	}
 	if whole == "" {
 		whole = "0"
 	}
 	for _, c := range whole + frac {
 		if c < '0' || c > '9' {
-			return "", "", false
+			return "", "", "", false
 		}
 	}
 	whole = strings.TrimLeft(whole, "0")
@@ -448,24 +474,112 @@ func splitPrice(raw string) (whole, frac string, ok bool) {
 		whole = "0"
 	}
 	frac = strings.TrimRight(frac, "0")
-	return sign + jarviscommon.GroupDigits(whole), frac, true
+	return sign, whole, frac, true
 }
 
-// priceFractionWidth is the longest fractional part in the listed rows.
-// The price column pads to this width so the decimal points share a column.
+// tinyZeros reports a price under 0.001 that is not zero, and how many
+// zeros follow the dot before the first significant digit.
+func tinyZeros(whole, frac string) (bool, int) {
+	if whole != "0" {
+		return false, 0
+	}
+	zeros := 0
+	for zeros < len(frac) && frac[zeros] == '0' {
+		zeros++
+	}
+	if zeros >= 3 && zeros < len(frac) {
+		return true, zeros
+	}
+	return false, 0
+}
+
+func roundDecimals(whole, frac string, places int) (string, string) {
+	if len(frac) < places {
+		frac += strings.Repeat("0", places-len(frac))
+	}
+	head := frac[:places]
+	if len(frac) > places && frac[places] >= '5' {
+		bumped, overflow := incrementDigits(head)
+		if overflow {
+			whole = addOne(whole)
+			head = strings.Repeat("0", places)
+		} else {
+			head = bumped
+		}
+	}
+	return whole, head
+}
+
+// roundDigits keeps n digits. The bool is set when 999 rounds up to 1000.
+func roundDigits(digits string, n int) (string, bool) {
+	if digits == "" {
+		return strings.Repeat("0", n), false
+	}
+	if len(digits) <= n {
+		return digits + strings.Repeat("0", n-len(digits)), false
+	}
+	head := digits[:n]
+	if digits[n] < '5' {
+		return head, false
+	}
+	return incrementDigits(head)
+}
+
+func incrementDigits(digits string) (string, bool) {
+	b := []byte(digits)
+	for i := len(b) - 1; i >= 0; i-- {
+		if b[i] < '9' {
+			b[i]++
+			return string(b), false
+		}
+		b[i] = '0'
+	}
+	return "1" + string(b), true
+}
+
+func addOne(whole string) string {
+	b := []byte(whole)
+	for i := len(b) - 1; i >= 0; i-- {
+		if b[i] < '9' {
+			b[i]++
+			return string(b)
+		}
+		b[i] = '0'
+	}
+	return "1" + string(b)
+}
+
+func subscript(n int) string {
+	if n < 0 {
+		n = 0
+	}
+	digits := []rune(priceSubdigits)
+	s := strconv.Itoa(n)
+	var b strings.Builder
+	for _, c := range s {
+		b.WriteRune(digits[c-'0'])
+	}
+	return b.String()
+}
+
+// priceFractionWidth is the widest text after the dot. Padding shorter
+// fractions to it puts every decimal point in one column.
 func priceFractionWidth(ps []*Position) int {
 	max := 0
 	for _, p := range ps {
-		_, frac, ok := splitPrice(p.markedPrice())
-		if ok && len(frac) > max {
-			max = len(frac)
+		_, frac, ok := formatPriceParts(p.markedPrice())
+		if !ok {
+			continue
+		}
+		if w := runewidth.StringWidth(frac); w > max {
+			max = w
 		}
 	}
 	return max
 }
 
 func priceText(raw string, tick int, fracWidth int) (string, ui.Severity) {
-	whole, frac, ok := splitPrice(raw)
+	whole, frac, ok := formatPriceParts(raw)
 	if !ok {
 		return "—", ui.SeverityMuted
 	}
@@ -479,13 +593,11 @@ func priceText(raw string, tick int, fracWidth int) (string, ui.Severity) {
 		glyph = glyphDown + " "
 		sev = ui.SeverityError
 	}
-	if fracWidth <= 0 {
-		return glyph + whole, sev
+	pad := fracWidth - runewidth.StringWidth(frac)
+	if pad < 0 {
+		pad = 0
 	}
-	if len(frac) > fracWidth {
-		fracWidth = len(frac)
-	}
-	return glyph + whole + "." + frac + strings.Repeat(" ", fracWidth-len(frac)), sev
+	return glyph + whole + "." + frac + strings.Repeat(" ", pad), sev
 }
 
 func moneyText(v float64, tick int, reserve bool) (string, ui.Severity) {

@@ -52,7 +52,7 @@ func TestValueColumnRightAligns(t *testing.T) {
 		t.Fatalf("row content missing:\n%s", plain)
 	}
 	prices := columnAt(t, plain, 5)
-	priceWant := []string{"price", "▲ 2,940.5", "▲ 1.0001", "▼ 0.9998", "—"}
+	priceWant := []string{"price", "▲ 2,940.500", "▲ 1.000", "▼ 1.000", "—"}
 	if len(prices) != len(priceWant) {
 		t.Fatalf("price cells = %d, want %d\n%s", len(prices), len(priceWant), plain)
 	}
@@ -152,15 +152,25 @@ func TestPriceDecimalsLineUp(t *testing.T) {
 		t.Fatalf("price cells = %d\n%s", len(cells), plain)
 	}
 	assertPriceDecimalsAlign(t, cells[1:])
-	joined := strings.Join(cells, "\n")
-	if !strings.Contains(joined, "0.000875912345") {
-		t.Fatalf("small price was shortened:\n%s", plain)
+	got := make([]string, len(cells)-1)
+	for i, cell := range cells[1:] {
+		got[i] = strings.TrimSpace(cell)
 	}
-	if !strings.Contains(joined, "60,460.088") {
-		t.Fatalf("large price was shortened:\n%s", plain)
+	want := []string{
+		"1,679.598",
+		"0.999",
+		"▼ 0.089",
+		"▼ 60,460.088",
+		"▼ 1,679.598",
+		"0.0₃876",
+		"0.001",
+		"▲ 94.490",
+		"▲ 598.846",
+		"1.000",
+		"▲ 0.002",
 	}
-	if strings.Contains(joined, "1,679.5979000") {
-		t.Fatalf("trailing zeros were kept:\n%s", plain)
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("prices =\n%s\nwant\n%s\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"), plain)
 	}
 }
 
