@@ -24,33 +24,8 @@ func Watch(ctx context.Context, _ ui.UI, l *Loader, b *Book) error {
 	}
 
 	b.Live = true
-	prev := map[string]float64{}
-	prevTotal := b.Total
-	var havePrev bool
+	painted := false
 	paint := func() {
-		b.ValueTicks = map[string]int{}
-		b.TotalTick = 0
-		if havePrev {
-			for _, p := range b.Positions {
-				if p.honeypot() || p.Value == nil {
-					continue
-				}
-				old, ok := prev[p.Key()]
-				if !ok {
-					continue
-				}
-				if *p.Value > old+0.005 {
-					b.ValueTicks[p.Key()] = 1
-				} else if *p.Value < old-0.005 {
-					b.ValueTicks[p.Key()] = -1
-				}
-			}
-			if b.Total > prevTotal+0.005 {
-				b.TotalTick = 1
-			} else if b.Total < prevTotal-0.005 {
-				b.TotalTick = -1
-			}
-		}
 		var frame bytes.Buffer
 		view := ui.NewTerminalUIWithWriter(&frame, screen.cursor)
 		if _, cols := screen.measure(); cols > 1 {
@@ -58,15 +33,7 @@ func Watch(ctx context.Context, _ ui.UI, l *Loader, b *Book) error {
 		}
 		Render(view, b)
 		screen.paint(frame.String())
-		prev = map[string]float64{}
-		for _, p := range b.Positions {
-			if p.honeypot() || p.Value == nil {
-				continue
-			}
-			prev[p.Key()] = *p.Value
-		}
-		prevTotal = b.Total
-		havePrev = true
+		painted = true
 	}
 
 	var sock *kyber.MarketSocket
@@ -132,7 +99,7 @@ func Watch(ctx context.Context, _ ui.UI, l *Loader, b *Book) error {
 		}
 		select {
 		case <-ctx.Done():
-			if !havePrev {
+			if !painted {
 				paint()
 			}
 			return nil

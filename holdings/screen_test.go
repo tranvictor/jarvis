@@ -67,8 +67,6 @@ func TestLiveScreenPatchesOnlyTheMovedPortfolioRows(t *testing.T) {
 
 	eth = 101
 	book.recomputeTotals()
-	book.ValueTicks = map[string]int{book.Positions[0].Key(): 1}
-	book.TotalTick = 1
 	s.paint(portfolioFrame(book))
 
 	got := buf.String()

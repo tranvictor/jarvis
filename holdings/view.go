@@ -11,8 +11,8 @@ import (
 	"github.com/tranvictor/jarvis/ui"
 )
 
-// Render prints the book. Live mode colours the value cell by the last
-// tick; the 24h column follows the sign of the window change.
+// Render prints the book. Value and price take their ▲ or ▼ from the
+// 24h window. The price cell is the mark's own price.
 func Render(u ui.UI, b *Book) {
 	now := time.Now()
 	renderHeader(u, b)
@@ -20,7 +20,7 @@ func Render(u ui.UI, b *Book) {
 	if len(rows) == 0 {
 		u.Info("No positions.")
 	} else {
-		headers := []string{"chain", "token", "amount", "value", "24h", "mark", "exit"}
+		headers := []string{"chain", "token", "amount", "value", "price", "24h", "mark", "exit"}
 		if b.Degen {
 			headers = append(headers, "address", "raw", "spread", "age", "1h")
 		}
@@ -64,7 +64,7 @@ func Render(u ui.UI, b *Book) {
 func columnAlign(headers []string) []ui.ColAlign {
 	align := make([]ui.ColAlign, len(headers))
 	for i, h := range headers {
-		if h == "value" {
+		if h == "value" || h == "price" {
 			align[i] = ui.AlignRight
 		}
 	}
@@ -73,7 +73,7 @@ func columnAlign(headers []string) []ui.ColAlign {
 
 func renderHeader(u ui.UI, b *Book) {
 	name := headerName(b)
-	total, totalSev := moneyText(b.Total, b.TotalTick, b.Live)
+	total, totalSev := moneyText(b.Total, windowTick(b.ChangePct), false)
 	head := name + "    " + u.Style(ui.StyledText{Text: total + " USD", Severity: totalSev})
 	if text, sev := pnlText(b.ChangeUSD, b.ChangePct); text != "" {
 		head += "    " + u.Style(ui.StyledText{Text: text, Severity: sev}) + " 24h"
@@ -201,15 +201,13 @@ func exitPayloadLine(p *Position) string {
 }
 
 func rowFor(b *Book, p *Position, now time.Time) []ui.TableCell {
-	tick := 0
-	if b.ValueTicks != nil {
-		tick = b.ValueTicks[p.Key()]
-	}
+	tick := windowTick(p.Change24h)
 	value := ui.TCS("—", ui.SeverityMuted)
 	if p.Value != nil {
-		text, sev := moneyText(*p.Value, tick, b.Live)
+		text, sev := moneyText(*p.Value, tick, false)
 		value = ui.TCS(text, sev)
 	}
+	px, priceSev := priceText(p.markedPrice(), tick)
 	pct, pctSev := pctText(p.Change24h)
 	mark := p.Mark
 	if mark == "" {
@@ -230,6 +228,7 @@ func rowFor(b *Book, p *Position, now time.Time) []ui.TableCell {
 		ui.TC(displaySymbol(p)),
 		ui.TC(jarviscommon.CompactAmount(p.Amount)),
 		value,
+		ui.TCS(px, priceSev),
 		ui.TCS(pct, pctSev),
 		ui.TC(mark),
 		ui.TCS(exit, exitSev),

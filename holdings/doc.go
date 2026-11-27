@@ -15,7 +15,9 @@
 //   - A catalog price of 0, a null settlement, or a missing sell side is
 //     not a price. The row stays unpriced and out of the total.
 //   - Buy and sell differ. The mark is the sell side. Settlement is next.
-//     The balance row's price is last and labeled indicative.
+//     The balance row's price is last and labeled indicative. The price
+//     column shows that mark's price. ▲ and ▼ on value and price follow
+//     the 24h window, the same sign as the 24h column.
 //   - No RPC node for a chain, a multicall miss, or a balanceOf revert:
 //     that holding keeps the Kyber amount. The header names those chains.
 //   - A chain read of zero replaces a stale Kyber amount.
