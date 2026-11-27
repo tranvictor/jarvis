@@ -54,8 +54,8 @@ down, on the 24h column and on the value and price against 24 hours
 ago. The price column is the mark's price. A short
 terminal keeps the top of the book and the status line. A pipe or a
 terminal that cannot move the cursor prints the whole book instead.
--x/--degen prints the liquidity payload behind each exit cell: tier,
-score and venueCount. A row that was not quoted says so.
+-x/--degen prints the liquidity request and the raw response body
+behind each quoted exit cell. A row that was not quoted says so.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {

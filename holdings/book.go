@@ -61,6 +61,9 @@ type Position struct {
 	ExitQuoted  bool
 	ExitScore   float64
 	ExitVenues  int
+	ExitMethod  string
+	ExitURL     string
+	ExitRaw     string
 }
 
 // Key identifies a holding inside one book.

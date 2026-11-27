@@ -66,34 +66,44 @@ func (e *apiError) Error() string {
 }
 
 func (c *Client) get(ctx context.Context, path string, q url.Values, dest any) error {
-	return c.do(ctx, http.MethodGet, path, q, nil, dest)
+	_, err := c.doExchange(ctx, http.MethodGet, path, q, nil, dest)
+	return err
 }
 
 func (c *Client) post(ctx context.Context, path string, body any, dest any) error {
-	return c.do(ctx, http.MethodPost, path, nil, body, dest)
+	_, err := c.doExchange(ctx, http.MethodPost, path, nil, body, dest)
+	return err
 }
 
-func (c *Client) do(ctx context.Context, method, path string, q url.Values, body any, dest any) error {
+// Exchange is one call as it was sent, plus the response body. The API key
+// stays in the header and is not part of URL.
+type Exchange struct {
+	Method string
+	URL    string
+	Raw    string
+}
+
+func (c *Client) doExchange(ctx context.Context, method, path string, q url.Values, body any, dest any) (Exchange, error) {
 	var payload []byte
 	if body != nil {
 		var err error
 		payload, err = json.Marshal(body)
 		if err != nil {
-			return err
+			return Exchange{}, err
 		}
 	}
-	u := c.base + path
+	ex := Exchange{Method: method, URL: c.base + path}
 	if len(q) > 0 {
-		u += "?" + q.Encode()
+		ex.URL += "?" + q.Encode()
 	}
 	for attempt := 0; attempt < 2; attempt++ {
 		var rdr io.Reader
 		if payload != nil {
 			rdr = bytes.NewReader(payload)
 		}
-		req, err := http.NewRequestWithContext(ctx, method, u, rdr)
+		req, err := http.NewRequestWithContext(ctx, method, ex.URL, rdr)
 		if err != nil {
-			return err
+			return ex, err
 		}
 		req.Header.Set("x-api-key", c.key)
 		req.Header.Set("User-Agent", userAgent)
@@ -103,24 +113,25 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 		}
 		resp, err := c.http.Do(req)
 		if err != nil {
-			return fmt.Errorf("kyber data api %s: %w", path, err)
+			return ex, fmt.Errorf("kyber data api %s: %w", path, err)
 		}
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 		resp.Body.Close()
+		ex.Raw = string(raw)
 		if err != nil {
-			return fmt.Errorf("kyber data api %s: %w", path, err)
+			return ex, fmt.Errorf("kyber data api %s: %w", path, err)
 		}
 		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 {
 			wait := retryAfter(resp.Header.Get("Retry-After"))
 			select {
 			case <-ctx.Done():
-				return ctx.Err()
+				return ex, ctx.Err()
 			case <-time.After(wait):
 			}
 			continue
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return &apiError{Status: resp.StatusCode, Path: path, Body: string(raw)}
+			return ex, &apiError{Status: resp.StatusCode, Path: path, Body: string(raw)}
 		}
 		var env struct {
 			Code    int             `json:"code"`
@@ -128,23 +139,23 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 			Data    json.RawMessage `json:"data"`
 		}
 		if err := json.Unmarshal(raw, &env); err != nil {
-			return fmt.Errorf("kyber data api %s: %w", path, err)
+			return ex, fmt.Errorf("kyber data api %s: %w", path, err)
 		}
 		if env.Code != 0 {
 			if env.Message == "" {
 				env.Message = "request failed"
 			}
-			return fmt.Errorf("kyber data api %s: %s", path, env.Message)
+			return ex, fmt.Errorf("kyber data api %s: %s", path, env.Message)
 		}
 		if dest == nil || len(env.Data) == 0 || string(env.Data) == "null" {
-			return nil
+			return ex, nil
 		}
 		if err := json.Unmarshal(env.Data, dest); err != nil {
-			return fmt.Errorf("kyber data api %s: %w", path, err)
+			return ex, fmt.Errorf("kyber data api %s: %w", path, err)
 		}
-		return nil
+		return ex, nil
 	}
-	return fmt.Errorf("kyber data api %s: rate limited", path)
+	return ex, fmt.Errorf("kyber data api %s: rate limited", path)
 }
 
 func retryAfter(h string) time.Duration {
