@@ -16,6 +16,7 @@ import (
 // MarketSocket is one live price connection. A read past 45 seconds of
 // silence fails the connection; the caller reconnects and subscribes again.
 type MarketSocket struct {
+	url    string
 	conn   *websocket.Conn
 	write  sync.Mutex
 	next   int
@@ -44,12 +45,15 @@ func (c *Client) OpenMarketSocket(ctx context.Context) (*MarketSocket, error) {
 	dialer.HandshakeTimeout = 10 * time.Second
 	conn, resp, err := dialer.DialContext(ctx, u, h)
 	if err != nil {
+		debugAppend("GET "+u, []byte("error: "+err.Error()))
 		if resp != nil {
 			return nil, fmt.Errorf("kyber market socket: %w (http %s)", err, resp.Status)
 		}
 		return nil, fmt.Errorf("kyber market socket: %w", err)
 	}
+	debugAppend("GET "+u, nil)
 	s := &MarketSocket{
+		url:     u,
 		conn:    conn,
 		Events:  make(chan MarketEvent, 256),
 		waiters: map[int]chan socketReply{},
@@ -126,6 +130,9 @@ func (s *MarketSocket) read() {
 	for {
 		s.conn.SetReadDeadline(time.Now().Add(45 * time.Second))
 		_, msg, err := s.conn.ReadMessage()
+		if err == nil {
+			debugAppend("FRAME "+s.url, msg)
+		}
 		if err != nil {
 			select {
 			case <-s.closed:
