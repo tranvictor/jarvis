@@ -19,7 +19,9 @@
 //     column shows that mark's price to three digits after the dot, with
 //     the decimal points in one column. Under 0.001 the leading zeros are
 //     a subscript count and three significant digits follow. ▲ and ▼ on
-//     value and price follow the 24h window, the same sign as the 24h column.
+//     value and price follow the price we recorded at least 24 hours
+//     earlier, the same sign as the 24h column. The API's 24h percent is
+//     not used. A move under 0.05% is flat.
 //   - No RPC node for a chain, a multicall miss, or a balanceOf revert:
 //     that holding keeps the Kyber amount. The header names those chains.
 //   - A chain read of zero replaces a stale Kyber amount.

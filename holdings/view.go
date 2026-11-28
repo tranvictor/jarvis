@@ -12,7 +12,8 @@ import (
 )
 
 // Render prints the book. Value and price take their ▲ or ▼ from the
-// 24h window. The price cell is the mark's own price.
+// price recorded at least 24 hours earlier. The price cell is the mark's
+// own price.
 func Render(u ui.UI, b *Book) {
 	now := time.Now()
 	renderHeader(u, b)
