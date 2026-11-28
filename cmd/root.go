@@ -167,7 +167,7 @@ func Execute() {
 		"debug",
 		"B",
 		false,
-		"print debug logs to screen, helpful to diagnose performance issues",
+		"print debug logs to screen. The portfolio also appends each Kyber request URL, response body, and socket frame to ~/.jarvis/debug.out",
 	)
 
 	rootCmd.PersistentFlags().BoolVarP(

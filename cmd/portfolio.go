@@ -59,6 +59,8 @@ instead.
 -x/--degen prints the liquidity payload behind each exit cell: tier,
 score and venueCount. A row that never calls the pair endpoint says
 ignored. A call with no tier says not quoted.
+--debug appends each Kyber request URL, response body, and socket frame
+to ~/.jarvis/debug.out. The screen is unchanged when --debug is off.
 `,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
@@ -85,6 +87,15 @@ func runPortfolio(cmd *cobra.Command, input string) error {
 	client, err := kyber.NewClientFromEnv()
 	if err != nil {
 		return err
+	}
+	if config.Debug {
+		path, err := kyber.HomeDebugPath()
+		if err != nil {
+			return err
+		}
+		if err := kyber.EnableDebug(path); err != nil {
+			return err
+		}
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()

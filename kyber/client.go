@@ -103,13 +103,16 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 		}
 		resp, err := c.http.Do(req)
 		if err != nil {
+			debugAppend(method+" "+u, []byte("error: "+err.Error()))
 			return fmt.Errorf("kyber data api %s: %w", path, err)
 		}
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 		resp.Body.Close()
 		if err != nil {
+			debugAppend(method+" "+u, []byte("error: "+err.Error()))
 			return fmt.Errorf("kyber data api %s: %w", path, err)
 		}
+		debugAppend(method+" "+u, raw)
 		if resp.StatusCode == http.StatusTooManyRequests && attempt == 0 {
 			wait := retryAfter(resp.Header.Get("Retry-After"))
 			select {
