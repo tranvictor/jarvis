@@ -181,18 +181,6 @@ type Book struct {
 	Degen    bool
 	Live     bool
 	LiveNote string
-
-	// marks is the price history used for the 24h change. now overrides the
-	// clock in tests.
-	marks *priceMarks
-	now   func() time.Time
-}
-
-func (b *Book) clock() time.Time {
-	if b != nil && b.now != nil {
-		return b.now()
-	}
-	return time.Now()
 }
 
 type pipeline struct {
