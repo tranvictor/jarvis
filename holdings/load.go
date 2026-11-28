@@ -99,8 +99,6 @@ func (l *Loader) RefreshMarket(ctx context.Context, b *Book) error {
 	for _, p := range b.Positions {
 		p.revalue()
 	}
-	b.openPriceMarks()
-	b.notePrices(b.clock())
 	b.recomputeTotals()
 	b.StatsAt = time.Now()
 	return nil
@@ -108,7 +106,6 @@ func (l *Loader) RefreshMarket(ctx context.Context, b *Book) error {
 
 func (l *Loader) fill(ctx context.Context, b *Book, prev map[string]*Position) error {
 	l.ensureChains(ctx)
-	b.openPriceMarks()
 	var chainID *int
 	if len(l.Chains) == 1 {
 		for id := range l.Chains {
@@ -165,8 +162,7 @@ func (l *Loader) fill(ctx context.Context, b *Book, prev map[string]*Position) e
 	l.exits(ctx, positions)
 
 	b.Positions = positions
-	now := b.clock()
-	b.notePrices(now)
+	now := time.Now()
 	b.recomputeTotals()
 	b.sortPositions()
 	b.FetchedAt = now
@@ -395,7 +391,11 @@ func applyMarket(p *Position, tm kyber.TokenMarket) {
 			p.HasSettlement = true
 		}
 	}
-	// The 24h arrow is our own mark, not stats["24h"].priceChangePercent.
+	p.Change24h = nil
+	if st := tm.Stats["24h"]; st != nil && st.PriceChangePercent != nil {
+		v := *st.PriceChangePercent
+		p.Change24h = &v
+	}
 	if st := tm.Stats["1h"]; st != nil && st.PriceChangePercent != nil {
 		v := *st.PriceChangePercent
 		p.Change1h = &v

@@ -73,7 +73,6 @@ func (b *Book) Apply(ev kyber.MarketEvent) bool {
 			p.OnchainE = p.SellAtMs
 		}
 		p.revalue()
-		b.notePrices(b.clock())
 		b.recomputeTotals()
 		return true
 	case "settlementPrice":
@@ -98,7 +97,6 @@ func (b *Book) Apply(ev kyber.MarketEvent) bool {
 		p.SettlementBlock = ev.Block
 		p.HasSettlement = true
 		p.revalue()
-		b.notePrices(b.clock())
 		b.recomputeTotals()
 		return true
 	default:

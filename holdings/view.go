@@ -11,9 +11,8 @@ import (
 	"github.com/tranvictor/jarvis/ui"
 )
 
-// Render prints the book. Value and price take their ▲ or ▼ from the
-// price recorded at least 24 hours earlier. The price cell is the mark's
-// own price.
+// Render prints the book. Value and price take their ▲ or ▼ from
+// stats["24h"].priceChangePercent. The price cell is the mark's own price.
 func Render(u ui.UI, b *Book) {
 	now := time.Now()
 	renderHeader(u, b)
