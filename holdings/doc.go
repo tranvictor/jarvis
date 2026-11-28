@@ -34,9 +34,9 @@
 //     as returned. -x prints tier, score and venueCount for each quoted row.
 //   - The socket sends no resume cursor. A dead connection (45s of silence,
 //     a dropped heartbeat, a close) reconnects with backoff and subscribes
-//     again. An event is applied only when it is newer for that stream.
-//     While a pipeline is degraded, that kind is ignored and a REST
-//     snapshot is read.
+//     again. Buy and sell each land when that side's own time is newer.
+//     One side being ahead does not drop the other. While a pipeline is
+//     degraded, that kind is ignored and a REST snapshot is read.
 //   - More than 200 streams: both kinds stay on the largest holdings and
 //     the rest wait for the REST refresh.
 //   - --watch on a terminal takes one screen and rewrites only the lines

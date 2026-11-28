@@ -37,28 +37,40 @@ func (b *Book) Apply(ev kyber.MarketEvent) bool {
 		if p == nil {
 			return false
 		}
-		if ev.Time < p.OnchainE {
-			return false
-		}
-		if ev.Time == p.OnchainE && ev.Buy == p.BuyUSD && ev.Sell == p.SellUSD {
-			return false
-		}
+		// Each side lands on its own time. A buy timestamp that is already
+		// ahead must not throw away a newer sell: the row shows the sell,
+		// then settlement, then the catalog price, and never the buy.
+		changed := false
 		if ev.HasBuy {
-			p.BuyUSD = ev.Buy
-			p.BuyAtMs = ev.BuyAt
-		} else {
+			if sideNewer(ev.BuyAt, p.BuyAtMs, ev.Buy, p.BuyUSD) {
+				p.BuyUSD = ev.Buy
+				p.BuyAtMs = ev.BuyAt
+				changed = true
+			}
+		} else if sideGone(ev.Time, p.BuyAtMs, p.BuyUSD) {
 			p.BuyUSD = ""
 			p.BuyAtMs = 0
+			changed = true
 		}
 		if ev.HasSell {
-			p.SellUSD = ev.Sell
-			p.SellAtMs = ev.SellAt
-		} else {
+			if sideNewer(ev.SellAt, p.SellAtMs, ev.Sell, p.SellUSD) {
+				p.SellUSD = ev.Sell
+				p.SellAtMs = ev.SellAt
+				changed = true
+			}
+		} else if sideGone(ev.Time, p.SellAtMs, p.SellUSD) {
 			p.SellUSD = ""
 			p.SellAtMs = 0
+			changed = true
 		}
-		if ev.Time > 0 {
-			p.OnchainE = ev.Time
+		if !changed {
+			return false
+		}
+		if p.BuyAtMs > p.OnchainE {
+			p.OnchainE = p.BuyAtMs
+		}
+		if p.SellAtMs > p.OnchainE {
+			p.OnchainE = p.SellAtMs
 		}
 		p.revalue()
 		b.recomputeTotals()
@@ -90,6 +102,21 @@ func (b *Book) Apply(ev kyber.MarketEvent) bool {
 	default:
 		return false
 	}
+}
+
+// sideNewer reports a socket side that should replace the one stored.
+// Equal time with a different price counts. A missing time does not
+// replace a side that has one.
+func sideNewer(at, haveAt int64, price, have string) bool {
+	if at > haveAt {
+		return true
+	}
+	return at == haveAt && price != have
+}
+
+// sideGone reports an omitted side the frame is new enough to clear.
+func sideGone(frameAt, haveAt int64, have string) bool {
+	return have != "" && frameAt >= haveAt
 }
 
 func streamsFor(b *Book) []string {
